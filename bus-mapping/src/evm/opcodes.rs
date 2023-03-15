@@ -15,7 +15,7 @@ use eth_types::{
     evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
     evm_unimplemented, GethExecStep, ToAddress, ToWord, Word,
 };
-use ethers_core::utils::get_contract_address;
+use ethers_core::{k256::elliptic_curve::consts::True, utils::get_contract_address};
 use keccak256::EMPTY_HASH;
 
 use crate::util::CHECK_MEM_STRICT;
@@ -312,11 +312,7 @@ fn fn_gen_error_state_associated_ops(
         ExecError::PrecompileFailed => Some(PrecompileFailed::gen_associated_ops),
         ExecError::WriteProtection => Some(ErrorWriteProtection::gen_associated_ops),
         ExecError::ReturnDataOutOfBounds => Some(ErrorReturnDataOutOfBound::gen_associated_ops),
-        ExecError::ContractAddressCollision => match geth_step.op {
-            OpcodeId::CREATE => Some(ContractAddressCollision::<false>::gen_associated_ops),
-            OpcodeId::CREATE2 => Some(ContractAddressCollision::<true>::gen_associated_ops),
-            _ => unreachable!(),
-        },
+        ExecError::ContractAddressCollision => Some(Create::<true>::gen_associated_ops),
         ExecError::NonceUintOverflow => match geth_step.op {
             OpcodeId::CREATE => Some(StackOnlyOpcode::<3, 1>::gen_associated_ops),
             OpcodeId::CREATE2 => Some(StackOnlyOpcode::<4, 1>::gen_associated_ops),
@@ -386,11 +382,9 @@ pub fn gen_associated_ops(
         None
     };
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
-        log::warn!(
+        println!(
             "geth error {:?} occurred in  {:?} at pc {:?}",
-            exec_error,
-            geth_step.op,
-            geth_step.pc,
+            exec_error, geth_step.op, geth_step.pc,
         );
 
         exec_step.error = Some(exec_error.clone());
