@@ -129,7 +129,7 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
                 initialization_code.length(),
             );
         });
-        cb.condition(not::expr(initialization_code.has_length()), |cb| {
+        cb.condition(not::expr(initialization_code.has_length()*callee_is_success.expr()), |cb| {
             cb.require_equal("", code_hash.expr(), cb.empty_hash_rlc());
         });
 

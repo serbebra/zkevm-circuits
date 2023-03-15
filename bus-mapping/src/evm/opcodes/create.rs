@@ -64,9 +64,9 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
                 Word::zero()
             },
         )?;
-
+        
         let mut initialization_code = vec![];
-        if length > 0 {
+        if length > 0 && !callee_exists {
             initialization_code =
                 handle_copy(state, &mut exec_step, state.call()?.call_id, offset, length)?;
         }
@@ -119,6 +119,13 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
         }
 
         debug_assert!(state.sdb.get_nonce(&callee.address) == 0);
+        
+        //TODO: this could be good place for callee_exists = true, since above operation
+        // happens in evmm create() method before checking ErrContractAddressCollision
+        if callee_exists {
+
+        }
+
         state.transfer(
             &mut exec_step,
             callee.caller_address,
@@ -226,7 +233,7 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
 
         state.block.sha3_inputs.push(keccak_input);
 
-        if length == 0 {
+        if length == 0 || callee_exists  {
             for (field, value) in [
                 (CallContextField::LastCalleeId, 0.into()),
                 (CallContextField::LastCalleeReturnDataOffset, 0.into()),
