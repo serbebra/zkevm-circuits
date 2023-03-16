@@ -15,7 +15,7 @@ use eth_types::{
     evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
     evm_unimplemented, GethExecStep, ToAddress, ToWord, Word,
 };
-use ethers_core::{k256::elliptic_curve::consts::True, utils::get_contract_address};
+use ethers_core::utils::get_contract_address;
 use keccak256::EMPTY_HASH;
 
 use crate::util::CHECK_MEM_STRICT;
@@ -90,7 +90,6 @@ use codesize::Codesize;
 use create::Create;
 use dup::Dup;
 use error_codestore::ErrorCodeStore;
-use error_contract_address_collision::ContractAddressCollision;
 use error_invalid_jump::InvalidJump;
 use error_oog_call::OOGCall;
 use error_oog_dynamic_memory::OOGDynamicMemory;
@@ -382,9 +381,11 @@ pub fn gen_associated_ops(
         None
     };
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
-        println!(
+        log::warn!(
             "geth error {:?} occurred in  {:?} at pc {:?}",
-            exec_error, geth_step.op, geth_step.pc,
+            exec_error,
+            geth_step.op,
+            geth_step.pc,
         );
 
         exec_step.error = Some(exec_error.clone());

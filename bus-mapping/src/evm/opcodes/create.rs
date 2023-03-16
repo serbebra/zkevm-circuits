@@ -122,11 +122,11 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
         // if address created before, nonce is not zero
         //debug_assert!(state.sdb.get_nonce(&callee.address) == 0);
 
-        //TODO: this could be good place for callee_exists = true, since above
-        // operation happens in evmm create() method before checking
+        // this could be good place for checking callee_exists = true, since above
+        // operation happens in evm create() method before checking
         // ErrContractAddressCollision
-        println!("callee_exists {}, opcode {:?}", callee_exists, geth_step.op);
         let code_hash_previous = if callee_exists {
+            exec_step.error = Some(ExecError::ContractAddressCollision);
             callee_account.code_hash
         } else {
             H256::zero()
@@ -139,9 +139,6 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
             AccountField::CodeHash,
             code_hash_previous.to_word(),
         );
-        if callee_exists {
-            exec_step.error = Some(ExecError::ContractAddressCollision);
-        }
 
         if !callee_exists {
             state.transfer(
@@ -251,7 +248,6 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
 
         state.block.sha3_inputs.push(keccak_input);
 
-        println!("call is success {}", callee.is_success());
         if length == 0 || callee_exists {
             for (field, value) in [
                 (CallContextField::LastCalleeId, 0.into()),
@@ -320,7 +316,7 @@ mod tests {
     use eth_types::evm_types::OpcodeId;
     use eth_types::geth_types::GethData;
     use eth_types::{bytecode, word};
-    use mock::test_ctx::helpers::{account_0_code_account_1_no_code, tx_from_1_to_0};
+    use mock::test_ctx::helpers::account_0_code_account_1_no_code;
     use mock::TestContext;
 
     #[test]
