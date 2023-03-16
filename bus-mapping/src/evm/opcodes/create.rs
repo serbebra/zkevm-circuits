@@ -1,3 +1,4 @@
+use crate::error::ExecError;
 use crate::{
     circuit_input_builder::{
         CircuitInputStateRef, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
@@ -8,8 +9,6 @@ use crate::{
 };
 use eth_types::{Bytecode, GethExecStep, ToBigEndian, ToWord, Word, H160, H256};
 use ethers_core::utils::{get_create2_address, keccak256, rlp};
-use crate::error::ExecError;
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct Create<const IS_CREATE2: bool>;
@@ -66,9 +65,9 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
                 Word::zero()
             },
         )?;
-        
+
         let mut initialization_code = vec![];
-        if length > 0  {
+        if length > 0 {
             initialization_code =
                 handle_copy(state, &mut exec_step, state.call()?.call_id, offset, length)?;
         }
@@ -122,10 +121,24 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
 
         // if address created before, nonce is not zero
         //debug_assert!(state.sdb.get_nonce(&callee.address) == 0);
-        
-        //TODO: this could be good place for callee_exists = true, since above operation
-        // happens in evmm create() method before checking ErrContractAddressCollision
-        println!("callee_exists {}", callee_exists);
+
+        //TODO: this could be good place for callee_exists = true, since above
+        // operation happens in evmm create() method before checking
+        // ErrContractAddressCollision
+        println!("callee_exists {}, opcode {:?}", callee_exists, geth_step.op);
+        let code_hash_previous = if callee_exists {
+            callee_account.code_hash
+        } else {
+            H256::zero()
+        };
+
+        // use CodeHash rw not zero to check address already exists
+        state.account_read(
+            &mut exec_step,
+            address,
+            AccountField::CodeHash,
+            code_hash_previous.to_word(),
+        );
         if callee_exists {
             exec_step.error = Some(ExecError::ContractAddressCollision);
         }
@@ -149,7 +162,7 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
                 },
             )?;
         }
-        
+
         // Per EIP-150, all but one 64th of the caller's gas is sent to the
         // initialization call.
         let caller_gas_left = (geth_step.gas.0 - geth_step.gas_cost.0) / 64;
@@ -238,7 +251,7 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
 
         state.block.sha3_inputs.push(keccak_input);
 
-        if length == 0 || callee_exists  {
+        if length == 0 || callee_exists {
             for (field, value) in [
                 (CallContextField::LastCalleeId, 0.into()),
                 (CallContextField::LastCalleeReturnDataOffset, 0.into()),
@@ -331,17 +344,11 @@ mod tests {
             PUSH1 (0x20)   // retLength
             PUSH1 (0x20)   // retOffset
             PUSH1 (0x20)   // argsLength
-            PUSH1 (0)      // argsOffset
-            PUSH1 (0)      // value
+            PUSH1 (0x00)      // argsOffset
+            PUSH1 (0x00)      // value
             DUP6           // addr from above CREATE2
             PUSH2 (0xFFFF) // gas
             CALL
-
-            // PUSH1 (0x0) // length  0x40 > 0x20 (which return from above CALL), result in ReturnDataOutOfBounds
-            // PUSH1 (0x0)  // dataOffset
-            // PUSH1 (0x10) // memOffset
-            // RETURNDATACOPY
-
             STOP
         };
 
@@ -380,5 +387,4 @@ mod tests {
         let operation = &container.stack[step.bus_mapping_instance[0].as_usize()];
         assert_eq!(operation.rw(), RW::READ);
     }
-
 }
