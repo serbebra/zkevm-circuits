@@ -133,9 +133,9 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             );
         });
         cb.condition(
-            not::expr(initialization_code.has_length() * callee_is_success.expr()),
+            not::expr(initialization_code.has_length()),
             |cb| {
-                cb.require_equal("", code_hash.expr(), cb.empty_hash_rlc());
+                cb.require_equal("code_hash is empty ", code_hash.expr(), cb.empty_hash_rlc());
             },
         );
 
@@ -325,8 +325,8 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
                 program_counter: Delta(1.expr()),
                 stack_pointer: Delta(2.expr() + is_create2.expr()),
                 
-                gas_left: To(callee_gas_left),
-                //Delta(-gas_cost),
+                gas_left: To(gas_left.quotient()),
+                // gas_left: To(callee_gas_left.clone()),
                 reversible_write_counter: Delta(2.expr()),
                 ..Default::default()
             })
@@ -529,8 +529,6 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
         self.code_hash_previous.assign(region, offset, code_hash_previous_rlc)?;
         self.is_code_hash_previous_zero.assign_value(region, offset, code_hash_previous_rlc)?;
         let is_address_collision = !code_hash_previous.0.is_zero();
-        println!("rw is {:?}, is_address_collision {}, code_hash_previous_rlc {:?}", rw, is_address_collision, code_hash_previous_rlc);
-
 
         let mut rw_offset = 0;
         if !is_address_collision {
@@ -581,7 +579,20 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             } else {
                 0
             };
+        let gas_cost_evaluation = GasCost::CREATE.as_u64()
+            +  memory_expansion_gas_cost
+            + if is_create2 {
+                 u64::try_from(initialization_code_word_size).unwrap() * GasCost::COPY_SHA3.as_u64()
+            } else {
+                0
+            };
         self.gas_left.assign(region, offset, gas_left.into())?;
+        println!("gas_left {}, is_address_collision {}, gas_cost_evaluation {}, copy_rw_increase {}", gas_left, is_address_collision,
+        gas_cost_evaluation, copy_rw_increase);
+        for (i,_step) in tx.steps.clone().into_iter().enumerate() {
+            println!(" step {} is {:?}, gas left {}, gas cost {}", i, _step.execution_state, _step.gas_left,
+            _step.gas_cost);
+        }
 
         self.callee_is_success.assign(
             region,
@@ -855,6 +866,58 @@ mod test {
         });
 
         // construct address collision by create2 twice
+        // if is_create2 {
+        //     code.append(&bytecode! {PUSH1(45)}); // salt;
+        // }
+        // code.append(&bytecode! {
+        //     PUSH1(initialization_bytes.len()) // size
+        //     PUSH1(32 - initialization_bytes.len()) // length
+        //     PUSH2(23414) // value
+        // });
+        // code.write_op(if is_create2 {
+        //     OpcodeId::CREATE2
+        // } else {
+        //     OpcodeId::CREATE
+        // });
+
+        // end address collision
+        if !is_persistent {
+            code.append(&bytecode! {
+                PUSH1(0)
+                PUSH1(0)
+                REVERT
+            });
+        }
+        code
+    }
+
+
+    fn creater_bytecode_address_collision(
+        initialization_bytecode: Bytecode,
+        is_create2: bool,
+        is_persistent: bool,
+    ) -> Bytecode {
+        let initialization_bytes = initialization_bytecode.code();
+        let mut code = bytecode! {
+            PUSH32(Word::from_big_endian(&initialization_bytes))
+            PUSH1(0)
+            MSTORE
+        };
+        if is_create2 {
+            code.append(&bytecode! {PUSH1(45)}); // salt;
+        }
+        code.append(&bytecode! {
+            PUSH1(initialization_bytes.len()) // size
+            PUSH1(32 - initialization_bytes.len()) // length
+            PUSH2(23414) // value
+        });
+        code.write_op(if is_create2 {
+            OpcodeId::CREATE2
+        } else {
+            OpcodeId::CREATE
+        });
+
+        // construct address collision by create2 twice
         if is_create2 {
             code.append(&bytecode! {PUSH1(45)}); // salt;
         }
@@ -975,7 +1038,7 @@ mod test {
     #[test]
     fn test_create_address_collision_error() {
         let initialization_code = initialization_bytecode(false);
-        let root_code = creater_bytecode(initialization_code, true, false);
+        let root_code = creater_bytecode_address_collision(initialization_code, true, false);
         let caller = Account {
             address: *CALLER_ADDRESS,
             code: root_code.into(),

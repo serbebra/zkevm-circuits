@@ -251,6 +251,7 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
 
         state.block.sha3_inputs.push(keccak_input);
 
+        println!("call is success {}", callee.is_success());
         if length == 0 || callee_exists {
             for (field, value) in [
                 (CallContextField::LastCalleeId, 0.into()),
