@@ -61,9 +61,10 @@ pub(crate) struct CreateGadget<F> {
     gas_left: ConstantDivisionGadget<F, N_BYTES_GAS>,
 
     code_hash: Cell<F>,
-
+    // prevous code hash befor creating
     code_hash_previous: Cell<F>,
-    is_code_hash_previous_zero: IsZeroGadget<F>,
+    // if code_hash_previous is zero, then no collision
+    not_address_collision: IsZeroGadget<F>,
     keccak_input: Cell<F>,
     keccak_input_length: Cell<F>,
     keccak_output: Word<F>,
@@ -187,14 +188,14 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             code_hash_previous.expr(),
         );
 
-        let is_code_hash_previous_zero = IsZeroGadget::construct(cb, code_hash_previous.expr());
+        let not_address_collision = IsZeroGadget::construct(cb, code_hash_previous.expr());
         cb.require_zero(
             "is_code_hash_previous_zero * code_hash_previous = 0",
-            code_hash_previous.expr() * is_code_hash_previous_zero.expr(),
+            code_hash_previous.expr() * not_address_collision.expr(),
         );
         // TODO：conditional transfer for address collision case
 
-        let transfer = cb.condition(is_code_hash_previous_zero.expr(), |cb| {
+        let transfer = cb.condition(not_address_collision.expr(), |cb| {
             let tansfer_gadget = TransferGadget::construct(
                 cb,
                 from_bytes::expr(&caller_address.cells),
@@ -280,7 +281,7 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
         }
 
         cb.condition(
-            initialization_code.has_length() * is_code_hash_previous_zero.expr(),
+            initialization_code.has_length() * not_address_collision.expr(),
             |cb| {
                 cb.require_step_state_transition(StepStateTransition {
                     rw_counter: Delta(cb.rw_counter_offset()),
@@ -296,7 +297,7 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
         );
 
         cb.condition(
-            not::expr(initialization_code.has_length()) * is_code_hash_previous_zero.expr(),
+            not::expr(initialization_code.has_length()) * not_address_collision.expr(),
             |cb| {
                 for field_tag in [
                     CallContextFieldTag::LastCalleeId,
@@ -316,7 +317,8 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             },
         );
 
-        cb.condition(not::expr(is_code_hash_previous_zero.expr()), |cb| {
+        // handle collision case
+        cb.condition(not::expr(not_address_collision.expr()), |cb| {
             for field_tag in [
                 CallContextFieldTag::LastCalleeId,
                 CallContextFieldTag::LastCalleeReturnDataOffset,
@@ -411,7 +413,7 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             callee_is_success,
             code_hash,
             code_hash_previous,
-            is_code_hash_previous_zero,
+            not_address_collision,
             keccak_output,
             keccak_input,
             keccak_input_length,
@@ -530,7 +532,7 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
         let code_hash_previous_rlc = region.word_rlc(code_hash_previous.0);
         self.code_hash_previous
             .assign(region, offset, code_hash_previous_rlc)?;
-        self.is_code_hash_previous_zero
+        self.not_address_collision
             .assign_value(region, offset, code_hash_previous_rlc)?;
         let is_address_collision = !code_hash_previous.0.is_zero();
 

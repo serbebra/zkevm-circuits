@@ -120,7 +120,6 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
         }
 
         // if address created before, nonce is not zero
-        //debug_assert!(state.sdb.get_nonce(&callee.address) == 0);
 
         // this could be good place for checking callee_exists = true, since above
         // operation happens in evm create() method before checking
@@ -355,9 +354,7 @@ mod tests {
             account_0_code_account_1_no_code(code),
             |mut txs, accs| {
                 txs[0].from(accs[1].address).to(accs[0].address);
-                //txs[0].from(accs[1].address).to(accs[0].address);
             },
-            //tx_from_1_to_0,
             |block, _tx| block.number(0xcafeu64),
         )
         .unwrap()
@@ -369,7 +366,6 @@ mod tests {
             .unwrap();
 
         let tx_id = 1;
-        // get second tx execution
         let transaction = &builder.block.txs()[tx_id - 1];
         let step = transaction
             .steps()
