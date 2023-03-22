@@ -1,8 +1,8 @@
-use crate::error::ExecError;
 use crate::{
     circuit_input_builder::{
         CircuitInputStateRef, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
     },
+    error::ExecError,
     evm::Opcode,
     operation::{AccountField, AccountOp, CallContextField, MemoryOp, RW},
     Error,
@@ -309,14 +309,9 @@ fn handle_copy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuit_input_builder::ExecState;
-    use crate::mock::BlockData;
-    use crate::operation::RW;
-    use eth_types::evm_types::OpcodeId;
-    use eth_types::geth_types::GethData;
-    use eth_types::{bytecode, word};
-    use mock::test_ctx::helpers::account_0_code_account_1_no_code;
-    use mock::TestContext;
+    use crate::{circuit_input_builder::ExecState, mock::BlockData, operation::RW};
+    use eth_types::{bytecode, evm_types::OpcodeId, geth_types::GethData, word};
+    use mock::{test_ctx::helpers::account_0_code_account_1_no_code, TestContext};
 
     #[test]
     fn test_create_address_collision_error() {

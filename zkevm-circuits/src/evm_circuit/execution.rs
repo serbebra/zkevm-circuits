@@ -331,8 +331,6 @@ pub(crate) struct ExecutionConfig<F> {
     error_invalid_jump: Box<ErrorInvalidJumpGadget<F>>,
     error_invalid_opcode: Box<ErrorInvalidOpcodeGadget<F>>,
     error_depth: Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorDepth }>>,
-    error_contract_address_collision:
-        Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorContractAddressCollision }>>,
     error_invalid_creation_code:
         Box<DummyGadget<F, 0, 0, { ExecutionState::ErrorInvalidCreationCode }>>,
     error_precompile_failed: Box<ErrorPrecompileFailedGadget<F>>,

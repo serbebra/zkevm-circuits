@@ -134,7 +134,11 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             );
         });
         cb.condition(not::expr(initialization_code.has_length()), |cb| {
-            cb.require_equal("code_hash is empty ", code_hash.expr(), cb.empty_hash_rlc());
+            cb.require_equal(
+                "code_hash is empty ",
+                code_hash.expr(),
+                cb.empty_code_hash_rlc(),
+            );
         });
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
