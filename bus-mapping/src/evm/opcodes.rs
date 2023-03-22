@@ -58,12 +58,14 @@ mod swap;
 
 mod error_codestore;
 mod error_contract_address_collision;
+mod error_invalid_creation_code;
 mod error_invalid_jump;
 mod error_oog_call;
 mod error_oog_dynamic_memory;
 mod error_oog_exp;
 mod error_oog_log;
 mod error_oog_memory_copy;
+mod error_oog_sha3;
 mod error_oog_sload_sstore;
 mod error_oog_static_memory;
 mod error_precompile_failed;
@@ -89,12 +91,14 @@ use codesize::Codesize;
 use create::Create;
 use dup::Dup;
 use error_codestore::ErrorCodeStore;
+use error_invalid_creation_code::ErrorCreationCode;
 use error_invalid_jump::InvalidJump;
 use error_oog_call::OOGCall;
 use error_oog_dynamic_memory::OOGDynamicMemory;
 use error_oog_exp::OOGExp;
 use error_oog_log::ErrorOOGLog;
 use error_oog_memory_copy::OOGMemoryCopy;
+use error_oog_sha3::OOGSha3;
 use error_oog_sload_sstore::OOGSloadSstore;
 use error_oog_static_memory::OOGStaticMemory;
 use error_precompile_failed::PrecompileFailed;
@@ -299,6 +303,7 @@ fn fn_gen_error_state_associated_ops(
         }
         ExecError::OutOfGas(OogError::Exp) => Some(OOGExp::gen_associated_ops),
         ExecError::OutOfGas(OogError::MemoryCopy) => Some(OOGMemoryCopy::gen_associated_ops),
+        ExecError::OutOfGas(OogError::Sha3) => Some(OOGSha3::gen_associated_ops),
         ExecError::OutOfGas(OogError::SloadSstore) => Some(OOGSloadSstore::gen_associated_ops),
         // ExecError::
         ExecError::StackOverflow => Some(ErrorSimple::gen_associated_ops),
@@ -323,6 +328,7 @@ fn fn_gen_error_state_associated_ops(
             _ => unreachable!(),
         },
         ExecError::GasUintOverflow => Some(ErrorSimple::gen_associated_ops),
+        ExecError::InvalidCreationCode => Some(ErrorCreationCode::gen_associated_ops),
         // more future errors place here
         _ => {
             evm_unimplemented!("TODO: error state {:?} not implemented", error);
