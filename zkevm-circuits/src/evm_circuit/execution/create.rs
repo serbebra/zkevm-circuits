@@ -179,10 +179,13 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         );
 
         let not_address_collision = IsZeroGadget::construct(cb, code_hash_previous.expr());
-        cb.require_zero(
-            "is_code_hash_previous_zero * code_hash_previous = 0",
-            code_hash_previous.expr() * not_address_collision.expr(),
-        );
+        cb.condition(not::expr(not_address_collision.expr()), |cb| {
+            cb.require_equal(
+                "op code is create2 for address collision",
+                opcode.expr(),
+                OpcodeId::CREATE2.expr(),
+            );
+        });
 
         // conditional transfer for address collision case
         let transfer = cb.condition(not_address_collision.expr(), |cb| {
