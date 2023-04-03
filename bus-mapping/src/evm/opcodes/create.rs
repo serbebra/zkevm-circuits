@@ -3,7 +3,7 @@ use crate::{
         CircuitInputStateRef, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
     },
     error::ExecError,
-    evm::Opcode,
+    evm::{Opcode, OpcodeId},
     operation::{AccountField, AccountOp, CallContextField, MemoryOp, RW},
     Error,
 };
@@ -125,6 +125,8 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
         // operation happens in evm create() method before checking
         // ErrContractAddressCollision
         let code_hash_previous = if callee_exists {
+            // only create2 possibly cause address collision error.
+            assert_eq!(geth_step.op, OpcodeId::CREATE2);
             exec_step.error = Some(ExecError::ContractAddressCollision);
             callee_account.code_hash
         } else {

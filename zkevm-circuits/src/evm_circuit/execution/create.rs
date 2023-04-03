@@ -185,7 +185,7 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             );
         });
 
-        // TODO：check for address collision case by code hash previous
+        // check for address collision case by code hash previous
         cb.account_read(
             new_address.clone(),
             AccountFieldTag::CodeHash,
@@ -197,8 +197,8 @@ impl<F: Field> ExecutionGadget<F> for CreateGadget<F> {
             "is_code_hash_previous_zero * code_hash_previous = 0",
             code_hash_previous.expr() * not_address_collision.expr(),
         );
-        // TODO：conditional transfer for address collision case
 
+        // conditional transfer for address collision case
         let transfer = cb.condition(not_address_collision.expr(), |cb| {
             let tansfer_gadget = TransferGadget::construct(
                 cb,
@@ -860,22 +860,6 @@ mod test {
             OpcodeId::CREATE
         });
 
-        // construct address collision by create2 twice
-        // if is_create2 {
-        //     code.append(&bytecode! {PUSH1(45)}); // salt;
-        // }
-        // code.append(&bytecode! {
-        //     PUSH1(initialization_bytes.len()) // size
-        //     PUSH1(32 - initialization_bytes.len()) // length
-        //     PUSH2(23414) // value
-        // });
-        // code.write_op(if is_create2 {
-        //     OpcodeId::CREATE2
-        // } else {
-        //     OpcodeId::CREATE
-        // });
-
-        // end address collision
         if !is_persistent {
             code.append(&bytecode! {
                 PUSH1(0)
@@ -886,44 +870,31 @@ mod test {
         code
     }
 
-    fn creater_bytecode_address_collision(
-        initialization_bytecode: Bytecode,
-        is_create2: bool,
-    ) -> Bytecode {
+    fn creater_bytecode_address_collision(initialization_bytecode: Bytecode) -> Bytecode {
         let initialization_bytes = initialization_bytecode.code();
         let mut code = bytecode! {
             PUSH32(Word::from_big_endian(&initialization_bytes))
             PUSH1(0)
             MSTORE
         };
-        if is_create2 {
-            code.append(&bytecode! {PUSH1(45)}); // salt;
-        }
+
+        code.append(&bytecode! {PUSH1(45)}); // salt;
         code.append(&bytecode! {
             PUSH1(initialization_bytes.len()) // size
             PUSH1(32 - initialization_bytes.len()) // length
             PUSH2(23414) // value
         });
-        code.write_op(if is_create2 {
-            OpcodeId::CREATE2
-        } else {
-            OpcodeId::CREATE
-        });
+        code.write_op(OpcodeId::CREATE2);
 
         // construct address collision by create2 twice
-        if is_create2 {
-            code.append(&bytecode! {PUSH1(45)}); // salt;
-        }
+        code.append(&bytecode! {PUSH1(45)}); // salt;
+
         code.append(&bytecode! {
             PUSH1(initialization_bytes.len()) // size
             PUSH1(32 - initialization_bytes.len()) // length
             PUSH2(23414) // value
         });
-        code.write_op(if is_create2 {
-            OpcodeId::CREATE2
-        } else {
-            OpcodeId::CREATE
-        });
+        code.write_op(OpcodeId::CREATE2);
         code.append(&bytecode! {
             PUSH1(0)
             PUSH1(0)
@@ -1028,7 +999,7 @@ mod test {
     #[test]
     fn test_create_address_collision_error() {
         let initialization_code = initialization_bytecode(false);
-        let root_code = creater_bytecode_address_collision(initialization_code, true);
+        let root_code = creater_bytecode_address_collision(initialization_code);
         let caller = Account {
             address: *CALLER_ADDRESS,
             code: root_code.into(),
