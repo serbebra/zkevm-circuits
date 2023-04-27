@@ -31,7 +31,6 @@ pub(crate) struct EndBlockGadget<F> {
     phase2_withdraw_root: Cell<F>,
     phase2_withdraw_root_prev: Cell<F>,
     pub withdraw_root_assigned: std::cell::RefCell<Option<AssignedCell>>,
-    pub withdraw_root_prev_assigned: std::cell::RefCell<Option<AssignedCell>>,
 }
 
 const EMPTY_BLOCK_N_RWS: u64 = 0;
@@ -46,7 +45,7 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         let max_rws = cb.query_copy_cell();
         let total_txs = cb.query_cell();
         let total_txs_is_max_txs = IsEqualGadget::construct(cb, total_txs.expr(), max_txs.expr());
-        let phase2_withdraw_root = cb.query_cell_phase2();
+        let phase2_withdraw_root = cb.query_copy_cell_phase2();
         let phase2_withdraw_root_prev = cb.query_cell_phase2();
         // Note that rw_counter starts at 1
         let is_empty_block =
@@ -136,7 +135,6 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
             total_txs_is_max_txs,
             is_empty_block,
             withdraw_root_assigned: Default::default(),
-            withdraw_root_prev_assigned: Default::default(),
         }
     }
 
@@ -167,7 +165,7 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
             offset,
             region.word_rlc(block.withdraw_root),
         )?;
-        let withdraw_root_prev = self.phase2_withdraw_root_prev.assign(
+        let _withdraw_root_prev = self.phase2_withdraw_root_prev.assign(
             region,
             offset,
             region.word_rlc(block.prev_withdraw_root),
@@ -176,9 +174,11 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         self.withdraw_root_assigned
             .borrow_mut()
             .replace(withdraw_root.cell());
-        self.withdraw_root_prev_assigned
-            .borrow_mut()
-            .replace(withdraw_root_prev.cell());
+        // TODO: now we do not export withdraw_root_prev for we have only one
+        // phase2 cell which is enabled for copy constraint
+        // self.withdraw_root_prev_assigned
+        //     .borrow_mut()
+        //     .replace(withdraw_root_prev.cell());
 
         // When rw_indices is not empty, we're at the last row (at a fixed offset),
         // where we need to access the max_rws and max_txs constant.

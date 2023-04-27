@@ -1279,7 +1279,7 @@ impl<F: Field> PiCircuit<F> {
         layouter.assign_region(
             || "pi connecting region",
             |mut region| {
-                if let Some(state_roots) = state_roots.clone() {
+                if let Some(state_roots) = state_roots {
                     region.constrain_equal(
                         local_conn.start_state_root.cell(),
                         state_roots.start_state_root.0,
@@ -1292,7 +1292,7 @@ impl<F: Field> PiCircuit<F> {
                     log::warn!("state roots are not set, skip connection with state circuit");
                 }
 
-                if let Some(withdraw_roots) = withdraw_roots.clone() {
+                if let Some(withdraw_roots) = withdraw_roots {
                     region.constrain_equal(
                         local_conn.withdraw_root.cell(),
                         withdraw_roots.withdraw_root.0,
