@@ -13,7 +13,9 @@ use crate::{
         step::{ExecutionState, Step},
         table::Table,
         util::{
-            constraint_builder::{BaseConstraintBuilder, ConstraintBuilder},
+            constraint_builder::{
+                BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
+            },
             rlc, CellType,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -219,7 +221,7 @@ pub(crate) trait ExecutionGadget<F: FieldExt> {
 
     const EXECUTION_STATE: ExecutionState;
 
-    fn configure(cb: &mut ConstraintBuilder<F>) -> Self;
+    fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self;
 
     fn assign_exec_step(
         &self,
@@ -651,7 +653,7 @@ impl<F: Field> ExecutionConfig<F> {
         // height
         let height = {
             let dummy_step_next = Step::new(meta, advices, MAX_STEP_HEIGHT, true);
-            let mut cb = ConstraintBuilder::new(
+            let mut cb = EVMConstraintBuilder::new(
                 step_curr.clone(),
                 dummy_step_next,
                 challenges,
@@ -664,7 +666,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         // Now actually configure the gadget with the correct minimal height
         let step_next = &Step::new(meta, advices, height, true);
-        let mut cb = ConstraintBuilder::new(
+        let mut cb = EVMConstraintBuilder::new(
             step_curr.clone(),
             step_next.clone(),
             challenges,
@@ -710,7 +712,7 @@ impl<F: Field> ExecutionConfig<F> {
         name: &'static str,
         execution_state: ExecutionState,
         height: usize,
-        mut cb: ConstraintBuilder<F>,
+        mut cb: EVMConstraintBuilder<F>,
     ) {
         // Enforce the step height for this opcode
         let num_rows_until_next_step_next = query_expression(meta, |meta| {
