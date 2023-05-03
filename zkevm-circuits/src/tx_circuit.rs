@@ -1718,6 +1718,10 @@ impl<F: Field> TxCircuit<F> {
 impl<F: Field> SubCircuit<F> for TxCircuit<F> {
     type Config = TxCircuitConfig<F>;
 
+    fn unusable_rows() -> usize {
+        7
+    }
+
     fn new_from_block(block: &witness::Block<F>) -> Self {
         for tx in &block.txs {
             if tx.chain_id != block.chain_id.as_u64() {
