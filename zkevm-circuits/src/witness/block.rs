@@ -391,7 +391,7 @@ pub fn block_convert<F: Field>(
         randomness: F::from_u128(DEFAULT_RAND),
         context: block.into(),
         mpt_state: None,
-        rws: rws.clone(),
+        rws,
         txs: block
             .txs()
             .iter()
