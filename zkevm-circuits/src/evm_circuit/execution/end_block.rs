@@ -14,7 +14,9 @@ use crate::{
     table::{CallContextFieldTag, TxContextFieldTag},
     util::Expr,
 };
-use bus_mapping::l2_predeployed::message_queue::{ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT};
+use bus_mapping::l2_predeployed::message_queue::{
+    ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
+};
 use eth_types::{Field, ToScalar};
 use halo2_proofs::{
     circuit::{Cell as AssignedCell, Value},

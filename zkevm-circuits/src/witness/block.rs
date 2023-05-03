@@ -357,18 +357,21 @@ pub fn block_convert<F: Field>(
         block.end_state_root(),
     );
 
-    let _withdraw_root_check_rw = if end_block_last.rw_counter == 0 {0} 
-        else {end_block_last.rw_counter+1};
+    let _withdraw_root_check_rw = if end_block_last.rw_counter == 0 {
+        0
+    } else {
+        end_block_last.rw_counter + 1
+    };
     let total_tx_as_txid = num_txs;
-    let withdraw_root_entry = mpt_updates.get(&super::rw::Rw::AccountStorage { 
-        tx_id: total_tx_as_txid, 
-        account_address: *bus_mapping::l2_predeployed::message_queue::ADDRESS, 
-        storage_key: *bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT, 
+    let withdraw_root_entry = mpt_updates.get(&super::rw::Rw::AccountStorage {
+        tx_id: total_tx_as_txid,
+        account_address: *bus_mapping::l2_predeployed::message_queue::ADDRESS,
+        storage_key: *bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT,
         // following field is not used in Mpt::Key so we just fill them arbitrarily
-        rw_counter: 0, 
-        is_write: false, 
-        value: U256::zero(), 
-        value_prev: U256::zero(), 
+        rw_counter: 0,
+        is_write: false,
+        value: U256::zero(),
+        value_prev: U256::zero(),
         committed_value: U256::zero(),
     });
     if let Some(entry) = withdraw_root_entry {

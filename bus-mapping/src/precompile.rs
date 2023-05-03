@@ -3,7 +3,6 @@
 use eth_types::Address;
 use revm_precompile::{Precompile, Precompiles};
 
-
 /// Check if address is a precompiled or not.
 pub fn is_precompiled(address: &Address) -> bool {
     Precompiles::berlin()
