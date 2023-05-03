@@ -238,6 +238,7 @@ pub(crate) mod geth_errors;
 pub mod mock;
 pub mod operation;
 pub mod precompile;
+pub mod l2_predeployed;
 pub mod rpc;
 pub mod state_db;
 pub mod util;
