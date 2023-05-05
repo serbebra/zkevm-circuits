@@ -6,6 +6,7 @@ use eth_types::{evm_types::Memory, geth_types, Address, GethExecTrace, Signature
 use ethers_core::utils::get_contract_address;
 
 use crate::{
+    l2_predeployed::l1_gas_price_oracle,
     state_db::{CodeDB, StateDB},
     Error,
 };
@@ -204,6 +205,10 @@ pub struct Transaction {
     pub chain_id: u64,
     /// Signature
     pub signature: Signature,
+    /// Current values of L1 fee
+    pub l1_fee: L1Fee,
+    /// Committed values of L1 fee
+    pub l1_fee_committed: L1Fee,
     /// Calls made in the transaction
     pub(crate) calls: Vec<Call>,
     /// Execution steps
@@ -250,6 +255,8 @@ impl Transaction {
             steps: Vec::new(),
             block_num: Default::default(),
             hash: Default::default(),
+            l1_fee: Default::default(),
+            l1_fee_committed: Default::default(),
         }
     }
 
@@ -320,6 +327,16 @@ impl Transaction {
                 debug_tx
             }
         );
+
+        let l1_fee = L1Fee::get_current_from_state_db(sdb);
+        let l1_fee_committed = L1Fee::get_committed_from_state_db(sdb);
+
+        log::debug!(
+            "l1_fee: {:?}, l1_fee_committed: {:?}",
+            l1_fee,
+            l1_fee_committed
+        );
+
         Ok(Self {
             block_num: eth_tx.block_number.unwrap().as_u64(),
             hash: eth_tx.hash,
@@ -338,6 +355,8 @@ impl Transaction {
                 r: eth_tx.r,
                 s: eth_tx.s,
             },
+            l1_fee,
+            l1_fee_committed,
         })
     }
 
@@ -384,5 +403,55 @@ impl Transaction {
     /// Return whether the steps in this transaction is empty
     pub fn is_steps_empty(&self) -> bool {
         self.steps.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct L1Fee {
+    /// L1 base fee
+    pub base_fee: u64,
+    /// L1 fee overhead
+    pub fee_overhead: u64,
+    /// L1 fee scalar
+    pub fee_scalar: u64,
+}
+
+impl L1Fee {
+    fn get_current_from_state_db(sdb: &StateDB) -> Self {
+        let [base_fee, fee_overhead, fee_scalar] = [
+            &l1_gas_price_oracle::BASE_FEE_SLOT,
+            &l1_gas_price_oracle::OVERHEAD_SLOT,
+            &l1_gas_price_oracle::SCALAR_SLOT,
+        ]
+        .map(|slot| {
+            sdb.get_storage(&l1_gas_price_oracle::ADDRESS, &slot)
+                .1
+                .as_u64()
+        });
+
+        Self {
+            base_fee,
+            fee_overhead,
+            fee_scalar,
+        }
+    }
+
+    fn get_committed_from_state_db(sdb: &StateDB) -> Self {
+        let [base_fee, fee_overhead, fee_scalar] = [
+            &l1_gas_price_oracle::BASE_FEE_SLOT,
+            &l1_gas_price_oracle::OVERHEAD_SLOT,
+            &l1_gas_price_oracle::SCALAR_SLOT,
+        ]
+        .map(|slot| {
+            sdb.get_committed_storage(&l1_gas_price_oracle::ADDRESS, &slot)
+                .1
+                .as_u64()
+        });
+
+        Self {
+            base_fee,
+            fee_overhead,
+            fee_scalar,
+        }
     }
 }
