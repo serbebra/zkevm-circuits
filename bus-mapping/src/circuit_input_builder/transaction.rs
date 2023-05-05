@@ -206,9 +206,9 @@ pub struct Transaction {
     /// Signature
     pub signature: Signature,
     /// Current values of L1 fee
-    pub l1_fee: L1Fee,
+    pub l1_fee: TxL1Fee,
     /// Committed values of L1 fee
-    pub l1_fee_committed: L1Fee,
+    pub l1_fee_committed: TxL1Fee,
     /// Calls made in the transaction
     pub(crate) calls: Vec<Call>,
     /// Execution steps
@@ -328,8 +328,8 @@ impl Transaction {
             }
         );
 
-        let l1_fee = L1Fee::get_current_from_state_db(sdb);
-        let l1_fee_committed = L1Fee::get_committed_from_state_db(sdb);
+        let l1_fee = TxL1Fee::get_current_values_from_state_db(sdb);
+        let l1_fee_committed = TxL1Fee::get_committed_values_from_state_db(sdb);
 
         log::debug!(
             "l1_fee: {:?}, l1_fee_committed: {:?}",
@@ -406,8 +406,9 @@ impl Transaction {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct L1Fee {
+/// Transaction L1 fee for L1GasPriceOracle contract
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TxL1Fee {
     /// L1 base fee
     pub base_fee: u64,
     /// L1 fee overhead
@@ -416,15 +417,15 @@ pub struct L1Fee {
     pub fee_scalar: u64,
 }
 
-impl L1Fee {
-    fn get_current_from_state_db(sdb: &StateDB) -> Self {
+impl TxL1Fee {
+    fn get_current_values_from_state_db(sdb: &StateDB) -> Self {
         let [base_fee, fee_overhead, fee_scalar] = [
             &l1_gas_price_oracle::BASE_FEE_SLOT,
             &l1_gas_price_oracle::OVERHEAD_SLOT,
             &l1_gas_price_oracle::SCALAR_SLOT,
         ]
         .map(|slot| {
-            sdb.get_storage(&l1_gas_price_oracle::ADDRESS, &slot)
+            sdb.get_storage(&l1_gas_price_oracle::ADDRESS, slot)
                 .1
                 .as_u64()
         });
@@ -436,14 +437,14 @@ impl L1Fee {
         }
     }
 
-    fn get_committed_from_state_db(sdb: &StateDB) -> Self {
+    fn get_committed_values_from_state_db(sdb: &StateDB) -> Self {
         let [base_fee, fee_overhead, fee_scalar] = [
             &l1_gas_price_oracle::BASE_FEE_SLOT,
             &l1_gas_price_oracle::OVERHEAD_SLOT,
             &l1_gas_price_oracle::SCALAR_SLOT,
         ]
         .map(|slot| {
-            sdb.get_committed_storage(&l1_gas_price_oracle::ADDRESS, &slot)
+            sdb.get_committed_storage(&l1_gas_price_oracle::ADDRESS, slot)
                 .1
                 .as_u64()
         });

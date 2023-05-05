@@ -5,7 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             and,
-            common_gadget::TransferWithGasFeeGadget,
+            common_gadget::{TransferWithGasFeeGadget, TxL1FeeGadget},
             constraint_builder::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::{Delta, To},
@@ -59,6 +59,7 @@ pub(crate) struct BeginTxGadget<F> {
     create: ContractCreateGadget<F, false>,
     callee_not_exists: IsZeroGadget<F>,
     is_caller_callee_equal: Cell<F>,
+    tx_l1_fee: TxL1FeeGadget<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
@@ -71,6 +72,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let call_id = cb.curr.state.rw_counter.clone();
 
         let tx_id = cb.query_cell();
+        let tx_l1_fee = TxL1FeeGadget::construct(cb, tx_id.expr());
+
         cb.call_context_lookup(
             1.expr(),
             Some(call_id.expr()),
@@ -146,11 +149,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             MulWordByU64Gadget::construct(cb, tx_gas_price.clone(), tx_gas.expr());
         let tx_fee = cb.query_word_rlc();
 
-        // TODO: contraint l1 fee
         #[cfg(not(feature = "scroll"))]
         cb.require_equal(
-            "tx_fee == l1_fee + l2_fee, l1_fee == 0",
-            mul_gas_fee_by_gas.product().expr(),
+            "tx_fee == l1_fee + l2_fee",
+            tx_l1_fee.tx_l1_fee(tx_call_data_gas_cost.expr()) + mul_gas_fee_by_gas.product().expr(),
             tx_fee.expr(),
         );
 
@@ -311,6 +313,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
             cb.require_step_state_transition(StepStateTransition {
                 // 21 + a reads and writes:
+                //   - a TxL1FeeGadget
                 //   - Write CallContext TxId
                 //   - Write CallContext RwCounterEndOfReversion
                 //   - Write CallContext IsPersistent
@@ -333,7 +336,9 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 //   - Write CallContext IsRoot
                 //   - Write CallContext IsCreate
                 //   - Write CallContext CodeHash
-                rw_counter: Delta(21.expr() + transfer_with_gas_fee.rw_delta()),
+                rw_counter: Delta(
+                    21.expr() + tx_l1_fee.rw_delta() + transfer_with_gas_fee.rw_delta(),
+                ),
                 call_id: To(call_id.expr()),
                 is_root: To(true.expr()),
                 is_create: To(tx_is_create.expr()),
@@ -369,7 +374,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             );
 
             cb.require_step_state_transition(StepStateTransition {
-                // 7 + TransferWithGasFeeGadget associated reads or writes:
+                // 7 + TxL1FeeGadget + TransferWithGasFeeGadget associated reads or writes:
                 //   - Write CallContext TxId
                 //   - Write CallContext RwCounterEndOfReversion
                 //   - Write CallContext IsPersistent
@@ -377,9 +382,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 //   - Write Account (Caller) Nonce
                 //   - Write TxAccessListAccount (Caller)
                 //   - Write TxAccessListAccount (Callee)
+                //   - a TxL1FeeGadget
                 //   - a TransferWithGasFeeGadget
                 rw_counter: Delta(
                     7.expr()
+                        + tx_l1_fee.rw_delta()
                         + transfer_with_gas_fee.rw_delta()
                         // TRICKY:
                         // Process the reversion only for Precompile in begin TX. Since no
@@ -424,8 +431,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                     //   - Write TxAccessListAccount
                     //   - Write TxAccessListAccount
                     //   - Read Account CodeHash
+                    //   - a TxL1FeeGadget
                     //   - a TransferWithGasFeeGadget
-                    rw_counter: Delta(8.expr() + transfer_with_gas_fee.rw_delta()),
+                    rw_counter: Delta(
+                        8.expr() + tx_l1_fee.rw_delta() + transfer_with_gas_fee.rw_delta(),
+                    ),
                     call_id: To(call_id.expr()),
                     ..StepStateTransition::any()
                 });
@@ -463,6 +473,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
                 cb.require_step_state_transition(StepStateTransition {
                     // 21 reads and writes:
+                    //   - a TxL1FeeGadget
                     //   - Write CallContext TxId
                     //   - Write CallContext RwCounterEndOfReversion
                     //   - Write CallContext IsPersistent
@@ -485,7 +496,9 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                     //   - Write CallContext IsRoot
                     //   - Write CallContext IsCreate
                     //   - Write CallContext CodeHash
-                    rw_counter: Delta(21.expr() + transfer_with_gas_fee.rw_delta()),
+                    rw_counter: Delta(
+                        21.expr() + tx_l1_fee.rw_delta() + transfer_with_gas_fee.rw_delta(),
+                    ),
                     call_id: To(call_id.expr()),
                     is_root: To(true.expr()),
                     is_create: To(tx_is_create.expr()),
@@ -525,6 +538,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             create,
             callee_not_exists,
             is_caller_callee_equal,
+            tx_l1_fee,
         }
     }
 
@@ -540,7 +554,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let zero = eth_types::Word::zero();
 
         let mut rws = StepRws::new(block, step);
-        rws.offset_add(7);
+        rws.offset_add(10);
         let mut callee_code_hash = zero;
         if !tx.is_create && !is_precompiled(&tx.callee_address.unwrap_or_default()) {
             callee_code_hash = rws.next().account_codehash_pair().1;
@@ -700,7 +714,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             None,
         )?;
 
-        Ok(())
+        self.tx_l1_fee
+            .assign(region, offset, tx.l1_fee, tx.l1_fee_committed)
     }
 }
 

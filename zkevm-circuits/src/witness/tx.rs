@@ -3,10 +3,7 @@ use crate::{
     table::TxContextFieldTag,
     util::{rlc_be_bytes, Challenges},
 };
-use bus_mapping::{
-    circuit_input_builder,
-    circuit_input_builder::{get_dummy_tx, get_dummy_tx_hash},
-};
+use bus_mapping::circuit_input_builder::{self, get_dummy_tx, get_dummy_tx_hash, TxL1Fee};
 use eth_types::{
     sign_types::{biguint_to_32bytes_le, ct_option_ok_or, recover_pk, SignData, SECP256K1_Q},
     Address, Error, Field, Signature, ToBigEndian, ToLittleEndian, ToScalar, ToWord, Word, H256,
@@ -69,6 +66,10 @@ pub struct Transaction {
     pub r: Word,
     /// "s" value of the transaction signature
     pub s: Word,
+    /// Current values of L1 fee
+    pub l1_fee: TxL1Fee,
+    /// Committed values of L1 fee
+    pub l1_fee_committed: TxL1Fee,
     /// The calls made in the transaction
     pub calls: Vec<Call>,
     /// The steps executioned in the transaction
@@ -396,6 +397,8 @@ impl From<MockTransaction> for Transaction {
             v: sig.v,
             r: sig.r,
             s: sig.s,
+            l1_fee: Default::default(),
+            l1_fee_committed: Default::default(),
             calls: vec![],
             steps: vec![],
         }
@@ -463,6 +466,8 @@ pub(super) fn tx_convert(
         v: tx.signature.v,
         r: tx.signature.r,
         s: tx.signature.s,
+        l1_fee: tx.l1_fee,
+        l1_fee_committed: tx.l1_fee_committed,
         calls: tx
             .calls()
             .iter()

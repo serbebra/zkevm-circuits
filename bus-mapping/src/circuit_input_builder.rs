@@ -48,7 +48,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     iter,
 };
-pub use transaction::{Transaction, TransactionContext};
+pub use transaction::{Transaction, TransactionContext, TxL1Fee};
 
 /// Circuit Setup Parameters
 #[derive(Debug, Clone, Copy)]

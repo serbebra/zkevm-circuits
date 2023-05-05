@@ -467,8 +467,8 @@ pub fn gen_begin_tx_ops(
     let mut exec_step = state.new_begin_tx_step();
     let call = state.call()?.clone();
 
-    // Add 3 RW read operations for L1 fee.
-    gen_l1_fee_ops(state, &mut exec_step);
+    // Add 3 RW read operations for transaction L1 fee.
+    gen_tx_l1_fee_ops(state, &mut exec_step);
 
     for (field, value) in [
         (CallContextField::TxId, state.tx_ctx.id().into()),
@@ -821,8 +821,8 @@ pub fn gen_end_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Erro
     Ok(exec_step)
 }
 
-// Add 3 RW read operations for L1 fee.
-fn gen_l1_fee_ops(state: &mut CircuitInputStateRef, exec_step: &mut ExecStep) {
+// Add 3 RW read operations for transaction L1 fee.
+fn gen_tx_l1_fee_ops(state: &mut CircuitInputStateRef, exec_step: &mut ExecStep) {
     let tx_id = state.tx_ctx.id();
 
     let base_fee = Word::from(state.tx.l1_fee.base_fee);
