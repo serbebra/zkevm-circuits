@@ -149,7 +149,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             MulWordByU64Gadget::construct(cb, tx_gas_price.clone(), tx_gas.expr());
         let tx_fee = cb.query_word_rlc();
 
-        #[cfg(not(feature = "scroll"))]
         cb.require_equal(
             "tx_fee == l1_fee + l2_fee",
             tx_l1_fee.tx_l1_fee(tx_call_data_gas_cost.expr()) + mul_gas_fee_by_gas.product().expr(),
