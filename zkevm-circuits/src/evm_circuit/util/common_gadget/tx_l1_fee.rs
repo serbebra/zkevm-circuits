@@ -1,6 +1,9 @@
 use super::{CachedRegion, Cell};
 use crate::{
-    evm_circuit::util::{constraint_builder::EVMConstraintBuilder, U64Word},
+    evm_circuit::{
+        param::N_BYTES_U64,
+        util::{constraint_builder::EVMConstraintBuilder, from_bytes, U64Word},
+    },
     util::Expr,
 };
 use bus_mapping::{circuit_input_builder::TxL1Fee, l2_predeployed::l1_gas_price_oracle};
@@ -122,8 +125,12 @@ impl<F: Field> TxL1FeeGadget<F> {
     }
 
     pub(crate) fn tx_l1_fee(&self, tx_call_data_gas_cost: Expression<F>) -> Expression<F> {
+        let [base_fee, fee_overhead, fee_scalar] =
+            [&self.base_fee, &self.fee_overhead, &self.fee_scalar]
+                .map(|word| from_bytes::expr(&word.cells[..N_BYTES_U64]));
+
         // <https://github.com/scroll-tech/go-ethereum/blob/49192260a177f1b63fc5ea3b872fb904f396260c/rollup/fees/rollup_fee.go#L118>
-        let tx_l1_gas = tx_call_data_gas_cost + 1088.expr() + self.fee_overhead.expr();
-        self.fee_scalar.expr() * 1_000_000_000.expr() * self.base_fee.expr() * tx_l1_gas
+        let tx_l1_gas = tx_call_data_gas_cost + 1088.expr() + fee_overhead;
+        fee_scalar * 1_000_000_000.expr() * base_fee * tx_l1_gas
     }
 }
