@@ -5,10 +5,7 @@ use crate::{
 };
 use bus_mapping::{circuit_input_builder::TxL1Fee, l2_predeployed::l1_gas_price_oracle};
 use eth_types::{Field, ToLittleEndian, ToScalar};
-use halo2_proofs::{
-    circuit::Value,
-    plonk::{Error, Expression},
-};
+use halo2_proofs::plonk::{Error, Expression};
 
 /// Transaction L1 fee gadget for L1GasPriceOracle contract
 #[derive(Clone, Debug)]
@@ -101,17 +98,17 @@ impl<F: Field> TxL1FeeGadget<F> {
         self.base_fee_committed.assign(
             region,
             offset,
-            Value::known(F::from(l1_fee_committed.base_fee)),
+            region.word_rlc(l1_fee_committed.base_fee.into()),
         )?;
         self.fee_overhead_committed.assign(
             region,
             offset,
-            Value::known(F::from(l1_fee_committed.fee_overhead)),
+            region.word_rlc(l1_fee_committed.fee_overhead.into()),
         )?;
         self.fee_scalar_committed.assign(
             region,
             offset,
-            Value::known(F::from(l1_fee_committed.fee_scalar)),
+            region.word_rlc(l1_fee_committed.fee_scalar.into()),
         )?;
 
         Ok(())
