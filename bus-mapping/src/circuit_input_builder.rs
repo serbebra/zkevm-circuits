@@ -508,6 +508,7 @@ pub fn keccak_inputs(block: &Block, code_db: &CodeDB) -> Result<Vec<Vec<u8>>, Er
     keccak_inputs.push(keccak_inputs_pi_circuit(
         block.chain_id().as_u64(),
         block.prev_state_root,
+        block.withdraw_root,
         &block.headers,
         block.txs(),
         block.circuits_params.max_txs,
@@ -594,13 +595,12 @@ pub fn get_dummy_tx_hash(chain_id: u64) -> H256 {
 fn keccak_inputs_pi_circuit(
     chain_id: u64,
     prev_state_root: Word,
+    withdraw_trie_root: Word,
     block_headers: &BTreeMap<u64, BlockHead>,
     transactions: &[Transaction],
     max_txs: usize,
 ) -> Vec<u8> {
     let dummy_tx_hash = get_dummy_tx_hash(chain_id);
-    // TODO: use real-world withdraw trie root
-    let withdraw_trie_root = Word::zero(); // zero for now
 
     let result = iter::empty()
         // state roots
