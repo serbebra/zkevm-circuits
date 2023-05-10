@@ -1246,7 +1246,7 @@ impl<F: Field> PiCircuit<F> {
             transactions: block.txs.clone(),
             block_ctxs: block.context.clone(),
             prev_state_root: H256(block.mpt_updates.old_root().to_be_bytes()),
-            withdraw_trie_root: H256::zero(),
+            withdraw_trie_root: H256(block.withdraw_root.to_be_bytes()),
         };
         Self {
             public_data,
