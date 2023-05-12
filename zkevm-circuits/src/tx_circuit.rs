@@ -68,7 +68,7 @@ use halo2_proofs::circuit::Chip;
 /// Number of rows of one tx occupies in the fixed part of tx table
 pub const TX_LEN: usize = 20;
 /// Offset of TxHash tag in the tx table
-pub const TX_HASH_OFFSET: usize = 18;
+pub const TX_HASH_OFFSET: usize = 19;
 
 #[derive(Clone, Debug)]
 struct TagTable {
