@@ -46,6 +46,8 @@ pub(crate) struct BeginTxGadget<F> {
     tx_value: Word<F>,
     tx_call_data_length: Cell<F>,
     tx_call_data_gas_cost: Cell<F>,
+    // The gas cost for rlp-encoded bytes of unsigned tx
+    tx_data_gas_cost: Cell<F>,
     reversion_info: ReversionInfo<F>,
     intrinsic_gas_cost: Cell<F>,
     sufficient_gas_left: RangeCheckGadget<F, N_BYTES_GAS>,
@@ -89,7 +91,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             is_persistent.expr(),
         ); // rwc_delta += 1
 
-        let [tx_nonce, tx_gas, tx_caller_address, tx_callee_address, tx_is_create, tx_call_data_length, tx_call_data_gas_cost] =
+        let [tx_nonce, tx_gas, tx_caller_address, tx_callee_address, tx_is_create, tx_call_data_length, tx_call_data_gas_cost, tx_data_gas_cost] =
             [
                 TxContextFieldTag::Nonce,
                 TxContextFieldTag::Gas,
@@ -98,6 +100,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 TxContextFieldTag::IsCreate,
                 TxContextFieldTag::CallDataLength,
                 TxContextFieldTag::CallDataGasCost,
+                TxContextFieldTag::TxDataGasCost,
             ]
             .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
 
@@ -151,7 +154,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
         cb.require_equal(
             "tx_fee == l1_fee + l2_fee",
-            tx_l1_fee.tx_l1_fee(tx_call_data_gas_cost.expr()) + mul_gas_fee_by_gas.product().expr(),
+            tx_l1_fee.tx_l1_fee(tx_data_gas_cost.expr()) + mul_gas_fee_by_gas.product().expr(),
             tx_fee.expr(),
         );
 
@@ -526,6 +529,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx_value,
             tx_call_data_length,
             tx_call_data_gas_cost,
+            tx_data_gas_cost,
             reversion_info,
             sufficient_gas_left,
             transfer_with_gas_fee,
@@ -638,6 +642,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             offset,
             Value::known(F::from(tx.call_data_gas_cost)),
         )?;
+        self.tx_data_gas_cost
+            .assign(region, offset, Value::known(F::from(tx.tx_data_gas_cost)))?;
         self.reversion_info.assign(
             region,
             offset,

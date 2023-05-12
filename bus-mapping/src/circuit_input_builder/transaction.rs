@@ -2,8 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use eth_types::{evm_types::Memory, geth_types, Address, GethExecTrace, Signature, Word, H256};
-use ethers_core::utils::get_contract_address;
+use eth_types::{
+    evm_types::{gas_utils::tx_data_gas_cost, Memory},
+    geth_types, Address, GethExecTrace, Signature, Word, H256,
+};
+use ethers_core::{types::TransactionRequest, utils::get_contract_address};
 
 use crate::{
     l2_predeployed::l1_gas_price_oracle,
@@ -234,6 +237,12 @@ impl From<&Transaction> for geth_types::Transaction {
     }
 }
 
+impl From<&Transaction> for TransactionRequest {
+    fn from(tx: &Transaction) -> TransactionRequest {
+        (&Into::<geth_types::Transaction>::into(tx)).into()
+    }
+}
+
 impl Transaction {
     /// Create a dummy Transaction with zero values
     pub fn dummy() -> Self {
@@ -403,6 +412,16 @@ impl Transaction {
     /// Return whether the steps in this transaction is empty
     pub fn is_steps_empty(&self) -> bool {
         self.steps.is_empty()
+    }
+
+    /// Calculate L1 fee of this transaction.
+    pub fn l1_fee(&self) -> u64 {
+        let tx_data_gas_cost =
+            tx_data_gas_cost(&Into::<TransactionRequest>::into(self).rlp_unsigned());
+
+        // <https://github.com/scroll-tech/go-ethereum/blob/49192260a177f1b63fc5ea3b872fb904f396260c/rollup/fees/rollup_fee.go#L118>
+        let tx_l1_gas = tx_data_gas_cost + 1088 + self.l1_fee.fee_overhead;
+        self.l1_fee.fee_scalar * 1_000_000_000 * self.l1_fee.base_fee * tx_l1_gas
     }
 }
 

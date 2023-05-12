@@ -16,7 +16,7 @@ use crate::{
 };
 use core::fmt::Debug;
 use eth_types::{
-    evm_types::{GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
+    evm_types::{gas_utils::tx_data_gas_cost, GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
     evm_unimplemented, GethExecStep, GethExecTrace, ToAddress, ToWord, Word,
 };
 use ethers_core::utils::get_contract_address;
@@ -514,11 +514,7 @@ pub fn gen_begin_tx_ops(
     }
 
     // Calculate intrinsic gas cost
-    let call_data_gas_cost = state
-        .tx
-        .input
-        .iter()
-        .fold(0, |acc, byte| acc + if *byte == 0 { 4 } else { 16 });
+    let call_data_gas_cost = tx_data_gas_cost(&state.tx.input);
     let intrinsic_gas_cost = if state.tx.is_create() {
         GasCost::CREATION_TX.as_u64()
     } else {
