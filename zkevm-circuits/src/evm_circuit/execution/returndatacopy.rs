@@ -53,6 +53,8 @@ pub(crate) struct ReturnDataCopyGadget<F> {
     copy_rwc_inc: Cell<F>,
     /// Out of bound check circuit.
     in_bound_check: RangeCheckGadget<F, N_BYTES_MEMORY_WORD_SIZE>,
+    /// include actual and padding to word bytes
+    bytes_length_word: Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
@@ -66,6 +68,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         let dest_offset = cb.query_cell_phase2();
         let data_offset = cb.query_word_rlc();
         let size = cb.query_word_rlc();
+        let bytes_length_word = cb.query_cell();
 
         // 1. Pop dest_offset, offset, length from stack
         cb.stack_pop(dest_offset.expr());
@@ -127,7 +130,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
                 return_data_offset.expr() + from_bytes::expr(&data_offset.cells),
                 return_data_offset.expr() + return_data_size.expr(),
                 dst_memory_addr.offset(),
-                dst_memory_addr.length(),
+                bytes_length_word.expr(),
                 0.expr(), // for RETURNDATACOPY rlc_acc is 0
                 copy_rwc_inc.expr(),
             );
@@ -164,6 +167,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
             memory_copier_gas,
             copy_rwc_inc,
             in_bound_check,
+            bytes_length_word,
         }
     }
 
@@ -244,8 +248,17 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         self.memory_copier_gas
             .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
 
+        let shift = dest_offset.low_u64() % 32;
+        let memory_start_slot = dest_offset.low_u64() - shift;
+        let memory_end = dest_offset.low_u64() + size.low_u64();
+        let memory_end_slot = memory_end - memory_end % 32;
+        let copy_rwc_inc = if size.low_u64() == 0 {
+            0
+        } else {
+            (memory_end_slot - memory_start_slot) / 32 + 1
+        };
+
         // rw_counter always increases by `size` reads and `size` writes
-        let copy_rwc_inc = size + size;
         self.copy_rwc_inc.assign(
             region,
             offset,
@@ -254,6 +267,14 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
                     .to_scalar()
                     .expect("unexpected U256 -> Scalar conversion failure"),
             ),
+        )?;
+
+        let bytes_length_to_word = copy_rwc_inc * 32;
+
+        self.bytes_length_word.assign(
+            region,
+            offset,
+            Value::known(F::from(bytes_length_to_word)),
         )?;
 
         self.in_bound_check.assign(

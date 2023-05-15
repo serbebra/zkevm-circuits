@@ -1745,6 +1745,65 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(copy_steps)
     }
 
+    pub(crate) fn gen_copy_steps_for_return_data(
+        &mut self,
+        exec_step: &mut ExecStep,
+        src_addr: u64,
+        dst_addr: u64,     // memory dest starting addr
+        src_addr_end: u64, // for internal call, memory dest ending addr
+        bytes_left: u64,   // number of bytes to copy, with padding
+    ) -> Result<Vec<(u8, bool, bool)>, Error> {
+        let mut copy_steps = Vec::with_capacity(bytes_left as usize);
+        if bytes_left == 0 {
+            return Ok(copy_steps);
+        }
+        let (_, dst_begin_slot) = self.get_addr_shift_slot(dst_addr).unwrap();
+        let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + bytes_left).unwrap();
+
+        let call_ctx = self.call_ctx_mut()?;
+        let return_data = &call_ctx.return_data;
+        let mut memory = call_ctx.memory.clone();
+
+        let minimal_length = dst_end_slot as usize + 32;
+        memory.extend_at_least(minimal_length);
+        // collect all bytes to return data with padding word
+        let returndata_slot_bytes =
+            memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
+
+        let copy_start = dst_addr - dst_begin_slot;
+        for idx in 0..returndata_slot_bytes.len() {
+            let value = memory.0[dst_begin_slot as usize + idx];
+            // padding unaligned copy of 32 bytes
+            if idx as u64 + dst_begin_slot < dst_addr {
+                // front mask byte
+                copy_steps.push((value, false, true));
+            } else if idx as u64 + dst_begin_slot >= dst_addr + bytes_left {
+                // back mask byte
+                copy_steps.push((value, false, true));
+            } else {
+                let addr = src_addr
+                    .checked_add(idx as u64 - copy_start)
+                    .unwrap_or(src_addr_end);
+                let step = if addr < src_addr_end {
+                    (return_data[addr as usize], false, false)
+                } else {
+                    (0, false, false)
+                };
+                copy_steps.push(step);
+            }
+        }
+
+        let mut chunk_index = dst_begin_slot;
+        // memory word writes to destination word
+        for chunk in returndata_slot_bytes.chunks(32) {
+            let dest_word = Word::from_big_endian(&chunk);
+            self.memory_write_word(exec_step, chunk_index.into(), dest_word)?;
+            chunk_index = chunk_index + 32;
+        }
+
+        Ok(copy_steps)
+    }
+
     pub(crate) fn gen_copy_steps_for_log(
         &mut self,
         exec_step: &mut ExecStep,
