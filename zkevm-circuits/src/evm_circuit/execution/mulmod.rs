@@ -67,12 +67,13 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
         // 3.  k2 * n + r == d * 2^256 + e
         let mul512_right = MulAddWords512Gadget::construct(cb, [&k, &n, &d, &e], Some(&r));
 
-        // (r < n ) or n == 0
+        // (r < n) ^ (n==0 & r==0)
         let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.cells));
+        let r_is_zero = IsZeroGadget::construct(cb, sum::expr(&r.cells));
         let lt = LtWordGadget::construct(cb, &r, &n);
         cb.add_constraint(
-            " (1 - (r < n) - (n==0)) ",
-            1.expr() - lt.expr() - n_is_zero.expr(),
+            " (1 - (r < n) - (n==0) * (r==0)) ",
+            1.expr() - lt.expr() - n_is_zero.expr() * r_is_zero.expr(),
         );
 
         cb.stack_pop(a.expr());

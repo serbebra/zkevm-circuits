@@ -15,7 +15,7 @@ use halo2_proofs::plonk::Error;
 /// r = 0,       if n==0
 ///
 /// We use the auxiliary a_or_zero word, whose value is constrained to be:
-/// a_or_zero = a if n!=0, 0 if n==0.  This allows to use the equation
+/// a_or_zero = a if n!=0, (a or 0) if n==0.  This allows to use the equation
 /// k * n + r = a_or_zero to verify the modulus, which holds with r=0 in the
 /// case of n=0. Unlike the usual k * n + r = a, which forces r = a when n=0,
 /// this equation assures that r<n or r=n=0.
@@ -47,6 +47,7 @@ impl<F: Field> ModGadget<F> {
         );
 
         // Constrain the result r to be valid: (r<n) ^ n==0
+        // TODO: replace with (r<n) ^ (n==0 & r==0)
         cb.add_constraint(
             " (1 - (r<n) - (n==0) ",
             1.expr() - lt.expr() - n_is_zero.expr(),
