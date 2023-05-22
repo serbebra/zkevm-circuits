@@ -214,6 +214,7 @@ fn handle_copy(
             dst_addr: destination.offset.try_into().unwrap(),
             log_id: None,
             bytes,
+            aux_bytes: None, // FIXME
         },
     );
 
@@ -299,6 +300,7 @@ fn handle_create(
             dst_addr: 0,
             log_id: None,
             bytes: copy_steps,
+            aux_bytes: None, // FIXME
         },
     );
 

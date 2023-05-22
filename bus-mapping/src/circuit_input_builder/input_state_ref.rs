@@ -915,6 +915,7 @@ impl<'a> CircuitInputStateRef<'a> {
             return_data_length,
             last_callee_return_data_offset: 0,
             last_callee_return_data_length: 0,
+            last_callee_memory: Memory::default(),
         };
 
         Ok(call)
@@ -1036,6 +1037,7 @@ impl<'a> CircuitInputStateRef<'a> {
     /// previous call context.
     pub fn handle_return(&mut self, step: &GethExecStep) -> Result<(), Error> {
         // handle return_data
+        let callee_memory = self.call_ctx()?.memory.clone();
         let (return_data_offset, return_data_length) = {
             if !self.call()?.is_root {
                 let (offset, length) = match step.op {
@@ -1051,7 +1053,6 @@ impl<'a> CircuitInputStateRef<'a> {
                             )
                         };
                         // At the moment it conflicts with `call_ctx` and `caller_ctx`.
-                        let callee_memory = self.call_ctx()?.memory.clone();
                         let caller_ctx = self.caller_ctx_mut()?;
                         caller_ctx.return_data.resize(length, 0);
                         if length != 0 {
@@ -1130,6 +1131,7 @@ impl<'a> CircuitInputStateRef<'a> {
                 caller.last_callee_return_data_length = return_data_length;
                 caller.last_callee_return_data_offset = return_data_offset;
             }
+            caller.last_callee_memory = callee_memory;
         }
 
         // If current call has caller_ctx (has caller)
@@ -1750,58 +1752,60 @@ impl<'a> CircuitInputStateRef<'a> {
         exec_step: &mut ExecStep,
         src_addr: u64,
         dst_addr: u64,     // memory dest starting addr
-        src_addr_end: u64, // for internal call, memory dest ending addr
-        bytes_left: u64,   // number of bytes to copy, with padding
-    ) -> Result<Vec<(u8, bool, bool)>, Error> {
-        let mut copy_steps = Vec::with_capacity(bytes_left as usize);
-        if bytes_left == 0 {
-            return Ok(copy_steps);
+        copy_length: u64,   // number of bytes to copy, with padding
+    ) -> Result<(Vec<(u8, bool, bool)>, Vec<(u8, bool, bool)>), Error> {
+        let mut read_steps = Vec::with_capacity(copy_length as usize);
+        let mut write_steps = Vec::with_capacity(copy_length as usize);
+
+        if copy_length == 0 {
+            return Ok((read_steps, write_steps));
         }
+
+        let (_, src_begin_slot) = self.get_addr_shift_slot(src_addr).unwrap();
+        let (_, src_end_slot) = self.get_addr_shift_slot(src_addr + copy_length).unwrap();
         let (_, dst_begin_slot) = self.get_addr_shift_slot(dst_addr).unwrap();
-        let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + bytes_left).unwrap();
+        let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + copy_length).unwrap();
 
-        let call_ctx = self.call_ctx_mut()?;
-        let return_data = &call_ctx.return_data;
-        let mut memory = call_ctx.memory.clone();
+        let slot_count = max((src_end_slot - src_begin_slot), (dst_end_slot - dst_begin_slot)) as usize;
+        let src_end_slot = src_begin_slot as usize + slot_count;
+        let dst_end_slot = dst_begin_slot as usize + slot_count;
 
-        let minimal_length = dst_end_slot as usize + 32;
-        memory.extend_at_least(minimal_length);
-        // collect all bytes to return data with padding word
-        let returndata_slot_bytes =
-            memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
+        let mut last_callee_memory = self.call()?.last_callee_memory.clone();
+        last_callee_memory.extend_at_least(src_end_slot as usize + 32);
+        let mut call_memory = self.call_ctx()?.memory.clone();
+        call_memory.extend_at_least(dst_end_slot as usize + 32);
 
-        let copy_start = dst_addr - dst_begin_slot;
-        for idx in 0..returndata_slot_bytes.len() {
-            let value = memory.0[dst_begin_slot as usize + idx];
-            // padding unaligned copy of 32 bytes
-            if idx as u64 + dst_begin_slot < dst_addr {
-                // front mask byte
-                copy_steps.push((value, false, true));
-            } else if idx as u64 + dst_begin_slot >= dst_addr + bytes_left {
-                // back mask byte
-                copy_steps.push((value, false, true));
-            } else {
-                let addr = src_addr
-                    .checked_add(idx as u64 - copy_start)
-                    .unwrap_or(src_addr_end);
-                let step = if addr < src_addr_end {
-                    (return_data[addr as usize], false, false)
-                } else {
-                    (0, false, false)
-                };
-                copy_steps.push(step);
-            }
-        }
+        let write_slot_bytes =
+            call_memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
+        debug_assert_eq!(write_slot_bytes.len(), slot_count + 32);
+
+        gen_memory_copy_steps(
+            &mut read_steps,
+            &last_callee_memory.0,
+            slot_count + 32,
+            src_addr as usize,
+            src_begin_slot as usize,
+            copy_length as usize,
+        );
+
+        gen_memory_copy_steps(
+            &mut write_steps,
+            &call_memory.0,
+            slot_count + 32,
+            dst_addr as usize,
+            dst_begin_slot as usize,
+            copy_length as usize,
+        );
 
         let mut chunk_index = dst_begin_slot;
         // memory word writes to destination word
-        for chunk in returndata_slot_bytes.chunks(32) {
+        for chunk in write_slot_bytes.chunks(32) {
             let dest_word = Word::from_big_endian(&chunk);
             self.memory_write_word(exec_step, chunk_index.into(), dest_word)?;
             chunk_index = chunk_index + 32;
         }
 
-        Ok(copy_steps)
+        Ok((read_steps, write_steps))
     }
 
     pub(crate) fn gen_copy_steps_for_log(
@@ -1867,4 +1871,28 @@ impl<'a> CircuitInputStateRef<'a> {
     }
 
     // TODO: add new gen_copy_steps for common use
+}
+
+fn gen_memory_copy_steps(
+    steps: &mut Vec<(u8, bool, bool)>,
+    memory: &[u8],
+    slot_bytes_len: usize,
+    offset_addr: usize,
+    begin_slot: usize,
+    length: usize,
+){
+    for idx in 0..slot_bytes_len {
+        let value = memory[begin_slot as usize + idx];
+        // padding unaligned copy of 32 bytes
+        if idx + begin_slot < offset_addr {
+            // front mask byte
+            steps.push((value, false, true));
+        } else if idx + begin_slot >= offset_addr + length {
+            // back mask byte
+            steps.push((value, false, true));
+        } else {
+            // real copy byte
+            steps.push((value, false, false));
+        }
+    }
 }

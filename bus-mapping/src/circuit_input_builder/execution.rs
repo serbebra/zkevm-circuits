@@ -243,6 +243,8 @@ pub struct CopyEvent {
     pub rw_counter_start: RWCounter,
     /// Represents the list of (bytes, is_code, mask) copied during this copy event
     pub bytes: Vec<(u8, bool, bool)>,
+    /// Represents the list of (bytes, is_code, mask) read to copy during this copy event
+    pub aux_bytes: Option<Vec<(u8, bool, bool)>>,
 }
 
 impl CopyEvent {
