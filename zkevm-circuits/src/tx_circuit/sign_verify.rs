@@ -728,166 +728,102 @@ impl<F: Field> SignVerifyChip<F> {
         let mut first_pass = SKIP_FIRST_PASS;
         let ecdsa_chip = &config.ecdsa_config;
 
-        // ================================================
-        // step 0
-        // ================================================
-        // let step_0_timer = Instant::now();
-        // let mut ecdsa_assignments = Vec::new();
-        // for i in 0..self.max_verif {
-        //     let signature = if i < signatures.len() {
-        //         signatures[i].clone()
-        //     } else {
-        //         // padding (enabled when address == 0)
-        //         SignData::default()
-        //     };
-        //     let _closure =
-        //         move |region: Region<'_, F>| -> Result<AssignedECDSA<F, FpChip<F>>, Error> {
-        //             let mut ctx = ecdsa_chip.new_context(region);
-        //             self.assign_ecdsa(&mut ctx, ecdsa_chip, &signature)
-        //         };
-        //     ecdsa_assignments.push(_closure);
-        // }
-        // let assigned_ecdsas = layouter.assign_regions(|| "ecdsa_sig", ecdsa_assignments)?;
-        // println!("step_0_timer: {:?}", step_0_timer.elapsed());
-
-        // ================================================
-        // step 1: assert the signature is valid in circuit
-        // ================================================
-        let assigned_ecdsas = layouter.assign_region(
-            || "assigned_ecdsas",
-            |mut region: Region<'_, F>| { // Added lifetime annotation here
-                if first_pass {
-                    first_pass = false;
-                    return Ok(vec![]);
-                }
-                let mut ctx = ecdsa_chip.new_context(region);
-                let padded_sigs = (0..self.max_verif).into_iter().enumerate().map(|(i, _)| {
-                    let signature = if i < signatures.len() {
-                        signatures[i].clone()
-                    } else {
-                        // padding (enabled when address == 0)
-                        SignData::default()
-                    };
-                    signature
-                }).collect::<Vec<_>>();
-                let mut assigned_ecdsas = Vec::new();
-                for i in 0..self.max_verif {
-                    let assigned_ecdsa = self.assign_ecdsa(&mut ctx, ecdsa_chip, &padded_sigs[i])?;             
-                    assigned_ecdsas.push(assigned_ecdsa);
-                }
-                Ok(assigned_ecdsas)
-            },
-        )?;
-
         let assigned_sig_verifs_timer = Instant::now();
-        let assigned_sig_verifs = layouter.assign_region(
+        let mut first_pass_vec = vec![true; self.max_verif];
+        let assigned_sig_verifs = layouter.assign_regions(
             || "ecdsa chip verification",
-            |region| {
-                if first_pass {
-                    first_pass = false;
-                    return Ok(vec![]);
-                }
+            (0..self.max_verif)
+                .into_iter()
+                .zip(first_pass_vec.chunks_mut(1))
+                .map(|(i, first_pass)| {
+                    move |region: Region<'_, F>| {
+                        let first_pass = &mut first_pass[0];
 
-                let mut ctx = ecdsa_chip.new_context(region);
+                        let mut ctx = ecdsa_chip.new_context(region);
 
-                // ================================================
-                // step 1: assert the signature is valid in circuit
-                // ================================================
-                let step_1_timer = Instant::now();
+                        // ================================================
+                        // step 1: assert the signature is valid in circuit
+                        // ================================================
+                        let step_1_timer = Instant::now();
 
-                let mut assigned_ecdsas = Vec::new();
+                        let signature = if i < signatures.len() {
+                            signatures[i].clone()
+                        } else {
+                            // padding (enabled when address == 0)
+                            SignData::default()
+                        };
+                        let assigned_ecdsa = self.assign_ecdsa(&mut ctx, ecdsa_chip, &signature)?;
 
-                for i in 0..self.max_verif {
-                    let signature = if i < signatures.len() {
-                        signatures[i].clone()
-                    } else {
-                        // padding (enabled when address == 0)
-                        SignData::default()
-                    };
-                    let assigned_ecdsa = self.assign_ecdsa(&mut ctx, ecdsa_chip, &signature)?;
-                    assigned_ecdsas.push(assigned_ecdsa);
-                }
+                        println!("step_1_timer: {:?}", step_1_timer.elapsed());
+                        // ================================================
+                        // step 2: decompose the keys and messages
+                        // ================================================
+                        let step_2_timer = Instant::now();
+                        let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
+                        let sign_data_decomposed =
+                            self.sign_data_decomposition(&mut ctx, ecdsa_chip, sign_data)?;
 
-                println!("step_1_timer: {:?}", step_1_timer.elapsed());
-                // ================================================
-                // step 2: decompose the keys and messages
-                // ================================================
-                let step_2_timer = Instant::now();
-                let mut sign_data_decomposed_vec = Vec::new();
-                for i in 0..assigned_ecdsas.len() {
-                    let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
-                    let sign_data_decomposed =
-                        self.sign_data_decomposition(&mut ctx, ecdsa_chip, sign_data)?;
-                    sign_data_decomposed_vec.push(sign_data_decomposed);
-                }
+                        // IMPORTANT: Move to Phase2 before RLC
+                        log::info!("before proceeding to the next phase");
+                        ctx.print_stats(&["Range"]);
 
-                // IMPORTANT: Move to Phase2 before RLC
-                log::info!("before proceeding to the next phase");
-                ctx.print_stats(&["Range"]);
+                        #[cfg(not(feature = "onephase"))]
+                        {
+                            // finalize the current lookup table before moving to next phase
+                            ecdsa_chip.finalize(&mut ctx);
+                            ctx.next_phase();
+                        }
 
-                #[cfg(not(feature = "onephase"))]
-                {
-                    // finalize the current lookup table before moving to next phase
-                    ecdsa_chip.finalize(&mut ctx);
-                    ctx.next_phase();
-                }
+                        println!("step_2_timer: {:?}", step_2_timer.elapsed());
 
-                println!("step_2_timer: {:?}", step_2_timer.elapsed());
+                        // ================================================
+                        // step 3: compute RLC of keys and messages
+                        // ================================================
+                        let step_3_timer = Instant::now();
+                        let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
+                        let sign_data_decomposed = &sign_data_decomposed;
+                        let (to_be_keccak_checked, assigned_sig_verif) = self.assign_sig_verify(
+                            &mut ctx,
+                            &ecdsa_chip.range,
+                            sign_data,
+                            sign_data_decomposed,
+                            challenges,
+                            &assigned_ecdsa.sig_is_valid,
+                        )?;
 
-                // ================================================
-                // step 3: compute RLC of keys and messages
-                // ================================================
-                let step_3_timer = Instant::now();
-                let mut assigned_sig_verifs = Vec::new();
-                let mut deferred_keccak_check = Vec::new();
-                for (i, e) in assigned_ecdsas.iter().enumerate() {
-                    let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
-                    let sign_data_decomposed = &sign_data_decomposed_vec[i];
-                    let (to_be_keccak_checked, assigned_sig_verif) = self.assign_sig_verify(
-                        &mut ctx,
-                        &ecdsa_chip.range,
-                        sign_data,
-                        sign_data_decomposed,
-                        challenges,
-                        &e.sig_is_valid,
-                    )?;
-                    assigned_sig_verifs.push(assigned_sig_verif);
-                    deferred_keccak_check.push(to_be_keccak_checked);
-                }
+                        println!("step_3_timer: {:?}", step_3_timer.elapsed());
 
-                println!("step_3_timer: {:?}", step_3_timer.elapsed());
+                        // ================================================
+                        // step 4: deferred keccak checks
+                        // ================================================
+                        let step_4_timer = Instant::now();
+                        let mut offset = 0;
+                        let [is_address_zero, pk_rlc, pk_hash_rlc] = to_be_keccak_checked;
+                        self.enable_keccak_lookup(
+                            config,
+                            &mut ctx,
+                            &mut offset,
+                            &is_address_zero,
+                            &pk_rlc,
+                            &pk_hash_rlc,
+                        )?;
+                        println!("step_4_timer: {:?}", step_4_timer.elapsed());
 
-                // ================================================
-                // step 4: deferred keccak checks
-                // ================================================
-                let step_4_timer = Instant::now();
-                let mut offset = 0;
-                for e in deferred_keccak_check.iter() {
-                    let [is_address_zero, pk_rlc, pk_hash_rlc] = e;
-                    self.enable_keccak_lookup(
-                        config,
-                        &mut ctx,
-                        &mut offset,
-                        is_address_zero,
-                        pk_rlc,
-                        pk_hash_rlc,
-                    )?;
-                }
-                println!("step_4_timer: {:?}", step_4_timer.elapsed());
+                        // IMPORTANT: this assigns all constants to the fixed columns
+                        // IMPORTANT: this copies cells to the lookup advice column to perform range
+                        // check lookups
+                        // This is not optional.
+                        let final_timer = Instant::now();
+                        let lookup_cells = ecdsa_chip.finalize(&mut ctx);
+                        log::info!("total number of lookup cells: {}", lookup_cells);
 
-                // IMPORTANT: this assigns all constants to the fixed columns
-                // IMPORTANT: this copies cells to the lookup advice column to perform range
-                // check lookups
-                // This is not optional.
-                let final_timer = Instant::now();
-                let lookup_cells = ecdsa_chip.finalize(&mut ctx);
-                log::info!("total number of lookup cells: {}", lookup_cells);
+                        println!("final_timer: {:?}", final_timer.elapsed());
 
-                println!("final_timer: {:?}", final_timer.elapsed());
-
-                ctx.print_stats(&["Range"]);
-                Ok(assigned_sig_verifs)
-            },
+                        ctx.print_stats(&["Range"]);
+                        Ok(assigned_sig_verif)
+                    }
+                })
+                .collect_vec()
         )?;
 
         println!(
