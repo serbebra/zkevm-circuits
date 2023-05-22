@@ -8,7 +8,6 @@
 // Naming notes:
 // - *_be: Big-Endian bytes
 // - *_le: Little-Endian bytes
-
 use crate::{
     evm_circuit::util::{not, rlc},
     table::KeccakTable,
@@ -42,11 +41,19 @@ use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
     poly::Rotation,
 };
+use std::time::Instant;
 
 use itertools::Itertools;
 use keccak256::plain::Keccak;
 use log::error;
 use std::{iter, marker::PhantomData};
+
+use halo2_proofs::circuit::Region;
+use std::{
+    boxed::Box,
+    sync::{Arc, Mutex},
+};
+// use halo2_base::ContextParams;
 
 // Hard coded parameters.
 // FIXME: allow for a configurable param.
@@ -393,6 +400,9 @@ impl<F: Field> SignVerifyChip<F> {
         //
         // WARNING: this circuit does not enforce the returned value to be true
         // make sure the caller checks this result!
+
+        let assign_ecdsa_timer = Instant::now();
+
         let ecdsa_is_valid = ecdsa_verify_no_pubkey_check::<F, Fp, Fq, Secp256k1Affine>(
             &ecc_chip.field_chip,
             ctx,
@@ -404,6 +414,8 @@ impl<F: Field> SignVerifyChip<F> {
             4,
         );
         log::trace!("ECDSA res {:?}", ecdsa_is_valid);
+
+        println!("   internel: {:?}", assign_ecdsa_timer.elapsed());
 
         Ok(AssignedECDSA {
             pk: pk_assigned,
@@ -716,6 +728,58 @@ impl<F: Field> SignVerifyChip<F> {
         let mut first_pass = SKIP_FIRST_PASS;
         let ecdsa_chip = &config.ecdsa_config;
 
+        // ================================================
+        // step 0
+        // ================================================
+        // let step_0_timer = Instant::now();
+        // let mut ecdsa_assignments = Vec::new();
+        // for i in 0..self.max_verif {
+        //     let signature = if i < signatures.len() {
+        //         signatures[i].clone()
+        //     } else {
+        //         // padding (enabled when address == 0)
+        //         SignData::default()
+        //     };
+        //     let _closure =
+        //         move |region: Region<'_, F>| -> Result<AssignedECDSA<F, FpChip<F>>, Error> {
+        //             let mut ctx = ecdsa_chip.new_context(region);
+        //             self.assign_ecdsa(&mut ctx, ecdsa_chip, &signature)
+        //         };
+        //     ecdsa_assignments.push(_closure);
+        // }
+        // let assigned_ecdsas = layouter.assign_regions(|| "ecdsa_sig", ecdsa_assignments)?;
+        // println!("step_0_timer: {:?}", step_0_timer.elapsed());
+
+        // ================================================
+        // step 1: assert the signature is valid in circuit
+        // ================================================
+        let assigned_ecdsas = layouter.assign_region(
+            || "assigned_ecdsas",
+            |mut region: Region<'_, F>| { // Added lifetime annotation here
+                if first_pass {
+                    first_pass = false;
+                    return Ok(vec![]);
+                }
+                let mut ctx = ecdsa_chip.new_context(region);
+                let padded_sigs = (0..self.max_verif).into_iter().enumerate().map(|(i, _)| {
+                    let signature = if i < signatures.len() {
+                        signatures[i].clone()
+                    } else {
+                        // padding (enabled when address == 0)
+                        SignData::default()
+                    };
+                    signature
+                }).collect::<Vec<_>>();
+                let mut assigned_ecdsas = Vec::new();
+                for i in 0..self.max_verif {
+                    let assigned_ecdsa = self.assign_ecdsa(&mut ctx, ecdsa_chip, &padded_sigs[i])?;             
+                    assigned_ecdsas.push(assigned_ecdsa);
+                }
+                Ok(assigned_ecdsas)
+            },
+        )?;
+
+        let assigned_sig_verifs_timer = Instant::now();
         let assigned_sig_verifs = layouter.assign_region(
             || "ecdsa chip verification",
             |region| {
@@ -729,6 +793,8 @@ impl<F: Field> SignVerifyChip<F> {
                 // ================================================
                 // step 1: assert the signature is valid in circuit
                 // ================================================
+                let step_1_timer = Instant::now();
+
                 let mut assigned_ecdsas = Vec::new();
 
                 for i in 0..self.max_verif {
@@ -742,9 +808,11 @@ impl<F: Field> SignVerifyChip<F> {
                     assigned_ecdsas.push(assigned_ecdsa);
                 }
 
+                println!("step_1_timer: {:?}", step_1_timer.elapsed());
                 // ================================================
                 // step 2: decompose the keys and messages
                 // ================================================
+                let step_2_timer = Instant::now();
                 let mut sign_data_decomposed_vec = Vec::new();
                 for i in 0..assigned_ecdsas.len() {
                     let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
@@ -764,9 +832,12 @@ impl<F: Field> SignVerifyChip<F> {
                     ctx.next_phase();
                 }
 
+                println!("step_2_timer: {:?}", step_2_timer.elapsed());
+
                 // ================================================
                 // step 3: compute RLC of keys and messages
                 // ================================================
+                let step_3_timer = Instant::now();
                 let mut assigned_sig_verifs = Vec::new();
                 let mut deferred_keccak_check = Vec::new();
                 for (i, e) in assigned_ecdsas.iter().enumerate() {
@@ -784,9 +855,12 @@ impl<F: Field> SignVerifyChip<F> {
                     deferred_keccak_check.push(to_be_keccak_checked);
                 }
 
+                println!("step_3_timer: {:?}", step_3_timer.elapsed());
+
                 // ================================================
                 // step 4: deferred keccak checks
                 // ================================================
+                let step_4_timer = Instant::now();
                 let mut offset = 0;
                 for e in deferred_keccak_check.iter() {
                     let [is_address_zero, pk_rlc, pk_hash_rlc] = e;
@@ -799,18 +873,27 @@ impl<F: Field> SignVerifyChip<F> {
                         pk_hash_rlc,
                     )?;
                 }
+                println!("step_4_timer: {:?}", step_4_timer.elapsed());
 
                 // IMPORTANT: this assigns all constants to the fixed columns
                 // IMPORTANT: this copies cells to the lookup advice column to perform range
                 // check lookups
                 // This is not optional.
+                let final_timer = Instant::now();
                 let lookup_cells = ecdsa_chip.finalize(&mut ctx);
                 log::info!("total number of lookup cells: {}", lookup_cells);
+
+                println!("final_timer: {:?}", final_timer.elapsed());
 
                 ctx.print_stats(&["Range"]);
                 Ok(assigned_sig_verifs)
             },
         )?;
+
+        println!(
+            "assigned_sig_verifs_timer: {:?}",
+            assigned_sig_verifs_timer.elapsed()
+        );
 
         Ok(assigned_sig_verifs)
     }

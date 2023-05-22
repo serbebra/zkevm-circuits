@@ -24,10 +24,12 @@ fn run<F: Field>(
     max_calldata: usize,
 ) -> Result<(), Vec<VerifyFailure>> {
     let k = max(
-        19,
+        20,
         log2_ceil(TxCircuit::<F>::min_num_rows(max_txs, max_calldata)),
     );
     // SignVerifyChip -> ECDSAChip -> MainGate instance column
+    println!("k = {}", k);
+
     let circuit = TxCircuit::<F>::new(max_txs, max_calldata, chain_id, txs);
 
     let prover = match MockProver::run(k, &circuit, vec![vec![]]) {
@@ -77,7 +79,7 @@ fn tx_circuit_0tx_1max_tx() {
 
 #[test]
 fn tx_circuit_1tx_1max_tx() {
-    const MAX_TXS: usize = 1;
+    const MAX_TXS: usize = 32;
     const MAX_CALLDATA: usize = 32;
 
     let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();
