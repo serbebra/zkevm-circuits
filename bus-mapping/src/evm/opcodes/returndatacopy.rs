@@ -110,6 +110,7 @@ fn gen_copy_event(
     let (read_steps, write_steps) = state.gen_copy_steps_for_return_data(
         &mut exec_step,
         src_addr,
+        src_addr_end,
         dst_addr,
         length,
     )?;

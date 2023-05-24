@@ -29,6 +29,7 @@ use ethers_core::{
     utils::{get_contract_address, get_create2_address, keccak256},
 };
 use std::{cmp::max, io::copy, mem};
+use std::cmp::min;
 
 /// Reference to the internal state of the CircuitInputBuilder in a particular
 /// [`ExecStep`].
@@ -1751,6 +1752,7 @@ impl<'a> CircuitInputStateRef<'a> {
         &mut self,
         exec_step: &mut ExecStep,
         src_addr: u64,
+        src_addr_end: u64,
         dst_addr: u64,     // memory dest starting addr
         copy_length: u64,   // number of bytes to copy, with padding
     ) -> Result<(Vec<(u8, bool, bool)>, Vec<(u8, bool, bool)>), Error> {
@@ -1774,6 +1776,8 @@ impl<'a> CircuitInputStateRef<'a> {
         last_callee_memory.extend_at_least(src_end_slot as usize + 32);
         let mut call_memory = self.call_ctx()?.memory.clone();
         call_memory.extend_at_least(dst_end_slot as usize + 32);
+        call_memory.0[dst_addr as usize..(dst_addr + copy_length) as usize]
+            .copy_from_slice(&last_callee_memory.0[src_addr as usize..(src_addr + copy_length) as usize]);
 
         let write_slot_bytes =
             call_memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
@@ -1785,7 +1789,7 @@ impl<'a> CircuitInputStateRef<'a> {
             slot_count + 32,
             src_addr as usize,
             src_begin_slot as usize,
-            copy_length as usize,
+            min(src_addr_end - src_addr, copy_length) as usize,
         );
 
         gen_memory_copy_steps(
