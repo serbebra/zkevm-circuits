@@ -1354,7 +1354,8 @@ impl CopyTable {
         };
 
         println!("rlc_acc of bytecode bytes {:?} ", rlc_acc);
-        let mut value_word_rlc = Value::known(F::zero());
+        let mut value_word_read_rlc = Value::known(F::zero());
+        let mut value_word_write_rlc = Value::known(F::zero());
         let mut value_acc = Value::known(F::zero());
         let mut rlc_acc_read = Value::known(F::zero());
         let mut rlc_acc_write = Value::known(F::zero());
@@ -1423,18 +1424,27 @@ impl CopyTable {
                         + Value::known(F::from(copy_step.value as u64));;
                     if (step_idx / 2) % 32 == 0 && step_idx != 0 {
                         // reset
-                        value_word_rlc = Value::known(F::zero());
-                        value_word_rlc = value_word_rlc * challenges.evm_word()
+                        value_word_read_rlc = Value::known(F::zero());
+                        value_word_read_rlc = value_word_read_rlc * challenges.evm_word()
                             + Value::known(F::from(copy_step.value as u64));
 
                         addr_slot += 32;
                     } else {
-                        value_word_rlc = value_word_rlc * challenges.evm_word()
+                        value_word_read_rlc = value_word_read_rlc * challenges.evm_word()
                             + Value::known(F::from(copy_step.value as u64));
                     }
                 } else {
                     rlc_acc_write = rlc_acc_write * challenges.evm_word()
                         + Value::known(F::from(copy_step.value as u64));
+                    if (step_idx / 2) % 32 == 1 && step_idx != 0 {
+                        // reset
+                        value_word_write_rlc = Value::known(F::zero());
+                        value_word_write_rlc = value_word_write_rlc * challenges.evm_word()
+                            + Value::known(F::from(copy_step.value as u64));
+                    } else {
+                        value_word_write_rlc = value_word_write_rlc * challenges.evm_word()
+                            + Value::known(F::from(copy_step.value as u64));
+                    }
                 }
             }
 
@@ -1541,7 +1551,7 @@ impl CopyTable {
                 [
                     (is_last, "is_last"),
                     (value, "value"),
-                    (value_word_rlc, "value_word_rlc"),
+                    (if is_read_step { value_word_read_rlc } else { value_word_write_rlc }, "value_word_rlc"),
                     (rlc_acc_read, "rlc_acc_read"),
                     (rlc_acc_write, "rlc_acc_write"),
                     (value_acc, "value_acc"),
