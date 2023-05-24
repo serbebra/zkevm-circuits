@@ -1311,7 +1311,7 @@ pub struct CopyTable {
 }
 
 type CopyTableRow<F> = [(Value<F>, &'static str); 8];
-type CopyCircuitRow<F> = [(Value<F>, &'static str); 9];
+type CopyCircuitRow<F> = [(Value<F>, &'static str); 11];
 
 impl CopyTable {
     /// Construct a new CopyTable
@@ -1356,6 +1356,8 @@ impl CopyTable {
         println!("rlc_acc of bytecode bytes {:?} ", rlc_acc);
         let mut value_word_rlc = Value::known(F::zero());
         let mut value_acc = Value::known(F::zero());
+        let mut rlc_acc_read = Value::known(F::zero());
+        let mut rlc_acc_write = Value::known(F::zero());
 
         let mut non_mask_pos = copy_event
             .bytes
@@ -1371,24 +1373,29 @@ impl CopyTable {
             0
         };
 
-        for (step_idx, (is_read_step, copy_step)) in copy_event
-            .bytes
-            .iter()
-            .flat_map(|(value, is_code, mask)| {
+        let read_steps = copy_event.bytes.iter();
+        let copy_steps = if let Some(ref write_steps) = copy_event.aux_bytes {
+            read_steps.zip(write_steps.iter())
+        } else {
+            read_steps.zip(copy_event.bytes.iter())
+        };
+
+        for (step_idx, (is_read_step, copy_step)) in copy_steps
+            .flat_map(|(read_step, write_step)| {
                 let read_step = CopyStep {
-                    value: *value,
-                    mask: *mask,
+                    value: read_step.0,
+                    mask: read_step.2,
                     is_code: if copy_event.src_type == CopyDataType::Bytecode {
-                        Some(*is_code)
+                        Some(read_step.1)
                     } else {
                         None
                     },
                 };
                 let write_step = CopyStep {
-                    value: *value,
-                    mask: *mask,
+                    value: write_step.0,
+                    mask: write_step.1,
                     is_code: if copy_event.dst_type == CopyDataType::Bytecode {
-                        Some(*is_code)
+                        Some(write_step.2)
                     } else {
                         None
                     },
@@ -1410,19 +1417,23 @@ impl CopyTable {
             // assume copy events bytes is already word aligned for copy steps.
             // only change by skip 32
 
-            if is_read_step
-                && (copy_event.dst_type == CopyDataType::Memory
-                    || copy_event.src_type == CopyDataType::Memory)
-            {
-                if (step_idx / 2) % 32 == 0 && step_idx != 0 {
-                    // reset
-                    value_word_rlc = Value::known(F::zero());
-                    value_word_rlc = value_word_rlc * challenges.evm_word()
-                        + Value::known(F::from(copy_step.value as u64));
+            if copy_event.dst_type == CopyDataType::Memory || copy_event.src_type == CopyDataType::Memory {
+                if is_read_step {
+                    rlc_acc_read = rlc_acc_read * challenges.evm_word()
+                        + Value::known(F::from(copy_step.value as u64));;
+                    if (step_idx / 2) % 32 == 0 && step_idx != 0 {
+                        // reset
+                        value_word_rlc = Value::known(F::zero());
+                        value_word_rlc = value_word_rlc * challenges.evm_word()
+                            + Value::known(F::from(copy_step.value as u64));
 
-                    addr_slot += 32;
+                        addr_slot += 32;
+                    } else {
+                        value_word_rlc = value_word_rlc * challenges.evm_word()
+                            + Value::known(F::from(copy_step.value as u64));
+                    }
                 } else {
-                    value_word_rlc = value_word_rlc * challenges.evm_word()
+                    rlc_acc_write = rlc_acc_write * challenges.evm_word()
                         + Value::known(F::from(copy_step.value as u64));
                 }
             }
@@ -1531,6 +1542,8 @@ impl CopyTable {
                     (is_last, "is_last"),
                     (value, "value"),
                     (value_word_rlc, "value_word_rlc"),
+                    (rlc_acc_read, "rlc_acc_read"),
+                    (rlc_acc_write, "rlc_acc_write"),
                     (value_acc, "value_acc"),
                     (is_pad, "is_pad"),
                     (is_code, "is_code"),

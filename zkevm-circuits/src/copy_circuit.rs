@@ -82,6 +82,10 @@ pub struct CopyCircuitConfig<F> {
     pub word_index: Column<Advice>,
     /// address for slot memory src or dest, review if can reuse `addr` .
     pub addr_slot: Column<Advice>,
+    /// Random linear combination of the read value
+    pub rlc_acc_read: Column<Advice>,
+    /// Random linear combination of the write value
+    pub rlc_acc_write: Column<Advice>,
     /// mask indicates the byte is actual coped or padding to memory word
     pub mask: Column<Advice>,
     /// Random linear combination accumulator value.
@@ -149,6 +153,9 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let is_last = meta.advice_column();
         let value = meta.advice_column_in(SecondPhase);
         let value_wrod_rlc = meta.advice_column_in(SecondPhase);
+        let rlc_acc_read = meta.advice_column_in(SecondPhase);
+        let rlc_acc_write = meta.advice_column_in(SecondPhase);
+
 
         let value_acc = meta.advice_column_in(SecondPhase);
         let is_code = meta.advice_column();
@@ -487,6 +494,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             is_last,
             value,
             value_wrod_rlc,
+            rlc_acc_read,
+            rlc_acc_write,
             word_index,
             addr_slot,
             mask,
@@ -558,6 +567,8 @@ impl<F: Field> CopyCircuitConfig<F> {
                 self.is_last,
                 self.value,
                 self.value_wrod_rlc,
+                self.rlc_acc_read,
+                self.rlc_acc_write,
                 self.value_acc,
                 self.is_pad,
                 self.is_code,
