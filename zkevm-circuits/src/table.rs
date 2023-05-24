@@ -1420,8 +1420,10 @@ impl CopyTable {
 
             if copy_event.dst_type == CopyDataType::Memory || copy_event.src_type == CopyDataType::Memory {
                 if is_read_step {
-                    rlc_acc_read = rlc_acc_read * challenges.evm_word()
-                        + Value::known(F::from(copy_step.value as u64));;
+                    if !copy_step.mask {
+                        rlc_acc_read = rlc_acc_read * challenges.evm_word()
+                            + Value::known(F::from(copy_step.value as u64));
+                    }
                     if (step_idx / 2) % 32 == 0 && step_idx != 0 {
                         // reset
                         value_word_read_rlc = Value::known(F::zero());
@@ -1434,8 +1436,10 @@ impl CopyTable {
                             + Value::known(F::from(copy_step.value as u64));
                     }
                 } else {
-                    rlc_acc_write = rlc_acc_write * challenges.evm_word()
-                        + Value::known(F::from(copy_step.value as u64));
+                    if !copy_step.mask {
+                        rlc_acc_write = rlc_acc_write * challenges.evm_word()
+                            + Value::known(F::from(copy_step.value as u64));
+                    }
                     if (step_idx / 2) % 32 == 1 && step_idx != 0 {
                         // reset
                         value_word_write_rlc = Value::known(F::zero());

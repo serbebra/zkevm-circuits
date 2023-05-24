@@ -353,11 +353,12 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     );
                 },
             );
-            cb.require_equal(
-                "write value == read value",
-                meta.query_advice(value, Rotation::cur()),
-                meta.query_advice(value, Rotation::next()),
-            );
+            // we use rlc to constraint the write == read now
+            // cb.require_equal(
+            //     "write value == read value",
+            //     meta.query_advice(value, Rotation::cur()),
+            //     meta.query_advice(value, Rotation::next()),
+            // );
             cb.require_equal(
                 "value_acc is same for read-write rows",
                 meta.query_advice(value_acc, Rotation::cur()),
