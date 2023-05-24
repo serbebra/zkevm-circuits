@@ -1553,6 +1553,9 @@ impl CopyTable {
                 ],
             ));
         }
+        rlc_acc_read
+            .zip(rlc_acc_write)
+            .assert_if_known(|(r, w)| r == w);
         //println!("assign copy steps: {:?} ", assignments);
         assignments
     }
