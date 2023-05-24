@@ -1394,9 +1394,9 @@ impl CopyTable {
                 };
                 let write_step = CopyStep {
                     value: write_step.0,
-                    mask: write_step.1,
+                    mask: write_step.2,
                     is_code: if copy_event.dst_type == CopyDataType::Bytecode {
-                        Some(write_step.2)
+                        Some(write_step.1)
                     } else {
                         None
                     },
@@ -1520,9 +1520,20 @@ impl CopyTable {
             let rw_count = F::from(copy_event.rw_counter_step(step_idx));
             let rwc_inc_left = F::from(copy_event.rw_counter_increase_left(step_idx));
             // println!(
-            //     "step_idx: {}, rw_count {:?}, tag {:?}, addr {:?} id {:?} mask
-            // {:?}, is_code {:?}",     step_idx, rw_count, tag, addr,
-            // id, is_mask, is_code, );
+            //     "step_idx: {}, rw_count {:?}, tag {:?}, addr {:?} id {:?} mask {:?}, is_code {:?}",
+            //     step_idx, rw_count, tag, addr, id, is_mask, is_code,
+            // );
+
+            println!(
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                step_idx,
+                is_read_step,
+                copy_step_addr,
+                //id,
+                copy_step.mask,
+                copy_step.is_code.unwrap_or(false),
+                copy_step.value,
+            );
 
             assignments.push((
                 tag,
