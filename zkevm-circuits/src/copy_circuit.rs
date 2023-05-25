@@ -1151,6 +1151,61 @@ mod tests {
         builder
     }
 
+    fn gen_returndatacopy_data() -> CircuitInputBuilder {
+        let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
+
+        let pushdata = (0..32).collect::<Vec<u8>>();
+        let code_b = bytecode! {
+            PUSH32(Word::from_big_endian(&pushdata))
+            PUSH32(0x0)
+            MSTORE
+
+            PUSH32(0x10)
+            PUSH32(0x0)
+            RETURN
+            STOP
+        };
+
+        let code_a = bytecode! {
+            PUSH32(0x10) // retLength
+            PUSH32(0x0) // retOffset
+            PUSH1(0x00) // argsLength
+            PUSH1(0x00) // argsOffset
+            PUSH1(0x00) // value
+            PUSH32(addr_b.to_word()) // addr
+            PUSH32(0x1_0000) // gas
+            CALL
+            PUSH32(0x10) // size
+            PUSH32(0x10) // offset
+            PUSH32(0x12) // dest_offset
+            RETURNDATACOPY
+            STOP
+        };
+
+        let test_ctx = TestContext::<3, 1>::new(
+            None,
+            |accs| {
+                accs[0].address(addr_a).code(code_a);
+                accs[1].address(addr_b).code(code_b);
+                accs[2]
+                    .address(mock::MOCK_ACCOUNTS[2])
+                    .balance(Word::from(1u64 << 30));
+            },
+            |mut txs, accs| {
+                txs[0].to(accs[0].address).from(accs[2].address);
+            },
+            |block, _tx| block,
+        )
+            .unwrap();
+
+        let block: GethData = test_ctx.into();
+        let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();
+        builder
+            .handle_block(&block.eth_block, &block.geth_traces)
+            .unwrap();
+        builder
+    }
+
     fn gen_extcodecopy_data() -> CircuitInputBuilder {
         let external_address = MOCK_ACCOUNTS[0];
         let code = bytecode! {
@@ -1278,6 +1333,13 @@ mod tests {
     #[test]
     fn copy_circuit_valid_codecopy() {
         let builder = gen_codecopy_data();
+        let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
+        assert_eq!(test_copy_circuit_from_block(10, block), Ok(()));
+    }
+
+    #[test]
+    fn copy_circuit_valid_returndatacopy() {
+        let builder = gen_returndatacopy_data();
         let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
         assert_eq!(test_copy_circuit_from_block(10, block), Ok(()));
     }
