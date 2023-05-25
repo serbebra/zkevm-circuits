@@ -379,14 +379,17 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     // );
                 },
             );
-            cb.require_zero(
-                "value == 0 when is_pad == 1 for read",
-                and::expr([
-                    meta.query_advice(is_pad, Rotation::cur()),
-                    meta.query_advice(value, Rotation::cur()),
-                    meta.query_advice(mask, Rotation::cur()),
-                ]),
-            );
+            cb.condition(not::expr(meta.query_advice(mask, Rotation::cur())), |cb| {
+                cb.require_zero(
+                    "value == 0 when is_pad == 1 for read",
+                    and::expr([
+                        meta.query_advice(is_pad, Rotation::cur()),
+                        meta.query_advice(value, Rotation::cur()),
+                        meta.query_advice(mask, Rotation::cur()),
+                    ]),
+                );
+            });
+
             cb.require_equal(
                 "is_pad == 1 - (src_addr < src_addr_end) for read row",
                 1.expr() - addr_lt_addr_end.is_lt(meta, None),
