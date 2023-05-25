@@ -1776,9 +1776,8 @@ impl<'a> CircuitInputStateRef<'a> {
         last_callee_memory.extend_at_least(src_end_slot as usize + 32);
         let mut call_memory = self.call_ctx()?.memory.clone();
         call_memory.extend_at_least(dst_end_slot as usize + 32);
-        call_memory.0[dst_addr as usize..(dst_addr + copy_length) as usize]
-            .copy_from_slice(&last_callee_memory.0[src_addr as usize..(src_addr + copy_length) as usize]);
-
+        let read_slot_bytes =
+            call_memory.0[src_begin_slot as usize..(src_end_slot + 32) as usize].to_vec();
         let write_slot_bytes =
             call_memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
         debug_assert_eq!(write_slot_bytes.len(), slot_count + 32);
@@ -1802,10 +1801,10 @@ impl<'a> CircuitInputStateRef<'a> {
         );
 
         let mut chunk_index = dst_begin_slot;
-        // memory word writes to destination word
-        for chunk in write_slot_bytes.chunks(32) {
-            let dest_word = Word::from_big_endian(&chunk);
-            self.memory_write_word(exec_step, chunk_index.into(), dest_word)?;
+        // memory word reads from source and writes to destination word
+        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32)) {
+            self.memory_read_word(exec_step, chunk_index.into(), Word::from_big_endian(read_chunk))?;
+            self.memory_write_word(exec_step, chunk_index.into(), Word::from_big_endian(write_chunk))?;
             chunk_index = chunk_index + 32;
         }
 
