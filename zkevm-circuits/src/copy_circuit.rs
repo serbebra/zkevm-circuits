@@ -1169,7 +1169,12 @@ mod tests {
             STOP
         };
 
+        let memdata = (0..32).rev().collect::<Vec<u8>>();
         let code_a = bytecode! {
+            PUSH32(Word::from_big_endian(&memdata))
+            PUSH32(0x20)
+            MSTORE
+
             PUSH32(0x10) // retLength
             PUSH32(0x0) // retOffset
             PUSH1(0x00) // argsLength
@@ -1179,8 +1184,8 @@ mod tests {
             PUSH32(0x1_0000) // gas
             CALL
             PUSH32(0x10) // size
-            PUSH32(0x10) // offset
-            PUSH32(0x12) // dest_offset
+            PUSH32(0x0) // offset
+            PUSH32(0x20) // dest_offset
             RETURNDATACOPY
             STOP
         };

@@ -1764,7 +1764,9 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         let (_, src_begin_slot) = self.get_addr_shift_slot(src_addr).unwrap();
-        let (_, src_end_slot) = self.get_addr_shift_slot(src_addr_end).unwrap();
+        let (_, src_end_slot) = self.get_addr_shift_slot(src_addr + copy_length).unwrap();
+        // won't be copy out of bound, it should be handle by geth error ReturnDataOutOfBounds
+        assert!(src_addr + copy_length <= src_addr_end);
         let (_, dst_begin_slot) = self.get_addr_shift_slot(dst_addr).unwrap();
         let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + copy_length).unwrap();
 
@@ -1788,7 +1790,7 @@ impl<'a> CircuitInputStateRef<'a> {
             slot_count + 32,
             src_addr as usize,
             src_begin_slot as usize,
-            min(src_addr_end - src_addr, copy_length) as usize,
+            copy_length as usize,
         );
 
         gen_memory_copy_steps(
