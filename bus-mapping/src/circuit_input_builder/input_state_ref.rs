@@ -1777,7 +1777,7 @@ impl<'a> CircuitInputStateRef<'a> {
         let mut call_memory = self.call_ctx()?.memory.clone();
         call_memory.extend_at_least(dst_end_slot as usize + 32);
         let read_slot_bytes =
-            call_memory.0[src_begin_slot as usize..(src_end_slot + 32) as usize].to_vec();
+            last_callee_memory.0[src_begin_slot as usize..(src_end_slot + 32) as usize].to_vec();
         let write_slot_bytes =
             call_memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
         debug_assert_eq!(write_slot_bytes.len(), slot_count + 32);
