@@ -1791,14 +1791,6 @@ impl<'a> CircuitInputStateRef<'a> {
             min(src_addr_end - src_addr, copy_length) as usize,
         );
 
-        let mut copy_rwc_inc = 0;
-        let mut chunk_index = src_begin_slot;
-        for read_chunk in read_slot_bytes.chunks(32) {
-            self.memory_read_word(exec_step, chunk_index.into(), Word::from_big_endian(read_chunk))?;
-            chunk_index = chunk_index + 32;
-            copy_rwc_inc = copy_rwc_inc + 1;
-        }
-
         gen_memory_copy_steps(
             &mut write_steps,
             &call_memory.0,
@@ -1808,12 +1800,16 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length as usize,
         );
 
-        let mut chunk_index = dst_begin_slot;
+        let mut copy_rwc_inc = 0;
+        let mut src_chunk_index = src_begin_slot;
+        let mut dst_chunk_index = dst_begin_slot;
         // memory word reads from source and writes to destination word
-        for write_chunk in write_slot_bytes.chunks(32) {
-            self.memory_write_word(exec_step, chunk_index.into(), Word::from_big_endian(write_chunk))?;
-            chunk_index = chunk_index + 32;
-            copy_rwc_inc = copy_rwc_inc + 1;
+        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32)) {
+            self.memory_read_word(exec_step, src_chunk_index.into(), Word::from_big_endian(read_chunk))?;
+            src_chunk_index = src_chunk_index + 32;
+            self.memory_write_word(exec_step, dst_chunk_index.into(), Word::from_big_endian(write_chunk))?;
+            dst_chunk_index = dst_chunk_index + 32;
+            copy_rwc_inc = copy_rwc_inc + 2;
         }
 
         println!(r#"busmapping:
