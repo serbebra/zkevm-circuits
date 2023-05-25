@@ -1764,7 +1764,7 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         let (_, src_begin_slot) = self.get_addr_shift_slot(src_addr).unwrap();
-        let (_, src_end_slot) = self.get_addr_shift_slot(src_addr + copy_length).unwrap();
+        let (_, src_end_slot) = self.get_addr_shift_slot(src_addr_end).unwrap();
         let (_, dst_begin_slot) = self.get_addr_shift_slot(dst_addr).unwrap();
         let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + copy_length).unwrap();
 
@@ -1791,6 +1791,14 @@ impl<'a> CircuitInputStateRef<'a> {
             min(src_addr_end - src_addr, copy_length) as usize,
         );
 
+        let mut copy_rwc_inc = 0;
+        let mut chunk_index = src_begin_slot;
+        for read_chunk in read_slot_bytes.chunks(32) {
+            self.memory_read_word(exec_step, chunk_index.into(), Word::from_big_endian(read_chunk))?;
+            chunk_index = chunk_index + 32;
+            copy_rwc_inc = copy_rwc_inc + 1;
+        }
+
         gen_memory_copy_steps(
             &mut write_steps,
             &call_memory.0,
@@ -1802,11 +1810,34 @@ impl<'a> CircuitInputStateRef<'a> {
 
         let mut chunk_index = dst_begin_slot;
         // memory word reads from source and writes to destination word
-        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32)) {
-            self.memory_read_word(exec_step, chunk_index.into(), Word::from_big_endian(read_chunk))?;
+        for write_chunk in write_slot_bytes.chunks(32) {
             self.memory_write_word(exec_step, chunk_index.into(), Word::from_big_endian(write_chunk))?;
             chunk_index = chunk_index + 32;
+            copy_rwc_inc = copy_rwc_inc + 1;
         }
+
+        println!(r#"busmapping:
+            src_addr = {src_addr}
+            dst_addr = {dst_addr}
+            copy_length = {copy_length}
+
+            src_end = {src_addr_end}
+            dst_end = {}
+
+            src_begin_slot = {src_begin_slot}
+            src_end_slot = {src_end_slot}
+            dst_begin_slot = {dst_begin_slot}
+            dst_end_slot = {dst_end_slot}
+            slot_count = {slot_count}
+
+            len(read_slot_bytes) = {}
+            len(write_slot_bytes) = {}
+
+            copy_rwc_inc = {copy_rwc_inc}"#,
+                dst_addr + copy_length,
+                read_slot_bytes.len(),
+                write_slot_bytes.len()
+        );
 
         Ok((read_steps, write_steps))
     }

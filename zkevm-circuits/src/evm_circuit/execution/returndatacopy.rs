@@ -1,3 +1,4 @@
+use std::cmp::max;
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
@@ -248,15 +249,39 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         self.memory_copier_gas
             .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
 
-        let shift = dest_offset.low_u64() % 32;
-        let memory_start_slot = dest_offset.low_u64() - shift;
-        let memory_end = dest_offset.low_u64() + size.low_u64();
-        let memory_end_slot = memory_end - memory_end % 32;
+        let src_begin = (return_data_offset + data_offset).low_u64();
+        let src_end = (return_data_offset + return_data_size).low_u64();
+        let src_begin_slot = src_begin - src_begin % 32;
+        let src_end_slot = src_end - src_end % 32;
+
+        let dst_begin = dest_offset.low_u64();
+        let dst_end = (dest_offset + size).low_u64();
+        let dst_begin_slot = dst_begin - dst_begin % 32;
+        let dst_end_slot = dst_end - dst_end % 32;
+
+        let slot_count = max((src_end_slot - src_begin_slot), (dst_end_slot - dst_begin_slot));
+
         let copy_rwc_inc = if size.low_u64() == 0 {
             0
         } else {
-            (memory_end_slot - memory_start_slot) / 32 + 1
+            2 * ((slot_count + 32) / 32)
         };
+
+        println!(r#"circuit:
+        src_addr = {src_begin}
+        dst_addr = {dst_begin}
+        copy_length = {size}
+
+        src_end = {src_end}
+        dst_end = {dst_end}
+
+        src_begin_slot = {src_begin_slot}
+        src_end_slot = {src_end_slot}
+        dst_begin_slot = {dst_begin_slot}
+        dst_end_slot = {dst_end_slot}
+        slot_count = {slot_count}
+
+        copy_rwc_inc = {copy_rwc_inc}"#);
 
         // rw_counter always increases by `size` reads and `size` writes
         self.copy_rwc_inc.assign(
@@ -305,7 +330,8 @@ mod test {
     ) {
         let (addr_a, addr_b) = (mock::MOCK_ACCOUNTS[0], mock::MOCK_ACCOUNTS[1]);
 
-        let pushdata = rand_bytes(32);
+        // let pushdata = rand_bytes(32);
+        let pushdata = (0..32).collect::<Vec<u8>>();
         let return_offset =
             std::cmp::max((return_data_offset + return_data_size) as i64 - 32, 0) as usize;
         let code_b = bytecode! {
