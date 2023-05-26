@@ -1763,6 +1763,9 @@ impl<'a> CircuitInputStateRef<'a> {
             return Ok((read_steps, write_steps));
         }
 
+        let last_callee_id = self.call()?.last_callee_id;
+        let current_call_id = self.call()?.call_id;
+
         let (_, src_begin_slot) = self.get_addr_shift_slot(src_addr).unwrap();
         let (_, src_end_slot) = self.get_addr_shift_slot(src_addr + copy_length).unwrap();
         // won't be copy out of bound, it should be handle by geth error ReturnDataOutOfBounds
@@ -1784,7 +1787,7 @@ impl<'a> CircuitInputStateRef<'a> {
             call_memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
         debug_assert_eq!(write_slot_bytes.len(), slot_count + 32);
 
-        gen_memory_copy_steps(
+        Self::gen_memory_copy_steps(
             &mut read_steps,
             &last_callee_memory.0,
             slot_count + 32,
@@ -1793,7 +1796,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length as usize,
         );
 
-        gen_memory_copy_steps(
+        Self::gen_memory_copy_steps(
             &mut write_steps,
             &call_memory.0,
             slot_count + 32,
@@ -1807,10 +1810,22 @@ impl<'a> CircuitInputStateRef<'a> {
         let mut dst_chunk_index = dst_begin_slot;
         // memory word reads from source and writes to destination word
         for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32)) {
-            self.memory_read_word(exec_step, src_chunk_index.into(), Word::from_big_endian(read_chunk))?;
+            self.push_op(
+                exec_step,
+                RW::READ,
+                MemoryWordOp::new(last_callee_id, src_chunk_index.into(), Word::from_big_endian(read_chunk)),
+            );
+            println!("read chunk: {} {} {:?}", last_callee_id, src_chunk_index, read_chunk);
             src_chunk_index = src_chunk_index + 32;
-            self.memory_write_word(exec_step, dst_chunk_index.into(), Word::from_big_endian(write_chunk))?;
+
+            self.push_op(
+                exec_step,
+                RW::WRITE,
+                MemoryWordOp::new(current_call_id, dst_chunk_index.into(), Word::from_big_endian(write_chunk)),
+            );
+            println!("write chunk: {} {} {:?}", current_call_id, dst_chunk_index, write_chunk);
             dst_chunk_index = dst_chunk_index + 32;
+
             copy_rwc_inc = copy_rwc_inc + 2;
         }
 
@@ -1903,28 +1918,27 @@ impl<'a> CircuitInputStateRef<'a> {
     }
 
     // TODO: add new gen_copy_steps for common use
-}
-
-fn gen_memory_copy_steps(
-    steps: &mut Vec<(u8, bool, bool)>,
-    memory: &[u8],
-    slot_bytes_len: usize,
-    offset_addr: usize,
-    begin_slot: usize,
-    length: usize,
-){
-    for idx in 0..slot_bytes_len {
-        let value = memory[begin_slot as usize + idx];
-        // padding unaligned copy of 32 bytes
-        if idx + begin_slot < offset_addr {
-            // front mask byte
-            steps.push((value, false, true));
-        } else if idx + begin_slot >= offset_addr + length {
-            // back mask byte
-            steps.push((value, false, true));
-        } else {
-            // real copy byte
-            steps.push((value, false, false));
+    pub(crate) fn gen_memory_copy_steps(
+        steps: &mut Vec<(u8, bool, bool)>,
+        memory: &[u8],
+        slot_bytes_len: usize,
+        offset_addr: usize,
+        begin_slot: usize,
+        length: usize,
+    ) {
+        for idx in 0..slot_bytes_len {
+            let value = memory[begin_slot as usize + idx];
+            // padding unaligned copy of 32 bytes
+            if idx + begin_slot < offset_addr {
+                // front mask byte
+                steps.push((value, false, true));
+            } else if idx + begin_slot >= offset_addr + length {
+                // back mask byte
+                steps.push((value, false, true));
+            } else {
+                // real copy byte
+                steps.push((value, false, false));
+            }
         }
     }
 }

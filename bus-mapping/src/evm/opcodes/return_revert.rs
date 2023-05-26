@@ -1,3 +1,4 @@
+use std::cmp::max;
 use super::{Opcode, MemoryKind};
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, CopyDataType, CopyEvent, NumberOrHash},
@@ -202,6 +203,10 @@ fn handle_copy(
      minimal_length = dst_end_slot as usize + 32;
     caller_memory.extend_at_least(minimal_length);
 
+    let slot_count = max((src_end_slot - src_begin_slot), (dst_end_slot - dst_begin_slot)) as usize;
+    let src_end_slot = src_begin_slot as usize + slot_count;
+    let dst_end_slot = dst_begin_slot as usize + slot_count;
+
 
     let src_slot_bytes =
         callee_memory.0[src_begin_slot as usize..(src_end_slot + 32) as usize].to_vec();
@@ -231,27 +236,26 @@ fn handle_copy(
     }
 
     // memory word write to destination
-    let mut copy_steps = Vec::with_capacity(source.length as usize);
-    let mut copy_start = 0u64;
-    let mut first_set = true;
-    for idx in 0..src_slot_bytes.len() {
-        let value = callee_memory.0[src_begin_slot as usize + idx];
-        if idx as u64 + src_begin_slot < source.offset as u64 {
-            // front mask byte
-            copy_steps.push((value, false, true));
-        } else if idx as u64 + src_begin_slot >= (source.offset + source.length) as u64 {
-            // back mask byte
-            copy_steps.push((value, false, true));
-        } else {
-            // real copy byte
-            if first_set {
-                copy_start = idx as u64;
-                first_set = false;
-            }
+    let mut read_steps = Vec::with_capacity(source.length as usize);
+    CircuitInputStateRef::gen_memory_copy_steps(
+        &mut read_steps,
+        &callee_memory.0,
+        slot_count + 32,
+        source.offset,
+        src_begin_slot as usize,
+        copy_length as usize,
+    );
 
-            copy_steps.push(bytes[idx - copy_start as usize]);
-        }
-    }
+    let mut write_steps = Vec::with_capacity(destination.length as usize);
+    CircuitInputStateRef::gen_memory_copy_steps(
+        &mut write_steps,
+        &caller_memory.0,
+        slot_count + 32,
+        destination.offset,
+        dst_begin_slot as usize,
+        copy_length as usize,
+    );
+
 
     state.push_copy(
         step,
@@ -265,8 +269,8 @@ fn handle_copy(
             dst_id: NumberOrHash::Number(destination.id),
             dst_addr: destination.offset.try_into().unwrap(),
             log_id: None,
-            bytes: copy_steps,
-            aux_bytes: None, // FIXME
+            bytes: read_steps,
+            aux_bytes: Some(write_steps),
         },
     );
 
