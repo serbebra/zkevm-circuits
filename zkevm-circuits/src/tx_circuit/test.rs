@@ -77,7 +77,7 @@ fn tx_circuit_0tx_1max_tx() {
 
 #[test]
 fn tx_circuit_1tx_1max_tx() {
-    const MAX_TXS: usize = 1;
+    const MAX_TXS: usize = 2;
     const MAX_CALLDATA: usize = 32;
 
     let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();

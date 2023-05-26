@@ -725,7 +725,17 @@ impl<F: Field> SignVerifyChip<F> {
                 }
 
                 let mut ctx = ecdsa_chip.new_context(region);
+                // println!("region = {:?}", region.clone());
+                println!("ctx.region = {:?}", ctx.region);
+                println!("ctx.max_rows = {:?}", ctx.max_rows);
+                println!("ctx.total_advice = {}", ctx.total_advice);
+                println!("ctx.fixed_col = {}", ctx.fixed_col);
+                println!("ctx.fixed_offset = {}", ctx.fixed_offset);
+                println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
+                println!("ctx.current_phase = {}", ctx.current_phase);
+                
 
+                
                 // ================================================
                 // step 1: assert the signature is valid in circuit
                 // ================================================
@@ -742,6 +752,14 @@ impl<F: Field> SignVerifyChip<F> {
                     assigned_ecdsas.push(assigned_ecdsa);
                 }
 
+                println!("ctx.region = {:?}", ctx.region);
+                println!("ctx.max_rows = {:?}", ctx.max_rows);
+                println!("ctx.total_advice = {}", ctx.total_advice);
+                println!("ctx.fixed_col = {}", ctx.fixed_col);
+                println!("ctx.fixed_offset = {}", ctx.fixed_offset);
+                println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
+                println!("ctx.current_phase = {}", ctx.current_phase);
+
                 // ================================================
                 // step 2: decompose the keys and messages
                 // ================================================
@@ -752,6 +770,14 @@ impl<F: Field> SignVerifyChip<F> {
                         self.sign_data_decomposition(&mut ctx, ecdsa_chip, sign_data)?;
                     sign_data_decomposed_vec.push(sign_data_decomposed);
                 }
+
+                println!("ctx.region = {:?}", ctx.region);
+                println!("ctx.max_rows = {:?}", ctx.max_rows);
+                println!("ctx.total_advice = {}", ctx.total_advice);
+                println!("ctx.fixed_col = {}", ctx.fixed_col);
+                println!("ctx.fixed_offset = {}", ctx.fixed_offset);
+                println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
+                println!("ctx.current_phase = {}", ctx.current_phase);
 
                 // IMPORTANT: Move to Phase2 before RLC
                 log::info!("before proceeding to the next phase");
@@ -784,6 +810,14 @@ impl<F: Field> SignVerifyChip<F> {
                     deferred_keccak_check.push(to_be_keccak_checked);
                 }
 
+                println!("ctx.region = {:?}", ctx.region);
+                println!("ctx.max_rows = {:?}", ctx.max_rows);
+                println!("ctx.total_advice = {}", ctx.total_advice);
+                println!("ctx.fixed_col = {}", ctx.fixed_col);
+                println!("ctx.fixed_offset = {}", ctx.fixed_offset);
+                println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
+                println!("ctx.current_phase = {}", ctx.current_phase);
+
                 // ================================================
                 // step 4: deferred keccak checks
                 // ================================================
@@ -800,12 +834,28 @@ impl<F: Field> SignVerifyChip<F> {
                     )?;
                 }
 
+                println!("ctx.region = {:?}", ctx.region);
+                println!("ctx.max_rows = {:?}", ctx.max_rows);
+                println!("ctx.total_advice = {}", ctx.total_advice);
+                println!("ctx.fixed_col = {}", ctx.fixed_col);
+                println!("ctx.fixed_offset = {}", ctx.fixed_offset);
+                println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
+                println!("ctx.current_phase = {}", ctx.current_phase);
+
                 // IMPORTANT: this assigns all constants to the fixed columns
                 // IMPORTANT: this copies cells to the lookup advice column to perform range
                 // check lookups
                 // This is not optional.
                 let lookup_cells = ecdsa_chip.finalize(&mut ctx);
                 log::info!("total number of lookup cells: {}", lookup_cells);
+
+                println!("ctx.region = {:?}", ctx.region);
+                println!("ctx.max_rows = {:?}", ctx.max_rows);
+                println!("ctx.total_advice = {}", ctx.total_advice);
+                println!("ctx.fixed_col = {}", ctx.fixed_col);
+                println!("ctx.fixed_offset = {}", ctx.fixed_offset);
+                println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
+                println!("ctx.current_phase = {}", ctx.current_phase);
 
                 ctx.print_stats(&["Range"]);
                 Ok(assigned_sig_verifs)
