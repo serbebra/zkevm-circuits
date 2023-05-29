@@ -296,12 +296,7 @@ impl CopyEvent {
     fn rw_counter_increase(&self, step_index: usize) -> u64 {
         match (self.src_type, self.dst_type) {
             (CopyDataType::Memory, CopyDataType::Memory) => {
-                return if step_index % 2 == 0 {
-                    // read step
-                    step_index / 64
-                } else {
-                    step_index / 64 + 1
-                } as u64
+                return step_index as u64 % 2 + 2 * (step_index as f32 / 64.0).floor() as u64;
             },
             _ => {}
         }
