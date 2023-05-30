@@ -1,14 +1,14 @@
-use std::cmp::max;
-use super::{Opcode, MemoryKind};
+use super::{MemoryKind, Opcode};
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, CopyDataType, CopyEvent, NumberOrHash},
     evm::opcodes::ExecStep,
-    operation::{AccountField, AccountOp, CallContextField, MemoryOp, RW, MemoryWordOp},
+    operation::{AccountField, AccountOp, CallContextField, MemoryOp, MemoryWordOp, RW},
     state_db::CodeDB,
     Error,
 };
 use eth_types::{Bytecode, GethExecStep, ToWord, Word, H256};
 use ethers_core::utils::keccak256;
+use std::cmp::max;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct ReturnRevert;
@@ -191,22 +191,28 @@ fn handle_copy(
 
     let rw_counter_start = state.block_ctx.rwc;
     let (_, src_begin_slot) = state.get_addr_shift_slot(source.offset as u64).unwrap();
-    let (_, src_end_slot) = state.get_addr_shift_slot((source.offset + copy_length) as u64).unwrap();
-    let (_, dst_begin_slot) = state.get_addr_shift_slot(destination.offset as u64).unwrap();
-    let (_, dst_end_slot) = state.get_addr_shift_slot((destination.offset + copy_length) as u64).unwrap();
-    // callee‘s memory
-    let mut callee_memory = state.call_ctx_mut()?.memory.clone();
-    let mut minimal_length = src_end_slot as usize + 32;
-    callee_memory.extend_at_least(minimal_length);
-    // caller's memory
-    let mut caller_memory = state.caller_ctx_mut()?.memory.clone();
-     minimal_length = dst_end_slot as usize + 32;
-    caller_memory.extend_at_least(minimal_length);
+    let (_, src_end_slot) = state
+        .get_addr_shift_slot((source.offset + copy_length) as u64)
+        .unwrap();
+    let (_, dst_begin_slot) = state
+        .get_addr_shift_slot(destination.offset as u64)
+        .unwrap();
+    let (_, dst_end_slot) = state
+        .get_addr_shift_slot((destination.offset + copy_length) as u64)
+        .unwrap();
 
-    let slot_count = max((src_end_slot - src_begin_slot), (dst_end_slot - dst_begin_slot)) as usize;
+    let slot_count = max(
+        (src_end_slot - src_begin_slot),
+        (dst_end_slot - dst_begin_slot),
+    ) as usize;
     let src_end_slot = src_begin_slot as usize + slot_count;
     let dst_end_slot = dst_begin_slot as usize + slot_count;
-
+    // callee‘s memory
+    let mut callee_memory = state.call_ctx_mut()?.memory.clone();
+    callee_memory.extend_at_least(src_end_slot + 32);
+    // caller's memory
+    let mut caller_memory = state.caller_ctx_mut()?.memory.clone();
+    caller_memory.extend_at_least(dst_end_slot + 32);
 
     let src_slot_bytes =
         callee_memory.0[src_begin_slot as usize..(src_end_slot + 32) as usize].to_vec();
@@ -215,7 +221,7 @@ fn handle_copy(
     let mut src_chunk_index = src_begin_slot;
     let mut dst_chunk_index = dst_begin_slot;
 
-    // memory word read from src 
+    // memory word read from src
     for (read_chunk, write_chunk) in src_slot_bytes.chunks(32).zip(dst_slot_bytes.chunks(32)) {
         let src_word = Word::from_big_endian(&read_chunk);
         // read memory
@@ -231,8 +237,8 @@ fn handle_copy(
             RW::WRITE,
             MemoryWordOp::new(destination.id, dst_chunk_index.into(), dest_word),
         );
-        dst_chunk_index  += 32;
-        src_chunk_index  += 32;
+        dst_chunk_index += 32;
+        src_chunk_index += 32;
     }
 
     // memory word write to destination
@@ -255,7 +261,6 @@ fn handle_copy(
         dst_begin_slot as usize,
         copy_length as usize,
     );
-
 
     state.push_copy(
         step,

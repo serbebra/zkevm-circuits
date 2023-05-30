@@ -28,8 +28,11 @@ use ethers_core::{
     k256::{elliptic_curve::consts::U4, sha2::digest::typenum::Minimum},
     utils::{get_contract_address, get_create2_address, keccak256},
 };
-use std::{cmp::max, io::copy, mem};
-use std::cmp::min;
+use std::{
+    cmp::{max, min},
+    io::copy,
+    mem,
+};
 
 /// Reference to the internal state of the CircuitInputBuilder in a particular
 /// [`ExecStep`].
@@ -1753,8 +1756,8 @@ impl<'a> CircuitInputStateRef<'a> {
         exec_step: &mut ExecStep,
         src_addr: u64,
         src_addr_end: u64,
-        dst_addr: u64,     // memory dest starting addr
-        copy_length: u64,   // number of bytes to copy, with padding
+        dst_addr: u64,    // memory dest starting addr
+        copy_length: u64, // number of bytes to copy, with padding
     ) -> Result<(Vec<(u8, bool, bool)>, Vec<(u8, bool, bool)>), Error> {
         let mut read_steps = Vec::with_capacity(copy_length as usize);
         let mut write_steps = Vec::with_capacity(copy_length as usize);
@@ -1773,7 +1776,10 @@ impl<'a> CircuitInputStateRef<'a> {
         let (_, dst_begin_slot) = self.get_addr_shift_slot(dst_addr).unwrap();
         let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + copy_length).unwrap();
 
-        let slot_count = max((src_end_slot - src_begin_slot), (dst_end_slot - dst_begin_slot)) as usize;
+        let slot_count = max(
+            (src_end_slot - src_begin_slot),
+            (dst_end_slot - dst_begin_slot),
+        ) as usize;
         let src_end_slot = src_begin_slot as usize + slot_count;
         let dst_end_slot = dst_begin_slot as usize + slot_count;
 
@@ -1809,27 +1815,43 @@ impl<'a> CircuitInputStateRef<'a> {
         let mut src_chunk_index = src_begin_slot;
         let mut dst_chunk_index = dst_begin_slot;
         // memory word reads from source and writes to destination word
-        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32)) {
+        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32))
+        {
             self.push_op(
                 exec_step,
                 RW::READ,
-                MemoryWordOp::new(last_callee_id, src_chunk_index.into(), Word::from_big_endian(read_chunk)),
+                MemoryWordOp::new(
+                    last_callee_id,
+                    src_chunk_index.into(),
+                    Word::from_big_endian(read_chunk),
+                ),
             );
-            println!("read chunk: {} {} {:?}", last_callee_id, src_chunk_index, read_chunk);
+            println!(
+                "read chunk: {} {} {:?}",
+                last_callee_id, src_chunk_index, read_chunk
+            );
             src_chunk_index = src_chunk_index + 32;
 
             self.push_op(
                 exec_step,
                 RW::WRITE,
-                MemoryWordOp::new(current_call_id, dst_chunk_index.into(), Word::from_big_endian(write_chunk)),
+                MemoryWordOp::new(
+                    current_call_id,
+                    dst_chunk_index.into(),
+                    Word::from_big_endian(write_chunk),
+                ),
             );
-            println!("write chunk: {} {} {:?}", current_call_id, dst_chunk_index, write_chunk);
+            println!(
+                "write chunk: {} {} {:?}",
+                current_call_id, dst_chunk_index, write_chunk
+            );
             dst_chunk_index = dst_chunk_index + 32;
 
             copy_rwc_inc = copy_rwc_inc + 2;
         }
 
-        println!(r#"busmapping:
+        println!(
+            r#"busmapping:
             src_addr = {src_addr}
             dst_addr = {dst_addr}
             copy_length = {copy_length}
@@ -1847,9 +1869,9 @@ impl<'a> CircuitInputStateRef<'a> {
             len(write_slot_bytes) = {}
 
             copy_rwc_inc = {copy_rwc_inc}"#,
-                dst_addr + copy_length,
-                read_slot_bytes.len(),
-                write_slot_bytes.len()
+            dst_addr + copy_length,
+            read_slot_bytes.len(),
+            write_slot_bytes.len()
         );
 
         Ok((read_steps, write_steps))

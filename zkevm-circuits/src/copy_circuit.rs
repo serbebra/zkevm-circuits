@@ -156,7 +156,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let rlc_acc_read = meta.advice_column_in(SecondPhase);
         let rlc_acc_write = meta.advice_column_in(SecondPhase);
 
-
         let value_acc = meta.advice_column_in(SecondPhase);
         let is_code = meta.advice_column();
         let is_pad = meta.advice_column();
@@ -1204,7 +1203,7 @@ mod tests {
             },
             |block, _tx| block,
         )
-            .unwrap();
+        .unwrap();
 
         let block: GethData = test_ctx.into();
         let mut builder = BlockData::new_from_geth_data(block.clone()).new_circuit_input_builder();

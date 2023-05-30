@@ -1422,7 +1422,9 @@ impl CopyTable {
             // assume copy events bytes is already word aligned for copy steps.
             // only change by skip 32
 
-            if copy_event.dst_type == CopyDataType::Memory || copy_event.src_type == CopyDataType::Memory {
+            if copy_event.dst_type == CopyDataType::Memory
+                || copy_event.src_type == CopyDataType::Memory
+            {
                 if is_read_step {
                     if !copy_step.mask {
                         rlc_acc_read = rlc_acc_read * challenges.evm_word()
@@ -1525,19 +1527,19 @@ impl CopyTable {
             let rw_count = F::from(copy_event.rw_counter_step(step_idx));
             let rwc_inc_left = F::from(copy_event.rw_counter_increase_left(step_idx));
             // println!(
-            //     "step_idx: {}, rw_count {:?}, tag {:?}, addr {:?} id {:?} mask {:?}, is_code {:?}",
-            //     step_idx, rw_count, tag, addr, id, is_mask, is_code,
+            //     "step_idx: {}, rw_count {:?}, tag {:?}, addr {:?} id {:?} mask {:?}, is_code
+            // {:?}",     step_idx, rw_count, tag, addr, id, is_mask, is_code,
             // );
 
             println!(
-                "{}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{:?}\t{:?}",
                 step_idx,
                 is_read_step,
                 copy_step_addr,
                 //id,
-                copy_step.mask,
-                copy_step.is_code.unwrap_or(false),
-                copy_step.value,
+                bytes_left,
+                rw_count,
+                rwc_inc_left,
             );
 
             assignments.push((
@@ -1571,7 +1573,14 @@ impl CopyTable {
                 [
                     (is_last, "is_last"),
                     (value, "value"),
-                    (if is_read_step { value_word_read_rlc } else { value_word_write_rlc }, "value_word_rlc"),
+                    (
+                        if is_read_step {
+                            value_word_read_rlc
+                        } else {
+                            value_word_write_rlc
+                        },
+                        "value_word_rlc",
+                    ),
                     (rlc_acc_read, "rlc_acc_read"),
                     (rlc_acc_write, "rlc_acc_write"),
                     (value_acc, "value_acc"),
@@ -1579,7 +1588,14 @@ impl CopyTable {
                     (is_code, "is_code"),
                     (is_mask, "mask"),
                     (Value::known(F::from(word_index)), "word_index"),
-                    (Value::known(F::from(if is_read_step { read_addr_slot } else { write_addr_slot })), "addr_slot"),
+                    (
+                        Value::known(F::from(if is_read_step {
+                            read_addr_slot
+                        } else {
+                            write_addr_slot
+                        })),
+                        "addr_slot",
+                    ),
                 ],
             ));
         }

@@ -1,4 +1,3 @@
-use std::cmp::max;
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
@@ -27,6 +26,7 @@ use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use gadgets::util::not;
 use halo2_proofs::{circuit::Value, plonk::Error};
+use std::cmp::max;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ReturnDataCopyGadget<F> {
@@ -259,7 +259,10 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         let dst_begin_slot = dst_begin - dst_begin % 32;
         let dst_end_slot = dst_end - dst_end % 32;
 
-        let slot_count = max((src_end_slot - src_begin_slot), (dst_end_slot - dst_begin_slot));
+        let slot_count = max(
+            (src_end_slot - src_begin_slot),
+            (dst_end_slot - dst_begin_slot),
+        );
 
         let copy_rwc_inc = if size.low_u64() == 0 {
             0
@@ -267,7 +270,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
             2 * ((slot_count + 32) / 32)
         };
 
-        println!(r#"circuit:
+        println!(
+            r#"circuit:
         src_addr = {src_begin}
         dst_addr = {dst_begin}
         copy_length = {size}
@@ -281,7 +285,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         dst_end_slot = {dst_end_slot}
         slot_count = {slot_count}
 
-        copy_rwc_inc = {copy_rwc_inc}"#);
+        copy_rwc_inc = {copy_rwc_inc}"#
+        );
 
         // rw_counter always increases by `size` reads and `size` writes
         self.copy_rwc_inc.assign(

@@ -297,7 +297,7 @@ impl CopyEvent {
         match (self.src_type, self.dst_type) {
             (CopyDataType::Memory, CopyDataType::Memory) => {
                 return step_index as u64 % 2 + 2 * (step_index as f32 / 64.0).floor() as u64;
-            },
+            }
             _ => {}
         }
         let source_rw_increase = match self.src_type {
