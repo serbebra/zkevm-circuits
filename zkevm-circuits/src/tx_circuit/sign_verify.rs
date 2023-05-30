@@ -734,7 +734,7 @@ impl<F: Field> SignVerifyChip<F> {
                 println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
                 println!("ctx.current_phase = {}", ctx.current_phase);
                 
-
+                ctx.print_stats(&["Range"]);
                 
                 // ================================================
                 // step 1: assert the signature is valid in circuit
@@ -749,6 +749,8 @@ impl<F: Field> SignVerifyChip<F> {
                         SignData::default()
                     };
                     let assigned_ecdsa = self.assign_ecdsa(&mut ctx, ecdsa_chip, &signature)?;
+                    println!("ctx.total_advice[{}] = {}", i, ctx.total_advice);
+                    ctx.print_stats(&["Range"]);
                     assigned_ecdsas.push(assigned_ecdsa);
                 }
 
