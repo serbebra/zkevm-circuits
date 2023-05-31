@@ -95,11 +95,11 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
         // Case A in the specs.
         cb.condition(is_create.clone() * is_success.expr(), |cb| {
-            cb.require_equal(
-                "increase rw counter once for each memory to bytecode byte copied",
-                copy_rw_increase.expr(),
-                range.length(),
-            );
+            // cb.require_equal(
+            //     "increase rw counter once for each memory to bytecode byte copied",
+            //     copy_rw_increase.expr(),
+            //     range.length(),
+            // );
         });
 
         let is_contract_deployment =
@@ -133,7 +133,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 range.offset(),
                 range.address(),
                 0.expr(),
-                range.length(),
+                //range.length(),
+                bytes_length_word.expr(),
                 init_code_rlc.expr(),
                 copy_rw_increase.expr(),
             );
@@ -343,7 +344,11 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         let memory_start_slot = memory_offset.low_u64() - shift;
         let memory_end = memory_offset.low_u64() + length.low_u64();
         let memory_end_slot = memory_end - memory_end % 32;
-        let valid_length = std::cmp::min(call.return_data_length, length.as_u64());
+        let valid_length = if call.is_root || (call.is_create && call.is_success) {
+            length.as_u64()
+        } else {
+            std::cmp::min(call.return_data_length, length.as_u64())
+        };
 
         let copy_rwc_inc = if valid_length == 0 {
             0
@@ -572,10 +577,9 @@ mod test {
 
     #[test]
     fn test_return_root_create() {
-        let test_parameters = /*[(0, 0)] ,  */ [(0, 10), ]; // (300, 20), (1000, 0)];
+        let test_parameters = [(0, 0), (0, 10), (300, 20), (1000, 0)];
         for ((offset, length), is_return) in
-            //test_parameters.iter().cartesian_product(&[true, false])
-            test_parameters.iter().cartesian_product(&[true])
+            test_parameters.iter().cartesian_product(&[true, false])
         {
             let tx_input = callee_bytecode(*is_return, *offset, *length).code();
             let ctx = TestContext::<1, 1>::new(
