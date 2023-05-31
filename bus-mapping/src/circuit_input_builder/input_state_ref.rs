@@ -1685,7 +1685,7 @@ impl<'a> CircuitInputStateRef<'a> {
     }
 
     /// Generate copy steps for call data.
-    pub(crate) fn gen_copy_steps_for_call_data(
+    pub(crate) fn gen_copy_steps_for_call_data_root(
         &mut self,
         exec_step: &mut ExecStep,
         src_addr: u64,
@@ -1749,6 +1749,132 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         Ok(copy_steps)
+    }
+
+    pub(crate) fn gen_copy_steps_for_call_data_non_root(
+        &mut self,
+        exec_step: &mut ExecStep,
+        src_addr: u64,
+        src_addr_end: u64,
+        dst_addr: u64,    // memory dest starting addr
+        copy_length: u64, // number of bytes to copy, with padding
+    ) -> Result<(Vec<(u8, bool, bool)>, Vec<(u8, bool, bool)>), Error> {
+        let mut read_steps = Vec::with_capacity(copy_length as usize);
+        let mut write_steps = Vec::with_capacity(copy_length as usize);
+
+        if copy_length == 0 {
+            return Ok((read_steps, write_steps));
+        }
+
+        let caller_id = self.call()?.caller_id;
+        let current_call_id = self.call()?.call_id;
+
+        let (_, src_begin_slot) = self.get_addr_shift_slot(src_addr).unwrap();
+        let (_, src_end_slot) = self.get_addr_shift_slot(src_addr_end).unwrap();
+        let (_, dst_begin_slot) = self.get_addr_shift_slot(dst_addr).unwrap();
+        let (_, dst_end_slot) = self.get_addr_shift_slot(dst_addr + copy_length).unwrap();
+
+        println!("overflow check: {} {}", src_begin_slot, src_end_slot);
+        println!("overflow check: {} {}", dst_begin_slot, dst_end_slot);
+        let slot_count = max(
+            (src_end_slot - src_begin_slot),
+            (dst_end_slot - dst_begin_slot),
+        ) as usize;
+        let src_end_slot = src_begin_slot as usize + slot_count;
+        let dst_end_slot = dst_begin_slot as usize + slot_count;
+
+        let mut caller_memory = self.caller_ctx()?.memory.clone();
+        caller_memory.extend_at_least(src_end_slot as usize + 32);
+        let mut call_memory = self.call_ctx()?.memory.clone();
+        call_memory.extend_at_least(dst_end_slot as usize + 32);
+        let read_slot_bytes =
+            caller_memory.0[src_begin_slot as usize..(src_end_slot + 32) as usize].to_vec();
+        let write_slot_bytes =
+            call_memory.0[dst_begin_slot as usize..(dst_end_slot + 32) as usize].to_vec();
+
+        Self::gen_memory_copy_steps(
+            &mut read_steps,
+            &caller_memory.0,
+            slot_count + 32,
+            src_addr as usize,
+            src_begin_slot as usize,
+            copy_length as usize,
+        );
+
+        Self::gen_memory_copy_steps(
+            &mut write_steps,
+            &call_memory.0,
+            slot_count + 32,
+            dst_addr as usize,
+            dst_begin_slot as usize,
+            copy_length as usize,
+        );
+
+        let mut copy_rwc_inc = 0;
+        let mut src_chunk_index = src_begin_slot;
+        let mut dst_chunk_index = dst_begin_slot;
+        // memory word reads from source and writes to destination word
+        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32))
+        {
+            self.push_op(
+                exec_step,
+                RW::READ,
+                MemoryWordOp::new(
+                    caller_id,
+                    src_chunk_index.into(),
+                    Word::from_big_endian(read_chunk),
+                ),
+            );
+            println!(
+                "read chunk: {} {} {:?}",
+                caller_id, src_chunk_index, read_chunk
+            );
+            src_chunk_index = src_chunk_index + 32;
+
+            self.push_op(
+                exec_step,
+                RW::WRITE,
+                MemoryWordOp::new(
+                    current_call_id,
+                    dst_chunk_index.into(),
+                    Word::from_big_endian(write_chunk),
+                ),
+            );
+            println!(
+                "write chunk: {} {} {:?}",
+                current_call_id, dst_chunk_index, write_chunk
+            );
+            dst_chunk_index = dst_chunk_index + 32;
+
+            copy_rwc_inc = copy_rwc_inc + 2;
+        }
+
+        println!(
+            r#"busmapping:
+            src_addr = {src_addr}
+            dst_addr = {dst_addr}
+            copy_length = {copy_length}
+
+            src_end = {src_addr_end}
+            dst_end = {}
+
+            src_begin_slot = {src_begin_slot}
+            src_end_slot = {src_end_slot}
+            dst_begin_slot = {dst_begin_slot}
+            dst_end_slot = {dst_end_slot}
+            slot_count = {slot_count}
+
+            len(read_slot_bytes) = {}
+            len(write_slot_bytes) = {}
+
+            copy_rwc_inc = {copy_rwc_inc}"#,
+            dst_addr + copy_length,
+            read_slot_bytes.len(),
+            write_slot_bytes.len()
+        );
+
+        Ok((read_steps, write_steps))
+
     }
 
     pub(crate) fn gen_copy_steps_for_return_data(

@@ -178,7 +178,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         offset: usize,
         block: &Block<F>,
         _tx: &Transaction,
-        _call: &Call,
+        call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
@@ -250,7 +250,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
             .assign(region, offset, size.as_u64(), memory_expansion_cost)?;
 
         let src_begin = (return_data_offset + data_offset).low_u64();
-        let src_end = (return_data_offset + return_data_size).low_u64();
+        let src_end = src_begin + size.low_u64();
+        assert!(src_end <= (return_data_offset + return_data_size).low_u64(), "should not happen copy out of bound");
         let src_begin_slot = src_begin - src_begin % 32;
         let src_end_slot = src_end - src_end % 32;
 
@@ -263,11 +264,13 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
             (src_end_slot - src_begin_slot),
             (dst_end_slot - dst_begin_slot),
         );
+        let src_end_slot = src_begin_slot + slot_count;
+        let dst_end_slot = dst_begin_slot + slot_count;
 
         let copy_rwc_inc = if size.low_u64() == 0 {
             0
         } else {
-            2 * ((slot_count + 32) / 32)
+            2 * (slot_count / 32 + 1)
         };
 
         println!(
@@ -299,7 +302,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
             ),
         )?;
 
-        let bytes_length_to_word = copy_rwc_inc * 32;
+        let bytes_length_to_word = (copy_rwc_inc / 2) * 32;
 
         self.bytes_length_word.assign(
             region,
@@ -314,6 +317,18 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
                 .to_scalar()
                 .expect("unexpected U256 -> Scalar conversion failure"),
         )?;
+
+        println!(
+            "copytable lookup: src_id: 0x{:x}, src_addr: 0x{:x}, src_addr_end: 0x{:x}, dst_id: 0x{:x}, dst_addr: 0x{:x}, length: 0x{:x}, rw_counter: 0x{:x}, rwc_inc: 0x{:x}",
+            last_callee_id.low_u64(),
+            return_data_offset.low_u64() + data_offset.low_u64(),
+            return_data_offset.low_u64() + return_data_size.low_u64(),
+            call.id,
+            dest_offset.low_u64(),
+            bytes_length_to_word,
+            step.rw_counter,
+            copy_rwc_inc
+        );
 
         Ok(())
     }
