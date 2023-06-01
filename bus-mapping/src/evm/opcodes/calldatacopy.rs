@@ -1,4 +1,3 @@
-use std::cmp::min;
 use super::Opcode;
 use crate::{
     circuit_input_builder::{
@@ -8,6 +7,7 @@ use crate::{
     Error,
 };
 use eth_types::GethExecStep;
+use std::cmp::min;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Calldatacopy;

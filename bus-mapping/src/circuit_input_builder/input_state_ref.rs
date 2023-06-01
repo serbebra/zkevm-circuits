@@ -1874,7 +1874,6 @@ impl<'a> CircuitInputStateRef<'a> {
         );
 
         Ok((read_steps, write_steps))
-
     }
 
     pub(crate) fn gen_copy_steps_for_return_data(
