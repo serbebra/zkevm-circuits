@@ -11,7 +11,7 @@ use crate::{
 };
 use eth_types::{
     address, bytecode,
-    evm_types::{stack::Stack, Gas, OpcodeId, Memory},
+    evm_types::{stack::Stack, Gas, Memory, OpcodeId},
     geth_types::GethData,
     word, Bytecode, Hash, ToAddress, ToWord, Word,
 };
