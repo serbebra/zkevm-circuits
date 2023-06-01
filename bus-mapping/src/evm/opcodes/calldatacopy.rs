@@ -335,7 +335,11 @@ mod calldatacopy_tests {
         assert_eq!(copy_events[0].dst_addr as usize, dst_offset);
 
         for (idx, (value, is_code, mask)) in copy_events[0].bytes.iter().enumerate() {
-            assert_eq!(Some(value), memory_a.get(idx));
+            if idx < memory_a.len() {
+                assert_eq!(*value, memory_a[idx]);
+            } else {
+                assert_eq!(*value, 0);
+            }
             assert!(!is_code);
         }
     }
