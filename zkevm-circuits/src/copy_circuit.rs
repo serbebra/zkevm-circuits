@@ -329,6 +329,25 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             ]))
         });
 
+        meta.create_gate("Last Step (check read and write rlc) Memory => Memory", |meta| {
+            let mut cb = BaseConstraintBuilder::default();
+
+            cb.require_equal(
+                "rlc_acc_read == rlc_acc_write on the last row",
+                meta.query_advice(rlc_acc_read, Rotation::next()),
+                meta.query_advice(rlc_acc_write, Rotation::next()),
+            );
+
+            cb.gate(and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                meta.query_advice(is_last, Rotation::next()),
+                and::expr([
+                    tag.value_equals(CopyDataType::Memory, Rotation::cur())(meta),
+                    tag.value_equals(CopyDataType::Memory, Rotation::next())(meta),
+                ]),
+            ]))
+        });
+
         meta.create_gate("verify step (q_step == 1)", |meta| {
             let mut cb = BaseConstraintBuilder::default();
 
