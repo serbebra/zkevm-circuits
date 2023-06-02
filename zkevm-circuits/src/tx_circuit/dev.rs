@@ -20,11 +20,11 @@ impl<F: Field> Circuit<F> for TxCircuit<F> {
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        let block_table = BlockTable::construct(meta);
-        let tx_table = TxTable::construct(meta);
-        let keccak_table = KeccakTable::construct(meta);
-        let rlp_table = RlpTable::construct(meta);
-        let challenges = Challenges::construct(meta);
+        let block_table = BlockTable::construct(meta); println!("block_table.num_advice_columns: {}", meta.num_advice_columns);
+        let tx_table = TxTable::construct(meta); println!("tx_table.num_advice_columns: {}", meta.num_advice_columns);
+        let keccak_table = KeccakTable::construct(meta); println!("keccak_table.num_advice_columns: {}", meta.num_advice_columns);
+        let rlp_table = RlpTable::construct(meta); println!("rlp_table.num_advice_columns: {}", meta.num_advice_columns);
+        let challenges = Challenges::construct(meta); println!("challenges.num_advice_columns: {}", meta.num_advice_columns);
 
         let config = {
             let challenges = challenges.exprs(meta);
@@ -39,6 +39,7 @@ impl<F: Field> Circuit<F> for TxCircuit<F> {
                 },
             )
         };
+        println!("TxCircuitConfig.num_advice_columns: {}", meta.num_advice_columns);
 
         (config, challenges)
     }

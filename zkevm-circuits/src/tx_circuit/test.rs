@@ -27,6 +27,7 @@ fn run<F: Field>(
         19,
         log2_ceil(TxCircuit::<F>::min_num_rows(max_txs, max_calldata)),
     );
+    println!("k = {}", k);
     // SignVerifyChip -> ECDSAChip -> MainGate instance column
     let circuit = TxCircuit::<F>::new(max_txs, max_calldata, chain_id, txs);
 

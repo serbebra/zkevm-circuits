@@ -750,6 +750,7 @@ impl<F: Field> SignVerifyChip<F> {
                     };
                     let assigned_ecdsa = self.assign_ecdsa(&mut ctx, ecdsa_chip, &signature)?;
                     println!("ctx.total_advice[{}] = {}", i, ctx.total_advice);
+                    println!("ctx.cells_to_lookup.len() = {}", ctx.cells_to_lookup.len());
                     ctx.print_stats(&["Range"]);
                     assigned_ecdsas.push(assigned_ecdsa);
                 }
