@@ -721,6 +721,7 @@ impl<F: Field> SignVerifyChip<F> {
             |region| {
                 if first_pass {
                     first_pass = false;
+                    println!("first_pass return!");
                     return Ok(vec![]);
                 }
 
