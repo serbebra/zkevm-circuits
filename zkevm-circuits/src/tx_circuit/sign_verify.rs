@@ -719,11 +719,11 @@ impl<F: Field> SignVerifyChip<F> {
         let assigned_sig_verifs = layouter.assign_region(
             || "ecdsa chip verification",
             |region| {
-                if first_pass {
-                    first_pass = false;
-                    println!("first_pass return!");
-                    return Ok(vec![]);
-                }
+                // if first_pass {
+                //     first_pass = false;
+                //     println!("first_pass return!");
+                //     return Ok(vec![]);
+                // }
 
                 let mut ctx = ecdsa_chip.new_context(region);
                 // println!("region = {:?}", region.clone());
