@@ -47,7 +47,7 @@ use itertools::Itertools;
 use keccak256::plain::Keccak;
 use log::error;
 use std::{iter, marker::PhantomData};
-use std::Instant;
+use std::time::Instant;
 // Hard coded parameters.
 // FIXME: allow for a configurable param.
 const MAX_NUM_SIG: usize = 32;
@@ -877,7 +877,9 @@ impl<F: Field> SignVerifyChip<F> {
         layouter: &mut impl Layouter<F>,
         signatures: &[SignData],
         challenges: &Challenges<Value<F>>,
+        parallel_syn: bool,
     ) -> Result<Vec<AssignedSignatureVerify<F>>, Error> {
+        println!("parallel_syn = {}", parallel_syn);
         if signatures.len() > self.max_verif {
             error!(
                 "signatures.len() = {} > max_verif = {}",

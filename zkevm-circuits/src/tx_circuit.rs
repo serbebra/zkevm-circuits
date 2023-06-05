@@ -1819,10 +1819,15 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
 
         #[cfg(feature = "enable-sign-verify")]
         {
-            let assigned_sig_verifs =
+            let assigned_sig_verifs = if self.parallel_syn {
                 self.sign_verify
                     .assign(&config.sign_verify, layouter, &sign_datas, challenges,
-                    self.parallel_syn)?; // TODO
+                    self.parallel_syn)?;
+            } else {
+                self.sign_verify
+                    .assign_parallel(&config.sign_verify, layouter, &sign_datas, challenges,
+                    self.parallel_syn)?;
+            };
             self.sign_verify.assert_sig_is_valid(
                 &config.sign_verify,
                 layouter,
