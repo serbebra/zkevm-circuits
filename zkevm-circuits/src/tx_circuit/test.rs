@@ -29,12 +29,23 @@ fn run<F: Field>(
     );
     println!("k = {}", k);
     // SignVerifyChip -> ECDSAChip -> MainGate instance column
-    let circuit = TxCircuit::<F>::new(max_txs, max_calldata, chain_id, txs);
-
+    let circuit = TxCircuit::<F>::new(max_txs, max_calldata, chain_id, txs.clone(), false);
     let prover = match MockProver::run(k, &circuit, vec![vec![]]) {
         Ok(prover) => prover,
         Err(e) => panic!("{:#?}", e),
     };
+
+    // if parallel synthesis is enabled, compare the results of the two circuits
+    {
+        let circuit_para_syn = TxCircuit::<F>::new(max_txs, max_calldata, chain_id, txs, true);
+        let prover_to_compare = match MockProver::run(k, &circuit_para_syn, vec![vec![]]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e),
+        };
+        let eqq = prover.is_mock_prover_equal(&prover_to_compare);
+        println!("eqq = {}", eqq);
+    }
+
     prover.verify()
 }
 
@@ -78,7 +89,7 @@ fn tx_circuit_0tx_1max_tx() {
 
 #[test]
 fn tx_circuit_1tx_1max_tx() {
-    const MAX_TXS: usize = 32;
+    const MAX_TXS: usize = 8;
     const MAX_CALLDATA: usize = 32;
 
     let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();

@@ -704,7 +704,9 @@ impl<F: Field> SignVerifyChip<F> {
         layouter: &mut impl Layouter<F>,
         signatures: &[SignData],
         challenges: &Challenges<Value<F>>,
+        parallel_syn: bool,
     ) -> Result<Vec<AssignedSignatureVerify<F>>, Error> {
+        println!("parallel_syn = {}", parallel_syn);
         if signatures.len() > self.max_verif {
             error!(
                 "signatures.len() = {} > max_verif = {}",
@@ -1060,6 +1062,7 @@ mod sign_verify_tests {
     struct TestCircuitSignVerify<F: Field> {
         sign_verify: SignVerifyChip<F>,
         signatures: Vec<SignData>,
+        parallel_syn: bool,
     }
 
     impl<F: Field> Circuit<F> for TestCircuitSignVerify<F> {
@@ -1079,6 +1082,7 @@ mod sign_verify_tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
+            println!("synthesizing circuit, self.parallel_syn = {}", self.parallel_syn);
             let challenges = config.challenges.values(&layouter);
             config.sign_verify.load_range(&mut layouter)?;
             let assigned_sig_verifs = self.sign_verify.assign(
@@ -1086,6 +1090,7 @@ mod sign_verify_tests {
                 &mut layouter,
                 &self.signatures,
                 &challenges,
+                self.parallel_syn, // TODO
             )?;
             config.sign_verify.keccak_table.dev_load(
                 &mut layouter,
@@ -1110,6 +1115,7 @@ mod sign_verify_tests {
                 _marker: PhantomData,
             },
             signatures,
+            parallel_syn: true,
         };
 
         let prover = match MockProver::run(k, &circuit, vec![vec![]]) {

@@ -1234,16 +1234,19 @@ pub struct TxCircuit<F: Field> {
     pub chain_id: u64,
     /// Size
     pub size: usize,
+    /// Parellel Synthesis
+    pub parallel_syn: bool,
 }
 
 impl<F: Field> TxCircuit<F> {
     /// Return a new TxCircuit
-    pub fn new(max_txs: usize, max_calldata: usize, chain_id: u64, txs: Vec<Transaction>) -> Self {
+    pub fn new(max_txs: usize, max_calldata: usize, chain_id: u64, txs: Vec<Transaction>, parallel_syn: bool) -> Self {
         log::info!(
-            "TxCircuit::new(max_txs = {}, max_calldata = {}, chain_id = {})",
+            "TxCircuit::new(max_txs = {}, max_calldata = {}, chain_id = {}, parallel_syn = {})",
             max_txs,
             max_calldata,
-            chain_id
+            chain_id,
+            parallel_syn
         );
         debug_assert!(txs.len() <= max_txs);
 
@@ -1254,6 +1257,7 @@ impl<F: Field> TxCircuit<F> {
             txs,
             size: Self::min_num_rows(max_txs, max_calldata),
             chain_id,
+            parallel_syn,
         }
     }
 
@@ -1737,6 +1741,7 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
             block.circuits_params.max_calldata,
             block.chain_id.as_u64(),
             block.txs.clone(),
+            false // TODO 
         )
     }
 
@@ -1816,7 +1821,8 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
         {
             let assigned_sig_verifs =
                 self.sign_verify
-                    .assign(&config.sign_verify, layouter, &sign_datas, challenges)?;
+                    .assign(&config.sign_verify, layouter, &sign_datas, challenges,
+                    self.parallel_syn)?; // TODO
             self.sign_verify.assert_sig_is_valid(
                 &config.sign_verify,
                 layouter,

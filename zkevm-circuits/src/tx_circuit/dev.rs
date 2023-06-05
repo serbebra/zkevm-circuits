@@ -50,6 +50,7 @@ impl<F: Field> Circuit<F> for TxCircuit<F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let challenges = challenges.values(&layouter);
+        println!("tx circuit dev synthesize");
 
         let padding_txs = (self.txs.len()..self.max_txs)
             .into_iter()
@@ -81,6 +82,7 @@ impl<F: Field> Circuit<F> for TxCircuit<F> {
             &challenges,
         )?;
         self.assign_dev_block_table(config.clone(), &mut layouter)?;
+        println!("tx circuit synthesize_sub begin");
         self.synthesize_sub(&config, &challenges, &mut layouter)
     }
 }
