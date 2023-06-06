@@ -24,7 +24,7 @@ fn run<F: Field>(
     max_calldata: usize,
 ) -> Result<(), Vec<VerifyFailure>> {
     let k = max(
-        19,
+        21,
         log2_ceil(TxCircuit::<F>::min_num_rows(max_txs, max_calldata)),
     );
     println!("k = {}", k);
@@ -44,6 +44,7 @@ fn run<F: Field>(
         };
         let eqq = prover.is_mock_prover_equal(&prover_to_compare);
         println!("eqq = {}", eqq);
+        prover_to_compare.verify()?;
     }
 
     prover.verify()
@@ -89,7 +90,7 @@ fn tx_circuit_0tx_1max_tx() {
 
 #[test]
 fn tx_circuit_1tx_1max_tx() {
-    const MAX_TXS: usize = 8;
+    const MAX_TXS: usize = 2;
     const MAX_CALLDATA: usize = 32;
 
     let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();

@@ -39,9 +39,11 @@ use halo2_proofs::plonk::SecondPhase;
 use halo2_proofs::{
     circuit::{Cell, Layouter, Value},
     halo2curves::secp256k1::{Fp, Fq, Secp256k1Affine},
-    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Error, Any, Fixed, Selector},
     poly::Rotation,
 };
+use halo2_proofs::circuit::RegionIndex;
+use halo2_proofs::circuit::Region;
 
 use itertools::Itertools;
 use keccak256::plain::Keccak;
@@ -55,7 +57,7 @@ const MAX_NUM_SIG: usize = 32;
 // We set CELLS_PER_SIG = 535000 to allows for a few buffer
 const CELLS_PER_SIG: usize = 535000;
 // Total number of rows allocated for ecdsa chip
-const TOTAL_NUM_ROWS: usize = 19;
+const TOTAL_NUM_ROWS: usize = 21;
 
 fn calc_required_advices(num_verif: usize) -> usize {
     let mut num_adv = 1;
@@ -291,6 +293,25 @@ pub(crate) struct AssignedValueNoTimer<F: Field> {
     pub context_id: usize,
 }
 
+impl<F: Field> Default for AssignedValueNoTimer<F> {
+    fn default() -> Self {
+        let tmp: Column<Fixed> = Column {
+            index: 0,
+            column_type: Fixed,
+        };
+        Self {
+            cell: Cell {
+                region_index: RegionIndex(0),
+                row_offset: 0,
+                column: tmp.into(),
+            },
+            value: Value::default(),
+            row_offset: 0,
+            context_id: 0,
+        }
+    }
+}
+
 impl<'v, F: Field> From<AssignedValue<'v, F>> for AssignedValueNoTimer<F> {
     fn from(input: AssignedValue<'v, F>) -> Self {
         Self {
@@ -333,6 +354,18 @@ pub(crate) struct AssignedSignatureVerify<F: Field> {
     pub(crate) msg_rlc: Value<F>,
     pub(crate) msg_hash_rlc: AssignedValueNoTimer<F>,
     pub(crate) sig_is_valid: AssignedValueNoTimer<F>,
+}
+
+impl<F: Field> Default for AssignedSignatureVerify<F> {
+    fn default() -> Self {
+        Self {
+            address: AssignedValueNoTimer::default(),
+            msg_len: 0,
+            msg_rlc: Value::default(),
+            msg_hash_rlc: AssignedValueNoTimer::default(),
+            sig_is_valid: AssignedValueNoTimer::default(),
+        }
+    }
 }
 
 struct SignDataDecomposed<'a: 'v, 'v, F: Field> {
@@ -707,6 +740,7 @@ impl<F: Field> SignVerifyChip<F> {
         parallel_syn: bool,
     ) -> Result<Vec<AssignedSignatureVerify<F>>, Error> {
         println!("parallel_syn = {}", parallel_syn);
+        println!("self.max_verif = {}", self.max_verif);
         if signatures.len() > self.max_verif {
             error!(
                 "signatures.len() = {} > max_verif = {}",
@@ -880,6 +914,7 @@ impl<F: Field> SignVerifyChip<F> {
         parallel_syn: bool,
     ) -> Result<Vec<AssignedSignatureVerify<F>>, Error> {
         println!("parallel_syn = {}", parallel_syn);
+        println!("self.max_verif = {}", self.max_verif);
         if signatures.len() > self.max_verif {
             error!(
                 "signatures.len() = {} > max_verif = {}",
@@ -902,9 +937,29 @@ impl<F: Field> SignVerifyChip<F> {
                 .zip(first_pass_vec.iter_mut())
                 .map(|(i, first_pass)| {
                     move |region: Region<'_, F>| {
-                        let first_pass_flag = *first_pass;
+                        // let first_pass_flag = *first_pass;
+                        // println!("first_pass_flag[{}] = {}", i, first_pass_flag);
+                        // if first_pass_flag {
+                        //     *first_pass = false;
+                        //     return Ok(AssignedSignatureVerify::default());
+                        // }
                         let mut ctx = ecdsa_chip.new_context(region);
                         ctx.print_stats(&["Range"]);
+
+                        // let first_pass_flag = *first_pass;
+                        // println!("first_pass_flag[{}] = {}", i, first_pass_flag);
+                        // if first_pass_flag {
+                        //     *first_pass = false;
+                        //     let column = ecdsa_chip.range.lookup_advice[ctx.current_phase][0].clone();
+                        //     ctx.region.assign_advice(|| "dummy",
+                        //         column,
+                        //         1<<17,//524279,//1<<19,
+                        //         || Value::known(F::zero()),
+                        //         )?;
+                        //     ctx.print_stats(&["Range"]);
+                        //     return Ok(AssignedSignatureVerify::default());
+                        // }
+
                         println!("sig idx = [{}]", i);
 
                         // ================================================
