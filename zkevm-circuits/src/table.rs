@@ -24,10 +24,6 @@ use halo2_proofs::{
     plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
-use mpt_zktrie::mpt_circuits::{
-    constraint_builder::{AdviceColumn, FixedColumn, SecondPhaseAdviceColumn},
-    gadgets::poseidon::PoseidonLookup,
-};
 use std::iter::repeat;
 
 #[cfg(feature = "onephase")]
@@ -849,21 +845,6 @@ pub struct PoseidonTable {
     pub control: Column<Advice>,
     /// heading_mark
     pub heading_mark: Column<Advice>,
-}
-
-impl PoseidonLookup for PoseidonTable {
-    fn lookup(&self) -> (FixedColumn, [AdviceColumn; 4], SecondPhaseAdviceColumn) {
-        (
-            FixedColumn(self.q_enable),
-            [
-                AdviceColumn(self.input0),
-                AdviceColumn(self.input1),
-                AdviceColumn(self.control),
-                AdviceColumn(self.heading_mark),
-            ],
-            SecondPhaseAdviceColumn(self.hash_id),
-        )
-    }
 }
 
 impl<F: Field> LookupTable<F> for PoseidonTable {
