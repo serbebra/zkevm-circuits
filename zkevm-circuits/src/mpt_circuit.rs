@@ -5,18 +5,20 @@ use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
+use eth_types::Field;
 use halo2_proofs::{
-    halo2curves::bn256::Fr,
     circuit::{Layouter, Value},
+    halo2curves::bn256::Fr,
     plonk::{ConstraintSystem, Error},
 };
 use mpt_circuits::mpt;
 
 /// Circuit wrapped with mpt table data
 #[derive(Clone, Debug, Default)]
-pub struct MptCircuit {
+pub struct MptCircuit<F: Field> {
     base_circuit: mpt::MptCircuit,
     mpt_updates: witness::MptUpdates,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 /// Circuit configuration argument ts
@@ -31,9 +33,13 @@ pub struct MptCircuitConfigArgs {
 
 /// re-wrapping for mpt config
 #[derive(Clone)]
-pub struct MptCircuitConfig(pub(crate) mpt::MptCircuitConfig, pub(crate) MptTable);
+pub struct MptCircuitConfig<F: Field>(
+    pub(crate) mpt::MptCircuitConfig,
+    pub(crate) MptTable,
+    std::marker::PhantomData<F>,
+);
 
-impl SubCircuitConfig<Fr> for MptCircuitConfig {
+impl SubCircuitConfig<Fr> for MptCircuitConfig<Fr> {
     type ConfigArgs = MptCircuitConfigArgs;
 
     fn new(
@@ -66,20 +72,24 @@ impl SubCircuitConfig<Fr> for MptCircuitConfig {
                 mpt_table.old_value,
             ];
 
-        let conf = mpt::MptCircuitConfig::create(meta, mpt_table_inp, poseidon_table, challenges.evm_word());
-        Self(conf, mpt_table)
+        let conf = mpt::MptCircuitConfig::create(
+            meta,
+            mpt_table_inp,
+            poseidon_table,
+            challenges.evm_word(),
+        );
+        Self(conf, mpt_table, Default::default())
     }
 }
 
 #[cfg(any(feature = "test", test))]
-impl SubCircuit<Fr> for MptCircuit {
-    type Config = MptCircuitConfig;
+impl SubCircuit<Fr> for MptCircuit<Fr> {
+    type Config = MptCircuitConfig<Fr>;
 
     fn new_from_block(block: &witness::Block<Fr>) -> Self {
-
         use itertools::Itertools;
 
-        let traces : Vec<_> = block
+        let traces: Vec<_> = block
             .mpt_updates
             .proof_types
             .iter()
@@ -87,9 +97,10 @@ impl SubCircuit<Fr> for MptCircuit {
             .zip_eq(block.mpt_updates.smt_traces.iter().cloned())
             .collect();
 
-        Self{
+        Self {
             base_circuit: mpt::MptCircuit::from_traces(traces, block.circuits_params.max_mpt_rows),
             mpt_updates: block.mpt_updates.clone(),
+            ..Default::default()
         }
     }
 
@@ -109,10 +120,19 @@ impl SubCircuit<Fr> for MptCircuit {
         challenges: &Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-
         let base = &self.base_circuit;
-        config.0.assign(layouter, challenges.evm_word(), &base.proofs, base.row_limit)?;
-        config.1.load(layouter, &self.mpt_updates, base.row_limit, challenges.evm_word())?;
+        config.0.assign(
+            layouter,
+            challenges.evm_word(),
+            &base.proofs,
+            base.row_limit,
+        )?;
+        config.1.load(
+            layouter,
+            &self.mpt_updates,
+            base.row_limit,
+            challenges.evm_word(),
+        )?;
         Ok(())
     }
 

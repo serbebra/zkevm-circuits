@@ -105,28 +105,28 @@ use crate::{
 
 /// Configuration of the Super Circuit
 #[derive(Clone)]
-pub struct SuperCircuitConfig {
+pub struct SuperCircuitConfig<F: Field> {
     block_table: BlockTable,
     mpt_table: MptTable,
     rlp_table: RlpTable,
     tx_table: TxTable,
     poseidon_table: PoseidonTable,
-    evm_circuit: EvmCircuitConfig<Fr>,
-    state_circuit: StateCircuitConfig<Fr>,
-    tx_circuit: TxCircuitConfig<Fr>,
+    evm_circuit: EvmCircuitConfig<F>,
+    state_circuit: StateCircuitConfig<F>,
+    tx_circuit: TxCircuitConfig<F>,
     #[cfg(not(feature = "poseidon-codehash"))]
-    bytecode_circuit: BytecodeCircuitConfig<Fr>,
+    bytecode_circuit: BytecodeCircuitConfig<F>,
     #[cfg(feature = "poseidon-codehash")]
-    bytecode_circuit: ToHashBlockCircuitConfig<Fr, HASHBLOCK_BYTES_IN_FIELD>,
-    copy_circuit: CopyCircuitConfig<Fr>,
-    keccak_circuit: KeccakCircuitConfig<Fr>,
-    poseidon_circuit: PoseidonCircuitConfig<Fr>,
-    pi_circuit: PiCircuitConfig<Fr>,
-    exp_circuit: ExpCircuitConfig<Fr>,
-    rlp_circuit: RlpCircuitConfig<Fr>,
+    bytecode_circuit: ToHashBlockCircuitConfig<F, HASHBLOCK_BYTES_IN_FIELD>,
+    copy_circuit: CopyCircuitConfig<F>,
+    keccak_circuit: KeccakCircuitConfig<F>,
+    poseidon_circuit: PoseidonCircuitConfig<F>,
+    pi_circuit: PiCircuitConfig<F>,
+    exp_circuit: ExpCircuitConfig<F>,
+    rlp_circuit: RlpCircuitConfig<F>,
     /// Mpt Circuit
     #[cfg(feature = "zktrie")]
-    mpt_circuit: MptCircuitConfig,
+    mpt_circuit: MptCircuitConfig<F>,
 }
 
 /// Circuit configuration arguments
@@ -143,7 +143,7 @@ pub struct SuperCircuitConfigArgs {
     pub challenges: crate::util::Challenges,
 }
 
-impl SubCircuitConfig<Fr> for SuperCircuitConfig {
+impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
     type ConfigArgs = SuperCircuitConfigArgs;
 
     /// Configure SuperCircuitConfig
@@ -336,42 +336,44 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig {
 /// The Super Circuit contains all the zkEVM circuits
 #[derive(Clone, Default, Debug)]
 pub struct SuperCircuit<
+    F: Field,
     const MAX_TXS: usize,
     const MAX_CALLDATA: usize,
     const MAX_INNER_BLOCKS: usize,
     const MOCK_RANDOMNESS: u64,
 > {
     /// EVM Circuit
-    pub evm_circuit: EvmCircuit<Fr>,
+    pub evm_circuit: EvmCircuit<F>,
     /// State Circuit
-    pub state_circuit: StateCircuit<Fr>,
+    pub state_circuit: StateCircuit<F>,
     /// The transaction circuit that will be used in the `synthesize` step.
-    pub tx_circuit: TxCircuit<Fr>,
+    pub tx_circuit: TxCircuit<F>,
     /// Public Input Circuit
-    pub pi_circuit: PiCircuit<Fr>,
+    pub pi_circuit: PiCircuit<F>,
     /// Bytecode Circuit
-    pub bytecode_circuit: BytecodeCircuit<Fr>,
+    pub bytecode_circuit: BytecodeCircuit<F>,
     /// Copy Circuit
-    pub copy_circuit: CopyCircuit<Fr>,
+    pub copy_circuit: CopyCircuit<F>,
     /// Exp Circuit
-    pub exp_circuit: ExpCircuit<Fr>,
+    pub exp_circuit: ExpCircuit<F>,
     /// Keccak Circuit
-    pub keccak_circuit: KeccakCircuit<Fr>,
+    pub keccak_circuit: KeccakCircuit<F>,
     /// Poseidon hash Circuit
-    pub poseidon_circuit: PoseidonCircuit<Fr>,
+    pub poseidon_circuit: PoseidonCircuit<F>,
     /// Rlp Circuit
-    pub rlp_circuit: RlpCircuit<Fr, SignedTransaction>,
+    pub rlp_circuit: RlpCircuit<F, SignedTransaction>,
     /// Mpt Circuit
     #[cfg(feature = "zktrie")]
-    pub mpt_circuit: MptCircuit,
+    pub mpt_circuit: MptCircuit<F>,
 }
 
 impl<
+        F: Field,
         const MAX_TXS: usize,
         const MAX_CALLDATA: usize,
         const MAX_INNER_BLOCKS: usize,
         const MOCK_RANDOMNESS: u64,
-    > SuperCircuit<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
+    > SuperCircuit<F, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
 {
     /// Return the number of rows required to verify a given block
     pub fn get_num_rows_required(block: &Block<Fr>) -> usize {
@@ -394,7 +396,7 @@ impl<
         let pi = PiCircuit::min_num_rows_block(block);
         let poseidon = (0, 0); //PoseidonCircuit::min_num_rows_block(block);
         #[cfg(feature = "zktrie")]
-        let mpt = (0, 0); //MptCircuit::min_num_rows_block(block);
+        let mpt = MptCircuit::<Fr>::min_num_rows_block(block);
 
         let rows: Vec<(usize, usize)> = vec![
             evm,
@@ -429,9 +431,10 @@ impl<
         const MAX_CALLDATA: usize,
         const MAX_INNER_BLOCKS: usize,
         const MOCK_RANDOMNESS: u64,
-    > SubCircuit<Fr> for SuperCircuit<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
+    > SubCircuit<Fr>
+    for SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
 {
-    type Config = SuperCircuitConfig;
+    type Config = SuperCircuitConfig<Fr>;
 
     fn unusable_rows() -> usize {
         itertools::max([
@@ -460,7 +463,7 @@ impl<
         let rlp_circuit = RlpCircuit::new_from_block(block);
         #[cfg(feature = "zktrie")]
         let mpt_circuit = MptCircuit::new_from_block(block);
-        SuperCircuit::<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS> {
+        SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS> {
             evm_circuit,
             state_circuit,
             tx_circuit,
@@ -551,9 +554,9 @@ impl<
         const MAX_CALLDATA: usize,
         const MAX_INNER_BLOCKS: usize,
         const MOCK_RANDOMNESS: u64,
-    > Circuit<Fr> for SuperCircuit<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
+    > Circuit<Fr> for SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
 {
-    type Config = (SuperCircuitConfig, Challenges);
+    type Config = (SuperCircuitConfig<Fr>, Challenges);
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -617,7 +620,8 @@ impl<
         const MAX_CALLDATA: usize,
         const MAX_INNER_BLOCKS: usize,
         const MOCK_RANDOMNESS: u64,
-    > CircuitExt<Fr> for SuperCircuit<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
+    > CircuitExt<Fr>
+    for SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
 {
     fn num_instance(&self) -> Vec<usize> {
         self.instances().iter().map(|l| l.len()).collect_vec()
@@ -633,7 +637,7 @@ impl<
         const MAX_CALLDATA: usize,
         const MAX_INNER_BLOCKS: usize,
         const MOCK_RANDOMNESS: u64,
-    > SuperCircuit<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
+    > SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
 {
     /// From the witness data, generate a SuperCircuit instance with all of the
     /// sub-circuits filled with their corresponding witnesses.
@@ -685,7 +689,7 @@ impl<
         log::debug!("super circuit needs k = {}", k);
 
         let circuit =
-            SuperCircuit::<MAX_TXS, MAX_CALLDATA,MAX_INNER_BLOCKS,  MOCK_RANDOMNESS>::new_from_block(&block);
+            SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA,MAX_INNER_BLOCKS,  MOCK_RANDOMNESS>::new_from_block(&block);
 
         let instance = circuit.instance();
         Ok((k, circuit, instance))
