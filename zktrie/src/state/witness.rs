@@ -301,7 +301,7 @@ impl WitnessGenerator {
         old_val: Word,
         key: Option<Word>,
     ) -> SMTTrace {
-        dbg!((proof_type, addres, old_val, new_val, key));
+        dbg!((proof_type, address, old_val, new_val, key));
         if let Some(key) = key {
             self.trace_storage_update(address, key, new_val, old_val)
         } else {
