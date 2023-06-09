@@ -5,6 +5,8 @@ use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
+use std::fs::File;
+use std::io::Write;
 use eth_types::Field;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -133,6 +135,17 @@ impl SubCircuit<Fr> for MptCircuit {
     type Config = MptCircuitConfig;
 
     fn new_from_block(block: &witness::Block<Fr>) -> Self {
+        let traces: Vec<_> = block
+                .mpt_updates
+                .proof_types
+                .iter()
+                .cloned()
+                .zip_eq(block.mpt_updates.smt_traces.iter().cloned())
+                .collect();
+
+        let mut dump = File::create("dump.json").unwrap();
+        dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes()).unwrap();
+        // panic!();
         Self {
             n_rows: block.circuits_params.max_mpt_rows,
             traces: block
@@ -209,7 +222,10 @@ impl Circuit<Fr> for MptCircuit {
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
-        Self::default()
+        Self {
+            n_rows: 0,
+            traces: vec![],
+        }
     }
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
