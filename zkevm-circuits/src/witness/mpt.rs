@@ -110,9 +110,13 @@ impl MptUpdates {
         self.smt_traces = Vec::new();
         self.proof_types = Vec::new();
 
+        dbg!(self.updates.clone());
+
         for (key, update) in &mut self.updates {
             log::trace!("apply update {:?} {:#?}", key, update);
+            dbg!(key);
             let key = key.set_non_exists(update.old_value, update.new_value);
+            dbg!(key);
             //let proof_tip = state::as_proof_type(update.proof_type() as i32);
             let proof_tip = update.proof_type();
             let smt_trace = wit_gen.handle_new_state(
