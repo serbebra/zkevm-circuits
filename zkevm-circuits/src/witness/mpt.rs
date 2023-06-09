@@ -28,7 +28,7 @@ pub struct MptUpdate {
 
 impl MptUpdate {
     fn proof_type(&self) -> MPTProofType {
-        dbg(&self)
+        dbg!(&self);
         match self.key {
             Key::AccountStorage { .. } => {
                 if self.old_value.is_zero() && self.new_value.is_zero() {
