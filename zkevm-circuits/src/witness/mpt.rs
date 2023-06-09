@@ -38,6 +38,7 @@ impl MptUpdate {
                 }
             }
             Key::Account { field_tag, .. } => {
+                dbg!(field_tag);
                 if matches!(AccountFieldTag::CodeHash, field_tag)
                     && self.old_value.is_zero()
                     && self.new_value.is_zero()
