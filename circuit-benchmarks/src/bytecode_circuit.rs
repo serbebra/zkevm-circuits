@@ -49,6 +49,10 @@ mod tests {
         let max_bytecode_row_num = num_rows - NUM_BLINDING_ROWS;
         let bytecode_len = std::cmp::min(MAX_BYTECODE_LEN, max_bytecode_row_num);
         let bytecodes_num: usize = max_bytecode_row_num / bytecode_len;
+        println!(
+            "Bytecode length: {}, Bytecodes number: {}",
+            bytecode_len, bytecodes_num
+        );
 
         // Create the circuit
         let bytecode_circuit = TestBytecodeCircuit::<Fr>::new(
@@ -69,10 +73,32 @@ mod tests {
         let verifier_params: ParamsVerifierKZG<Bn256> = general_params.verifier_params().clone();
         end_timer!(start1);
 
+        std::env::set_var("ASSIGNMENT_TYPE", "default");
+        let assign_var = std::env::var("ASSIGNMENT_TYPE").ok().unwrap_or_default(); //.into();
+        println!("assign_var: {}", assign_var);
+
+        let assignment_type = std::env::var("ASSIGNMENT_TYPE").ok().unwrap_or_default();
+        let is_parallel_assignment = match assignment_type.as_str() {
+            "default" => false,
+            "parallel" => true,
+            &_ => todo!(),
+        };
+        println!("is_parallel_assignment: {}", is_parallel_assignment);
+
         // Initialize the proving key
         let vk = keygen_vk(&general_params, &bytecode_circuit).expect("keygen_vk should not fail");
         let pk =
             keygen_pk(&general_params, vk, &bytecode_circuit).expect("keygen_pk should not fail");
+        std::env::set_var("ASSIGNMENT_TYPE", "parallel");
+        let assign_var = std::env::var("ASSIGNMENT_TYPE"); //.ok().unwrap_or_default().into();
+        println!("assign_var: {:?}", assign_var);
+        let assignment_type = std::env::var("ASSIGNMENT_TYPE").ok().unwrap_or_default();
+        let is_parallel_assignment = match assignment_type.as_str() {
+            "default" => false,
+            "parallel" => true,
+            &_ => todo!(),
+        };
+        println!("is_parallel_assignment: {}", is_parallel_assignment);
         // Create a proof
         let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
 
@@ -121,6 +147,7 @@ mod tests {
         )
         .expect("failed to verify bench circuit");
         end_timer!(start3);
+        std::env::set_var("ASSIGNMENT_TYPE", "default");
     }
 
     /// fill bytecodes_num * bytecode_len bytes to the witness table
