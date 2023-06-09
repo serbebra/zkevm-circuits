@@ -43,6 +43,8 @@ impl MptUpdate {
                     && self.old_value.is_zero()
                     && self.new_value.is_zero()
                 {
+                    dbg!(field_tag, self.old_value, self.new_value);
+                    dbg!(matches!(field_tag, AccountFieldTag::CodeHash));
                     MPTProofType::AccountDoesNotExist
                 } else {
                     field_tag.into()
