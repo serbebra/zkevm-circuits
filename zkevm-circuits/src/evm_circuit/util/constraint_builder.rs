@@ -1013,7 +1013,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             RwValues::new(
                 tx_id,
                 account_address,
-                0.expr(),
+                AccountFieldTag::CodeHash.expr(),
                 key,
                 value.clone(),
                 value,
@@ -1040,7 +1040,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             RwValues::new(
                 tx_id,
                 account_address,
-                0.expr(),
+                AccountFieldTag::CodeHash.expr(),
                 key,
                 value,
                 value_prev,

@@ -558,10 +558,12 @@ impl Rw {
             Self::Account { field_tag, .. } => Some(*field_tag as u64),
             Self::CallContext { field_tag, .. } => Some(*field_tag as u64),
             Self::TxReceipt { field_tag, .. } => Some(*field_tag as u64),
+            // See comment above configure for is_non_exist in state_circuit.rs for a explanation of
+            // the field tag for AccountStorage is not None.
+            Self::AccountStorage { .. } => Some(AccountFieldTag::CodeHash as u64),
             Self::Start { .. }
             | Self::Memory { .. }
             | Self::Stack { .. }
-            | Self::AccountStorage { .. }
             | Self::TxAccessListAccount { .. }
             | Self::TxAccessListAccountStorage { .. }
             | Self::TxRefund { .. }

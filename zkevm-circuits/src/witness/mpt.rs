@@ -6,7 +6,7 @@ use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word, U256};
 use halo2_proofs::circuit::Value;
 use itertools::Itertools;
 use mpt_zktrie::{
-    mpt_circuits::{serde::SMTTrace, MPTProofType as ProofType, MPTProofType},
+    mpt_circuits::{serde::SMTTrace, MPTProofType},
     state,
     state::witness::WitnessGenerator,
 };
@@ -27,16 +27,25 @@ pub struct MptUpdate {
 }
 
 impl MptUpdate {
-    fn proof_type(&self) -> ProofType {
+    fn proof_type(&self) -> MPTProofType {
         match self.key {
             Key::AccountStorage { .. } => {
                 if self.old_value.is_zero() && self.new_value.is_zero() {
-                    ProofType::StorageDoesNotExist
+                    MPTProofType::StorageDoesNotExist
                 } else {
-                    ProofType::StorageChanged
+                    MPTProofType::StorageChanged
                 }
             }
-            Key::Account { field_tag, .. } => field_tag.into(),
+            Key::Account { field_tag, .. } => {
+                if matches!(AccountFieldTag::CodeHash, field_tag)
+                    && self.old_value.is_zero()
+                    && self.new_value.is_zero()
+                {
+                    MPTProofType::AccountDoesNotExist
+                } else {
+                    field_tag.into()
+                }
+            }
         }
     }
 }
@@ -254,16 +263,15 @@ impl MptUpdate {
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
 enum Key {
+    Account {
+        address: Address,
+        field_tag: AccountFieldTag,
+    },
     AccountStorage {
-        // god what are these fields,t even?
         tx_id: usize,
         address: Address,
         storage_key: Word,
         exists: bool,
-    },
-    Account {
-        address: Address,
-        field_tag: AccountFieldTag,
     },
 }
 
@@ -463,6 +471,43 @@ mod test {
         updates.insert(update);
 
         updates.fill_state_roots_from_generator(generator);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
+        );
+
+        panic!();
+    }
+
+    #[test]
+    fn nonexisting_type_1() {
+        assert!(*HASH_SCHEME_DONE);
+
+        let mut updates = MptUpdates::default();
+        // Add precompile addresses in so MPT isn't too empty.
+        for precompile in 4..6u8 {
+            let mut address = Address::zero();
+            address.0[1] = precompile;
+            updates.insert(nonce_update(address));
+        }
+
+        // The key of this address has the same first byte as the key of Address::zero();
+        let mut address = Address::zero();
+        address.0[1] = 202;
+
+        updates.insert(MptUpdate {
+            key: Key::Account {
+                address,
+                field_tag: AccountFieldTag::NonExisting,
+            },
+            old_value: Word::zero(),
+            new_value: Word::zero(),
+            old_root: Word::zero(),
+            new_root: Word::zero(),
+            original_rws: Default::default(),
+        });
+
+        updates.fill_state_roots(&ZktrieState::default());
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1383,6 +1428,102 @@ mod test {
             },
             old_value: Word::zero(),
             new_value: Word::zero(),
+            old_root: Word::zero(),
+            new_root: Word::zero(),
+            original_rws: Default::default(),
+        });
+
+        updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
+        );
+
+        panic!();
+    }
+
+    #[test]
+    fn empty_account_empty_storage_proof() {
+        assert!(*HASH_SCHEME_DONE);
+
+        let mut updates = MptUpdates::default();
+        // Add precompile addresses in so MPT isn't too empty.
+        for precompile in 1..20u8 {
+            let mut address = Address::zero();
+            address.0[1] = precompile;
+            updates.insert(MptUpdate {
+                key: Key::AccountStorage {
+                    address,
+                    tx_id: 10,
+                    exists: false,
+                    storage_key: Word::from(3),
+                },
+                old_value: Word::zero(),
+                new_value: Word::one(),
+                old_root: Word::zero(),
+                new_root: Word::zero(),
+                original_rws: Default::default(),
+            });
+        }
+
+        let address = Address::zero();
+        updates.insert(MptUpdate {
+            key: Key::AccountStorage {
+                address,
+                tx_id: 11,
+                exists: false,
+                storage_key: Word::from(3),
+            },
+            old_value: Word::zero(),
+            new_value: Word::zero(),
+            old_root: Word::zero(),
+            new_root: Word::zero(),
+            original_rws: Default::default(),
+        });
+
+        updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
+        );
+
+        panic!();
+    }
+
+    #[test]
+    fn empty_account_storage_write() {
+        assert!(*HASH_SCHEME_DONE);
+
+        let mut updates = MptUpdates::default();
+        // Add precompile addresses in so MPT isn't too empty.
+        for precompile in 1..20u8 {
+            let mut address = Address::zero();
+            address.0[1] = precompile;
+            updates.insert(MptUpdate {
+                key: Key::AccountStorage {
+                    address,
+                    tx_id: 10,
+                    exists: false,
+                    storage_key: Word::from(3),
+                },
+                old_value: Word::zero(),
+                new_value: Word::one(),
+                old_root: Word::zero(),
+                new_root: Word::zero(),
+                original_rws: Default::default(),
+            });
+        }
+
+        let address = Address::zero();
+        updates.insert(MptUpdate {
+            key: Key::AccountStorage {
+                address,
+                tx_id: 11,
+                exists: false,
+                storage_key: Word::from(3),
+            },
+            old_value: Word::zero(),
+            new_value: Word::one(),
             old_root: Word::zero(),
             new_root: Word::zero(),
             original_rws: Default::default(),

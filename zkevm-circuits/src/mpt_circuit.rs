@@ -124,6 +124,7 @@ impl SubCircuitConfig<Fr> for MptCircuitConfig {
 /// ...
 #[derive(Clone, Debug, Default)]
 pub struct MptCircuit {
+    n_rows: usize,
     traces: Vec<(MPTProofType, SMTTrace)>,
 }
 
@@ -133,6 +134,7 @@ impl SubCircuit<Fr> for MptCircuit {
 
     fn new_from_block(block: &witness::Block<Fr>) -> Self {
         Self {
+            n_rows: block.circuits_params.max_mpt_rows,
             traces: block
                 .mpt_updates
                 .proof_types
@@ -167,9 +169,13 @@ impl SubCircuit<Fr> for MptCircuit {
             || "",
             |mut region| {
                 // TODO: selector?
-                config
-                    .mpt_update
-                    .assign(&mut region, &proofs, challenges.evm_word());
+                let n_mpt_rows =
+                    config
+                        .mpt_update
+                        .assign(&mut region, &proofs, challenges.evm_word());
+                for offset in n_mpt_rows..self.n_rows {
+                    config.mpt_update.assign_padding_row(&mut region, offset);
+                }
                 config
                     .canonical_representation
                     .assign(&mut region, &mpt_update_keys(&proofs));
@@ -203,7 +209,7 @@ impl Circuit<Fr> for MptCircuit {
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
-        Self { traces: vec![] }
+        Self::default()
     }
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {

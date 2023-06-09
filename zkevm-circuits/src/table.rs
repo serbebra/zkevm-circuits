@@ -25,7 +25,7 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use mpt_zktrie::mpt_circuits::{
-    constraint_builder::{AdviceColumn, FixedColumn},
+    constraint_builder::{AdviceColumn, FixedColumn, SecondPhaseAdviceColumn},
     gadgets::poseidon::PoseidonLookup,
 };
 use std::iter::repeat;
@@ -361,8 +361,6 @@ pub enum RwTableTag {
     Stack,
     /// Memory operation
     Memory,
-    /// Account Storage operation
-    AccountStorage,
     /// Tx Access List Account operation
     TxAccessListAccount,
     /// Tx Access List Account Storage operation
@@ -371,6 +369,8 @@ pub enum RwTableTag {
     TxRefund,
     /// Account operation
     Account,
+    /// Account Storage operation
+    AccountStorage,
     /// Call Context operation
     CallContext,
     /// Tx Log operation
@@ -403,15 +403,14 @@ impl From<RwTableTag> for usize {
 /// Tag for an AccountField in RwTable
 #[derive(Clone, Copy, Debug, EnumIter, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccountFieldTag {
-    /// Variant representing the poseidon hash of an account's code.
-    CodeHash = 0, /* we need this to match to the field tag of AccountStorage, which is
-                   * always 0 */
     /// Nonce field
     Nonce,
     /// Balance field
     Balance,
     /// Variant representing the keccak hash of an account's code.
     KeccakCodeHash,
+    /// Variant representing the poseidon hash of an account's code.
+    CodeHash,
     /// Variant representing the code size, i.e. length of account's code.
     CodeSize,
     /// NonExisting field
@@ -709,7 +708,7 @@ impl From<AccountFieldTag> for MPTProofType {
             AccountFieldTag::Balance => Self::BalanceChanged,
             AccountFieldTag::KeccakCodeHash => Self::CodeHashExists,
             AccountFieldTag::CodeHash => Self::PoseidonCodeHashExists,
-            AccountFieldTag::NonExisting => Self::StorageDoesNotExist,
+            AccountFieldTag::NonExisting => Self::AccountDoesNotExist,
             AccountFieldTag::CodeSize => Self::CodeSizeExists,
         }
     }
@@ -853,16 +852,16 @@ pub struct PoseidonTable {
 }
 
 impl PoseidonLookup for PoseidonTable {
-    fn lookup(&self) -> (FixedColumn, [AdviceColumn; 5]) {
+    fn lookup(&self) -> (FixedColumn, [AdviceColumn; 4], SecondPhaseAdviceColumn) {
         (
             FixedColumn(self.q_enable),
             [
-                AdviceColumn(self.hash_id),
                 AdviceColumn(self.input0),
                 AdviceColumn(self.input1),
                 AdviceColumn(self.control),
                 AdviceColumn(self.heading_mark),
             ],
+            SecondPhaseAdviceColumn(self.hash_id),
         )
     }
 }

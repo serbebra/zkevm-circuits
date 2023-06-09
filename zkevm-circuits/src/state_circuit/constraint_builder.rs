@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     evm_circuit::{param::N_BYTES_WORD, util::not},
-    table::{MPTProofType as ProofType, RwTableTag},
+    table::{AccountFieldTag, MPTProofType as ProofType, RwTableTag},
     util::Expr,
 };
 use eth_types::Field;
@@ -290,7 +290,13 @@ impl<F: Field> ConstraintBuilder<F> {
     fn build_account_storage_constraints(&mut self, q: &Queries<F>) {
         // TODO: cold VS warm
         // ref. spec 4.0. Unused keys are 0
-        self.require_zero("field_tag is 0 for AccountStorage", q.field_tag());
+        // See comment above configure for is_non_exist in state_circuit.rs for a explanation of why
+        // this is required.
+        self.require_equal(
+            "field_tag is AccountFieldTag::CodeHash for AccountStorage",
+            q.field_tag(),
+            AccountFieldTag::CodeHash.expr(),
+        );
 
         // value = 0 means the leaf doesn't exist. 0->0 transition requires a
         // non-existing proof.
@@ -440,6 +446,7 @@ impl<F: Field> ConstraintBuilder<F> {
             cb.add_lookup(
                 "mpt_update exists in mpt circuit for Account last access",
                 vec![
+                    (1.expr(), q.mpt_update_table.q_enable.clone()),
                     (
                         q.rw_table.address.clone(),
                         q.mpt_update_table.address.clone(),
