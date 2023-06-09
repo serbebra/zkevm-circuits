@@ -116,6 +116,14 @@ impl WitnessGenerator {
             (hash_zktrie_key(&word_buf), HexBytes(word_buf))
         };
 
+        // Handle corner case where the account doesn't exist at all. In this case we produce an
+        // non-existing account proof, but with the state_key field set.
+        if new_value.is_zero() && !self.accounts.contains_key(&address) {
+            let mut trace = self.trace_account_update(address, |_| None);
+            trace.state_key = Some(key);
+            return trace;
+        }
+
         self.storages.entry(address).or_insert_with(|| {
             ZktrieState::default()
                 .zk_db
