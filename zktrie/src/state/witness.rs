@@ -382,7 +382,11 @@ impl WitnessGenerator {
                     }
                     _ => unreachable!("invalid proof type: {:?}", proof_type),
                 }
-                Some(acc_data)
+                if acc_data == AccountData::default() {
+                    None
+                } else {
+                    Some(acc_data)
+                }
             })
         }
     }
