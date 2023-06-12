@@ -93,7 +93,7 @@ use eth_types::{geth_types::GethData, Field};
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     halo2curves::bn256::Fr,
-    plonk::{Circuit, ConstraintSystem, Error, Expression},
+    plonk::{Circuit, ConstraintSystem, Error},
 };
 use itertools::Itertools;
 use snark_verifier_sdk::CircuitExt;
@@ -272,7 +272,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             MptCircuitConfigArgs {
                 poseidon_table,
                 mpt_table,
-                challenges: challenges.clone(),
+                challenges,
             },
         );
         #[cfg(feature = "zktrie")]

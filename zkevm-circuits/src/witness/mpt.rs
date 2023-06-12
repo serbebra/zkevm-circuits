@@ -91,7 +91,7 @@ impl MptUpdates {
         self.old_root = U256::from_big_endian(init_trie.root());
         log::trace!("fill_state_roots init {:?}", init_trie.root());
 
-        let mut wit_gen = WitnessGenerator::from(init_trie);
+        let wit_gen = WitnessGenerator::from(init_trie);
         let wit_gen = self.fill_state_roots_from_generator(wit_gen);
 
         let root_pair2 = (self.old_root, self.new_root);
@@ -230,7 +230,7 @@ impl MptUpdates {
     }
 
     fn insert(&mut self, update: MptUpdate) {
-        self.updates.insert(update.key.clone(), update);
+        self.updates.insert(update.key, update);
     }
 }
 

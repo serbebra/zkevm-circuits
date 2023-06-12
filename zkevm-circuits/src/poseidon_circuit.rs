@@ -12,10 +12,7 @@ use halo2_proofs::{
     halo2curves::bn256::Fr,
     plonk::{Circuit, ConstraintSystem, Error},
 };
-use hash_circuit::{
-    hash::{Hashable, PoseidonHashChip, PoseidonHashConfig, PoseidonHashTable},
-    Bn256Fr,
-};
+use hash_circuit::hash::{Hashable, PoseidonHashChip, PoseidonHashConfig, PoseidonHashTable};
 use itertools::Itertools;
 use mpt_zktrie::mpt_circuits::{
     gadgets::mpt_update::hash_traces, serde::SMTTrace, types::Proof, MPTProofType,

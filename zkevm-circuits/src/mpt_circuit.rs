@@ -7,11 +7,11 @@ use crate::{
 };
 use eth_types::Field;
 use halo2_proofs::{
-    circuit::{Layouter, Value},
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     halo2curves::bn256::Fr,
-    plonk::{ConstraintSystem, Error},
+    plonk::{Circuit, ConstraintSystem, Error},
 };
-use mpt_circuits::mpt;
+use mpt_zktrie::mpt_circuits::mpt;
 
 /// Circuit wrapped with mpt table data
 #[derive(Clone, Debug, Default)]
@@ -142,16 +142,15 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
     }
 }
 
-
 #[cfg(any(feature = "test", test))]
-impl Circuit<Fr> for MptCircuit {
-    type Config = (MptCircuitConfig, Challenges);
+impl Circuit<Fr> for MptCircuit<Fr> {
+    type Config = (MptCircuitConfig<Fr>, Challenges);
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
         Self {
-            n_rows: 0,
-            traces: vec![],
+            base_circuit: self.base_circuit.without_witnesses(),
+            ..Default::default()
         }
     }
 

@@ -16,6 +16,7 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use hash_circuit::hash::HASHABLE_DOMAIN_SPEC;
+#[cfg(feature = "poseidon-codehash-lookup")]
 use itertools::Itertools;
 use log::trace;
 use std::vec;
