@@ -145,7 +145,6 @@ impl SubCircuit<Fr> for MptCircuit {
 
         let mut dump = File::create("dump.json").unwrap();
         dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes()).unwrap();
-        panic!();
         Self {
             n_rows: block.circuits_params.max_mpt_rows,
             traces: block
@@ -174,6 +173,9 @@ impl SubCircuit<Fr> for MptCircuit {
         challenges: &Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        let mut dump = File::create("dump.json").unwrap();
+        dump.write_all(serde_json::to_string_pretty(&self.traces).unwrap().as_bytes()).unwrap();
+
         let proofs: Vec<Proof> = self.traces.iter().cloned().map(Proof::from).collect();
 
         let (u64s, u128s, frs) = byte_representations(&proofs);
