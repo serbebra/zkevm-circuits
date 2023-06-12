@@ -5,6 +5,7 @@ use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
+use std::{fs::File, io::Write};
 use bus_mapping::state_db::CodeDB;
 use eth_types::Field;
 use halo2_proofs::{
@@ -78,6 +79,10 @@ impl<F: Field> SubCircuit<F> for PoseidonCircuit<F> {
                 .cloned()
                 .zip_eq(block.mpt_updates.smt_traces.iter().cloned())
                 .collect();
+
+                let mut dump = File::create("dump.json").unwrap();
+                dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes()).unwrap();
+
             let proofs: Vec<Proof> = traces.into_iter().map(Proof::from).collect();
             let triples: Vec<(Fr, Fr, Fr)> = hash_traces(&proofs);
             let triples: Vec<(F, F, F)> = triples
@@ -123,6 +128,10 @@ impl<F: Field> SubCircuit<F> for PoseidonCircuit<F> {
                 .cloned()
                 .zip_eq(block.mpt_updates.smt_traces.iter().cloned())
                 .collect();
+
+            let mut dump = File::create("dump.json").unwrap();
+            dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes()).unwrap();
+
             let proofs: Vec<Proof> = traces.into_iter().map(Proof::from).collect();
             cnt += hash_traces(&proofs).len();
             cnt

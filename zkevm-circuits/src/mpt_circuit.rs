@@ -5,8 +5,7 @@ use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
-use std::fs::File;
-use std::io::Write;
+use std::{fs::File, io::Write};
 use eth_types::Field;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
