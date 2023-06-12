@@ -145,7 +145,7 @@ impl SubCircuit<Fr> for MptCircuit {
 
         let mut dump = File::create("dump.json").unwrap();
         dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes()).unwrap();
-        // panic!();
+        panic!();
         Self {
             n_rows: block.circuits_params.max_mpt_rows,
             traces: block
