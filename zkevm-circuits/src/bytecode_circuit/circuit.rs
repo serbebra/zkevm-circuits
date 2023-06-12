@@ -610,6 +610,47 @@ impl<F: Field> BytecodeCircuitConfig<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn set_shape_and_offset(
+        &self,
+        region: &mut Region<'_, F>,
+        bytecode: &UnrolledBytecode<F>,
+        column: Column<Advice>,
+        offset: &mut usize,
+        last_row_offset: usize,
+        fail_fast: bool,
+    ) -> Result<(), Error> {
+        // Calculate the region shape for 1st pass in `fn assign_region()`
+        // The the `offset` accumulation logic is consistent with `fn assign_bytecode()`
+        // This function avoids redundant operations, set the offset value to `region` via
+        // `region.assign_advice`
+        for _ in bytecode.rows.iter() {
+            if fail_fast && *offset > last_row_offset {
+                log::error!(
+                    "Bytecode Circuit: offset={} > last_row_offset={}",
+                    offset,
+                    last_row_offset
+                );
+                return Err(Error::Synthesis);
+            }
+            // Set the data for this row
+            if *offset < last_row_offset {
+                *offset += 1;
+            }
+        }
+
+        let assign_offset = if *offset > 0 { *offset - 1 } else { *offset };
+
+        region.assign_advice(
+            || "dummy",
+            column,
+            assign_offset,
+            || Value::known(F::zero()),
+        )?;
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn assign_bytecode(
         &self,
         region: &mut Region<'_, F>,

@@ -405,6 +405,53 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         self.assign_internal(layouter, size, witness, overwrite, challenges, true)
     }
 
+    // used by `fn assign_internal` and `fn assign_internal_parallel`
+    fn assign_bytecode_and_extend(
+        &self,
+        base_conf: &BytecodeCircuitConfig<F>,
+        region: &mut Region<'_, F>,
+        bytecode: &UnrolledBytecode<F>,
+        challenges: &Challenges<Value<F>>,
+        push_data_left_is_zero_chip: &IsZeroChip<F>,
+        index_length_diff_is_zero_chip: &IsZeroChip<F>,
+        empty_hash: Value<F>,
+        row_input: &mut F,
+        offset: &mut usize,
+        last_row_offset: usize,
+        fail_fast: bool,
+    ) -> Result<(), Error> {
+        let bytecode_offset_begin = *offset;
+        base_conf.assign_bytecode(
+            region,
+            bytecode,
+            challenges,
+            push_data_left_is_zero_chip,
+            index_length_diff_is_zero_chip,
+            empty_hash,
+            offset,
+            last_row_offset,
+            fail_fast,
+        )?;
+
+        for (idx, row) in bytecode.rows.iter().enumerate() {
+            // if the base_conf's assignment not fail fast,
+            // we also avoid the failure of "NotEnoughRowsAvailable"
+            // in prover creation (so bytecode_incomplete test could pass)
+            let offset = bytecode_offset_begin + idx;
+            if offset <= last_row_offset {
+                *row_input = self.assign_extended_row(
+                    region,
+                    offset,
+                    row,
+                    *row_input,
+                    bytecode.bytes.len(),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn assign_internal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -414,6 +461,28 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         challenges: &Challenges<Value<F>>,
         fail_fast: bool,
     ) -> Result<(), Error> {
+        let assignment_type = std::env::var("UNIT_TEST_ASSIGNMENT_TYPE")
+            .ok()
+            .unwrap_or_default();
+        let is_force_serial_assignment = match assignment_type.as_str() {
+            "serial" => true,
+            &_ => false,
+        };
+        let mut is_parallel_assignment = false;
+        #[cfg(feature = "parallel_syn")]
+        {
+            is_parallel_assignment = true;
+        }
+        log::debug!("UNIT_TEST_ASSIGNMENT_TYPE: {}", assignment_type);
+        log::debug!("is_force_serial_assignment: {}", is_force_serial_assignment);
+        log::debug!("is_parallel_assignment: {}", is_parallel_assignment);
+
+        if !is_force_serial_assignment && is_parallel_assignment {
+            return self.assign_internal_parallel(
+                layouter, size, witness, overwrite, challenges, fail_fast,
+            );
+        }
+
         let base_conf = &self.base_conf;
         let push_data_left_is_zero_chip =
             IsZeroChip::construct(base_conf.push_data_left_is_zero.clone());
@@ -433,124 +502,120 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
 
         let empty_hash = Value::known(POSEIDON_CODE_HASH_ZERO.to_word().to_scalar().unwrap());
 
-        println!("assign bytecode with poseidon hash extension");
+        layouter.assign_region(
+            || "assign bytecode with poseidon hash extension",
+            |mut region| {
+                let mut offset = 0;
+                let mut row_input = F::zero();
+                for bytecode in witness.iter() {
+                    self.assign_bytecode_and_extend(
+                        base_conf,
+                        &mut region,
+                        bytecode,
+                        challenges,
+                        &push_data_left_is_zero_chip,
+                        &index_length_diff_is_zero_chip,
+                        empty_hash,
+                        &mut row_input,
+                        &mut offset,
+                        last_row_offset,
+                        fail_fast,
+                    )?;
+                }
 
-        let assignment_type = std::env::var("ASSIGNMENT_TYPE").ok().unwrap_or_default();
-        let is_parallel_assignment = match assignment_type.as_str() {
-            "default" => false,
-            "parallel" => true,
-            &_ => todo!(),
-        };
-        println!("is_parallel_assignment: {}", is_parallel_assignment);
+                // Padding
+                for idx in offset..=last_row_offset {
+                    base_conf.set_padding_row(
+                        &mut region,
+                        &push_data_left_is_zero_chip,
+                        &index_length_diff_is_zero_chip,
+                        empty_hash,
+                        idx,
+                        last_row_offset,
+                    )?;
+                    self.set_header_row(&mut region, 0, idx)?;
+                }
+
+                base_conf.assign_overwrite(&mut region, overwrite, challenges)?;
+
+                Ok(())
+            },
+        )
+    }
+
+    pub(crate) fn assign_internal_parallel(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        size: usize,
+        witness: &[UnrolledBytecode<F>],
+        overwrite: &UnrolledBytecode<F>,
+        challenges: &Challenges<Value<F>>,
+        fail_fast: bool,
+    ) -> Result<(), Error> {
+        let base_conf = &self.base_conf;
+        let push_data_left_is_zero_chip =
+            IsZeroChip::construct(base_conf.push_data_left_is_zero.clone());
+        let index_length_diff_is_zero_chip =
+            IsZeroChip::construct(base_conf.index_length_diff_is_zero.clone());
+
+        // Subtract the unusable rows from the size
+        assert!(size > base_conf.minimum_rows);
+        let last_row_offset = size - base_conf.minimum_rows + 1;
+        let empty_hash = Value::known(POSEIDON_CODE_HASH_ZERO.to_word().to_scalar().unwrap());
 
         let mut offset = 0;
-        if is_parallel_assignment {
-            let part1_timer = Instant::now();
-            let offsets = layouter.assign_regions(
-                || "assign(regions) bytecode with poseidon hash extension(part1)",
-                witness
-                    .iter()
-                    .map(|bytecode| {
-                        let push_data_left_is_zero_chip =
-                            IsZeroChip::construct(base_conf.push_data_left_is_zero.clone());
-                        let index_length_diff_is_zero_chip =
-                            IsZeroChip::construct(base_conf.index_length_diff_is_zero.clone());
-                        move |region: Region<'_, F>| {
-                            // |mut region| {
-                            let mut offset = 0;
-                            let mut row_input = F::zero();
-                            let mut region = region;
-                            let bytecode_offset_begin = offset;
-                            base_conf.assign_bytecode(
+        let mut first_pass_vec = vec![true; witness.len()];
+        let offsets = layouter.assign_regions(
+            || "assign(regions) bytecode with poseidon hash extension(part1)",
+            witness
+                .iter()
+                .zip(first_pass_vec.iter_mut())
+                .map(|(bytecode, first_pass)| {
+                    let push_data_left_is_zero_chip = push_data_left_is_zero_chip.clone();
+                    let index_length_diff_is_zero_chip = index_length_diff_is_zero_chip.clone();
+                    move |region: Region<'_, F>| {
+                        let mut offset = 0;
+                        let mut region = region;
+
+                        if *first_pass {
+                            *first_pass = false;
+                            base_conf.set_shape_and_offset(
                                 &mut region,
                                 bytecode,
-                                challenges,
-                                &push_data_left_is_zero_chip,
-                                &index_length_diff_is_zero_chip,
-                                empty_hash,
+                                self.field_input.clone(),
                                 &mut offset,
                                 last_row_offset,
                                 fail_fast,
                             )?;
-
-                            for (idx, row) in bytecode.rows.iter().enumerate() {
-                                // if the base_conf's assignment not fail fast,
-                                // we also avoid the failure of "NotEnoughRowsAvailable"
-                                // in prover creation (so bytecode_incomplete test could pass)
-                                let offset = bytecode_offset_begin + idx;
-                                if offset <= last_row_offset {
-                                    row_input = self.assign_extended_row(
-                                        &mut region,
-                                        offset,
-                                        row,
-                                        row_input,
-                                        bytecode.bytes.len(),
-                                    )?;
-                                }
-                            }
-                            // println!("offset: {}", offset);
-                            Ok(offset)
+                            return Ok(offset);
                         }
-                    })
-                    .collect_vec(),
-            )?;
-            println!("part1_timer: {:?}", part1_timer.elapsed());
-            println!("offsets: {:?}", offsets);
 
-            offset = offsets.into_iter().fold(0, |acc, x| acc + x);
-            println!("offset: {}", offset);
-        } else {
-            offset = layouter.assign_region(
-                || "assign bytecode with poseidon hash extension(part1)",
-                |mut region| {
-                    let mut offset = 0;
-                    let mut row_input = F::zero();
-                    println!("witness len: {}", witness.len());
-                    let part1_timer = Instant::now();
-                    for bytecode in witness.iter() {
-                        let bytecode_offset_begin = offset;
-                        base_conf.assign_bytecode(
+                        let mut row_input = F::zero();
+                        self.assign_bytecode_and_extend(
+                            base_conf,
                             &mut region,
                             bytecode,
                             challenges,
                             &push_data_left_is_zero_chip,
                             &index_length_diff_is_zero_chip,
                             empty_hash,
+                            &mut row_input,
                             &mut offset,
                             last_row_offset,
                             fail_fast,
                         )?;
 
-                        for (idx, row) in bytecode.rows.iter().enumerate() {
-                            // if the base_conf's assignment not fail fast,
-                            // we also avoid the failure of "NotEnoughRowsAvailable"
-                            // in prover creation (so bytecode_incomplete test could pass)
-                            let offset = bytecode_offset_begin + idx;
-                            if offset <= last_row_offset {
-                                row_input = self.assign_extended_row(
-                                    &mut region,
-                                    offset,
-                                    row,
-                                    row_input,
-                                    bytecode.bytes.len(),
-                                )?;
-                            }
-                        }
-
-                        println!("    offset: {}", offset);
+                        Ok(offset)
                     }
-                    println!("part1_timer: {:?}", part1_timer.elapsed());
-                    Ok(offset)
-                },
-            )?;
-        }
+                })
+                .collect_vec(),
+        )?;
+        offset = offsets.into_iter().fold(0, |acc, x| acc + x);
 
         layouter.assign_region(
             || "assign bytecode with poseidon hash extension(part2)",
             |mut region| {
-                let part2_timer = Instant::now();
                 // Padding
-                // for idx in offset..=last_row_offset {
                 for idx in 0..=(last_row_offset - offset) {
                     base_conf.set_padding_row(
                         &mut region,
@@ -562,11 +627,7 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
                     )?;
                     self.set_header_row(&mut region, 0, idx)?;
                 }
-                println!("part2_timer: {:?}", part2_timer.elapsed());
-
-                let part3_timer = Instant::now();
                 base_conf.assign_overwrite(&mut region, overwrite, challenges)?;
-                println!("part3_timer: {:?}", part3_timer.elapsed());
                 Ok(())
             },
         )
