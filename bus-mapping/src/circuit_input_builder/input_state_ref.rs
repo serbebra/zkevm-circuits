@@ -597,7 +597,7 @@ impl<'a> CircuitInputStateRef<'a> {
                 AccountOp {
                     address: receiver,
                     field: AccountField::KeccakCodeHash,
-                    value: *KECCAK_CODE_HASH_ZERO,
+                    value: *KECCAK_CODE_HASH_ZERO.to_word(),
                     value_prev: Word::zero(),
                 },
             )?;
