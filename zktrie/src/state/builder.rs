@@ -60,7 +60,7 @@ const NODE_TYPE_MIDDLE: u8 = 0;
 const NODE_TYPE_LEAF: u8 = 1;
 const NODE_TYPE_EMPTY: u8 = 2;
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub(crate) struct AccountData {
     pub nonce: u64,
     pub balance: U256,
