@@ -5,7 +5,6 @@ use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
-use std::{fs::File, io::Write};
 use eth_types::Field;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -33,6 +32,7 @@ use mpt_zktrie::mpt_circuits::{
     types::Proof,
     MPTProofType,
 };
+use std::{fs::File, io::Write};
 
 /// re-wrapping for mpt circuit
 #[derive(Clone)]
@@ -135,15 +135,16 @@ impl SubCircuit<Fr> for MptCircuit {
 
     fn new_from_block(block: &witness::Block<Fr>) -> Self {
         let traces: Vec<_> = block
-                .mpt_updates
-                .proof_types
-                .iter()
-                .cloned()
-                .zip_eq(block.mpt_updates.smt_traces.iter().cloned())
-                .collect();
+            .mpt_updates
+            .proof_types
+            .iter()
+            .cloned()
+            .zip_eq(block.mpt_updates.smt_traces.iter().cloned())
+            .collect();
 
         let mut dump = File::create("dump.json").unwrap();
-        dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes()).unwrap();
+        dump.write_all(serde_json::to_string_pretty(&traces).unwrap().as_bytes())
+            .unwrap();
         Self {
             n_rows: block.circuits_params.max_mpt_rows,
             traces: block
@@ -173,7 +174,12 @@ impl SubCircuit<Fr> for MptCircuit {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let mut dump = File::create("dump.json").unwrap();
-        dump.write_all(serde_json::to_string_pretty(&self.traces).unwrap().as_bytes()).unwrap();
+        dump.write_all(
+            serde_json::to_string_pretty(&self.traces)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
 
         let proofs: Vec<Proof> = self.traces.iter().cloned().map(Proof::from).collect();
 

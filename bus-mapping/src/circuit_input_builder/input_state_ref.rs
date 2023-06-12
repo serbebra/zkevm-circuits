@@ -18,6 +18,7 @@ use crate::{
     },
     precompile::is_precompiled,
     state_db::{CodeDB, StateDB},
+    util::KECCAK_CODE_HASH_ZERO,
     Error,
 };
 use eth_types::{
@@ -587,6 +588,16 @@ impl<'a> CircuitInputStateRef<'a> {
                     address: receiver,
                     field: AccountField::CodeHash,
                     value: CodeDB::empty_code_hash().to_word(),
+                    value_prev: Word::zero(),
+                },
+            )?;
+            #[cfg(feature = "scroll")]
+            self.push_op_reversible(
+                step,
+                AccountOp {
+                    address: receiver,
+                    field: AccountField::KeccakCodeHash,
+                    value: *KECCAK_CODE_HASH_ZERO,
                     value_prev: Word::zero(),
                 },
             )?;
