@@ -18,7 +18,7 @@ use halo2_proofs::{
 use itertools::Itertools;
 use log::trace;
 use mpt_zktrie::hash::HASHABLE_DOMAIN_SPEC;
-use std::{time::Instant, vec};
+use std::vec;
 
 use super::{
     super::bytecode_unroller::{BytecodeRow, UnrolledBytecode},
@@ -406,6 +406,7 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
     }
 
     // used by `fn assign_internal` and `fn assign_internal_parallel`
+    #[allow(clippy::too_many_arguments)]
     fn assign_bytecode_and_extend(
         &self,
         base_conf: &BytecodeCircuitConfig<F>,

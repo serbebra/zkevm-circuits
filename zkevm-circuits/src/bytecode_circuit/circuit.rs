@@ -638,14 +638,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
             }
         }
 
-        let assign_offset = if *offset > 0 { *offset - 1 } else { *offset };
-
-        region.assign_advice(
-            || "dummy",
-            column,
-            assign_offset,
-            || Value::known(F::zero()),
-        )?;
+        region.assign_advice(|| "dummy", column, *offset - 1, || Value::known(F::zero()))?;
 
         Ok(())
     }
