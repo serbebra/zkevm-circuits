@@ -301,11 +301,11 @@ impl WitnessGenerator {
         old_val: Word,
         key: Option<Word>,
     ) -> SMTTrace {
-        dbg!((proof_type, address, old_val, new_val, key));
+        // dbg!((proof_type, address, old_val, new_val, key));
         if let Some(key) = key {
             self.trace_storage_update(address, key, new_val, old_val)
         } else {
-            self.trace_account_update(address, |acc_before| {
+            self.trace_account_update(address, |acc_before: &AccountData| {
                 let mut acc_data = *acc_before;
                 match proof_type {
                     MPTProofType::NonceChanged => {
@@ -382,7 +382,11 @@ impl WitnessGenerator {
                     }
                     _ => unreachable!("invalid proof type: {:?}", proof_type),
                 }
-                Some(acc_data)
+                if acc_data == AccountData::default() {
+                    None
+                } else {
+                    Some(acc_data)
+                }
             })
         }
     }

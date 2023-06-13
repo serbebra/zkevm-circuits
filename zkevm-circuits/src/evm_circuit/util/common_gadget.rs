@@ -411,6 +411,15 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
                     0.expr(),
                     Some(reversion_info),
                 );
+
+                #[cfg(feature = "scroll")]
+                cb.account_write(
+                    receiver_address.clone(),
+                    AccountFieldTag::KeccakCodeHash,
+                    cb.empty_keccak_hash_rlc(),
+                    0.expr(),
+                    Some(reversion_info),
+                );
             },
         );
         // Skip transfer if value == 0
@@ -541,8 +550,15 @@ impl<F: Field> TransferGadget<F> {
                     0.expr(),
                     Some(reversion_info),
                 );
-                // TODO: also write empty keccak code hash? codesize seems not need yet. write a
-                // test to verify this.
+
+                #[cfg(feature = "scroll")]
+                cb.account_write(
+                    receiver_address.clone(),
+                    AccountFieldTag::KeccakCodeHash,
+                    cb.empty_keccak_hash_rlc(),
+                    0.expr(),
+                    Some(reversion_info),
+                );
             },
         );
         // Skip transfer if value == 0
