@@ -405,7 +405,10 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         self.assign_internal(layouter, size, witness, overwrite, challenges, true)
     }
 
-    // used by `fn assign_internal` and `fn assign_internal_parallel`
+    // in order to maintain only one source of code,
+    // this function wraps `assign_bytecode` and `assign_extended_row` from the
+    // original `fn assign_internal`, since this part of the code is now called by both
+    // `fn assign_internal` and `fn assign_internal_parallel`.
     #[allow(clippy::too_many_arguments)]
     fn assign_bytecode_and_extend(
         &self,
@@ -422,6 +425,7 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         fail_fast: bool,
     ) -> Result<(), Error> {
         let bytecode_offset_begin = *offset;
+
         base_conf.assign_bytecode(
             region,
             bytecode,
@@ -462,26 +466,28 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         challenges: &Challenges<Value<F>>,
         fail_fast: bool,
     ) -> Result<(), Error> {
-        let assignment_type = std::env::var("UNIT_TEST_ASSIGNMENT_TYPE")
-            .ok()
-            .unwrap_or_default();
-        let is_force_serial_assignment = match assignment_type.as_str() {
-            "serial" => true,
-            &_ => false,
-        };
-        let mut is_parallel_assignment = false;
+        // if feature "parallel_syn" is enabled, we will use parallel assignment
         #[cfg(feature = "parallel_syn")]
         {
-            is_parallel_assignment = true;
-        }
-        log::debug!("UNIT_TEST_ASSIGNMENT_TYPE: {}", assignment_type);
-        log::debug!("is_force_serial_assignment: {}", is_force_serial_assignment);
-        log::debug!("is_parallel_assignment: {}", is_parallel_assignment);
+            // `is_force_serial_assignment` is used for unit test
+            // it's determined by the environment variable `UNIT_TEST_ASSIGNMENT_TYPE`
+            // if enabled, we will bypass the parallel assignment
+            // and use serial assignment instead
+            let assignment_type = std::env::var("UNIT_TEST_ASSIGNMENT_TYPE")
+                .ok()
+                .unwrap_or_default();
+            let is_force_serial_assignment = match assignment_type.as_str() {
+                "serial" => true,
+                &_ => false,
+            };
+            log::debug!("UNIT_TEST_ASSIGNMENT_TYPE: {}", assignment_type);
+            log::debug!("is_force_serial_assignment: {}", is_force_serial_assignment);
 
-        if !is_force_serial_assignment && is_parallel_assignment {
-            return self.assign_internal_parallel(
-                layouter, size, witness, overwrite, challenges, fail_fast,
-            );
+            if !is_force_serial_assignment {
+                return self.assign_internal_parallel(
+                    layouter, size, witness, overwrite, challenges, fail_fast,
+                );
+            }
         }
 
         let base_conf = &self.base_conf;
@@ -544,6 +550,7 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         )
     }
 
+    #[cfg(feature = "parallel_syn")]
     pub(crate) fn assign_internal_parallel(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -564,26 +571,25 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         let last_row_offset = size - base_conf.minimum_rows + 1;
         let empty_hash = Value::known(POSEIDON_CODE_HASH_ZERO.to_word().to_scalar().unwrap());
 
-        let mut offset = 0;
-        let mut first_pass_vec = vec![true; witness.len()];
+        let mut is_first_time_vec = vec![true; witness.len()];
         let offsets = layouter.assign_regions(
             || "assign(regions) bytecode with poseidon hash extension(part1)",
             witness
                 .iter()
-                .zip(first_pass_vec.iter_mut())
-                .map(|(bytecode, first_pass)| {
+                .zip(is_first_time_vec.iter_mut())
+                .map(|(bytecode, is_first_time)| {
                     let push_data_left_is_zero_chip = push_data_left_is_zero_chip.clone();
                     let index_length_diff_is_zero_chip = index_length_diff_is_zero_chip.clone();
                     move |region: Region<'_, F>| {
                         let mut offset = 0;
                         let mut region = region;
 
-                        if *first_pass {
-                            *first_pass = false;
+                        if *is_first_time {
+                            *is_first_time = false;
                             base_conf.set_shape_and_offset(
                                 &mut region,
                                 bytecode,
-                                self.field_input.clone(),
+                                self.field_input,
                                 &mut offset,
                                 last_row_offset,
                                 fail_fast,
@@ -611,8 +617,8 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
                 })
                 .collect_vec(),
         )?;
-        offset = offsets.into_iter().fold(0, |acc, x| acc + x);
 
+        let offset = offsets.into_iter().sum::<usize>();
         layouter.assign_region(
             || "assign bytecode with poseidon hash extension(part2)",
             |mut region| {
