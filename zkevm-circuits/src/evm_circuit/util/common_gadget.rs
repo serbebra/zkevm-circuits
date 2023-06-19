@@ -412,7 +412,6 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
                     0.expr(),
                     Some(reversion_info),
                 );
-
                 #[cfg(feature = "scroll")]
                 cb.account_write(
                     receiver_address.clone(),
@@ -553,7 +552,6 @@ impl<F: Field> TransferGadget<F> {
                     0.expr(),
                     Some(reversion_info),
                 );
-
                 #[cfg(feature = "scroll")]
                 cb.account_write(
                     receiver_address.clone(),
