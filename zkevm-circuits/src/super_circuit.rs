@@ -205,7 +205,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig {
             meta,
             RlpCircuitConfigArgs {
                 rlp_table,
-                challenges: challenges.clone(),
+                challenges: challenges_expr.clone(),
             },
         );
         log_circuit_info(meta, "rlp circuit");
@@ -367,7 +367,7 @@ pub struct SuperCircuit<
     /// Poseidon hash Circuit
     pub poseidon_circuit: PoseidonCircuit<Fr>,
     /// Rlp Circuit
-    pub rlp_circuit: RlpCircuit<F, Transaction>,
+    pub rlp_circuit: RlpCircuit<Fr, Transaction>,
     /// Mpt Circuit
     #[cfg(feature = "zktrie")]
     pub mpt_circuit: MptCircuit,

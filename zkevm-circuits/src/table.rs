@@ -865,16 +865,16 @@ pub struct PoseidonTable {
 }
 
 impl PoseidonLookup for PoseidonTable {
-    fn lookup(&self) -> (FixedColumn, [AdviceColumn; 4], SecondPhaseAdviceColumn) {
+    fn lookup_columns(&self) -> (Column<Fixed>, [Column<Advice>; 5]) {
         (
-            FixedColumn(self.q_enable),
+            self.q_enable,
             [
-                AdviceColumn(self.input0),
-                AdviceColumn(self.input1),
-                AdviceColumn(self.control),
-                AdviceColumn(self.heading_mark),
+                self.input0,
+                self.input1,
+                self.hash_id,
+                self.control,
+                self.heading_mark,
             ],
-            SecondPhaseAdviceColumn(self.hash_id),
         )
     }
 }
