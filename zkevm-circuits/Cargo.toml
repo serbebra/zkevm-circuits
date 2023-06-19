@@ -61,7 +61,7 @@ cli-table = "0.4"
 serde = { version = "1.0.130", features = ["derive"] }
 
 [features]
-default = ["test", "test-circuits", "enable-sign-verify", "zktrie", "poseidon-codehash"]
+default = ["test", "test-circuits", "enable-sign-verify"]
 test = ["ethers-signers", "mock", "bus-mapping/test"]
 # even if "scroll" feature is enabled, unittests use l1 geth to generate execution traces, 
 # which cannot pass some constraints related to poseidon hash since codehash there is keccak hash. 

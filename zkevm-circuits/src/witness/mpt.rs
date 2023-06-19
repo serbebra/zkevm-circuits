@@ -410,8 +410,6 @@ mod test {
 
         updates.fill_state_roots(&ZktrieState::default());
         dbg!(updates.smt_traces);
-
-        panic!();
     }
 
     #[test]
@@ -439,8 +437,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces[0]).unwrap()
         );
-
-        panic!();
     }
 
     fn nonce_update(address: Address) -> MptUpdate {
@@ -470,7 +466,7 @@ mod test {
         }
 
         updates.insert(nonce_update(Address::repeat_byte(45)));
-        let mut generator = updates
+        let generator = updates
             .fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
 
         let mut updates = MptUpdates::default();
@@ -484,8 +480,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -521,8 +515,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -549,8 +541,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -573,8 +563,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     fn balance_update(address: Address) -> MptUpdate {
@@ -604,7 +592,7 @@ mod test {
         }
 
         updates.insert(balance_update(Address::repeat_byte(45)));
-        let mut generator = updates
+        let generator = updates
             .fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
 
         let mut updates = MptUpdates::default();
@@ -618,8 +606,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -646,8 +632,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -670,8 +654,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -689,7 +671,7 @@ mod test {
         let address = Address::repeat_byte(45);
         updates.insert(nonce_update(address));
 
-        let mut generator = updates
+        let generator = updates
             .fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
 
         let mut updates = MptUpdates::default();
@@ -711,8 +693,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -730,7 +710,7 @@ mod test {
         let address = Address::repeat_byte(45);
         updates.insert(nonce_update(address));
 
-        let mut generator = updates
+        let generator = updates
             .fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
 
         let mut updates = MptUpdates::default();
@@ -752,8 +732,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -771,7 +749,7 @@ mod test {
         let address = Address::repeat_byte(45);
         updates.insert(nonce_update(address));
 
-        let mut generator = updates
+        let generator = updates
             .fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
 
         let mut updates = MptUpdates::default();
@@ -793,8 +771,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     // Every (existing, type 1, type 2) x (existing, type 1, type 2) combination is possible
@@ -859,8 +835,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -935,50 +909,41 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
     fn update_storage_type_2_to_type_2() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
     fn update_storage_type_1_to_existing() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
     fn update_storage_type_2_to_existing() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
     fn update_storage_existing_to_type_1() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
     fn update_storage_existing_to_type_2() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
     fn read_storage_type_1() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
     fn read_storage_type_2() {
         assert!(*HASH_SCHEME_DONE);
-        panic!();
     }
 
     #[test]
@@ -1014,8 +979,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1051,8 +1014,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1100,8 +1061,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1149,8 +1108,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1198,8 +1155,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1260,8 +1215,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1311,8 +1264,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1347,8 +1298,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1396,8 +1345,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1447,8 +1394,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1495,8 +1440,6 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 
     #[test]
@@ -1543,7 +1486,5 @@ mod test {
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
         );
-
-        panic!();
     }
 }
