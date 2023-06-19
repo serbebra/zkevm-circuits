@@ -20,7 +20,6 @@ use crate::{
     },
     precompile::is_precompiled,
     state_db::{CodeDB, StateDB},
-    util::KECCAK_CODE_HASH_ZERO,
     Error,
 };
 use eth_types::{
