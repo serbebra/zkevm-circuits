@@ -28,7 +28,6 @@ pub struct MptUpdate {
 
 impl MptUpdate {
     fn proof_type(&self) -> MPTProofType {
-        dbg!(&self);
         match self.key {
             Key::AccountStorage { .. } => {
                 if self.old_value.is_zero() && self.new_value.is_zero() {
@@ -38,13 +37,10 @@ impl MptUpdate {
                 }
             }
             Key::Account { field_tag, .. } => {
-                dbg!(field_tag);
                 if matches!(field_tag, AccountFieldTag::CodeHash)
                     && self.old_value.is_zero()
                     && self.new_value.is_zero()
                 {
-                    dbg!(field_tag, self.old_value, self.new_value);
-                    dbg!(matches!(field_tag, AccountFieldTag::CodeHash));
                     MPTProofType::AccountDoesNotExist
                 } else {
                     field_tag.into()
@@ -114,16 +110,10 @@ impl MptUpdates {
         self.smt_traces = Vec::new();
         self.proof_types = Vec::new();
 
-        dbg!(self.updates.clone());
-
         for (key, update) in &mut self.updates {
             log::trace!("apply update {:?} {:#?}", key, update);
-            dbg!(key);
             let key = key.set_non_exists(update.old_value, update.new_value);
-            dbg!(key);
-            //let proof_tip = state::as_proof_type(update.proof_type() as i32);
             let proof_tip = update.proof_type();
-            dbg!(proof_tip);
             let smt_trace = wit_gen.handle_new_state(
                 proof_tip,
                 match key {
@@ -409,7 +399,6 @@ mod test {
         updates.updates.insert(key, update);
 
         updates.fill_state_roots(&ZktrieState::default());
-        dbg!(updates.smt_traces);
     }
 
     #[test]
