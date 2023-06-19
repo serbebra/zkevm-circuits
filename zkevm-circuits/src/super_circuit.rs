@@ -242,7 +242,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             BytecodeCircuitConfigArgs {
                 bytecode_table: bytecode_table.clone(),
                 keccak_table: keccak_table.clone(),
-                challenges: challenges_expr,
+                challenges: challenges_expr.clone(),
             },
         );
         #[cfg(feature = "poseidon-codehash")]
