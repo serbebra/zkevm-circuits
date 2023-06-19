@@ -5,6 +5,8 @@ use super::{
     CallKind, CodeSource, CopyEvent, ExecState, ExecStep, ExpEvent, Transaction,
     TransactionContext,
 };
+#[cfg(feature = "scroll")]
+use crate::util::KECCAK_CODE_HASH_ZERO;
 use crate::{
     error::{
         get_step_reported_error, ContractAddressCollisionError, DepthError, ExecError,
@@ -1200,7 +1202,7 @@ impl<'a> CircuitInputStateRef<'a> {
             _ => [Word::zero(), Word::zero()],
         };
 
-        let gas_refund = if exec_step.error.is_some() {
+        let gas_refund = if exec_step.error.is_some() || exec_step.is_precompiled() {
             0
         } else {
             let curr_memory_word_size = (exec_step.memory_size as u64) / 32;
@@ -1281,7 +1283,7 @@ impl<'a> CircuitInputStateRef<'a> {
 
     /// Push a copy event to the state.
     pub fn push_copy(&mut self, step: &mut ExecStep, event: CopyEvent) {
-        step.copy_rw_counter_delta = event.rw_counter_delta();
+        step.copy_rw_counter_delta += event.rw_counter_delta();
         self.block.add_copy_event(event);
     }
 

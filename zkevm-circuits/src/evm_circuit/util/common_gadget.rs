@@ -168,11 +168,12 @@ impl<F: Field> RestoreContextGadget<F> {
             * GasCost::CODE_DEPOSIT_BYTE_COST.expr()
             * return_data_length;
 
-        let gas_refund = if cb.execution_state().halts_in_exception() {
-            0.expr() // no gas refund if call halts in exception
-        } else {
-            cb.curr.state.gas_left.expr() - memory_expansion_cost - code_deposit_cost
-        };
+        let gas_refund =
+            if cb.execution_state().halts_in_exception() || cb.execution_state().is_precompiled() {
+                0.expr() // no gas refund if call halts in exception
+            } else {
+                cb.curr.state.gas_left.expr() - memory_expansion_cost - code_deposit_cost
+            };
 
         let gas_left = caller_gas_left.expr() + gas_refund;
 
@@ -453,10 +454,11 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
         // +1 Write Account (sender) Balance (Not Reversible tx fee)
         1.expr() +
         // +1 Write Account (receiver) CodeHash (account creation via code_hash update)
+        // feature = "scroll": +1 Write Account (receiver) KeccakCodeHash
         or::expr([
             not::expr(self.value_is_zero.expr()) * not::expr(self.receiver_exists.clone()),
             self.must_create.clone()]
-        ) * 1.expr() +
+        ) * if cfg!(feature = "scroll") {2.expr()} else {1.expr()} +
         // +1 Write Account (sender) Balance
         // +1 Write Account (receiver) Balance
         not::expr(self.value_is_zero.expr()) * 2.expr()
@@ -465,10 +467,11 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
     pub(crate) fn reversible_w_delta(&self) -> Expression<F> {
         // NOTE: Write Account (sender) Balance (Not Reversible tx fee)
         // +1 Write Account (receiver) CodeHash (account creation via code_hash update)
+        // feature = "scroll": +1 Write Account (receiver) KeccakCodeHash
         or::expr([
             not::expr(self.value_is_zero.expr()) * not::expr(self.receiver_exists.clone()),
             self.must_create.clone()]
-        ) * 1.expr() +
+        ) * if cfg!(feature = "scroll") {2.expr()} else {1.expr()} +
         // +1 Write Account (sender) Balance
         // +1 Write Account (receiver) Balance
         not::expr(self.value_is_zero.expr()) * 2.expr()
@@ -597,10 +600,11 @@ impl<F: Field> TransferGadget<F> {
 
     pub(crate) fn rw_delta(&self) -> Expression<F> {
         // +1 Write Account (receiver) CodeHash (account creation via code_hash update)
+        // feature = "scroll": +1 Write Account (receiver) KeccakCodeHash
         or::expr([
             not::expr(self.value_is_zero.expr()) * not::expr(self.receiver_exists.clone()),
             self.must_create.clone()]
-        ) * 1.expr() +
+        ) * if cfg!(feature = "scroll") {2.expr()} else {1.expr()} +
         // +1 Write Account (sender) Balance
         // +1 Write Account (receiver) Balance
         not::expr(self.value_is_zero.expr()) * 2.expr()
@@ -608,10 +612,11 @@ impl<F: Field> TransferGadget<F> {
 
     pub(crate) fn reversible_w_delta(&self) -> Expression<F> {
         // +1 Write Account (receiver) CodeHash (account creation via code_hash update)
+        // if feature = "scroll": +1 Write Account (receiver) KeccakCodeHash
         or::expr([
             not::expr(self.value_is_zero.expr()) * not::expr(self.receiver_exists.clone()),
-            self.must_create.clone()]
-        ) * 1.expr() +
+            self.must_create.clone(),
+        ]) * if cfg!(feature = "scroll") {2.expr()} else {1.expr()} +
         // +1 Write Account (sender) Balance
         // +1 Write Account (receiver) Balance
         not::expr(self.value_is_zero.expr()) * 2.expr()
@@ -1170,6 +1175,10 @@ impl<F: Field, const VALID_BYTES: usize> WordByteCapGadget<F, VALID_BYTES> {
         self.lt_cap.expr()
     }
 
+    pub(crate) fn original_ref(&self) -> &Word<F> {
+        self.word.original_ref()
+    }
+
     pub(crate) fn original_word(&self) -> Expression<F> {
         self.word.original_word()
     }
@@ -1224,6 +1233,10 @@ impl<F: Field, const VALID_BYTES: usize> WordByteRangeGadget<F, VALID_BYTES> {
             .assign(region, offset, F::from(overflow_hi))?;
 
         Ok(overflow_hi == 0)
+    }
+
+    pub(crate) fn original_ref(&self) -> &Word<F> {
+        &self.original
     }
 
     pub(crate) fn original_word(&self) -> Expression<F> {
