@@ -79,10 +79,7 @@ impl From<&ZktrieState> for WitnessGenerator {
         let storages: HashMap<_, _> = state
             .accounts
             .iter()
-            .map(|(addr, storage_root)| {
-                // dbg!(addr, storage_root);
-                (*addr, state.zk_db.borrow_mut().new_trie(storage_root))
-            })
+            .map(|(addr, storage_root)| (*addr, state.zk_db.borrow_mut().new_trie(storage_root)))
             // if an account has no storage slot being touched in execution, they do not need
             // storage trie and would be filter out here
             .filter(|(_, storage_root)| storage_root.is_some())
@@ -301,7 +298,6 @@ impl WitnessGenerator {
         old_val: Word,
         key: Option<Word>,
     ) -> SMTTrace {
-        // dbg!((proof_type, address, old_val, new_val, key));
         if let Some(key) = key {
             self.trace_storage_update(address, key, new_val, old_val)
         } else {

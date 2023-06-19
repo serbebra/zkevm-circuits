@@ -156,8 +156,6 @@ impl Circuit<Fr> for MptCircuit<Fr> {
         let mpt_table = MptTable::construct(meta);
 
         let config = {
-            //let challenges = challenges.exprs(meta);
-
             MptCircuitConfig::new(
                 meta,
                 MptCircuitConfigArgs {
@@ -177,8 +175,6 @@ impl Circuit<Fr> for MptCircuit<Fr> {
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let challenges = challenges.values(&layouter);
-        //let proofs: Vec<Proof> = self.traces.iter().map(Proof::from).collect();
-        //config.poseidon_table.dev_load(&mut layouter, &hash_traces(&proofs));
         self.synthesize_sub(&config, &challenges, &mut layouter)
     }
 }
