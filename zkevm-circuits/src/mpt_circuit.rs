@@ -1,10 +1,11 @@
 #![allow(missing_docs)]
 //! wrapping of mpt-circuit
 use crate::{
-    table::{MptTable, PoseidonTable},
+    table::{MptTable, PoseidonTable, LookupTable},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
+use itertools::Itertools;
 use eth_types::Field;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -66,19 +67,16 @@ impl SubCircuitConfig<Fr> for MptCircuitConfig<Fr> {
             challenges,
         }: Self::ConfigArgs,
     ) -> Self {
-        let _mpt_table_inp = //(
-            //mpt_table.q_enable,
-            [
-                mpt_table.address,
-                mpt_table.storage_key,
-                mpt_table.proof_type,
-                mpt_table.new_root,
-                mpt_table.old_root,
-                mpt_table.new_value,
-                mpt_table.old_value,
-            ];
-
         let conf = mpt::MptCircuitConfig::configure(meta, challenges.evm_word(), &poseidon_table);
+
+        meta.lookup_any("updates in mpt table proven in mpt circuit", |meta| {
+            mpt_table
+                .table_exprs(meta)
+                .into_iter()
+                .zip_eq(conf.lookup_exprs(meta))
+                .collect()
+        });
+
         Self(conf, mpt_table, Default::default())
     }
 }
@@ -88,8 +86,6 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
     type Config = MptCircuitConfig<Fr>;
 
     fn new_from_block(block: &witness::Block<Fr>) -> Self {
-        use itertools::Itertools;
-
         let traces: Vec<_> = block
             .mpt_updates
             .proof_types
