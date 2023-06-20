@@ -105,6 +105,8 @@ use crate::{
     rlp_circuit::{RlpCircuit, RlpCircuitConfig},
 };
 
+use std::time::Instant;
+
 /// Configuration of the Super Circuit
 #[derive(Clone)]
 pub struct SuperCircuitConfig<F: Field> {
@@ -496,36 +498,61 @@ impl<
         challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
+        let subcircuit_timer = Instant::now();
         self.keccak_circuit
             .synthesize_sub(&config.keccak_circuit, challenges, layouter)?;
+        log::debug!("keccak_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.poseidon_circuit
             .synthesize_sub(&config.poseidon_circuit, challenges, layouter)?;
+        log::debug!("poseidon_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.bytecode_circuit
             .synthesize_sub(&config.bytecode_circuit, challenges, layouter)?;
+        log::debug!("bytecode_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.tx_circuit
             .synthesize_sub(&config.tx_circuit, challenges, layouter)?;
+        log::debug!("tx_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.state_circuit
             .synthesize_sub(&config.state_circuit, challenges, layouter)?;
+        log::debug!("state_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.copy_circuit
             .synthesize_sub(&config.copy_circuit, challenges, layouter)?;
+        log::debug!("copy_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.exp_circuit
             .synthesize_sub(&config.exp_circuit, challenges, layouter)?;
+        log::debug!("exp_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        let subcircuit_timer = Instant::now();
         self.evm_circuit
             .synthesize_sub(&config.evm_circuit, challenges, layouter)?;
+        log::debug!("evm_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
 
         // TODO: enable this after zktrie deletion deployed inside l2geth and
         // test data regenerated.
         // config.pi_circuit.state_roots =
         // self.state_circuit.exports.borrow().clone();
+        let subcircuit_timer = Instant::now();
         self.pi_circuit
             .synthesize_sub(&config.pi_circuit, challenges, layouter)?;
+        log::debug!("rlp_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
 
+        let subcircuit_timer = Instant::now();
         self.rlp_circuit
             .synthesize_sub(&config.rlp_circuit, challenges, layouter)?;
+        log::debug!("rlp_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+
         // load both poseidon table and zktrie table
-        #[cfg(feature = "zktrie")]
-        self.mpt_circuit
-            .synthesize_sub(&config.mpt_circuit, challenges, layouter)?;
+        #[cfg(feature = "zktrie")] {
+            let subcircuit_timer = Instant::now();
+            self.mpt_circuit
+                .synthesize_sub(&config.mpt_circuit, challenges, layouter)?;
+            log::debug!("mpt_circuit(synthesize_sub): {:?}", subcircuit_timer.elapsed());
+        }
+        
 
         Ok(())
     }

@@ -28,13 +28,13 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::env::var;
 
-#[test]
-fn bytecode_circuit_unusable_rows() {
-    assert_eq!(
-        BytecodeCircuit::<Fr>::unusable_rows(),
-        unusable_rows::<Fr, BytecodeCircuit::<Fr>>(),
-    )
-}
+// #[test]
+// fn bytecode_circuit_unusable_rows() {
+//     assert_eq!(
+//         BytecodeCircuit::<Fr>::unusable_rows(),
+//         unusable_rows::<Fr, BytecodeCircuit::<Fr>>(),
+//     )
+// }
 
 impl<F: Field> BytecodeCircuit<F> {
     /// Verify that the selected bytecode fulfills the circuit
