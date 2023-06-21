@@ -52,6 +52,17 @@ pub use transaction::{
     Transaction, TransactionContext, TxL1Fee, TX_L1_COMMIT_EXTRA_COST, TX_L1_FEE_PRECISION,
 };
 
+/// Setup parameters for ECC-related precompile calls.
+#[derive(Debug, Clone, Copy)]
+pub struct PrecompileEcParams {
+    /// Maximum number of EcAdd ops supported in one block.
+    pub ec_add: usize,
+    /// Maximum number of EcMul ops supported in one block.
+    pub ec_mul: usize,
+    /// Maximum number of EcPairing ops supported in one block.
+    pub ec_pairing: usize,
+}
+
 /// Circuit Setup Parameters
 #[derive(Debug, Clone, Copy)]
 pub struct CircuitsParams {
@@ -89,6 +100,8 @@ pub struct CircuitsParams {
     /// calculated, so the same circuit will not be able to prove different
     /// witnesses.
     pub max_keccak_rows: usize,
+    /// Max number of ECC-related ops supported in the ECC circuit.
+    pub max_ec_ops: PrecompileEcParams,
 }
 
 impl Default for CircuitsParams {
@@ -108,6 +121,11 @@ impl Default for CircuitsParams {
             max_evm_rows: 0,
             max_keccak_rows: 0,
             max_rlp_rows: 1000,
+            max_ec_ops: PrecompileEcParams {
+                ec_add: 10,
+                ec_mul: 10,
+                ec_pairing: 4,
+            },
         }
     }
 }
