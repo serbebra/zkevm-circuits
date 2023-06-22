@@ -11,13 +11,16 @@ use halo2_ecc::{
     fields::{
         fp::{FpConfig, FpStrategy},
         fp12::Fp12Chip,
+        fp2::Fp2Chip,
+        FieldChip,
     },
 };
 use halo2_proofs::{
     circuit::{Layouter, Value},
-    halo2curves::bn256::{Fq, Fq12},
+    halo2curves::bn256::{Fq, Fq12, Fq2, Fr},
     plonk::{ConstraintSystem, Error, Expression},
 };
+use log::error;
 
 use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
@@ -102,16 +105,105 @@ impl<F: Field> EccCircuit<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         config: &<Self as SubCircuit<F>>::Config,
-        add_ops: &[EcAddOp],
-        mul_ops: &[EcMulOp],
-        pairing_ops: &[EcPairingOp],
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
-        let fp_chip = EccChip::<F, FpConfig<F, Fq>>::construct(config.fp_config.clone());
-        let fp12_chip =
-            Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::construct(config.fp_config.clone());
+        if self.add_ops.len() > self.max_add_ops
+            || self.mul_ops.len() > self.max_mul_ops
+            || self.pairing_ops.len() > self.max_pairing_ops
+        {
+            error!(
+                "add ops = {}, mul ops = {}, pairing ops = {} > max add ops = {}, max mul ops = {}, max pairing ops = {}",
+                self.add_ops.len(),
+                self.mul_ops.len(),
+                self.pairing_ops.len(),
+                self.max_add_ops,
+                self.max_mul_ops,
+                self.max_pairing_ops,
+            );
+            return Err(Error::Synthesis);
+        }
 
-        Ok(())
+        layouter.assign_region(
+            || "ecc circuit",
+            |region| {
+                let mut ctx = config.fp_config.new_context(region);
+
+                let fp_chip = EccChip::<F, FpConfig<F, Fq>>::construct(config.fp_config.clone());
+                let fr_chip = FpConfig::<F, Fr>::construct(
+                    config.fp_config.range.clone(),
+                    88,
+                    3,
+                    modulus::<Fr>(),
+                );
+                let fp2_chip =
+                    Fp2Chip::<F, FpConfig<F, Fq>, Fq2>::construct(config.fp_config.clone());
+                let fp12_chip =
+                    Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::construct(config.fp_config.clone());
+
+                // P + Q == R
+                for add_op in self
+                    .add_ops
+                    .iter()
+                    .chain(std::iter::repeat(&EcAddOp::default()))
+                    .take(self.max_add_ops)
+                {
+                    let point_p = fp_chip.load_private(
+                        &mut ctx,
+                        (Value::known(add_op.p.x), Value::known(add_op.p.y)),
+                    );
+                    let point_q = fp_chip.load_private(
+                        &mut ctx,
+                        (Value::known(add_op.q.x), Value::known(add_op.q.y)),
+                    );
+                    let point_r = fp_chip.add_unequal(
+                        &mut ctx, &point_p, &point_q,
+                        false, /* strict == false, as we do not check for whether or not P == Q */
+                    );
+                    let point_r_got = fp_chip.load_private(
+                        &mut ctx,
+                        (Value::known(add_op.r.x), Value::known(add_op.r.y)),
+                    );
+                    fp_chip.assert_equal(&mut ctx, &point_r, &point_r_got);
+                }
+
+                for mul_op in self
+                    .mul_ops
+                    .iter()
+                    .chain(std::iter::repeat(&EcMulOp::default()))
+                    .take(self.max_mul_ops)
+                {
+                    let point_p = fp_chip.load_private(
+                        &mut ctx,
+                        (Value::known(mul_op.p.x), Value::known(mul_op.p.y)),
+                    );
+                    let scalar_s = fr_chip.load_private(
+                        &mut ctx,
+                        FpConfig::<F, Fr>::fe_to_witness(&Value::known(mul_op.s)),
+                    );
+                    let point_r = fp_chip.scalar_mult(
+                        &mut ctx,
+                        &point_p,
+                        &scalar_s.limbs().to_vec(),
+                        fr_chip.limb_bits,
+                        4, // TODO: window bits?
+                    );
+                    let point_r_got = fp_chip.load_private(
+                        &mut ctx,
+                        (Value::known(mul_op.r.x), Value::known(mul_op.r.y)),
+                    );
+                    fp_chip.assert_equal(&mut ctx, &point_r, &point_r_got);
+                }
+
+                for pairing_op in self
+                    .pairing_ops
+                    .iter()
+                    .chain(std::iter::repeat(&EcPairingOp::default()))
+                    .take(self.max_pairing_ops)
+                {}
+
+                Ok(())
+            },
+        )
     }
 }
 
@@ -137,14 +229,7 @@ impl<F: Field> SubCircuit<F> for EccCircuit<F> {
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
         config.fp_config.range.load_lookup_table(layouter)?;
-        self.assign(
-            layouter,
-            config,
-            &self.add_ops,
-            &self.mul_ops,
-            &self.pairing_ops,
-            challenges,
-        )?;
+        self.assign(layouter, config, challenges)?;
         Ok(())
     }
 
