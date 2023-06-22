@@ -1,11 +1,11 @@
 //! The ECC circuit is responsible for verifying ECC-related operations from precompiled contract
 //! calls, namely, EcAdd, EcMul and EcPairing.
 
-use std::{marker::PhantomData, ops::Mul};
+use std::marker::PhantomData;
 
 use bus_mapping::circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp};
-use eth_types::Field;
-use halo2_base::utils::modulus;
+use eth_types::{Field, Word};
+use halo2_base::{utils::modulus, Context, QuantumCell};
 use halo2_ecc::{
     bigint::CRTInteger,
     bn254::pairing::PairingChip,
@@ -18,15 +18,17 @@ use halo2_ecc::{
     },
 };
 use halo2_proofs::{
+    arithmetic::Field as Halo2Field,
     circuit::{Layouter, Value},
     halo2curves::{
-        bn256::{Bn256, Fq, Fq12, Fq2, Fr, Gt},
-        pairing::Engine,
+        bn256::{Fq, Fq12, Fr, G1Affine},
+        group::GroupEncoding,
     },
     plonk::{ConstraintSystem, Error, Expression},
 };
 use itertools::Itertools;
 use log::error;
+use num::BigInt;
 
 use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
@@ -106,6 +108,29 @@ pub struct EccCircuit<F: Field> {
     _marker: PhantomData<F>,
 }
 
+struct G1Decomposed<F: Field> {
+    ec_point: EcPoint<F, CRTInteger<F>>,
+    x_cells: Vec<QuantumCell<F>>,
+    y_cells: Vec<QuantumCell<F>>,
+}
+
+struct ScalarDecomposed<F: Field> {
+    scalar: CRTInteger<F>,
+    cells: Vec<QuantumCell<F>>,
+}
+
+struct EcAddAssigned<F: Field> {
+    point_p: G1Decomposed<F>,
+    point_q: G1Decomposed<F>,
+    point_r: G1Decomposed<F>,
+}
+
+struct EcMulAssigned<F: Field> {
+    point_p: G1Decomposed<F>,
+    scalar_s: ScalarDecomposed<F>,
+    point_r: G1Decomposed<F>,
+}
+
 impl<F: Field> EccCircuit<F> {
     pub(crate) fn assign(
         &self,
@@ -143,74 +168,86 @@ impl<F: Field> EccCircuit<F> {
             }
         }
 
+        // powers of randomness.
+        let evm_powers = std::iter::successors(Some(Value::known(F::one())), |coeff| {
+            Some(challenges.evm_word() * coeff)
+        })
+        .take(32)
+        .map(|x| QuantumCell::Witness(x))
+        .collect_vec();
+        let keccak_powers = std::iter::successors(Some(Value::known(F::one())), |coeff| {
+            Some(challenges.keccak_input() * coeff)
+        })
+        .take(32)
+        .map(|x| QuantumCell::Witness(x))
+        .collect_vec();
+
+        let fp_chip = EccChip::<F, FpConfig<F, Fq>>::construct(config.fp_config.clone());
+        let fr_chip =
+            FpConfig::<F, Fr>::construct(config.fp_config.range.clone(), 88, 3, modulus::<Fr>());
+        let pairing_chip = PairingChip::construct(config.fp_config.clone());
+        let fp12_chip =
+            Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::construct(config.fp_config.clone());
+
         layouter.assign_region(
             || "ecc circuit",
             |region| {
                 let mut ctx = config.fp_config.new_context(region);
 
-                let fp_chip = EccChip::<F, FpConfig<F, Fq>>::construct(config.fp_config.clone());
-                let fr_chip = FpConfig::<F, Fr>::construct(
-                    config.fp_config.range.clone(),
-                    88,
-                    3,
-                    modulus::<Fr>(),
-                );
-                let pairing_chip = PairingChip::construct(config.fp_config.clone());
-
                 // P + Q == R
-                for add_op in self
+                let ec_adds_assigned = self
                     .add_ops
                     .iter()
                     .chain(std::iter::repeat(&EcAddOp::default()))
                     .take(self.max_add_ops)
-                {
-                    let point_p = fp_chip.load_private(
-                        &mut ctx,
-                        (Value::known(add_op.p.x), Value::known(add_op.p.y)),
-                    );
-                    let point_q = fp_chip.load_private(
-                        &mut ctx,
-                        (Value::known(add_op.q.x), Value::known(add_op.q.y)),
-                    );
-                    let point_r = fp_chip.add_unequal(
-                        &mut ctx, &point_p, &point_q,
-                        false, /* strict == false, as we do not check for whether or not P == Q */
-                    );
-                    let point_r_got = fp_chip.load_private(
-                        &mut ctx,
-                        (Value::known(add_op.r.x), Value::known(add_op.r.y)),
-                    );
-                    fp_chip.assert_equal(&mut ctx, &point_r, &point_r_got);
-                }
+                    .map(|add_op| {
+                        let point_p = self.load_g1_and_decompose(&mut ctx, &fp_chip, add_op.p);
+                        let point_q = self.load_g1_and_decompose(&mut ctx, &fp_chip, add_op.q);
+                        let point_r = self.load_g1_and_decompose(&mut ctx, &fp_chip, add_op.r);
+                        let point_r_got = fp_chip.add_unequal(
+                            &mut ctx,
+                            &point_p.ec_point,
+                            &point_q.ec_point,
+                            false, /* strict == false, as we do not check for whether or not P
+                                    * == Q */
+                        );
+                        fp_chip.assert_equal(&mut ctx, &point_r.ec_point, &point_r_got);
+                        EcAddAssigned {
+                            point_p,
+                            point_q,
+                            point_r,
+                        }
+                    })
+                    .collect_vec();
 
-                for mul_op in self
+                // s.P = R
+                let ec_muls_assigned = self
                     .mul_ops
                     .iter()
                     .chain(std::iter::repeat(&EcMulOp::default()))
                     .take(self.max_mul_ops)
-                {
-                    let point_p = fp_chip.load_private(
-                        &mut ctx,
-                        (Value::known(mul_op.p.x), Value::known(mul_op.p.y)),
-                    );
-                    let scalar_s = fr_chip.load_private(
-                        &mut ctx,
-                        FpConfig::<F, Fr>::fe_to_witness(&Value::known(mul_op.s)),
-                    );
-                    let point_r = fp_chip.scalar_mult(
-                        &mut ctx,
-                        &point_p,
-                        &scalar_s.limbs().to_vec(),
-                        fr_chip.limb_bits,
-                        4, // TODO: window bits?
-                    );
-                    let point_r_got = fp_chip.load_private(
-                        &mut ctx,
-                        (Value::known(mul_op.r.x), Value::known(mul_op.r.y)),
-                    );
-                    fp_chip.assert_equal(&mut ctx, &point_r, &point_r_got);
-                }
+                    .map(|mul_op| {
+                        let point_p = self.load_g1_and_decompose(&mut ctx, &fp_chip, mul_op.p);
+                        let scalar_s = self.load_fr_and_decompose(&mut ctx, &fr_chip, mul_op.s);
+                        let point_r = self.load_g1_and_decompose(&mut ctx, &fp_chip, mul_op.r);
+                        let point_r_got = fp_chip.scalar_mult(
+                            &mut ctx,
+                            &point_p.ec_point,
+                            &scalar_s.scalar.limbs().to_vec(),
+                            fr_chip.limb_bits,
+                            4, // TODO: window bits?
+                        );
+                        fp_chip.assert_equal(&mut ctx, &point_r.ec_point, &point_r_got);
+                        EcMulAssigned {
+                            point_p,
+                            scalar_s,
+                            point_r,
+                        }
+                    })
+                    .collect_vec();
 
+                // e(G1 . G2) * ... * e(G1 . G2) -> Gt
+                // Note: maximum 4 pairings per pairing op.
                 for pairing_op in self
                     .pairing_ops
                     .iter()
@@ -227,17 +264,67 @@ impl<F: Field> EccCircuit<F> {
                         .iter()
                         .map(|i| pairing_chip.load_private_g2(&mut ctx, Value::known(i.1)))
                         .collect::<Vec<EcPoint<F, FieldExtPoint<CRTInteger<F>>>>>();
-                    let gt = pairing_chip.multi_miller_loop(
+                    let gt = {
+                        let gt = pairing_chip.multi_miller_loop(
+                            &mut ctx,
+                            g1_points.iter().zip_eq(g2_points.iter()).collect_vec(),
+                        );
+                        fp12_chip.final_exp(&mut ctx, &gt)
+                    };
+                    let one = fp12_chip.load_private(
                         &mut ctx,
-                        g1_points.iter().zip_eq(g2_points.iter()).collect_vec(),
+                        Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::fe_to_witness(&Value::known(
+                            Fq12::one(),
+                        )),
                     );
-                    let gt = pairing_chip.final_exp(&mut ctx, &gt);
-                    let res_got = pairing_op.output;
+                    // whether pairing check was successful.
+                    let success = fp12_chip.is_equal(&mut ctx, &gt, &one);
                 }
 
                 Ok(())
             },
         )
+    }
+
+    fn load_g1_and_decompose(
+        &self,
+        ctx: &mut Context<F>,
+        fp_chip: &EccChip<F, FpConfig<F, Fq>>,
+        g1: G1Affine,
+    ) -> G1Decomposed<F> {
+        let ec_point = fp_chip.load_private(ctx, (Value::known(g1.x), Value::known(g1.y)));
+        G1Decomposed {
+            ec_point,
+            x_cells: g1
+                .x
+                .to_bytes()
+                .iter()
+                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
+                .collect_vec(),
+            y_cells: g1
+                .y
+                .to_bytes()
+                .iter()
+                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
+                .collect_vec(),
+        }
+    }
+
+    fn load_fr_and_decompose(
+        &self,
+        ctx: &mut Context<F>,
+        fr_chip: &FpConfig<F, Fr>,
+        s: Fr,
+    ) -> ScalarDecomposed<F> {
+        let scalar = fr_chip.load_private(ctx, FpConfig::<F, Fr>::fe_to_witness(&Value::known(s)));
+        ScalarDecomposed {
+            scalar,
+            cells: s
+                .to_bytes()
+                .iter()
+                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
+                .collect_vec(),
+        }
     }
 }
 
