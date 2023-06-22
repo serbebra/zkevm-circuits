@@ -1,6 +1,6 @@
 //! Execution step related module.
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Add};
 
 use crate::{
     circuit_input_builder::CallContext, error::ExecError, exec_trace::OperationRef,
@@ -8,10 +8,14 @@ use crate::{
 };
 use eth_types::{
     evm_types::{Gas, GasCost, OpcodeId, ProgramCounter},
+    sign_types::SignData,
     GethExecStep, Word, H256,
 };
 use gadgets::impl_expr;
-use halo2_proofs::plonk::Expression;
+use halo2_proofs::{
+    halo2curves::bn256::{G1Affine, G2Affine},
+    plonk::Expression,
+};
 use strum::IntoEnumIterator;
 
 /// An execution step of the EVM.
@@ -451,4 +455,131 @@ impl Default for ExpEvent {
             }],
         }
     }
+}
+
+/// I/Os from all precompiled contract calls in a block.
+#[derive(Clone, Debug, Default)]
+pub struct PrecompileEvents {
+    /// All events.
+    pub events: Vec<PrecompileEvent>,
+}
+
+impl PrecompileEvents {
+    /// Get all ecrecover events.
+    pub fn get_ecrecover_events(&self) -> Vec<SignData> {
+        self.events
+            .iter()
+            .filter_map(|e| {
+                if let PrecompileEvent::Ecrecover(sign_data) = e {
+                    Some(sign_data)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
+    }
+    /// Get all EcAdd events.
+    pub fn get_ec_add_events(&self) -> Vec<EcAddOp> {
+        self.events
+            .iter()
+            .filter_map(|e| {
+                if let PrecompileEvent::EcAdd(op) = e {
+                    Some(op)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
+    }
+    /// Get all EcMul events.
+    pub fn get_ec_mul_events(&self) -> Vec<EcMulOp> {
+        self.events
+            .iter()
+            .filter_map(|e| {
+                if let PrecompileEvent::EcMul(op) = e {
+                    Some(op)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
+    }
+    /// Get all EcPairing events.
+    pub fn get_ec_pairing_events(&self) -> Vec<EcPairingOp> {
+        self.events
+            .iter()
+            .filter_map(|e| {
+                if let PrecompileEvent::EcPairing(op) = e {
+                    Some(op)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+/// I/O from a precompiled contract call.
+#[derive(Clone, Debug)]
+pub enum PrecompileEvent {
+    /// Represents the I/O from Ecrecover call.
+    Ecrecover(SignData),
+    /// Represents the I/O from EcAdd call.
+    EcAdd(EcAddOp),
+    /// Represents the I/O from EcMul call.
+    EcMul(EcMulOp),
+    /// Represents the I/O from EcPairing call.
+    EcPairing(EcPairingOp),
+}
+
+impl Default for PrecompileEvent {
+    fn default() -> Self {
+        Self::Ecrecover(SignData::default())
+    }
+}
+
+/// EcAdd operation: P + Q = R
+#[derive(Clone, Debug)]
+pub struct EcAddOp {
+    /// First EC point.
+    pub p: G1Affine,
+    /// Second EC point.
+    pub q: G1Affine,
+    /// Addition of the first and second EC points.
+    pub r: G1Affine,
+}
+
+impl EcAddOp {
+    /// Creates a new EcAdd op given the inputs and output.
+    pub fn new(p: G1Affine, q: G1Affine, r: G1Affine) -> Self {
+        assert_eq!(p.add(q), r.into());
+        Self { p, q, r }
+    }
+
+    /// Returns true if the input points P and Q are the same.
+    pub fn inputs_equal(&self) -> bool {
+        self.p.eq(&self.q)
+    }
+}
+
+/// EcMul operation: s.P = R
+#[derive(Clone, Debug)]
+pub struct EcMulOp {
+    /// EC point.
+    pub p: G1Affine,
+    /// Scalar.
+    pub s: halo2_proofs::halo2curves::bn256::Fr,
+    /// Result for s.P = R.
+    pub r: G1Affine,
+}
+
+/// EcPairing operation
+#[derive(Clone, Debug)]
+pub struct EcPairingOp {
+    /// tuples of G1 and G2 points.
+    pub inputs: Vec<(G1Affine, G2Affine)>,
 }
