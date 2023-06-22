@@ -603,6 +603,8 @@ impl Default for EcMulOp {
 pub struct EcPairingOp {
     /// tuples of G1 and G2 points.
     pub inputs: Vec<(G1Affine, G2Affine)>,
+    /// Result from the pairing check.
+    pub output: Word,
 }
 
 impl Default for EcPairingOp {
@@ -655,6 +657,7 @@ impl Default for EcPairingOp {
                     },
                 ),
             ],
+            output: Word::one(),
         }
     }
 }

@@ -25,6 +25,7 @@ use halo2_proofs::{
     },
     plonk::{ConstraintSystem, Error, Expression},
 };
+use itertools::Itertools;
 use log::error;
 
 use crate::{
@@ -226,6 +227,12 @@ impl<F: Field> EccCircuit<F> {
                         .iter()
                         .map(|i| pairing_chip.load_private_g2(&mut ctx, Value::known(i.1)))
                         .collect::<Vec<EcPoint<F, FieldExtPoint<CRTInteger<F>>>>>();
+                    let gt = pairing_chip.multi_miller_loop(
+                        &mut ctx,
+                        g1_points.iter().zip_eq(g2_points.iter()).collect_vec(),
+                    );
+                    let gt = pairing_chip.final_exp(&mut ctx, &gt);
+                    let res_got = pairing_op.output;
                 }
 
                 Ok(())
