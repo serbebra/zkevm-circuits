@@ -1,23 +1,28 @@
 //! The ECC circuit is responsible for verifying ECC-related operations from precompiled contract
 //! calls, namely, EcAdd, EcMul and EcPairing.
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Mul};
 
 use bus_mapping::circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp};
 use eth_types::Field;
 use halo2_base::utils::modulus;
 use halo2_ecc::{
-    ecc::EccChip,
+    bigint::CRTInteger,
+    bn254::pairing::PairingChip,
+    ecc::{EcPoint, EccChip},
     fields::{
         fp::{FpConfig, FpStrategy},
         fp12::Fp12Chip,
         fp2::Fp2Chip,
-        FieldChip,
+        FieldChip, FieldExtConstructor, FieldExtPoint,
     },
 };
 use halo2_proofs::{
     circuit::{Layouter, Value},
-    halo2curves::bn256::{Fq, Fq12, Fq2, Fr},
+    halo2curves::{
+        bn256::{Bn256, Fq, Fq12, Fq2, Fr, Gt},
+        pairing::Engine,
+    },
     plonk::{ConstraintSystem, Error, Expression},
 };
 use log::error;
@@ -123,6 +128,20 @@ impl<F: Field> EccCircuit<F> {
             return Err(Error::Synthesis);
         }
 
+        // for each pairing check input, we only allow up to 4 pairs, i.e. 4 * 192 bytes. The aim
+        // is to simplify zkEVM implementation for now, not allowing dynamic length input for
+        // EcPairing precompiled contract call.
+        for pairing_op in self.pairing_ops.iter() {
+            if pairing_op.inputs.len() > 4 {
+                error!(
+                    "pairing check inputs = {} max allowed = {}",
+                    pairing_op.inputs.len(),
+                    4,
+                );
+                return Err(Error::Synthesis);
+            }
+        }
+
         layouter.assign_region(
             || "ecc circuit",
             |region| {
@@ -135,10 +154,7 @@ impl<F: Field> EccCircuit<F> {
                     3,
                     modulus::<Fr>(),
                 );
-                let fp2_chip =
-                    Fp2Chip::<F, FpConfig<F, Fq>, Fq2>::construct(config.fp_config.clone());
-                let fp12_chip =
-                    Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::construct(config.fp_config.clone());
+                let pairing_chip = PairingChip::construct(config.fp_config.clone());
 
                 // P + Q == R
                 for add_op in self
@@ -199,7 +215,18 @@ impl<F: Field> EccCircuit<F> {
                     .iter()
                     .chain(std::iter::repeat(&EcPairingOp::default()))
                     .take(self.max_pairing_ops)
-                {}
+                {
+                    let g1_points = pairing_op
+                        .inputs
+                        .iter()
+                        .map(|i| pairing_chip.load_private_g1(&mut ctx, Value::known(i.0)))
+                        .collect::<Vec<EcPoint<F, CRTInteger<F>>>>();
+                    let g2_points = pairing_op
+                        .inputs
+                        .iter()
+                        .map(|i| pairing_chip.load_private_g2(&mut ctx, Value::known(i.1)))
+                        .collect::<Vec<EcPoint<F, FieldExtPoint<CRTInteger<F>>>>>();
+                }
 
                 Ok(())
             },
