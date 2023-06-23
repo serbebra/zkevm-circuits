@@ -2289,3 +2289,33 @@ impl PrecompileIoTable {
         }
     }
 }
+
+/// TODO
+/// 1. EcAdd: (arg1_rlc, arg2_rlc) + (arg3_rlc, arg4_rlc) = (output1_rlc, output2_rlc)
+/// 2. EcMul: (arg1_rlc, arg2_rlc) . arg3_rlc = (output1_rlc, output2_rlc)
+/// 3. EcPairing:
+///    - arg*_rlc == 0
+///    - input_rlc <- RLC over all input bytes
+///    - output1_rlc <- success
+#[derive(Clone, Copy, Debug)]
+pub struct EccTable {
+    /// Since the current design of the ECC circuit reserves fixed number of rows for EcAdd, EcMul
+    /// and EcPairing ops respectively, we already know the `op_type` for each row.
+    pub op_type: Column<Fixed>,
+
+    ///
+    pub arg1_rlc: Column<Advice>,
+    ///
+    pub arg2_rlc: Column<Advice>,
+    ///
+    pub arg3_rlc: Column<Advice>,
+    ///
+    pub arg4_rlc: Column<Advice>,
+    ///
+    pub input_rlc: Column<Advice>,
+
+    ///
+    pub output1_rlc: Column<Advice>,
+    ///
+    pub output2_rlc: Column<Advice>,
+}
