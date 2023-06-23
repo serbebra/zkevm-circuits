@@ -28,7 +28,7 @@ use itertools::Itertools;
 use log::error;
 
 use crate::{
-    table::EccTable,
+    table::{EccTable, LookupTable},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness::Block,
 };
@@ -39,7 +39,7 @@ use util::{
     G2Assigned, G2Decomposed, ScalarAssigned, ScalarDecomposed,
 };
 
-/// TODO
+/// Arguments accepted to configure the EccCircuitConfig.
 #[derive(Clone, Debug)]
 pub struct EccCircuitConfigArgs<F: Field> {
     /// ECC table that is connected to the ECC circuit.
@@ -48,12 +48,12 @@ pub struct EccCircuitConfigArgs<F: Field> {
     pub challenges: Challenges<Expression<F>>,
 }
 
-/// TODO
+/// Config for the ECC circuit.
 #[derive(Clone, Debug)]
 pub struct EccCircuitConfig<F: Field> {
-    /// TODO
+    /// Field config for halo2_proofs::halo2curves::bn256::Fq.
     fp_config: FpConfig<F, Fq>,
-    /// TODO
+    /// Lookup table for I/Os to the EcAdd, EcMul and EcPairing operations.
     ecc_table: EccTable,
 
     _marker: PhantomData<F>,
@@ -83,6 +83,10 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
             0,
             10, // k
         );
+
+        for column in <EccTable as LookupTable<F>>::advice_columns(&ecc_table) {
+            meta.enable_equality(column);
+        }
 
         Self {
             fp_config,

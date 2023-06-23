@@ -2303,19 +2303,47 @@ pub struct EccTable {
     /// and EcPairing ops respectively, we already know the `op_type` for each row.
     pub op_type: Column<Fixed>,
 
-    ///
+    /// Advice column for input argument 1: RLC(input_bytes[0:32]).
     pub arg1_rlc: Column<Advice>,
-    ///
+    /// Advice column for input argument 2: RLC(input_bytes[32:64]).
     pub arg2_rlc: Column<Advice>,
-    ///
+    /// Advice column for input argument 3: RLC(input_bytes[64:96]).
     pub arg3_rlc: Column<Advice>,
-    ///
+    /// Advice column for input argument 4: RLC(input_bytes[96:128]).
     pub arg4_rlc: Column<Advice>,
-    ///
+    /// Advice column for RLC of all input bytes: RLC(input_bytes).
     pub input_rlc: Column<Advice>,
 
-    ///
+    /// Advice column for output 1: RLC(output_bytes[0:32]).
     pub output1_rlc: Column<Advice>,
-    ///
+    /// Advice column for output 2: RLC(output_bytes[32:64]).
     pub output2_rlc: Column<Advice>,
+}
+
+impl<F: Field> LookupTable<F> for EccTable {
+    fn columns(&self) -> Vec<Column<Any>> {
+        vec![
+            self.op_type.into(),
+            self.arg1_rlc.into(),
+            self.arg2_rlc.into(),
+            self.arg3_rlc.into(),
+            self.arg4_rlc.into(),
+            self.input_rlc.into(),
+            self.output1_rlc.into(),
+            self.output2_rlc.into(),
+        ]
+    }
+
+    fn annotations(&self) -> Vec<String> {
+        vec![
+            String::from("op_type"),
+            String::from("arg1_rlc"),
+            String::from("arg2_rlc"),
+            String::from("arg3_rlc"),
+            String::from("arg4_rlc"),
+            String::from("input_rlc"),
+            String::from("output1_rlc"),
+            String::from("output2_rlc"),
+        ]
+    }
 }
