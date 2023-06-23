@@ -8,15 +8,14 @@ use bus_mapping::{
     precompile::PrecompileCalls,
 };
 use eth_types::Field;
-use halo2_base::{gates::GateInstructions, utils::modulus, AssignedValue, Context, QuantumCell};
+use halo2_base::{gates::GateInstructions, utils::modulus, Context, QuantumCell};
 use halo2_ecc::{
-    bigint::CRTInteger,
     bn254::pairing::PairingChip,
-    ecc::{EcPoint, EccChip},
+    ecc::EccChip,
     fields::{
         fp::{FpConfig, FpStrategy},
         fp12::Fp12Chip,
-        FieldChip, FieldExtPoint,
+        FieldChip,
     },
 };
 use halo2_proofs::{
@@ -32,6 +31,12 @@ use crate::{
     table::EccTable,
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness::Block,
+};
+
+mod util;
+use util::{
+    EcAddAssigned, EcMulAssigned, EcOpsAssigned, EcPairingAssigned, G1Assigned, G1Decomposed,
+    G2Assigned, G2Decomposed, ScalarAssigned, ScalarDecomposed,
 };
 
 /// TODO
@@ -114,69 +119,6 @@ pub struct EccCircuit<F: Field> {
     pub pairing_ops: Vec<EcPairingOp>,
 
     _marker: PhantomData<F>,
-}
-
-struct G1Decomposed<F: Field> {
-    ec_point: EcPoint<F, CRTInteger<F>>,
-    x_cells: Vec<QuantumCell<F>>,
-    y_cells: Vec<QuantumCell<F>>,
-}
-
-struct G1Assigned<F: Field> {
-    decomposed: G1Decomposed<F>,
-    x_rlc: AssignedValue<F>,
-    y_rlc: AssignedValue<F>,
-}
-
-struct ScalarDecomposed<F: Field> {
-    scalar: CRTInteger<F>,
-    cells: Vec<QuantumCell<F>>,
-}
-
-struct ScalarAssigned<F: Field> {
-    decomposed: ScalarDecomposed<F>,
-    rlc: AssignedValue<F>,
-}
-
-struct G2Decomposed<F: Field> {
-    ec_point: EcPoint<F, FieldExtPoint<CRTInteger<F>>>,
-    x_c0_cells: Vec<QuantumCell<F>>,
-    x_c1_cells: Vec<QuantumCell<F>>,
-    y_c0_cells: Vec<QuantumCell<F>>,
-    y_c1_cells: Vec<QuantumCell<F>>,
-}
-
-struct G2Assigned<F: Field> {
-    decomposed: G2Decomposed<F>,
-    x_c0_rlc: AssignedValue<F>,
-    x_c1_rlc: AssignedValue<F>,
-    y_c0_rlc: AssignedValue<F>,
-    y_c1_rlc: AssignedValue<F>,
-}
-
-struct EcAddAssigned<F: Field> {
-    point_p: G1Assigned<F>,
-    point_q: G1Assigned<F>,
-    point_r: G1Assigned<F>,
-}
-
-struct EcMulAssigned<F: Field> {
-    point_p: G1Assigned<F>,
-    scalar_s: ScalarAssigned<F>,
-    point_r: G1Assigned<F>,
-}
-
-struct EcPairingAssigned<F: Field> {
-    g1s: Vec<G1Assigned<F>>,
-    g2s: Vec<G2Assigned<F>>,
-    input_rlc: AssignedValue<F>,
-    success: AssignedValue<F>,
-}
-
-struct EcOpsAssigned<F: Field> {
-    ec_adds_assigned: Vec<EcAddAssigned<F>>,
-    ec_muls_assigned: Vec<EcMulAssigned<F>>,
-    ec_pairings_assigned: Vec<EcPairingAssigned<F>>,
 }
 
 impl<F: Field> EccCircuit<F> {
