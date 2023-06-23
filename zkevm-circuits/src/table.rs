@@ -11,7 +11,12 @@ use crate::{
         RwRow, Transaction,
     },
 };
-use bus_mapping::circuit_input_builder::{CopyDataType, CopyEvent, CopyStep, ExpEvent};
+use bus_mapping::{
+    circuit_input_builder::{
+        CopyDataType, CopyEvent, CopyStep, EcAddOp, EcMulOp, EcPairingOp, ExpEvent,
+    },
+    precompile::PrecompileCalls,
+};
 use core::iter::once;
 use eth_types::{sign_types::SignData, Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
 use gadgets::{
@@ -21,6 +26,7 @@ use gadgets::{
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region, Value},
+    halo2curves::bn256::{Fq, Fr},
     plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
@@ -2345,5 +2351,131 @@ impl<F: Field> LookupTable<F> for EccTable {
             String::from("output1_rlc"),
             String::from("output2_rlc"),
         ]
+    }
+}
+
+impl EccTable {
+    /// Construct the ECC table.
+    pub(crate) fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
+        Self {
+            op_type: meta.fixed_column(),
+            arg1_rlc: meta.advice_column_in(SecondPhase),
+            arg2_rlc: meta.advice_column_in(SecondPhase),
+            arg3_rlc: meta.advice_column_in(SecondPhase),
+            arg4_rlc: meta.advice_column_in(SecondPhase),
+            input_rlc: meta.advice_column_in(SecondPhase),
+            output1_rlc: meta.advice_column_in(SecondPhase),
+            output2_rlc: meta.advice_column_in(SecondPhase),
+        }
+    }
+
+    /// Load witness in the ECC table. Note: for dev purposes.
+    pub fn dev_load<F: Field>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        block: &Block<F>,
+        challenges: &Challenges<Value<F>>,
+    ) -> Result<(), Error> {
+        let mut assignments: Vec<[Value<F>; 8]> = Vec::with_capacity(
+            block.circuits_params.max_ec_ops.ec_add
+                + block.circuits_params.max_ec_ops.ec_mul
+                + block.circuits_params.max_ec_ops.ec_pairing,
+        );
+        let fq_to_value = |fq: Fq, randomness: Value<F>| -> Value<F> {
+            randomness.map(|r| rlc::value(fq.to_bytes().iter(), r))
+        };
+        let fr_to_value = |fr: Fr, randomness: Value<F>| -> Value<F> {
+            randomness.map(|r| rlc::value(fr.to_bytes().iter(), r))
+        };
+
+        let keccak_rand = challenges.keccak_input();
+
+        // assign EcAdd
+        for add_op in block
+            .get_ec_add_ops()
+            .iter()
+            .chain(std::iter::repeat(&EcAddOp::default()))
+            .take(block.circuits_params.max_ec_ops.ec_add)
+        {
+            assignments.push([
+                Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
+                fq_to_value(add_op.p.x, keccak_rand),
+                fq_to_value(add_op.p.y, keccak_rand),
+                fq_to_value(add_op.q.x, keccak_rand),
+                fq_to_value(add_op.q.y, keccak_rand),
+                Value::known(F::zero()),
+                fq_to_value(add_op.r.x, keccak_rand),
+                fq_to_value(add_op.r.y, keccak_rand),
+            ]);
+        }
+
+        // assign EcMul
+        for mul_op in block
+            .get_ec_mul_ops()
+            .iter()
+            .chain(std::iter::repeat(&EcMulOp::default()))
+            .take(block.circuits_params.max_ec_ops.ec_mul)
+        {
+            assignments.push([
+                Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
+                fq_to_value(mul_op.p.x, keccak_rand),
+                fq_to_value(mul_op.p.y, keccak_rand),
+                fr_to_value(mul_op.s, keccak_rand),
+                Value::known(F::zero()),
+                Value::known(F::zero()),
+                fq_to_value(mul_op.r.x, keccak_rand),
+                fq_to_value(mul_op.r.y, keccak_rand),
+            ]);
+        }
+
+        // assign EcPairing
+        for pairing_op in block
+            .get_ec_pairing_ops()
+            .iter()
+            .chain(std::iter::repeat(&EcPairingOp::default()))
+            .take(block.circuits_params.max_ec_ops.ec_pairing)
+        {
+            assignments.push([
+                Value::known(F::from(u64::from(PrecompileCalls::Bn128Pairing))),
+                Value::known(F::zero()),
+                Value::known(F::zero()),
+                Value::known(F::zero()),
+                Value::known(F::zero()),
+                Value::known(F::zero()), // TODO: input_rlc
+                Value::known(
+                    pairing_op
+                        .output
+                        .to_scalar()
+                        .expect("EcPairing output = {0, 1}"),
+                ),
+                Value::known(F::zero()),
+            ]);
+        }
+
+        layouter.assign_region(
+            || "ecc table dev load",
+            |mut region| {
+                for (i, row) in assignments.iter().enumerate() {
+                    region.assign_fixed(
+                        || format!("ecc table row = {i}, op_type"),
+                        self.op_type,
+                        i,
+                        || row[0],
+                    )?;
+                    for (&column, &value) in <EccTable as LookupTable<F>>::advice_columns(self)
+                        .iter()
+                        .zip(row.iter().skip(1))
+                    {
+                        region.assign_advice(
+                            || format!("ecc table row = {i}, column = {:?}", column),
+                            column,
+                            i,
+                            || value,
+                        )?;
+                    }
+                }
+                Ok(())
+            },
+        )
     }
 }
