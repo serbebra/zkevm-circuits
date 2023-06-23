@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use bus_mapping::circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp};
-use eth_types::{Field, Word};
-use halo2_base::{utils::modulus, Context, QuantumCell};
+use eth_types::Field;
+use halo2_base::{utils::modulus, AssignedValue, Context, QuantumCell};
 use halo2_ecc::{
     bigint::CRTInteger,
     bn254::pairing::PairingChip,
@@ -13,22 +13,17 @@ use halo2_ecc::{
     fields::{
         fp::{FpConfig, FpStrategy},
         fp12::Fp12Chip,
-        fp2::Fp2Chip,
-        FieldChip, FieldExtConstructor, FieldExtPoint,
+        FieldChip, FieldExtPoint,
     },
 };
 use halo2_proofs::{
     arithmetic::Field as Halo2Field,
     circuit::{Layouter, Value},
-    halo2curves::{
-        bn256::{Fq, Fq12, Fr, G1Affine},
-        group::GroupEncoding,
-    },
+    halo2curves::bn256::{Fq, Fq12, Fr, G1Affine, G2Affine},
     plonk::{ConstraintSystem, Error, Expression},
 };
 use itertools::Itertools;
 use log::error;
-use num::BigInt;
 
 use crate::{
     util::{Challenges, SubCircuit, SubCircuitConfig},
@@ -38,6 +33,7 @@ use crate::{
 /// TODO
 #[derive(Clone, Debug)]
 pub struct EccCircuitConfigArgs<F: Field> {
+    // TODO: add ec op table (or precompile table)
     /// zkEVM challenge API.
     pub challenges: Challenges<Expression<F>>,
 }
@@ -58,6 +54,7 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
         meta: &mut ConstraintSystem<F>,
         Self::ConfigArgs { challenges: _ }: Self::ConfigArgs,
     ) -> Self {
+        // TODO: verify args to the configure method.
         let fp_config = FpConfig::configure(
             meta,
             FpStrategy::Simple,
@@ -131,6 +128,26 @@ struct EcMulAssigned<F: Field> {
     point_r: G1Decomposed<F>,
 }
 
+struct G2Decomposed<F: Field> {
+    ec_point: EcPoint<F, FieldExtPoint<CRTInteger<F>>>,
+    x_c0_cells: Vec<QuantumCell<F>>,
+    x_c1_cells: Vec<QuantumCell<F>>,
+    y_c0_cells: Vec<QuantumCell<F>>,
+    y_c1_cells: Vec<QuantumCell<F>>,
+}
+
+struct EcPairingAssigned<F: Field> {
+    g1s: Vec<G1Decomposed<F>>,
+    g2s: Vec<G2Decomposed<F>>,
+    success: AssignedValue<F>,
+}
+
+struct EcOpsAssigned<F: Field> {
+    ec_adds_assigned: Vec<EcAddAssigned<F>>,
+    ec_muls_assigned: Vec<EcMulAssigned<F>>,
+    ec_pairings_assigned: Vec<EcPairingAssigned<F>>,
+}
+
 impl<F: Field> EccCircuit<F> {
     pub(crate) fn assign(
         &self,
@@ -169,13 +186,13 @@ impl<F: Field> EccCircuit<F> {
         }
 
         // powers of randomness.
-        let evm_powers = std::iter::successors(Some(Value::known(F::one())), |coeff| {
+        let _evm_powers = std::iter::successors(Some(Value::known(F::one())), |coeff| {
             Some(challenges.evm_word() * coeff)
         })
         .take(32)
         .map(|x| QuantumCell::Witness(x))
         .collect_vec();
-        let keccak_powers = std::iter::successors(Some(Value::known(F::one())), |coeff| {
+        let _keccak_powers = std::iter::successors(Some(Value::known(F::one())), |coeff| {
             Some(challenges.keccak_input() * coeff)
         })
         .take(32)
@@ -189,7 +206,7 @@ impl<F: Field> EccCircuit<F> {
         let fp12_chip =
             Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::construct(config.fp_config.clone());
 
-        layouter.assign_region(
+        let _assigned_ec_ops = layouter.assign_region(
             || "ecc circuit",
             |region| {
                 let mut ctx = config.fp_config.new_context(region);
@@ -248,42 +265,72 @@ impl<F: Field> EccCircuit<F> {
 
                 // e(G1 . G2) * ... * e(G1 . G2) -> Gt
                 // Note: maximum 4 pairings per pairing op.
-                for pairing_op in self
+                let ec_pairings_assigned = self
                     .pairing_ops
                     .iter()
                     .chain(std::iter::repeat(&EcPairingOp::default()))
                     .take(self.max_pairing_ops)
-                {
-                    let g1_points = pairing_op
-                        .inputs
-                        .iter()
-                        .map(|i| pairing_chip.load_private_g1(&mut ctx, Value::known(i.0)))
-                        .collect::<Vec<EcPoint<F, CRTInteger<F>>>>();
-                    let g2_points = pairing_op
-                        .inputs
-                        .iter()
-                        .map(|i| pairing_chip.load_private_g2(&mut ctx, Value::known(i.1)))
-                        .collect::<Vec<EcPoint<F, FieldExtPoint<CRTInteger<F>>>>>();
-                    let gt = {
-                        let gt = pairing_chip.multi_miller_loop(
+                    .map(|pairing_op| {
+                        let g1s = pairing_op
+                            .inputs
+                            .iter()
+                            .map(|i| {
+                                let (x_cells, y_cells) = self.decompose_g1(i.0);
+                                G1Decomposed {
+                                    ec_point: pairing_chip
+                                        .load_private_g1(&mut ctx, Value::known(i.0)),
+                                    x_cells,
+                                    y_cells,
+                                }
+                            })
+                            .collect_vec();
+                        let g2s = pairing_op
+                            .inputs
+                            .iter()
+                            .map(|i| {
+                                let [x_c0_cells, x_c1_cells, y_c0_cells, y_c1_cells] =
+                                    self.decompose_g2(i.1);
+                                G2Decomposed {
+                                    ec_point: pairing_chip
+                                        .load_private_g2(&mut ctx, Value::known(i.1)),
+                                    x_c0_cells,
+                                    x_c1_cells,
+                                    y_c0_cells,
+                                    y_c1_cells,
+                                }
+                            })
+                            .collect_vec();
+                        let gt = {
+                            let gt = pairing_chip.multi_miller_loop(
+                                &mut ctx,
+                                g1s.iter()
+                                    .map(|g1| &g1.ec_point)
+                                    .zip_eq(g2s.iter().map(|g2| &g2.ec_point))
+                                    .collect_vec(),
+                            );
+                            fp12_chip.final_exp(&mut ctx, &gt)
+                        };
+                        let one = fp12_chip.load_private(
                             &mut ctx,
-                            g1_points.iter().zip_eq(g2_points.iter()).collect_vec(),
+                            Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::fe_to_witness(&Value::known(
+                                Fq12::one(),
+                            )),
                         );
-                        fp12_chip.final_exp(&mut ctx, &gt)
-                    };
-                    let one = fp12_chip.load_private(
-                        &mut ctx,
-                        Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::fe_to_witness(&Value::known(
-                            Fq12::one(),
-                        )),
-                    );
-                    // whether pairing check was successful.
-                    let success = fp12_chip.is_equal(&mut ctx, &gt, &one);
-                }
+                        // whether pairing check was successful.
+                        let success = fp12_chip.is_equal(&mut ctx, &gt, &one);
+                        EcPairingAssigned { g1s, g2s, success }
+                    })
+                    .collect_vec();
 
-                Ok(())
+                Ok(EcOpsAssigned {
+                    ec_adds_assigned,
+                    ec_muls_assigned,
+                    ec_pairings_assigned,
+                })
             },
-        )
+        );
+
+        Ok(())
     }
 
     fn load_g1_and_decompose(
@@ -293,21 +340,50 @@ impl<F: Field> EccCircuit<F> {
         g1: G1Affine,
     ) -> G1Decomposed<F> {
         let ec_point = fp_chip.load_private(ctx, (Value::known(g1.x), Value::known(g1.y)));
+        let (x_cells, y_cells) = self.decompose_g1(g1);
         G1Decomposed {
             ec_point,
-            x_cells: g1
-                .x
-                .to_bytes()
-                .iter()
-                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
-                .collect_vec(),
-            y_cells: g1
-                .y
-                .to_bytes()
-                .iter()
-                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
-                .collect_vec(),
+            x_cells,
+            y_cells,
         }
+    }
+
+    fn decompose_g1(&self, g1: G1Affine) -> (Vec<QuantumCell<F>>, Vec<QuantumCell<F>>) {
+        (
+            g1.x.to_bytes()
+                .iter()
+                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
+                .collect_vec(),
+            g1.y.to_bytes()
+                .iter()
+                .map(|&y| QuantumCell::Witness(Value::known(F::from(u64::from(y)))))
+                .collect_vec(),
+        )
+    }
+
+    fn decompose_g2(&self, g2: G2Affine) -> [Vec<QuantumCell<F>>; 4] {
+        [
+            g2.x.c0
+                .to_bytes()
+                .iter()
+                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
+                .collect_vec(),
+            g2.x.c1
+                .to_bytes()
+                .iter()
+                .map(|&x| QuantumCell::Witness(Value::known(F::from(u64::from(x)))))
+                .collect_vec(),
+            g2.y.c0
+                .to_bytes()
+                .iter()
+                .map(|&y| QuantumCell::Witness(Value::known(F::from(u64::from(y)))))
+                .collect_vec(),
+            g2.y.c1
+                .to_bytes()
+                .iter()
+                .map(|&y| QuantumCell::Witness(Value::known(F::from(u64::from(y)))))
+                .collect_vec(),
+        ]
     }
 
     fn load_fr_and_decompose(
@@ -354,7 +430,7 @@ impl<F: Field> SubCircuit<F> for EccCircuit<F> {
         Ok(())
     }
 
-    fn min_num_rows_block(block: &Block<F>) -> (usize, usize) {
+    fn min_num_rows_block(_block: &Block<F>) -> (usize, usize) {
         unimplemented!()
     }
 }

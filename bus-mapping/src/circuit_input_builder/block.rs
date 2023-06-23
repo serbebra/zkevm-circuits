@@ -3,13 +3,13 @@
 use super::{
     execution::{ExecState, PrecompileEvent, PrecompileEvents},
     transaction::Transaction,
-    CircuitsParams, CopyEvent, EcAddOp, EcMulOp, ExecStep, ExpEvent,
+    CircuitsParams, CopyEvent, ExecStep, ExpEvent,
 };
 use crate::{
     operation::{OperationContainer, RWCounter},
     Error,
 };
-use eth_types::{sign_types::SignData, Address, Hash, ToWord, Word};
+use eth_types::{Address, Hash, ToWord, Word};
 use std::collections::{BTreeMap, HashMap};
 
 /// Context of a [`Block`] which can mutate in a [`Transaction`].
