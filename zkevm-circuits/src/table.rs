@@ -2440,25 +2440,7 @@ impl EccTable {
                 Value::known(F::zero()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),
-                {
-                    let bytes = pairing_op
-                        .inputs
-                        .iter()
-                        .flat_map(|i| {
-                            i.0.x
-                                .to_bytes()
-                                .iter()
-                                .chain(i.0.y.to_bytes().iter())
-                                .chain(i.1.x.c0.to_bytes().iter())
-                                .chain(i.1.x.c1.to_bytes().iter())
-                                .chain(i.1.y.c0.to_bytes().iter())
-                                .chain(i.1.y.c1.to_bytes().iter())
-                                .cloned()
-                                .collect::<Vec<u8>>()
-                        })
-                        .collect::<Vec<u8>>();
-                    keccak_rand.map(|r| rlc::value(&bytes, r))
-                },
+                keccak_rand.map(|r| rlc::value(&pairing_op.to_bytes(), r)),
                 Value::known(
                     pairing_op
                         .output
