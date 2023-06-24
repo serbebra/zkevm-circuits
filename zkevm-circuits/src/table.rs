@@ -2296,7 +2296,6 @@ impl PrecompileIoTable {
     }
 }
 
-/// TODO
 /// 1. EcAdd: (arg1_rlc, arg2_rlc) + (arg3_rlc, arg4_rlc) = (output1_rlc, output2_rlc)
 /// 2. EcMul: (arg1_rlc, arg2_rlc) . arg3_rlc = (output1_rlc, output2_rlc)
 /// 3. EcPairing:
@@ -2441,7 +2440,25 @@ impl EccTable {
                 Value::known(F::zero()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),
-                Value::known(F::zero()), // TODO: input_rlc
+                {
+                    let bytes = pairing_op
+                        .inputs
+                        .iter()
+                        .flat_map(|i| {
+                            i.0.x
+                                .to_bytes()
+                                .iter()
+                                .chain(i.0.y.to_bytes().iter())
+                                .chain(i.1.x.c0.to_bytes().iter())
+                                .chain(i.1.x.c1.to_bytes().iter())
+                                .chain(i.1.y.c0.to_bytes().iter())
+                                .chain(i.1.y.c1.to_bytes().iter())
+                                .cloned()
+                                .collect::<Vec<u8>>()
+                        })
+                        .collect::<Vec<u8>>();
+                    keccak_rand.map(|r| rlc::value(&bytes, r))
+                },
                 Value::known(
                     pairing_op
                         .output
