@@ -21,8 +21,8 @@ pub use crate::witness;
 use crate::{
     evm_circuit::param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT},
     table::{
-        BlockTable, BytecodeTable, CopyTable, ExpTable, KeccakTable, LookupTable, RwTable,
-        SigTable, TxTable,
+        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
+        RwTable, SigTable, TxTable,
     },
     util::{SubCircuit, SubCircuitConfig},
 };
@@ -49,6 +49,7 @@ pub struct EvmCircuitConfig<F> {
     keccak_table: KeccakTable,
     exp_table: ExpTable,
     sig_table: SigTable,
+    ecc_table: EccTable,
 }
 
 /// Circuit configuration arguments
@@ -71,6 +72,8 @@ pub struct EvmCircuitConfigArgs<F: Field> {
     pub exp_table: ExpTable,
     /// SigTable
     pub sig_table: SigTable,
+    /// Ecc Table.
+    pub ecc_table: EccTable,
 }
 
 /// Circuit exported cells after synthesis, used for subcircuit
@@ -97,6 +100,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             keccak_table,
             exp_table,
             sig_table,
+            ecc_table,
         }: Self::ConfigArgs,
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
@@ -114,6 +118,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             &keccak_table,
             &exp_table,
             &sig_table,
+            &ecc_table,
         ));
 
         meta.annotate_lookup_any_column(byte_table[0], || "byte_range");
@@ -128,6 +133,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
         keccak_table.annotate_columns(meta);
         exp_table.annotate_columns(meta);
         sig_table.annotate_columns(meta);
+        ecc_table.annotate_columns(meta);
 
         Self {
             fixed_table,
@@ -141,6 +147,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             keccak_table,
             exp_table,
             sig_table,
+            ecc_table,
         }
     }
 }
@@ -418,6 +425,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let keccak_table = KeccakTable::construct(meta);
         let exp_table = ExpTable::construct(meta);
         let sig_table = SigTable::construct(meta);
+        let ecc_table = EccTable::construct(meta);
         (
             EvmCircuitConfig::new(
                 meta,
@@ -431,6 +439,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
                     keccak_table,
                     exp_table,
                     sig_table,
+                    ecc_table,
                 },
             ),
             challenges,
@@ -477,6 +486,9 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         config.exp_table.dev_load(&mut layouter, block)?;
         config
             .sig_table
+            .dev_load(&mut layouter, block, &challenges)?;
+        config
+            .ecc_table
             .dev_load(&mut layouter, block, &challenges)?;
 
         self.synthesize_sub(&config, &challenges, &mut layouter)
@@ -661,7 +673,9 @@ mod evm_circuit_stats {
             exp_table,
             LOOKUP_CONFIG[7].1,
             sig_table,
-            LOOKUP_CONFIG[8].1
+            LOOKUP_CONFIG[8].1,
+            ecc_table,
+            LOOKUP_CONFIG[9].1
         );
     }
 

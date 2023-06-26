@@ -105,7 +105,7 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
 /// We follow a strategy to pre-allocate maximum number of cells for each of the above ECC
 /// operations, which means a witness that exceeds the pre-allocated number of cells for any of the
 /// operations will be invalid.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EccCircuit<F: Field> {
     /// Maximum number of EcAdd operations supported in one instance of the ECC Circuit.
     pub max_add_ops: usize,

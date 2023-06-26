@@ -378,6 +378,7 @@ impl<F: Field> ExecutionConfig<F> {
         keccak_table: &dyn LookupTable<F>,
         exp_table: &dyn LookupTable<F>,
         sig_table: &dyn LookupTable<F>,
+        ecc_table: &dyn LookupTable<F>,
     ) -> Self {
         let mut instrument = Instrument::default();
         let q_usable = meta.complex_selector();
@@ -652,6 +653,7 @@ impl<F: Field> ExecutionConfig<F> {
             keccak_table,
             exp_table,
             sig_table,
+            ecc_table,
             &challenges,
             &cell_manager,
         );
@@ -908,6 +910,7 @@ impl<F: Field> ExecutionConfig<F> {
         keccak_table: &dyn LookupTable<F>,
         exp_table: &dyn LookupTable<F>,
         sig_table: &dyn LookupTable<F>,
+        ecc_table: &dyn LookupTable<F>,
         challenges: &Challenges<Expression<F>>,
         cell_manager: &CellManager<F>,
     ) {
@@ -925,6 +928,7 @@ impl<F: Field> ExecutionConfig<F> {
                         Table::Keccak => keccak_table,
                         Table::Exp => exp_table,
                         Table::Sig => sig_table,
+                        Table::Ecc => ecc_table,
                     }
                     .table_exprs(meta);
                     vec![(
