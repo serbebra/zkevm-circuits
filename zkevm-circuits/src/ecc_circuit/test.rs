@@ -27,10 +27,22 @@ fn run<F: Field>(
         Ok(prover) => prover,
         Err(e) => panic!("{:#?}", e),
     };
+    log::info!("prover was run OK");
     assert_eq!(prover.verify(), Ok(()));
 }
 
 #[test]
 fn test_ecc_circuit() {
-    unimplemented!()
+    use halo2_proofs::halo2curves::bn256::Fr;
+    run::<Fr>(
+        20,
+        PrecompileEcParams {
+            ec_add: 2,
+            ec_mul: 2,
+            ec_pairing: 0,
+        },
+        vec![],
+        vec![],
+        vec![],
+    )
 }

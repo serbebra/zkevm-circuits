@@ -559,7 +559,10 @@ pub struct EcAddOp {
 impl Default for EcAddOp {
     fn default() -> Self {
         let p = G1Affine::generator();
-        let q = G1Affine::generator();
+        let q = G1Affine {
+            x: Fq::from_raw([0, 0, 0, 1]),
+            y: Fq::from_raw([0, 0, 0, 2]),
+        };
         let r = p.add(q).into();
         Self { p, q, r }
     }

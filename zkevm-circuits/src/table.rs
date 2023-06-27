@@ -2309,6 +2309,9 @@ pub struct EccTable {
     /// and EcPairing ops respectively, we already know the `op_type` for each row.
     pub op_type: Column<Fixed>,
 
+    ///
+    pub dummy_adv: Column<Advice>,
+
     /// Advice column for input argument 1: RLC(input_bytes[0:32]).
     pub arg1_rlc: Column<Advice>,
     /// Advice column for input argument 2: RLC(input_bytes[32:64]).
@@ -2330,6 +2333,7 @@ impl<F: Field> LookupTable<F> for EccTable {
     fn columns(&self) -> Vec<Column<Any>> {
         vec![
             self.op_type.into(),
+            self.dummy_adv.into(),
             self.arg1_rlc.into(),
             self.arg2_rlc.into(),
             self.arg3_rlc.into(),
@@ -2343,6 +2347,7 @@ impl<F: Field> LookupTable<F> for EccTable {
     fn annotations(&self) -> Vec<String> {
         vec![
             String::from("op_type"),
+            String::from("dummy_adv"),
             String::from("arg1_rlc"),
             String::from("arg2_rlc"),
             String::from("arg3_rlc"),
@@ -2359,6 +2364,7 @@ impl EccTable {
     pub(crate) fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         Self {
             op_type: meta.fixed_column(),
+            dummy_adv: meta.advice_column(),
             arg1_rlc: meta.advice_column_in(SecondPhase),
             arg2_rlc: meta.advice_column_in(SecondPhase),
             arg3_rlc: meta.advice_column_in(SecondPhase),
@@ -2379,8 +2385,7 @@ impl EccTable {
         pairing_ops: &[EcPairingOp],
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
-        let mut assignments: Vec<[Value<F>; 8]> =
-            Vec::with_capacity(params.ec_add + params.ec_mul + params.ec_pairing);
+        let mut assignments = Vec::with_capacity(params.ec_add + params.ec_mul + params.ec_pairing);
         let fq_to_value = |fq: Fq, randomness: Value<F>| -> Value<F> {
             randomness.map(|r| rlc::value(fq.to_bytes().iter(), r))
         };
@@ -2397,6 +2402,7 @@ impl EccTable {
             .take(params.ec_add)
         {
             assignments.push([
+                Value::known(F::one()),
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
                 fq_to_value(add_op.p.x, keccak_rand),
                 fq_to_value(add_op.p.y, keccak_rand),
@@ -2415,6 +2421,7 @@ impl EccTable {
             .take(params.ec_mul)
         {
             assignments.push([
+                Value::known(F::one()),
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
                 fq_to_value(mul_op.p.x, keccak_rand),
                 fq_to_value(mul_op.p.y, keccak_rand),
@@ -2433,6 +2440,7 @@ impl EccTable {
             .take(params.ec_pairing)
         {
             assignments.push([
+                Value::known(F::one()),
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Pairing))),
                 Value::known(F::zero()),
                 Value::known(F::zero()),

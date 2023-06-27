@@ -197,13 +197,17 @@ impl<F: Field> EccCircuit<F> {
                             self.assign_g1(&mut ctx, &fp_chip, add_op.q, keccak_powers.clone());
                         let point_r =
                             self.assign_g1(&mut ctx, &fp_chip, add_op.r, keccak_powers.clone());
-                        let point_r_got = fp_chip.add_unequal(
-                            &mut ctx,
-                            &point_p.decomposed.ec_point,
-                            &point_q.decomposed.ec_point,
-                            false, /* strict == false, as we do not check for whether or not P
-                                    * == Q */
-                        );
+                        let point_r_got = if add_op.p.eq(&add_op.q) {
+                            fp_chip.double(&mut ctx, &point_p.decomposed.ec_point)
+                        } else {
+                            fp_chip.add_unequal(
+                                &mut ctx,
+                                &point_p.decomposed.ec_point,
+                                &point_q.decomposed.ec_point,
+                                false, /* strict == false, as we do not check for whether or not
+                                        * P == Q */
+                            )
+                        };
                         fp_chip.assert_equal(&mut ctx, &point_r.decomposed.ec_point, &point_r_got);
                         EcAddAssigned {
                             point_p,
