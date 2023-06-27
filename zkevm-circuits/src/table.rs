@@ -14,6 +14,7 @@ use crate::{
 use bus_mapping::{
     circuit_input_builder::{
         CopyDataType, CopyEvent, CopyStep, EcAddOp, EcMulOp, EcPairingOp, ExpEvent,
+        PrecompileEcParams,
     },
     precompile::PrecompileCalls,
 };
@@ -2372,14 +2373,14 @@ impl EccTable {
     pub fn dev_load<F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,
-        block: &Block<F>,
+        params: PrecompileEcParams,
+        add_ops: &[EcAddOp],
+        mul_ops: &[EcMulOp],
+        pairing_ops: &[EcPairingOp],
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
-        let mut assignments: Vec<[Value<F>; 8]> = Vec::with_capacity(
-            block.circuits_params.max_ec_ops.ec_add
-                + block.circuits_params.max_ec_ops.ec_mul
-                + block.circuits_params.max_ec_ops.ec_pairing,
-        );
+        let mut assignments: Vec<[Value<F>; 8]> =
+            Vec::with_capacity(params.ec_add + params.ec_mul + params.ec_pairing);
         let fq_to_value = |fq: Fq, randomness: Value<F>| -> Value<F> {
             randomness.map(|r| rlc::value(fq.to_bytes().iter(), r))
         };
@@ -2390,11 +2391,10 @@ impl EccTable {
         let keccak_rand = challenges.keccak_input();
 
         // assign EcAdd
-        for add_op in block
-            .get_ec_add_ops()
+        for add_op in add_ops
             .iter()
             .chain(std::iter::repeat(&EcAddOp::default()))
-            .take(block.circuits_params.max_ec_ops.ec_add)
+            .take(params.ec_add)
         {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
@@ -2409,11 +2409,10 @@ impl EccTable {
         }
 
         // assign EcMul
-        for mul_op in block
-            .get_ec_mul_ops()
+        for mul_op in mul_ops
             .iter()
             .chain(std::iter::repeat(&EcMulOp::default()))
-            .take(block.circuits_params.max_ec_ops.ec_mul)
+            .take(params.ec_mul)
         {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
@@ -2428,11 +2427,10 @@ impl EccTable {
         }
 
         // assign EcPairing
-        for pairing_op in block
-            .get_ec_pairing_ops()
+        for pairing_op in pairing_ops
             .iter()
             .chain(std::iter::repeat(&EcPairingOp::default()))
-            .take(block.circuits_params.max_ec_ops.ec_pairing)
+            .take(params.ec_pairing)
         {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Pairing))),

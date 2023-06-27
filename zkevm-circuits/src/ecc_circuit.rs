@@ -33,6 +33,8 @@ use crate::{
     witness::Block,
 };
 
+mod dev;
+mod test;
 mod util;
 use util::{
     EcAddAssigned, EcMulAssigned, EcOpsAssigned, EcPairingAssigned, G1Assigned, G1Decomposed,
