@@ -27,20 +27,21 @@ fn run<F: Field>(
         Ok(prover) => prover,
         Err(e) => panic!("{:#?}", e),
     };
-    log::info!("prover was run OK");
     assert_eq!(prover.verify(), Ok(()));
 }
 
 #[test]
 fn test_ecc_circuit() {
+    use crate::ecc_circuit::util::LOG_TOTAL_NUM_ROWS;
     use halo2_proofs::halo2curves::bn256::Fr;
     run::<Fr>(
-        20,
+        LOG_TOTAL_NUM_ROWS,
         PrecompileEcParams {
-            ec_add: 2,
-            ec_mul: 2,
-            ec_pairing: 0,
+            ec_add: 10,
+            ec_mul: 10,
+            ec_pairing: 2,
         },
+        // using empty vec will populate the default ops.
         vec![],
         vec![],
         vec![],

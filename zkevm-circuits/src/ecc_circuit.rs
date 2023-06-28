@@ -41,6 +41,8 @@ use util::{
     G2Assigned, G2Decomposed, ScalarAssigned, ScalarDecomposed,
 };
 
+use self::util::LOG_TOTAL_NUM_ROWS;
+
 /// Arguments accepted to configure the EccCircuitConfig.
 #[derive(Clone, Debug)]
 pub struct EccCircuitConfigArgs<F: Field> {
@@ -75,7 +77,7 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
         let fp_config = FpConfig::configure(
             meta,
             FpStrategy::Simple,
-            &[10, 1], // num advice
+            &[15, 1], // num advice
             &[17],    // num lookup advice
             1,        // num fixed
             13,       // lookup bits
@@ -83,7 +85,7 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
             3,        // num limbs
             modulus::<Fq>(),
             0,
-            10, // k
+            LOG_TOTAL_NUM_ROWS as usize, // k
         );
 
         for column in <EccTable as LookupTable<F>>::advice_columns(&ecc_table) {
@@ -197,7 +199,7 @@ impl<F: Field> EccCircuit<F> {
                             self.assign_g1(&mut ctx, &fp_chip, add_op.q, keccak_powers.clone());
                         let point_r =
                             self.assign_g1(&mut ctx, &fp_chip, add_op.r, keccak_powers.clone());
-                        let point_r_got = if add_op.p.eq(&add_op.q) {
+                        let point_r_got = if add_op.inputs_equal() {
                             fp_chip.double(&mut ctx, &point_p.decomposed.ec_point)
                         } else {
                             fp_chip.add_unequal(
