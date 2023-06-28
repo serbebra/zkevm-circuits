@@ -1,8 +1,15 @@
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    ops::{Add, Mul},
+};
 
 use bus_mapping::circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp, PrecompileEcParams};
 use eth_types::Field;
-use halo2_proofs::dev::MockProver;
+use halo2_proofs::{
+    dev::MockProver,
+    halo2curves::bn256::{Fr, G1Affine},
+};
+use rand::{CryptoRng, RngCore};
 
 use crate::ecc_circuit::EccCircuit;
 
@@ -30,10 +37,42 @@ fn run<F: Field>(
     assert_eq!(prover.verify(), Ok(()));
 }
 
+trait GenRand {
+    fn gen_rand<R: RngCore + CryptoRng>(r: &mut R) -> Self;
+}
+
+impl GenRand for EcAddOp {
+    fn gen_rand<R: RngCore + CryptoRng>(mut r: &mut R) -> Self {
+        let p = G1Affine::random(&mut r);
+        let q = G1Affine::random(&mut r);
+        let r = p.add(&q).into();
+        Self { p, q, r }
+    }
+}
+
+impl GenRand for EcMulOp {
+    fn gen_rand<R: RngCore + CryptoRng>(mut r: &mut R) -> Self {
+        let p = G1Affine::random(&mut r);
+        let s = <Fr as halo2_proofs::arithmetic::Field>::random(&mut r);
+        let r = p.mul(&s).into();
+        Self { p, s, r }
+    }
+}
+
+fn gen<T: GenRand, R: RngCore + CryptoRng>(mut r: &mut R, max_len: usize) -> Vec<T> {
+    std::iter::repeat(0)
+        .take(max_len)
+        .map(move |_| T::gen_rand(&mut r))
+        .collect()
+}
+
 #[test]
 fn test_ecc_circuit() {
     use crate::ecc_circuit::util::LOG_TOTAL_NUM_ROWS;
     use halo2_proofs::halo2curves::bn256::Fr;
+
+    let mut rng = rand::thread_rng();
+
     run::<Fr>(
         LOG_TOTAL_NUM_ROWS,
         PrecompileEcParams {
@@ -42,8 +81,8 @@ fn test_ecc_circuit() {
             ec_pairing: 2,
         },
         // using empty vec will populate the default ops.
-        vec![],
-        vec![],
+        gen(&mut rng, 9),
+        gen(&mut rng, 9),
         vec![],
     )
 }
