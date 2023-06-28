@@ -308,7 +308,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             meta,
             EccCircuitConfigArgs {
                 ecc_table,
-                challenges: challenges.clone(),
+                challenges: challenges_expr.clone(),
             },
         );
         log_circuit_info(meta, "ecc circuit");
