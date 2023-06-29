@@ -2225,50 +2225,6 @@ impl<F: Field> LookupTable<F> for SigTable {
     }
 }
 
-/// Table that holds I/O bytes from calls to precompiled contracts.
-///
-/// The layout of this table is as follows:
-///
-/// | sequence_id | operation               | io            | length | index | byte |
-/// |-------------|-------------------------|---------------|--------|-------|------|
-/// | 1           | ECADD/ECMUL/ECPAIRING   | INPUT/OUTPUT  |        |       |      |
-/// | 1           |                         |               |        |       |      |
-/// | ...         |                         |               |        |       |      |
-/// | n           |                         |               |        |       |      |
-///
-/// Essentially, the table holds byte-by-byte input/output values for a call made to precompiled
-/// contracts. At the moment, this table supports operations EcAdd, EcMul and EcPairing.
-#[derive(Clone, Copy, Debug)]
-pub struct PrecompileIoTable {
-    /// Represents an incremental serial number for each call to a precompiled contract. The tuple
-    /// (sequence_id, operation, io, index) MUST BE unique for a given block.
-    sequence_id: Column<Advice>,
-    /// The variant of precompile operation.
-    operation: Column<Advice>,
-    /// Boolean value describing whether the current row represents the input or output bytes.
-    io: Column<Advice>,
-    /// The length of the I/O bytes for this instance of the precompile call.
-    length: Column<Advice>,
-    /// The index within the bytes. index ∈ [0, length).
-    index: Column<Advice>,
-    /// The byte value at this index.
-    byte: Column<Advice>,
-}
-
-impl PrecompileIoTable {
-    /// Construct the precompile I/O table.
-    pub(crate) fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
-        Self {
-            sequence_id: meta.advice_column(),
-            operation: meta.advice_column(),
-            io: meta.advice_column(),
-            length: meta.advice_column(),
-            index: meta.advice_column(),
-            byte: meta.advice_column(),
-        }
-    }
-}
-
 /// 1. EcAdd: (arg1_rlc, arg2_rlc) + (arg3_rlc, arg4_rlc) = (output1_rlc, output2_rlc)
 /// 2. EcMul: (arg1_rlc, arg2_rlc) . arg3_rlc = (output1_rlc, output2_rlc)
 /// 3. EcPairing:
