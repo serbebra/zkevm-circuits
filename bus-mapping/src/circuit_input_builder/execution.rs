@@ -631,12 +631,12 @@ impl Default for EcPairingOp {
                     },
                     G2Affine {
                         x: Fq2 {
-                            c0: Fq::from_bytes(&word!(G2_X_11).to_le_bytes()).unwrap(),
-                            c1: Fq::from_bytes(&word!(G2_X_12).to_le_bytes()).unwrap(),
+                            c1: Fq::from_bytes(&word!(G2_X_11).to_le_bytes()).unwrap(),
+                            c0: Fq::from_bytes(&word!(G2_X_12).to_le_bytes()).unwrap(),
                         },
                         y: Fq2 {
-                            c0: Fq::from_bytes(&word!(G2_Y_11).to_le_bytes()).unwrap(),
-                            c1: Fq::from_bytes(&word!(G2_Y_12).to_le_bytes()).unwrap(),
+                            c1: Fq::from_bytes(&word!(G2_Y_11).to_le_bytes()).unwrap(),
+                            c0: Fq::from_bytes(&word!(G2_Y_12).to_le_bytes()).unwrap(),
                         },
                     },
                 ),
@@ -647,12 +647,12 @@ impl Default for EcPairingOp {
                     },
                     G2Affine {
                         x: Fq2 {
-                            c0: Fq::from_bytes(&word!(G2_X_21).to_le_bytes()).unwrap(),
-                            c1: Fq::from_bytes(&word!(G2_X_22).to_le_bytes()).unwrap(),
+                            c1: Fq::from_bytes(&word!(G2_X_21).to_le_bytes()).unwrap(),
+                            c0: Fq::from_bytes(&word!(G2_X_22).to_le_bytes()).unwrap(),
                         },
                         y: Fq2 {
-                            c0: Fq::from_bytes(&word!(G2_Y_21).to_le_bytes()).unwrap(),
-                            c1: Fq::from_bytes(&word!(G2_Y_22).to_le_bytes()).unwrap(),
+                            c1: Fq::from_bytes(&word!(G2_Y_21).to_le_bytes()).unwrap(),
+                            c0: Fq::from_bytes(&word!(G2_Y_22).to_le_bytes()).unwrap(),
                         },
                     },
                 ),

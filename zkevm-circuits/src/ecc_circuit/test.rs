@@ -7,7 +7,7 @@ use bus_mapping::circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp, Precompi
 use eth_types::Field;
 use halo2_proofs::{
     dev::MockProver,
-    halo2curves::bn256::{Fr, G1Affine},
+    halo2curves::bn256::{Fr, G1Affine, G2Affine},
 };
 use rand::{CryptoRng, RngCore};
 
@@ -59,6 +59,15 @@ impl GenRand for EcMulOp {
     }
 }
 
+impl GenRand for EcPairingOp {
+    fn gen_rand<R: RngCore + CryptoRng>(mut r: &mut R) -> Self {
+        Self {
+            inputs: vec![(G1Affine::random(&mut r), G2Affine::random(&mut r))],
+            output: 0u64.into(), // pairing check will be 0 for random values.
+        }
+    }
+}
+
 fn gen<T: GenRand, R: RngCore + CryptoRng>(mut r: &mut R, max_len: usize) -> Vec<T> {
     std::iter::repeat(0)
         .take(max_len)
@@ -83,6 +92,6 @@ fn test_ecc_circuit() {
         // using empty vec will populate the default ops.
         gen(&mut rng, 9),
         gen(&mut rng, 9),
-        vec![],
+        gen(&mut rng, 1),
     )
 }

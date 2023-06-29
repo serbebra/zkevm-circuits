@@ -7,7 +7,7 @@ use bus_mapping::{
     circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp},
     precompile::PrecompileCalls,
 };
-use eth_types::Field;
+use eth_types::{Field, ToScalar};
 use halo2_base::{gates::GateInstructions, utils::modulus, Context, QuantumCell, SKIP_FIRST_PASS};
 use halo2_ecc::{
     bn254::pairing::PairingChip,
@@ -363,6 +363,16 @@ impl<F: Field> EccCircuit<F> {
                         );
                         // whether pairing check was successful.
                         let success = fp12_chip.is_equal(&mut ctx, &gt, &one);
+                        fp_chip.field_chip().range.gate.assert_equal(
+                            &mut ctx,
+                            QuantumCell::Existing(success),
+                            QuantumCell::Witness(Value::known(
+                                pairing_op
+                                    .output
+                                    .to_scalar()
+                                    .expect("EcPairing output = {0, 1}"),
+                            )),
+                        );
                         EcPairingAssigned {
                             g1s,
                             g2s,
@@ -427,6 +437,13 @@ impl<F: Field> EccCircuit<F> {
                         config.ecc_table.output2_rlc,
                         idx,
                     );
+                    // input_rlc == 0
+                    region.assign_advice(
+                        || format!("input_rlc at offset = {idx}"),
+                        config.ecc_table.input_rlc,
+                        idx,
+                        || Value::known(F::zero()),
+                    )?;
                 }
 
                 // handle EcMul ops.
@@ -468,6 +485,14 @@ impl<F: Field> EccCircuit<F> {
                         config.ecc_table.output2_rlc,
                         idx,
                     );
+                    for &col in [config.ecc_table.arg4_rlc, config.ecc_table.input_rlc].iter() {
+                        region.assign_advice(
+                            || format!("{col:?} at offset = {idx}"),
+                            col,
+                            idx,
+                            || Value::known(F::zero()),
+                        )?;
+                    }
                 }
 
                 // handle EcPairing ops.
@@ -493,6 +518,22 @@ impl<F: Field> EccCircuit<F> {
                         config.ecc_table.output1_rlc,
                         idx,
                     );
+                    for &col in [
+                        config.ecc_table.arg1_rlc,
+                        config.ecc_table.arg2_rlc,
+                        config.ecc_table.arg3_rlc,
+                        config.ecc_table.arg4_rlc,
+                        config.ecc_table.output2_rlc,
+                    ]
+                    .iter()
+                    {
+                        region.assign_advice(
+                            || format!("{col:?} at offset = {idx}"),
+                            col,
+                            idx,
+                            || Value::known(F::zero()),
+                        )?;
+                    }
                 }
 
                 Ok(())

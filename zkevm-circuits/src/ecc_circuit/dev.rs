@@ -42,18 +42,6 @@ impl<F: Field> Circuit<F> for EccCircuit<F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let challenge_values = config.1.values(&layouter);
-        config.0.ecc_table.dev_load(
-            &mut layouter,
-            PrecompileEcParams {
-                ec_add: self.max_add_ops,
-                ec_mul: self.max_mul_ops,
-                ec_pairing: self.max_pairing_ops,
-            },
-            &self.add_ops,
-            &self.mul_ops,
-            &self.pairing_ops,
-            &challenge_values,
-        )?;
         self.synthesize_sub(&config.0, &challenge_values, &mut layouter)
     }
 }
