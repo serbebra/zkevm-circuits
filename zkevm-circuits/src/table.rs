@@ -2374,8 +2374,8 @@ impl EccTable {
             .take(params.ec_add)
         {
             assignments.push([
-                Value::known(F::one()),
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
+                Value::known(F::one()),
                 fq_to_value(add_op.p.x, keccak_rand),
                 fq_to_value(add_op.p.y, keccak_rand),
                 fq_to_value(add_op.q.x, keccak_rand),
@@ -2393,8 +2393,8 @@ impl EccTable {
             .take(params.ec_mul)
         {
             assignments.push([
-                Value::known(F::one()),
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
+                Value::known(F::one()),
                 fq_to_value(mul_op.p.x, keccak_rand),
                 fq_to_value(mul_op.p.y, keccak_rand),
                 fr_to_value(mul_op.s, keccak_rand),
@@ -2412,8 +2412,8 @@ impl EccTable {
             .take(params.ec_pairing)
         {
             assignments.push([
-                Value::known(F::one()),
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Pairing))),
+                Value::known(F::one()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),
@@ -2441,7 +2441,7 @@ impl EccTable {
                     )?;
                     for (&column, &value) in <EccTable as LookupTable<F>>::advice_columns(self)
                         .iter()
-                        .zip(row.iter().skip(1))
+                        .zip_eq(row.iter().skip(1))
                     {
                         region.assign_advice(
                             || format!("ecc table row = {i}, column = {:?}", column),

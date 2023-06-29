@@ -61,6 +61,7 @@ pub struct EcPairingAssigned<F: Field> {
     pub success: AssignedValue<F>,
 }
 
+#[derive(Default)]
 pub struct EcOpsAssigned<F: Field> {
     pub ec_adds_assigned: Vec<EcAddAssigned<F>>,
     pub ec_muls_assigned: Vec<EcMulAssigned<F>>,

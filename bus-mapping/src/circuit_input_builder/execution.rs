@@ -559,10 +559,7 @@ pub struct EcAddOp {
 impl Default for EcAddOp {
     fn default() -> Self {
         let p = G1Affine::generator();
-        let q = G1Affine {
-            x: Fq::from_raw([0, 0, 0, 1]),
-            y: Fq::from_raw([0, 0, 0, 2]),
-        };
+        let q = G1Affine::generator();
         let r = p.add(q).into();
         Self { p, q, r }
     }
@@ -595,7 +592,7 @@ pub struct EcMulOp {
 impl Default for EcMulOp {
     fn default() -> Self {
         let p = G1Affine::generator();
-        let s = Fr::one();
+        let s = Fr::from_raw([2, 0, 0, 0]);
         let r = p.mul(s).into();
         Self { p, s, r }
     }
@@ -672,12 +669,12 @@ impl EcPairingOp {
             .iter()
             .flat_map(|i| {
                 std::iter::empty()
-                    .chain(i.0.x.to_bytes().iter())
-                    .chain(i.0.y.to_bytes().iter())
-                    .chain(i.1.x.c0.to_bytes().iter())
-                    .chain(i.1.x.c1.to_bytes().iter())
-                    .chain(i.1.y.c0.to_bytes().iter())
-                    .chain(i.1.y.c1.to_bytes().iter())
+                    .chain(i.0.x.to_bytes().iter().rev())
+                    .chain(i.0.y.to_bytes().iter().rev())
+                    .chain(i.1.x.c0.to_bytes().iter().rev())
+                    .chain(i.1.x.c1.to_bytes().iter().rev())
+                    .chain(i.1.y.c0.to_bytes().iter().rev())
+                    .chain(i.1.y.c1.to_bytes().iter().rev())
                     .cloned()
                     .collect::<Vec<u8>>()
             })

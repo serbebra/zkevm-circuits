@@ -8,7 +8,7 @@ use bus_mapping::{
     precompile::PrecompileCalls,
 };
 use eth_types::Field;
-use halo2_base::{gates::GateInstructions, utils::modulus, Context, QuantumCell};
+use halo2_base::{gates::GateInstructions, utils::modulus, Context, QuantumCell, SKIP_FIRST_PASS};
 use halo2_ecc::{
     bn254::pairing::PairingChip,
     ecc::EccChip,
@@ -181,9 +181,16 @@ impl<F: Field> EccCircuit<F> {
         let fp12_chip =
             Fp12Chip::<F, FpConfig<F, Fq>, Fq12, 9>::construct(config.fp_config.clone());
 
+        let mut first_pass = SKIP_FIRST_PASS;
+
         let assigned_ec_ops = layouter.assign_region(
             || "ecc circuit",
             |region| {
+                if first_pass {
+                    first_pass = false;
+                    return Ok(EcOpsAssigned::default());
+                }
+
                 let mut ctx = config.fp_config.new_context(region);
 
                 // P + Q == R
@@ -323,9 +330,8 @@ impl<F: Field> EccCircuit<F> {
                             .collect_vec();
 
                         // RLC over the entire input bytes.
-                        let input_cells = g1s
-                            .iter()
-                            .map(|g1| g1.decomposed.x_cells.clone())
+                        let input_cells = std::iter::empty()
+                            .chain(g1s.iter().map(|g1| g1.decomposed.x_cells.clone()))
                             .chain(g1s.iter().map(|g1| g1.decomposed.y_cells.clone()))
                             .chain(g2s.iter().map(|g2| g2.decomposed.x_c0_cells.clone()))
                             .chain(g2s.iter().map(|g2| g2.decomposed.x_c1_cells.clone()))
