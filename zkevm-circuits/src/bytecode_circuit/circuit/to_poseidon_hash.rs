@@ -623,7 +623,8 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
             || "assign bytecode with poseidon hash extension(part2)",
             |mut region| {
                 // Padding
-                for idx in 0..=(last_row_offset - offset) {
+                let last_row_offset = last_row_offset - offset;
+                for idx in 0..=last_row_offset {
                     base_conf.set_padding_row(
                         &mut region,
                         &push_data_left_is_zero_chip,
