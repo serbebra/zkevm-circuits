@@ -188,13 +188,13 @@ fn handle_copy(
     let rw_counter_start = state.block_ctx.rwc;
     let (_, src_begin_slot) = state.get_addr_shift_slot(source.offset as u64).unwrap();
     let (_, src_end_slot) = state
-        .get_addr_shift_slot((source.offset + copy_length) as u64)
+        .get_addr_shift_slot((source.offset + copy_length - 1) as u64)
         .unwrap();
     let (_, dst_begin_slot) = state
         .get_addr_shift_slot(destination.offset as u64)
         .unwrap();
     let (_, dst_end_slot) = state
-        .get_addr_shift_slot((destination.offset + copy_length) as u64)
+        .get_addr_shift_slot((destination.offset + copy_length - 1) as u64)
         .unwrap();
 
     let slot_count = max(src_end_slot - src_begin_slot, dst_end_slot - dst_begin_slot) as usize;
@@ -299,7 +299,7 @@ fn handle_create(
     let rw_counter_start = state.block_ctx.rwc;
     let (_, dst_begin_slot) = state.get_addr_shift_slot(source.offset as u64).unwrap();
     let (_, dst_end_slot) = state
-        .get_addr_shift_slot((source.offset + source.length) as u64)
+        .get_addr_shift_slot((source.offset + source.length - 1) as u64)
         .unwrap();
     let mut memory = state.call_ctx_mut()?.memory.clone();
 

@@ -343,7 +343,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             0
         } else {
             let begin_slot = memory_offset.low_u64() - shift;
-            let end = memory_offset.low_u64() + valid_length;
+            let end = memory_offset.low_u64() + valid_length - 1;
             let end_slot = end - end % 32;
 
             (end_slot - begin_slot) / 32 + 1
