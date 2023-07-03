@@ -532,6 +532,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                         &push_data_left_is_zero_chip,
                         &index_length_diff_is_zero_chip,
                         empty_hash,
+                        0, // in serial assignment api assign_region(), offset_begin is always 0
                         &mut offset,
                         last_row_offset,
                         fail_fast,
@@ -610,40 +611,6 @@ impl<F: Field> BytecodeCircuitConfig<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn set_shape_and_offset(
-        &self,
-        region: &mut Region<'_, F>,
-        bytecode: &UnrolledBytecode<F>,
-        column: Column<Advice>,
-        offset: &mut usize,
-        last_row_offset: usize,
-        fail_fast: bool,
-    ) -> Result<(), Error> {
-        // Calculate the region shape for 1st pass in `fn assign_region()`
-        // The the `offset` accumulation logic is consistent with `fn assign_bytecode()`
-        // This function avoids redundant operations, set the offset value to `region` via
-        // `region.assign_advice`
-        for _ in bytecode.rows.iter() {
-            if fail_fast && *offset > last_row_offset {
-                log::error!(
-                    "Bytecode Circuit: offset={} > last_row_offset={}",
-                    offset,
-                    last_row_offset
-                );
-                return Err(Error::Synthesis);
-            }
-            // Set the data for this row
-            if *offset < last_row_offset {
-                *offset += 1;
-            }
-        }
-
-        region.assign_advice(|| "dummy", column, *offset - 1, || Value::known(F::zero()))?;
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
     fn assign_bytecode(
         &self,
         region: &mut Region<'_, F>,
@@ -652,7 +619,8 @@ impl<F: Field> BytecodeCircuitConfig<F> {
         push_data_left_is_zero_chip: &IsZeroChip<F>,
         index_length_diff_is_zero_chip: &IsZeroChip<F>,
         empty_hash: Value<F>,
-        offset: &mut usize,
+        offset_begin: usize,
+        internel_offset: &mut usize,
         last_row_offset: usize,
         fail_fast: bool,
     ) -> Result<(), Error> {
@@ -674,7 +642,8 @@ impl<F: Field> BytecodeCircuitConfig<F> {
         });
 
         for (idx, row) in bytecode.rows.iter().enumerate() {
-            if fail_fast && *offset > last_row_offset {
+            let offset = *internel_offset + offset_begin;
+            if fail_fast && offset > last_row_offset {
                 log::error!(
                     "Bytecode Circuit: offset={} > last_row_offset={}",
                     offset,
@@ -703,14 +672,14 @@ impl<F: Field> BytecodeCircuitConfig<F> {
             }
 
             // Set the data for this row
-            if *offset < last_row_offset {
+            if offset < last_row_offset {
                 self.set_row(
                     region,
                     push_data_left_is_zero_chip,
                     index_length_diff_is_zero_chip,
-                    *offset,
+                    *internel_offset,
                     true,
-                    *offset == last_row_offset,
+                    offset == last_row_offset,
                     code_hash,
                     row.tag,
                     row.index,
@@ -738,17 +707,19 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                 );
                 */
 
-                *offset += 1;
+                *internel_offset += 1;
                 push_data_left = next_push_data_left
             }
-            if *offset == last_row_offset {
+
+            let offset = *internel_offset + offset_begin;
+            if offset == last_row_offset {
                 self.set_padding_row(
                     region,
                     push_data_left_is_zero_chip,
                     index_length_diff_is_zero_chip,
                     empty_hash,
-                    *offset,
-                    last_row_offset,
+                    *internel_offset,
+                    *internel_offset,
                 )?;
             }
         }
