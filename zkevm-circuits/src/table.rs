@@ -156,7 +156,7 @@ pub enum TxFieldTag {
     /// TxSignLength: Length of the RLP-encoded transaction without the
     /// signature, used for signing
     TxSignLength,
-    /// TxSignRLC: RLC of the RLP-encoded transaction without the signature,
+    /// TxSignRLC= RLC of the RLP-encoded transaction without the signature,
     /// used for signing
     TxSignRLC,
     /// TxSignHash: Hash of the transaction without the signature, used for
@@ -165,7 +165,7 @@ pub enum TxFieldTag {
     /// TxHashLength: Length of the RLP-encoded transaction without the
     /// signature, used for signing
     TxHashLength,
-    /// TxHashRLC: RLC of the RLP-encoded transaction without the signature,
+    /// TxHashRLC= RLC of the RLP-encoded transaction without the signature,
     /// used for signing
     TxHashRLC,
     /// TxHash: Hash of the transaction with the signature
@@ -2250,20 +2250,20 @@ pub struct EccTable {
     ///
     pub dummy_adv: Column<Advice>,
 
-    /// Advice column for input argument 1: RLC(input_bytes[0:32]).
+    /// Advice column for input argument 1= RLC(input_bytes[0..32]).
     pub arg1_rlc: Column<Advice>,
-    /// Advice column for input argument 2: RLC(input_bytes[32:64]).
+    /// Advice column for input argument 2= RLC(input_bytes[32..64]).
     pub arg2_rlc: Column<Advice>,
-    /// Advice column for input argument 3: RLC(input_bytes[64:96]).
+    /// Advice column for input argument 3= RLC(input_bytes[64..96]).
     pub arg3_rlc: Column<Advice>,
-    /// Advice column for input argument 4: RLC(input_bytes[96:128]).
+    /// Advice column for input argument 4= RLC(input_bytes[96..128]).
     pub arg4_rlc: Column<Advice>,
-    /// Advice column for RLC of all input bytes: RLC(input_bytes).
+    /// Advice column for RLC of all input bytes= RLC(input_bytes).
     pub input_rlc: Column<Advice>,
 
-    /// Advice column for output 1: RLC(output_bytes[0:32]).
+    /// Advice column for output 1= RLC(output_bytes[0..32]).
     pub output1_rlc: Column<Advice>,
-    /// Advice column for output 2: RLC(output_bytes[32:64]).
+    /// Advice column for output 2= RLC(output_bytes[32..64]).
     pub output2_rlc: Column<Advice>,
 }
 
