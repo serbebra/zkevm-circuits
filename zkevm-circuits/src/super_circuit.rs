@@ -81,8 +81,8 @@ use crate::util::Challenges;
 use crate::{
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, MptTable,
-        PoseidonTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable, TxTable,
+        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, MptTable, PoseidonTable,
+        PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, TxTable,
     },
 };
 
@@ -195,6 +195,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         log_circuit_info(meta, "sig table");
         let ecc_table = EccTable::construct(meta);
         log_circuit_info(meta, "ecc table");
+        let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
+        log_circuit_info(meta, "power of randomness table");
 
         let keccak_circuit = KeccakCircuitConfig::new(
             meta,
@@ -339,6 +341,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
                 exp_table,
                 sig_table,
                 ecc_table,
+                pow_of_rand_table,
             },
         );
         log_circuit_info(meta, "evm circuit");
