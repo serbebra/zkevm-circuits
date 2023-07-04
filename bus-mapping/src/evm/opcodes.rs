@@ -804,11 +804,6 @@ pub fn gen_end_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Erro
             coinbase_account.code_hash.to_word()
         },
     );
-    dbg!(
-        coinbase_account.clone(),
-        coinbase_account.is_empty(),
-        coinbase_reward
-    );
     if coinbase_account.is_empty() && !coinbase_reward.is_zero() {
         state.account_write(
             &mut exec_step,
