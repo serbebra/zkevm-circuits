@@ -1,4 +1,3 @@
-use bus_mapping::circuit_input_builder::PrecompileEcParams;
 use eth_types::Field;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},

@@ -81,8 +81,8 @@ use crate::util::Challenges;
 use crate::{
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, MptTable, PoseidonTable,
-        PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, TxTable,
+        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, MptTable,
+        PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable, TxTable,
     },
 };
 
