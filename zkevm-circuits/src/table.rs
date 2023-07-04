@@ -156,7 +156,7 @@ pub enum TxFieldTag {
     /// TxSignLength: Length of the RLP-encoded transaction without the
     /// signature, used for signing
     TxSignLength,
-    /// TxSignRLC= RLC of the RLP-encoded transaction without the signature,
+    /// TxSignRLC: RLC of the RLP-encoded transaction without the signature,
     /// used for signing
     TxSignRLC,
     /// TxSignHash: Hash of the transaction without the signature, used for
@@ -165,7 +165,7 @@ pub enum TxFieldTag {
     /// TxHashLength: Length of the RLP-encoded transaction without the
     /// signature, used for signing
     TxHashLength,
-    /// TxHashRLC= RLC of the RLP-encoded transaction without the signature,
+    /// TxHashRLC: RLC of the RLP-encoded transaction without the signature,
     /// used for signing
     TxHashRLC,
     /// TxHash: Hash of the transaction with the signature
