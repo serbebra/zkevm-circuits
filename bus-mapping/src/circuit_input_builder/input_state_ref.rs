@@ -5,6 +5,8 @@ use super::{
     CallKind, CodeSource, CopyEvent, ExecState, ExecStep, ExpEvent, Transaction,
     TransactionContext,
 };
+#[cfg(feature = "scroll")]
+use crate::util::KECCAK_CODE_HASH_ZERO;
 use crate::{
     error::{
         get_step_reported_error, ContractAddressCollisionError, DepthError, ExecError,
@@ -24,6 +26,7 @@ use eth_types::{
     evm_types::{
         gas_utils::memory_expansion_gas_cost, Gas, GasCost, MemoryAddress, OpcodeId, StackAddress,
     },
+    sign_types::SignData,
     Address, Bytecode, GethExecStep, ToAddress, ToBigEndian, ToWord, Word, H256, U256,
 };
 use ethers_core::utils::{get_contract_address, get_create2_address, keccak256};
@@ -587,6 +590,16 @@ impl<'a> CircuitInputStateRef<'a> {
                     address: receiver,
                     field: AccountField::CodeHash,
                     value: CodeDB::empty_code_hash().to_word(),
+                    value_prev: Word::zero(),
+                },
+            )?;
+            #[cfg(feature = "scroll")]
+            self.push_op_reversible(
+                step,
+                AccountOp {
+                    address: receiver,
+                    field: AccountField::KeccakCodeHash,
+                    value: KECCAK_CODE_HASH_ZERO.to_word(),
                     value_prev: Word::zero(),
                 },
             )?;
@@ -1277,6 +1290,11 @@ impl<'a> CircuitInputStateRef<'a> {
     /// Push a exponentiation event to the state.
     pub fn push_exponentiation(&mut self, event: ExpEvent) {
         self.block.add_exp_event(event)
+    }
+
+    /// Push an ecrecover event to the state.
+    pub fn push_ecrecover(&mut self, event: SignData) {
+        self.block.add_ecrecover_event(event)
     }
 
     pub(crate) fn get_step_err(

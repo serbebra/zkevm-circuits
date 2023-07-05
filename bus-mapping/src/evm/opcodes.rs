@@ -28,6 +28,7 @@ pub use self::sha3::sha3_tests::{gen_sha3_code, MemoryKind};
 
 mod address;
 mod balance;
+mod blockhash;
 mod calldatacopy;
 mod calldataload;
 mod calldatasize;
@@ -84,6 +85,7 @@ use self::sha3::Sha3;
 use crate::precompile::is_precompiled;
 use address::Address;
 use balance::Balance;
+use blockhash::Blockhash;
 use calldatacopy::Calldatacopy;
 use calldataload::Calldataload;
 use calldatasize::Calldatasize;
@@ -207,7 +209,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::RETURNDATASIZE => Returndatasize::gen_associated_ops,
         OpcodeId::RETURNDATACOPY => Returndatacopy::gen_associated_ops,
         OpcodeId::EXTCODEHASH => Extcodehash::gen_associated_ops,
-        OpcodeId::BLOCKHASH => StackOnlyOpcode::<1, 1>::gen_associated_ops,
+        OpcodeId::BLOCKHASH => Blockhash::gen_associated_ops,
         OpcodeId::COINBASE => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::TIMESTAMP => StackOnlyOpcode::<0, 1>::gen_associated_ops,
         OpcodeId::NUMBER => StackOnlyOpcode::<0, 1>::gen_associated_ops,
@@ -790,6 +792,37 @@ pub fn gen_end_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Erro
     if !found {
         log::error!("coinbase account not found: {}", block_info.coinbase);
         return Err(Error::AccountNotFound(block_info.coinbase));
+    }
+    let coinbase_account = coinbase_account.clone();
+    state.account_read(
+        &mut exec_step,
+        block_info.coinbase,
+        AccountField::CodeHash,
+        if coinbase_account.is_empty() {
+            Word::zero()
+        } else {
+            coinbase_account.code_hash.to_word()
+        },
+    );
+    if coinbase_account.is_empty() && !coinbase_reward.is_zero() {
+        state.account_write(
+            &mut exec_step,
+            block_info.coinbase,
+            AccountField::CodeHash,
+            CodeDB::empty_code_hash().to_word(),
+            Word::zero(),
+        )?;
+
+        #[cfg(feature = "scroll")]
+        {
+            state.account_write(
+                &mut exec_step,
+                block_info.coinbase,
+                AccountField::KeccakCodeHash,
+                crate::util::KECCAK_CODE_HASH_ZERO.to_word(),
+                Word::zero(),
+            )?;
+        }
     }
     let coinbase_balance_prev = coinbase_account.balance;
     let coinbase_balance = coinbase_balance_prev + coinbase_reward;

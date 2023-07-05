@@ -7,7 +7,10 @@ use ethers_core::{
 use std::cmp::max;
 
 use super::*;
-use crate::util::{log2_ceil, unusable_rows};
+use crate::{
+    tx_circuit::{dev::TxCircuitTester, get_sign_data},
+    util::{log2_ceil, unusable_rows},
+};
 use eth_types::{address, evm_types::gas_utils::tx_data_gas_cost, word, H256, U256, U64};
 use halo2_proofs::{
     dev::{MockProver, VerifyFailure},
@@ -18,7 +21,7 @@ use mock::{AddrOrWallet, MockTransaction};
 fn tx_circuit_unusable_rows() {
     assert_eq!(
         TxCircuit::<Fr>::unusable_rows(),
-        unusable_rows::<Fr, TxCircuit::<Fr>>(),
+        unusable_rows::<Fr, TxCircuitTester::<Fr>>(),
     )
 }
 
@@ -96,7 +99,8 @@ fn build_l1_msg_tx() -> Transaction {
     tx.is_create = eth_tx.to.is_none();
     tx.call_data_length = tx.call_data.len();
     tx.call_data_gas_cost = tx_data_gas_cost(&tx.call_data);
-    tx.tx_data_gas_cost = tx_data_gas_cost(&tx.rlp_signed);
+    // l1 msg's data has been charged in L1
+    tx.tx_data_gas_cost = 0;
     tx.v = eth_tx.v.as_u64();
     tx.r = eth_tx.r;
     tx.s = eth_tx.s;
@@ -114,12 +118,17 @@ fn run<F: Field>(
         19,
         log2_ceil(TxCircuit::<F>::min_num_rows(max_txs, max_calldata)),
     );
-    // SignVerifyChip -> ECDSAChip -> MainGate instance column
-    let circuit = TxCircuit::<F>::new(max_txs, max_calldata, chain_id, txs);
-
-    let prover = match MockProver::run(k, &circuit, vec![vec![]]) {
+    let circuit = TxCircuitTester::<F> {
+        sig_circuit: SigCircuit {
+            max_verif: max_txs,
+            signatures: get_sign_data(&txs, max_txs, chain_id as usize).unwrap(),
+            _marker: PhantomData,
+        },
+        tx_circuit: TxCircuit::new(max_txs, max_calldata, chain_id, txs),
+    };
+    let prover = match MockProver::run(k, &circuit, vec![]) {
         Ok(prover) => prover,
-        Err(e) => panic!("{:#?}", e),
+        Err(e) => panic!("{e:#?}"),
     };
 
     prover.verify_par()
@@ -145,7 +154,7 @@ fn tx_circuit_2tx_2max_tx() {
                 mock_tx.into()
             })
             .collect(),
-            mock::MOCK_CHAIN_ID.as_u64(),
+            *mock::MOCK_CHAIN_ID,
             MAX_TXS,
             MAX_CALLDATA
         ),
@@ -158,9 +167,10 @@ fn tx_circuit_0tx_1max_tx() {
     const MAX_TXS: usize = 1;
     const MAX_CALLDATA: usize = 32;
 
-    let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();
-
-    assert_eq!(run::<Fr>(vec![], chain_id, MAX_TXS, MAX_CALLDATA), Ok(()));
+    assert_eq!(
+        run::<Fr>(vec![], *mock::MOCK_CHAIN_ID, MAX_TXS, MAX_CALLDATA),
+        Ok(())
+    );
 }
 
 #[test]
@@ -168,11 +178,12 @@ fn tx_circuit_1tx_1max_tx() {
     const MAX_TXS: usize = 1;
     const MAX_CALLDATA: usize = 32;
 
-    let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();
-
     let tx: Transaction = mock::CORRECT_MOCK_TXS[0].clone().into();
 
-    assert_eq!(run::<Fr>(vec![tx], chain_id, MAX_TXS, MAX_CALLDATA), Ok(()));
+    assert_eq!(
+        run::<Fr>(vec![tx], *mock::MOCK_CHAIN_ID, MAX_TXS, MAX_CALLDATA),
+        Ok(())
+    );
 }
 
 #[test]
@@ -180,10 +191,12 @@ fn tx_circuit_1tx_2max_tx() {
     const MAX_TXS: usize = 2;
     const MAX_CALLDATA: usize = 320;
 
-    let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();
     let tx = build_pre_eip155_tx();
 
-    assert_eq!(run::<Fr>(vec![tx], chain_id, MAX_TXS, MAX_CALLDATA), Ok(()));
+    assert_eq!(
+        run::<Fr>(vec![tx], *mock::MOCK_CHAIN_ID, MAX_TXS, MAX_CALLDATA),
+        Ok(())
+    );
 }
 
 #[test]
@@ -191,10 +204,12 @@ fn tx_circuit_l1_msg_tx() {
     const MAX_TXS: usize = 4;
     const MAX_CALLDATA: usize = 400;
 
-    let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();
     let tx = build_l1_msg_tx();
 
-    assert_eq!(run::<Fr>(vec![tx], chain_id, MAX_TXS, MAX_CALLDATA), Ok(()));
+    assert_eq!(
+        run::<Fr>(vec![tx], *mock::MOCK_CHAIN_ID, MAX_TXS, MAX_CALLDATA),
+        Ok(())
+    );
 }
 
 #[cfg(feature = "reject-eip2718")]
@@ -207,13 +222,7 @@ fn tx_circuit_bad_address() {
     // This address doesn't correspond to the account that signed this tx.
     tx.from = AddrOrWallet::from(address!("0x1230000000000000000000000000000000000456"));
 
-    assert!(run::<Fr>(
-        vec![tx.into()],
-        mock::MOCK_CHAIN_ID.as_u64(),
-        MAX_TXS,
-        MAX_CALLDATA
-    )
-    .is_err(),);
+    assert!(run::<Fr>(vec![tx.into()], *mock::MOCK_CHAIN_ID, MAX_TXS, MAX_CALLDATA).is_err(),);
 }
 
 #[test]
@@ -221,12 +230,11 @@ fn tx_circuit_to_is_zero() {
     const MAX_TXS: usize = 1;
     const MAX_CALLDATA: usize = 32;
 
-    let chain_id: u64 = mock::MOCK_CHAIN_ID.as_u64();
     let mut tx = mock::CORRECT_MOCK_TXS[5].clone();
     tx.transaction_index = U64::from(1);
 
     assert_eq!(
-        run::<Fr>(vec![tx.into()], chain_id, MAX_TXS, MAX_CALLDATA),
+        run::<Fr>(vec![tx.into()], *mock::MOCK_CHAIN_ID, MAX_TXS, MAX_CALLDATA),
         Ok(())
     );
 }
