@@ -292,7 +292,6 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
         #[cfg(feature = "scroll-trace")]
         {
             use hash_circuit::hash::HASHABLE_DOMAIN_SPEC;
-            use itertools::Itertools;
             let code_hash = bytecode_table.code_hash;
             let pick_hash_tbl_cols = |meta: &mut VirtualCells<F>, inp_i: usize| {
                 debug_assert_eq!(PoseidonTable::INPUT_WIDTH, 2);
