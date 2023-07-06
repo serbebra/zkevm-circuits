@@ -139,7 +139,7 @@ impl ZktrieState {
         }
 
         for (addr, key, bytes) in storage_proofs {
-            let (exists, old_value) = self.sdb.get_storage(addr, key);
+            let (_exists, old_value) = self.sdb.get_storage(addr, key);
             let old_value = *old_value;
             //if exists {
             //    continue;
