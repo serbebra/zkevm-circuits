@@ -145,6 +145,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             .map(|tag| cb.call_context(None, tag));
             let mut reversion_info = cb.reversion_info_read(None);
 
+            // TODO: prev_code_hash must be empty_code_hash instead of 0?
+            // since Nonce 0->1 is updated when begin_tx.
+            // So we should optimize it later.
             let prev_code_hash = cb.query_cell_phase2();
             cb.account_read(
                 address.expr(),
