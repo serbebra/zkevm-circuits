@@ -61,14 +61,16 @@ pub(crate) struct BeginTxGadget<F> {
     sufficient_gas_left: RangeCheckGadget<F, N_BYTES_GAS>,
     transfer_with_gas_fee: TransferWithGasFeeGadget<F>,
     account_code_hash: Cell<F>,
-    call_code_hash: Cell<F>,
     account_code_hash_is_empty: IsEqualGadget<F>,
+    account_code_hash_is_zero: IsZeroGadget<F>,
+    call_code_hash: Cell<F>,
+    call_code_hash_is_empty: IsEqualGadget<F>,
+    call_code_hash_is_zero: IsZeroGadget<F>,
     is_precompile_lt: LtGadget<F, N_BYTES_ACCOUNT_ADDRESS>,
     /// Keccak256(RLP([tx_caller_address, tx_nonce]))
     caller_nonce_hash_bytes: [Cell<F>; N_BYTES_WORD],
     /// RLP gadget for CREATE address.
     create: ContractCreateGadget<F, false>,
-    account_code_hash_is_zero: IsZeroGadget<F>,
     is_caller_callee_equal: Cell<F>,
     // EIP-3651 (Warm COINBASE) for Shanghai
     coinbase: Cell<F>,
@@ -604,13 +606,15 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             sufficient_gas_left,
             transfer_with_gas_fee,
             account_code_hash,
-            call_code_hash,
-            intrinsic_gas_cost,
             account_code_hash_is_empty,
+            account_code_hash_is_zero,
+            call_code_hash,
+            call_code_hash_is_empty,
+            call_code_hash_is_zero,
+            intrinsic_gas_cost,
             is_precompile_lt,
             caller_nonce_hash_bytes,
             create,
-            account_code_hash_is_zero,
             is_caller_callee_equal,
             coinbase,
             is_coinbase_warm,
@@ -784,6 +788,17 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             region,
             offset,
             region.code_hash(account_code_hash),
+        )?;
+        self.call_code_hash_is_empty.assign_value(
+            region,
+            offset,
+            region.code_hash(call.code_hash),
+            region.empty_code_hash_rlc(),
+        )?;
+        self.call_code_hash_is_zero.assign_value(
+            region,
+            offset,
+            region.code_hash(call.code_hash),
         )?;
 
         let untrimmed_contract_addr = {
