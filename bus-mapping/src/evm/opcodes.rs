@@ -604,7 +604,7 @@ pub fn gen_begin_tx_ops(
         call.caller_address,
         call.address,
         callee_exists,
-        false,
+        call.is_create(),
         call.value,
         Some(fee),
     )?;

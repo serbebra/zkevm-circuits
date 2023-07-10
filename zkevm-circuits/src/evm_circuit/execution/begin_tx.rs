@@ -63,6 +63,8 @@ pub(crate) struct BeginTxGadget<F> {
     account_code_hash: Cell<F>,
     account_code_hash_is_empty: IsEqualGadget<F>,
     account_code_hash_is_zero: IsZeroGadget<F>,
+    #[cfg(feature = "scroll")]
+    account_keccak_code_hash: Cell<F>,
     call_code_hash: Cell<F>,
     call_code_hash_is_empty: IsEqualGadget<F>,
     call_code_hash_is_zero: IsZeroGadget<F>,
@@ -262,6 +264,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let account_code_hash_is_zero = IsZeroGadget::construct(cb, "", account_code_hash.expr());
         let account_code_hash_is_empty_or_zero =
             account_code_hash_is_empty.expr() + account_code_hash_is_zero.expr();
+        #[cfg(feature = "scroll")]
+        let account_keccak_code_hash = cb.query_cell_phase2();
 
         let call_code_hash = cb.query_cell_phase2();
         let call_code_hash_is_empty =
@@ -287,7 +291,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 not::expr(account_code_hash_is_zero.expr()),
                 is_precompile.expr(),
             ]),
-            false.expr(),
+            tx_is_create.expr(),
+            account_code_hash.expr(),
+            #[cfg(feature = "scroll")]
+            account_keccak_code_hash.expr(),
             tx_value.clone(),
             tx_fee.clone(),
             &mut reversion_info,
@@ -608,6 +615,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             account_code_hash,
             account_code_hash_is_empty,
             account_code_hash_is_zero,
+            #[cfg(feature = "scroll")]
+            account_keccak_code_hash,
             call_code_hash,
             call_code_hash_is_empty,
             call_code_hash_is_zero,
@@ -648,10 +657,19 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         }
         let callee_exists = is_precompile || !account_code_hash.is_zero();
         let caller_balance_sub_fee_pair = rws.next().account_balance_pair();
-        if !callee_exists && !tx.value.is_zero() {
+        if (!callee_exists && !tx.value.is_zero()) || tx.is_create {
+            rws.next();
             account_code_hash = rws.next().account_codehash_pair().1;
             #[cfg(feature = "scroll")]
-            let _callee_keccak_code_hash = rws.next();
+            {
+                rws.next();
+                let account_keccak_code_hash = rws.next().account_keccak_codehash_pair().1;
+                self.account_keccak_code_hash.assign(
+                    region,
+                    offset,
+                    region.word_rlc(account_keccak_code_hash),
+                )?;
+            }
         }
         let mut caller_balance_sub_value_pair = (zero, zero);
         let mut callee_balance_pair = (zero, zero);
