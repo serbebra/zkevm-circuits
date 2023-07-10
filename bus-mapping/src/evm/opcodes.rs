@@ -575,7 +575,11 @@ pub fn gen_begin_tx_ops(
             callee_account
         );
     }
-    let account_code_hash = callee_account.code_hash.to_word();
+    let account_code_hash = if callee_exists {
+        callee_account.code_hash.to_word()
+    } else {
+        Word::zero()
+    };
     // call_code is code being executed
     let call_code_hash = call.code_hash.to_word();
     if !state.tx.is_create() {
