@@ -582,7 +582,7 @@ pub fn gen_begin_tx_ops(
     };
     // call_code is code being executed
     let call_code_hash = call.code_hash.to_word();
-    if !state.tx.is_create() {
+    if !state.tx.is_create() && !account_code_hash.is_zero() {
         debug_assert_eq!(account_code_hash, call_code_hash);
     }
     let account_code_hash_is_empty_or_zero =
