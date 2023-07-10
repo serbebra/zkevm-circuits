@@ -233,9 +233,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
         // Case C in the specs.
         #[cfg(feature = "scroll")]
-        let contract_deployment_rw_num = 5; // dual code hash + code size
+        let contract_deployment_reversible_write_num = 3; // dual code hash + code size
         #[cfg(not(feature = "scroll"))]
-        let contract_deployment_rw_num = 2;
+        let contract_deployment_reversible_write_num = 1;
         let restore_context = cb.condition(not::expr(is_root.expr()), |cb| {
             RestoreContextGadget::construct(
                 cb,
@@ -244,7 +244,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 range.offset(),
                 range.length(),
                 memory_expansion.gas_cost(),
-                contract_deployment_rw_num.expr() * is_contract_deployment,
+                contract_deployment_reversible_write_num.expr() * is_contract_deployment,
             )
         });
 

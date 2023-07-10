@@ -752,7 +752,7 @@ mod test {
     fn run_test_circuits(ctx: TestContext<2, 1>) {
         CircuitTestBuilder::new_from_test_ctx(ctx)
             .params(CircuitsParams {
-                max_rws: 300000,
+                max_rws: 300000, // TODO: try smaller value?
                 ..Default::default()
             })
             .run();
