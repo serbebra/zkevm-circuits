@@ -575,27 +575,21 @@ pub fn gen_begin_tx_ops(
             callee_account
         );
     }
-    let (callee_code_hash, is_empty_code_hash) = match (state.tx.is_create(), callee_exists) {
-        (true, _) => (call.code_hash.to_word(), false),
-        (_, true) => {
-            debug_assert_eq!(
-                callee_account.code_hash, call.code_hash,
-                "callee account's code hash: {:?}, call's code hash: {:?}",
-                callee_account.code_hash, call.code_hash
-            );
-            (
-                call.code_hash.to_word(),
-                call.code_hash == CodeDB::empty_code_hash(),
-            )
-        }
-        (_, false) => (Word::zero(), true),
-    };
-    if !is_precompile && !call.is_create() {
+    let account_code_hash = callee_account.code_hash.to_word();
+    // call_code is code being executed
+    let call_code_hash = call.code_hash.to_word();
+    if !state.tx.is_create() {
+        debug_assert_eq!(account_code_hash, call_code_hash);
+    }
+    let account_code_hash_is_empty_or_zero =
+        account_code_hash.is_zero() || account_code_hash == CodeDB::empty_code_hash().to_word();
+
+    if !is_precompile {
         state.account_read(
             &mut exec_step,
             call.address,
             AccountField::CodeHash,
-            callee_code_hash,
+            account_code_hash,
         );
     }
 
@@ -606,7 +600,7 @@ pub fn gen_begin_tx_ops(
         call.caller_address,
         call.address,
         callee_exists,
-        call.is_create(),
+        false,
         call.value,
         Some(fee),
     )?;
@@ -630,7 +624,11 @@ pub fn gen_begin_tx_ops(
     }
 
     // There are 4 branches from here.
-    match (call.is_create(), is_precompile, is_empty_code_hash) {
+    match (
+        call.is_create(),
+        is_precompile,
+        account_code_hash_is_empty_or_zero,
+    ) {
         // 1. Creation transaction.
         (true, _, _) => {
             state.push_op_reversible(
@@ -700,7 +698,7 @@ pub fn gen_begin_tx_ops(
                     (CallContextField::LastCalleeReturnDataLength, 0.into()),
                     (CallContextField::IsRoot, 1.into()),
                     (CallContextField::IsCreate, call.is_create().to_word()),
-                    (CallContextField::CodeHash, callee_code_hash),
+                    (CallContextField::CodeHash, call_code_hash),
                 ] {
                     state.call_context_write(&mut exec_step, call.call_id, field, value);
                 }
