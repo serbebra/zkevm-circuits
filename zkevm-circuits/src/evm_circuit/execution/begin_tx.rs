@@ -35,7 +35,6 @@ const SHANGHAI_RW_DELTA: u8 = 1;
 #[cfg(not(feature = "shanghai"))]
 const SHANGHAI_RW_DELTA: u8 = 0;
 
-#[cfg(feature = "reject-eip2718")]
 use gadgets::util::select;
 
 #[derive(Clone, Debug)]
@@ -62,8 +61,14 @@ pub(crate) struct BeginTxGadget<F> {
     intrinsic_gas_cost: Cell<F>,
     sufficient_gas_left: RangeCheckGadget<F, N_BYTES_GAS>,
     transfer_with_gas_fee: TransferWithGasFeeGadget<F>,
-    phase2_code_hash: Cell<F>,
-    is_empty_code_hash: IsEqualGadget<F>,
+    account_code_hash: Cell<F>,
+    account_code_hash_is_empty: IsEqualGadget<F>,
+    account_code_hash_is_zero: IsZeroGadget<F>,
+    #[cfg(feature = "scroll")]
+    account_keccak_code_hash: Cell<F>,
+    call_code_hash: Cell<F>,
+    call_code_hash_is_empty: IsEqualGadget<F>,
+    call_code_hash_is_zero: IsZeroGadget<F>,
     is_precompile_lt: LtGadget<F, N_BYTES_ACCOUNT_ADDRESS>,
     /// Keccak256(RLP([tx_caller_address, tx_nonce]))
     caller_nonce_hash_bytes: [Cell<F>; N_BYTES_WORD],
@@ -71,7 +76,6 @@ pub(crate) struct BeginTxGadget<F> {
     init_code_rlc: Cell<F>,
     /// RLP gadget for CREATE address.
     create: ContractCreateGadget<F, false>,
-    callee_not_exists: IsZeroGadget<F>,
     is_caller_callee_equal: Cell<F>,
     // EIP-3651 (Warm COINBASE) for Shanghai
     coinbase: Cell<F>,
@@ -193,7 +197,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         // TODO2: contrain calling precompile directly
 
         let intrinsic_gas_cost = cb.query_cell();
-        #[cfg(feature = "reject-eip2718")]
         cb.condition(not::expr(is_precompile.expr()), |cb| {
             // Calculate gas cost of init code only for EIP-3860 of Shanghai.
             #[cfg(feature = "shanghai")]
@@ -258,37 +261,43 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             None,
         ); // rwc_delta += 1
 
-        // Read code_hash of callee
-        let phase2_code_hash = cb.query_cell_phase2();
-        let is_empty_code_hash =
-            IsEqualGadget::construct(cb, phase2_code_hash.expr(), cb.empty_code_hash_rlc());
-        let callee_not_exists = IsZeroGadget::construct(cb, "", phase2_code_hash.expr());
-        // no_callee_code is true when the account exists and has empty
-        // code hash, or when the account doesn't exist (which we encode with
-        // code_hash = 0).
-        let no_callee_code = is_empty_code_hash.expr() + callee_not_exists.expr();
+        let account_code_hash = cb.query_cell_phase2();
+        let account_code_hash_is_empty =
+            IsEqualGadget::construct(cb, account_code_hash.expr(), cb.empty_code_hash_rlc());
+        let account_code_hash_is_zero = IsZeroGadget::construct(cb, "", account_code_hash.expr());
+        let account_code_hash_is_empty_or_zero =
+            account_code_hash_is_empty.expr() + account_code_hash_is_zero.expr();
+        #[cfg(feature = "scroll")]
+        let account_keccak_code_hash = cb.query_cell_phase2();
 
-        cb.condition(
-            and::expr([
-                not::expr(tx_is_create.expr()),
-                not::expr(is_precompile.expr()),
-            ]),
-            |cb| {
-                cb.account_read(
-                    call_callee_address.expr(),
-                    AccountFieldTag::CodeHash,
-                    phase2_code_hash.expr(),
-                ); // rwc_delta += 1
-            },
-        );
+        let call_code_hash = cb.query_cell_phase2();
+        let call_code_hash_is_empty =
+            IsEqualGadget::construct(cb, call_code_hash.expr(), cb.empty_code_hash_rlc());
+        let call_code_hash_is_zero = IsZeroGadget::construct(cb, "", call_code_hash.expr());
+        let call_code_hash_is_empty_or_zero =
+            call_code_hash_is_empty.expr() + call_code_hash_is_zero.expr();
+
+        cb.condition(not::expr(is_precompile.expr()), |cb| {
+            cb.account_read(
+                call_callee_address.expr(),
+                AccountFieldTag::CodeHash,
+                account_code_hash.expr(),
+            ); // rwc_delta += 1
+        });
 
         // Transfer value from caller to callee, creating account if necessary.
         let transfer_with_gas_fee = TransferWithGasFeeGadget::construct(
             cb,
             tx_caller_address.expr(),
             call_callee_address.expr(),
-            or::expr([not::expr(callee_not_exists.expr()), is_precompile.expr()]),
+            or::expr([
+                not::expr(account_code_hash_is_zero.expr()),
+                is_precompile.expr(),
+            ]),
             tx_is_create.expr(),
+            account_code_hash.expr(),
+            #[cfg(feature = "scroll")]
+            account_keccak_code_hash.expr(),
             tx_value.clone(),
             tx_fee.clone(),
             &mut reversion_info,
@@ -313,11 +322,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx_nonce.expr(),
             create.caller_nonce(),
         );
-        cb.condition(not::expr(no_callee_code.expr()), |cb| {
+        cb.condition(not::expr(call_code_hash_is_empty_or_zero.expr()), |cb| {
             cb.require_equal(
                 "code hash equivalence",
                 cb.curr.state.code_hash.expr(),
-                phase2_code_hash.expr(),
+                call_code_hash.expr(),
             );
         });
 
@@ -400,6 +409,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 //   - Write TxAccessListAccount (Caller)
                 //   - Write TxAccessListAccount (Callee)
                 //   - Write TxAccessListAccount (Coinbase) only for Shanghai
+                //   - Read Account CodeHash
                 //   - a TransferWithGasFeeGadget
                 //   - Write Account (Callee) Nonce (Reversible)
                 //   - Write CallContext Depth
@@ -416,7 +426,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 //   - Write CallContext IsCreate
                 //   - Write CallContext CodeHash
                 rw_counter: Delta(
-                    21.expr()
+                    22.expr()
                         + tx_l1_fee.rw_delta()
                         + transfer_with_gas_fee.rw_delta()
                         + SHANGHAI_RW_DELTA.expr(),
@@ -442,7 +452,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             cb.require_equal(
                 "precompile should be zero code hash",
                 // FIXME: see in opcodes.rs gen_begin_tx_ops
-                no_callee_code.expr(),
+                account_code_hash_is_empty_or_zero.expr(),
                 true.expr(),
             );
             // TODO: verify that precompile could fail in begin tx.
@@ -492,7 +502,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         cb.condition(
             and::expr([
                 not::expr(tx_is_create.expr()),
-                no_callee_code.expr(),
+                account_code_hash_is_empty_or_zero.expr(),
                 not::expr(is_precompile.expr()),
             ]),
             |cb| {
@@ -534,7 +544,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
         // 4. Call to account with non-empty code.
         cb.condition(
-            and::expr([not::expr(tx_is_create.expr()), not::expr(no_callee_code)]),
+            and::expr([
+                not::expr(tx_is_create.expr()),
+                not::expr(account_code_hash_is_empty_or_zero),
+            ]),
             |cb| {
                 // Setup first call's context.
                 for (field_tag, value) in [
@@ -556,7 +569,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                     (CallContextFieldTag::LastCalleeReturnDataLength, 0.expr()),
                     (CallContextFieldTag::IsRoot, 1.expr()),
                     (CallContextFieldTag::IsCreate, tx_is_create.expr()),
-                    (CallContextFieldTag::CodeHash, phase2_code_hash.expr()),
+                    (CallContextFieldTag::CodeHash, account_code_hash.expr()),
                 ] {
                     cb.call_context_lookup(true.expr(), Some(call_id.expr()), field_tag, value);
                 }
@@ -596,7 +609,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                     call_id: To(call_id.expr()),
                     is_root: To(true.expr()),
                     is_create: To(tx_is_create.expr()),
-                    code_hash: To(phase2_code_hash.expr()),
+                    code_hash: To(account_code_hash.expr()),
                     gas_left: To(gas_left),
                     reversible_write_counter: To(transfer_with_gas_fee.reversible_w_delta()),
                     log_id: To(0.expr()),
@@ -626,15 +639,20 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             reversion_info,
             sufficient_gas_left,
             transfer_with_gas_fee,
-            phase2_code_hash,
+            account_code_hash,
+            account_code_hash_is_empty,
+            account_code_hash_is_zero,
+            #[cfg(feature = "scroll")]
+            account_keccak_code_hash,
+            call_code_hash,
+            call_code_hash_is_empty,
+            call_code_hash_is_zero,
             intrinsic_gas_cost,
-            is_empty_code_hash,
             is_precompile_lt,
             caller_nonce_hash_bytes,
             init_code_rlc,
             keccak_code_hash,
             create,
-            callee_not_exists,
             is_caller_callee_equal,
             coinbase,
             is_coinbase_warm,
@@ -661,18 +679,26 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         #[cfg(not(feature = "shanghai"))]
         let is_coinbase_warm = false;
 
-        let mut callee_code_hash = zero;
-        if !tx.is_create && !is_precompiled(&tx.callee_address.unwrap_or_default()) {
-            callee_code_hash = rws.next().account_codehash_pair().1;
+        let is_precompile = is_precompiled(&tx.callee_address.unwrap_or_default());
+        let mut account_code_hash = zero;
+        if !is_precompile {
+            account_code_hash = rws.next().account_codehash_pair().1;
         }
-        let callee_exists = is_precompiled(&tx.callee_address.unwrap_or_default())
-            || (!tx.is_create && !callee_code_hash.is_zero());
+        let callee_exists = is_precompile || !account_code_hash.is_zero();
         let caller_balance_sub_fee_pair = rws.next().account_balance_pair();
-        let must_create = tx.is_create;
-        if (!callee_exists && !tx.value.is_zero()) || must_create {
-            callee_code_hash = rws.next().account_codehash_pair().1;
+        if (!callee_exists && !tx.value.is_zero()) || tx.is_create {
+            rws.next();
+            account_code_hash = rws.next().account_codehash_pair().1;
             #[cfg(feature = "scroll")]
-            let _callee_keccak_code_hash = rws.next();
+            {
+                rws.next();
+                let account_keccak_code_hash = rws.next().account_keccak_codehash_pair().1;
+                self.account_keccak_code_hash.assign(
+                    region,
+                    offset,
+                    region.word_rlc(account_keccak_code_hash),
+                )?;
+            }
         }
         let mut caller_balance_sub_value_pair = (zero, zero);
         let mut callee_balance_pair = (zero, zero);
@@ -779,8 +805,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx.value,
             tx_fee,
         )?;
-        self.phase2_code_hash
-            .assign(region, offset, region.code_hash(callee_code_hash))?;
+        self.account_code_hash
+            .assign(region, offset, region.code_hash(account_code_hash))?;
+        self.call_code_hash
+            .assign(region, offset, region.code_hash(call.code_hash))?;
         let untrimmed_contract_addr = {
             let mut stream = RlpStream::new();
             stream.begin_list(2);
@@ -797,14 +825,28 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         {
             c.assign(region, offset, Value::known(F::from(*v as u64)))?;
         }
-        self.is_empty_code_hash.assign_value(
+        self.account_code_hash_is_empty.assign_value(
             region,
             offset,
-            region.code_hash(callee_code_hash),
+            region.code_hash(account_code_hash),
             region.empty_code_hash_rlc(),
         )?;
-        self.callee_not_exists
-            .assign_value(region, offset, region.code_hash(callee_code_hash))?;
+        self.account_code_hash_is_zero.assign_value(
+            region,
+            offset,
+            region.code_hash(account_code_hash),
+        )?;
+        self.call_code_hash_is_empty.assign_value(
+            region,
+            offset,
+            region.code_hash(call.code_hash),
+            region.empty_code_hash_rlc(),
+        )?;
+        self.call_code_hash_is_zero.assign_value(
+            region,
+            offset,
+            region.code_hash(call.code_hash),
+        )?;
 
         let untrimmed_contract_addr = {
             let mut stream = ethers_core::utils::rlp::RlpStream::new();
@@ -846,7 +888,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx.caller_address,
             tx.nonce,
             None,
-            Some(callee_code_hash),
+            Some(account_code_hash),
             None,
         )?;
 
