@@ -552,6 +552,7 @@ pub fn gen_begin_tx_ops(
         GasCost::TX.as_u64()
     } + call_data_gas_cost
         + init_code_gas_cost;
+    log::trace!("intrinsic_gas_cost {intrinsic_gas_cost}, call_data_gas_cost {call_data_gas_cost}, init_code_gas_cost {init_code_gas_cost}, exec_step.gas_cost {:?}", exec_step.gas_cost);
     exec_step.gas_cost = GasCost(intrinsic_gas_cost);
 
     // Get code_hash of callee
