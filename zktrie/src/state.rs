@@ -154,10 +154,8 @@ impl ZktrieState {
         for (addr, key, bytes) in storage_proofs {
             let (exists, old_value) = self.sdb.get_storage(addr, key);
             let old_value = *old_value;
-            if exists {
-                if !overwrite {
-                    continue;
-                }
+            if exists && !overwrite {
+                continue;
             }
             let (_, acc) = self.sdb.get_account_mut(addr);
             let mut key_buf = [0u8; 32];
