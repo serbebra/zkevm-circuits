@@ -357,7 +357,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 (is_hash(meta), Null),
                 (is_data(meta), Null),
                 (is_block_num(meta), Null),
-                (is_chain_id_expr(meta), Null),
+                (is_chain_id_expr(meta), Tag::ChainId.into()),
             ];
 
             cb.require_boolean(
@@ -526,6 +526,10 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 is_to(meta),
                 is_value(meta),
                 is_data_rlc(meta),
+                and::expr([
+                    meta.query_advice(is_chain_id, Rotation::cur()),
+                    tx_type_bits.value_equals(Eip155, Rotation::cur())(meta),
+                ]),
                 is_sign_length(meta),
                 is_sign_rlc(meta),
             ]);
@@ -1273,7 +1277,9 @@ impl<F: Field> TxCircuitConfig<F> {
                     TxSignRLC,
                 ];
                 let is_tag_in_set = sign_set.into_iter().filter(|_tag| tag == *_tag).count() == 1;
-                Value::known(F::from((is_tag_in_set && !is_l1_msg) as u64))
+                let case1 = is_tag_in_set && !is_l1_msg;
+                let case2 = (tag == ChainID) && tx.map_or(false, |tx| tx.tx_type.is_eip155_tx());
+                Value::known(F::from((case1 || case2) as u64))
             });
             // lookup to RLP table for hashing (non L1 msg)
             conditions.insert(LookupCondition::RlpHashTag, {
@@ -1777,7 +1783,12 @@ impl<F: Field> TxCircuit<F> {
                             None,
                             Value::known(F::from(tx.tx_data_gas_cost)),
                         ),
-                        (ChainID, None, None, Value::known(F::from(tx.chain_id))),
+                        (
+                            ChainID,
+                            Some(Tag::ChainId.into()),
+                            None,
+                            Value::known(F::from(tx.chain_id)),
+                        ),
                         (
                             SigV,
                             Some(Tag::SigV.into()),
