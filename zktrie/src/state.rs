@@ -89,12 +89,16 @@ impl ZktrieState {
         )
     }
 
-    /// ..
+    /// `overwrite` should be false when we use capacity checking API.
+    /// Whe we use capacity checking API, the storage proof is given tx by tx,
+    /// but they are all storage proofs generated for the state **before** this block.
+    /// So the local statedb is more accurate.
     pub fn update_statedb_from_proofs<'d, BYTES>(
         &mut self,
         account_proofs: impl Iterator<Item = (&'d Address, BYTES)> + Clone,
         storage_proofs: impl Iterator<Item = (&'d Address, &'d Word, BYTES)> + Clone,
         _additional_proofs: impl Iterator<Item = &'d [u8]> + Clone,
+        overwrite: bool,
     ) -> Result<(), Error>
     where
         BYTES: IntoIterator<Item = &'d [u8]>,
@@ -109,13 +113,22 @@ impl ZktrieState {
             let acc_data = acc_proof.data;
             let (exists, acc) = self.sdb.get_account(addr);
             if exists {
-                log::trace!(
-                    "overwrite trace account in sdb: addr {:?}, new {:?}, replace old: {:?}",
-                    addr,
-                    acc_data,
-                    acc
-                );
-                //continue;
+                if overwrite {
+                    log::trace!(
+                        "overwrite trace account in sdb: addr {:?}, new {:?}, replace old: {:?}",
+                        addr,
+                        acc_data,
+                        acc
+                    );
+                } else {
+                    log::trace!(
+                        "skip trace account into sdb: addr {:?}, new {:?}, keep old: {:?}",
+                        addr,
+                        acc_data,
+                        acc
+                    );
+                    continue;
+                }
             }
             if acc_proof.key.is_some() {
                 log::trace!("trace account into sdb: {:?} => {:?}", addr, acc_data);
@@ -139,11 +152,13 @@ impl ZktrieState {
         }
 
         for (addr, key, bytes) in storage_proofs {
-            let (_exists, old_value) = self.sdb.get_storage(addr, key);
+            let (exists, old_value) = self.sdb.get_storage(addr, key);
             let old_value = *old_value;
-            //if exists {
-            //    continue;
-            //}
+            if exists {
+                if !overwrite {
+                    continue;
+                }
+            }
             let (_, acc) = self.sdb.get_account_mut(addr);
             let mut key_buf = [0u8; 32];
             key.to_big_endian(key_buf.as_mut_slice());
@@ -197,6 +212,7 @@ impl ZktrieState {
             account_proofs.clone(),
             storage_proofs.clone(),
             additional_proofs.clone(),
+            true,
         )?;
         self.update_nodes_from_proofs(account_proofs, storage_proofs, additional_proofs)?;
         Ok(())
@@ -238,6 +254,7 @@ impl ZktrieState {
             account_proofs.clone(),
             storage_proofs.clone(),
             additional_proofs.clone(),
+            true,
         )?;
         state.update_nodes_from_proofs(account_proofs, storage_proofs, additional_proofs)?;
         Ok(state)
