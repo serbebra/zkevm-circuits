@@ -84,7 +84,7 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
         let fp_config = FpConfig::configure(
             meta,
             FpStrategy::Simple,
-            &[15, 1], // num advice
+            &[30, 1], // num advice
             &[17],    // num lookup advice
             1,        // num fixed
             13,       // lookup bits
@@ -163,6 +163,7 @@ impl<F: Field> EccCircuit<F> {
         // is to simplify zkEVM implementation for now, not allowing dynamic length input for
         // EcPairing precompiled contract call.
         for pairing_op in self.pairing_ops.iter() {
+            log::error!("assign pairing_ops {:?}", pairing_op);
             if pairing_op.inputs.len() > 4 {
                 error!(
                     "pairing check inputs = {} max allowed = {}",
@@ -262,6 +263,9 @@ impl<F: Field> EccCircuit<F> {
                     })
                     .collect_vec();
 
+                    log::error!("len self.pairing_ops.iter() {} , max {}", self
+                    .pairing_ops
+                    .len(), self.max_pairing_ops);
                 // e(G1 . G2) * ... * e(G1 . G2) -> Gt
                 // Note: maximum 4 pairings per pairing op.
                 let ec_pairings_assigned = self
@@ -303,9 +307,12 @@ impl<F: Field> EccCircuit<F> {
                             .map(|i| {
                                 let [x_c0_cells, x_c1_cells, y_c0_cells, y_c1_cells] =
                                     self.decompose_g2(i.1);
+                                    let ec_point = pairing_chip
+                                    .load_private_g2(&mut ctx, Value::known(i.1));
+                                    log::error!("loading g2 {:?}, {:?}", i.1, ec_point);
+                                    assert!(!bool::from(i.1.is_identity()));
                                 let decomposed = G2Decomposed {
-                                    ec_point: pairing_chip
-                                        .load_private_g2(&mut ctx, Value::known(i.1)),
+                                    ec_point,
                                     is_identity: i.1.is_identity().into(),
                                     x_c0_cells: x_c0_cells.clone(),
                                     x_c1_cells: x_c1_cells.clone(),
@@ -358,7 +365,7 @@ impl<F: Field> EccCircuit<F> {
                             .iter()
                             .zip(g2s.iter())
                             .filter_map(|(g1_assigned, g2_assigned)| {
-                                if g1_assigned.decomposed.is_identity
+                                if false && g1_assigned.decomposed.is_identity
                                     && g2_assigned.decomposed.is_identity
                                 {
                                     None

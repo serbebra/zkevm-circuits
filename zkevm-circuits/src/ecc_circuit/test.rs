@@ -76,8 +76,8 @@ impl GenRand for EcPairingOp {
             inputs: [
                 (point_p_negated, point_q),
                 (point_s, point_t),
-                (G1Affine::identity(), G2Affine::identity()),
-                (G1Affine::identity(), G2Affine::identity()),
+                (G1Affine::identity(), G2Affine::generator()),
+                (G1Affine::identity(), G2Affine::generator()),
             ],
             output: 1u64.into(),
         }

@@ -671,8 +671,8 @@ impl Default for EcPairingOp {
                         },
                     },
                 ),
-                (G1Affine::identity(), G2Affine::identity()),
-                (G1Affine::identity(), G2Affine::identity()),
+                (G1Affine::identity(), G2Affine::generator()),
+                (G1Affine::identity(), G2Affine::generator()),
             ],
             output: Word::one(),
         }
