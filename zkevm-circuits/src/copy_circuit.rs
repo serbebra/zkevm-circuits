@@ -244,10 +244,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 )(meta),
             ]);
             vec![
-                // If a row is not enabled (fixed), it is not in an event.
-                // TODO: not currently possible due to API limitations.
-                // (1.expr() - enabled.expr()) * is_event.expr(),
-
                 // If a row is anything but padding (filler of the table), it is in an event.
                 enabled.expr()
                     * ((1.expr() - is_event.expr())
@@ -320,6 +316,9 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             let is_continue = is_event.expr()
                 - meta.query_advice(is_last, Rotation::cur())
                 - meta.query_advice(is_last, Rotation::next());
+
+            // Prevent an event from spilling into the disabled rows. This also ensures that eventually is_last=1.
+            cb.require_zero("the next row is enabled", is_continue.expr() * not::expr(meta.query_fixed(q_enable, Rotation::next())));
 
             let is_word_end = is_word_end.is_equal_expression.expr();
 
@@ -736,13 +735,6 @@ impl<F: Field> CopyCircuitConfig<F> {
         {
             let is_read = step_idx % 2 == 0;
 
-            region.assign_fixed(
-                || format!("q_enable at row: {offset}"),
-                self.q_enable,
-                *offset,
-                || Value::known(F::one()),
-            )?;
-
             // Copy table assignments
             for (&column, &(value, label)) in
                 <CopyTable as LookupTable<F>>::advice_columns(&self.copy_table)
@@ -880,9 +872,7 @@ impl<F: Field> CopyCircuitConfig<F> {
             .sum::<usize>();
 
         // The `+ 2` is used to take into account the two extra empty copy rows needed
-        // to satisfy the query at `Rotation(2)` performed inside of the
-        // `rows[2].value == rows[0].value * r + rows[1].value` requirement in the RLC
-        // Accumulation gate.
+        // to satisfy the queries at `Rotation(2)`.
         assert!(
             copy_rows_needed + 2 <= max_copy_rows,
             "copy rows not enough {copy_rows_needed} vs {max_copy_rows}"
@@ -976,14 +966,14 @@ impl<F: Field> CopyCircuitConfig<F> {
         lt_chip: &LtChip<F, 8>,
         lt_word_end_chip: &IsEqualChip<F>,
     ) -> Result<(), Error> {
+        // q_enable
+        region.assign_fixed(
+            || "q_enable",
+            self.q_enable,
+            *offset,
+            || Value::known(F::from(!is_last_two)),
+        )?;
         if !is_last_two {
-            // q_enable
-            region.assign_fixed(
-                || "q_enable",
-                self.q_enable,
-                *offset,
-                || Value::known(F::one()),
-            )?;
             // q_step
             if *offset % 2 == 0 {
                 self.q_step.enable(region, *offset)?;
