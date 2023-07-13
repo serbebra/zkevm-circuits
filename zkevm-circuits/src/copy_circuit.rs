@@ -312,10 +312,11 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             // Whether this row is part of an event.
             let is_event = meta.query_advice(is_event, Rotation::cur());
 
+            let is_last_step = meta.query_advice(is_last, Rotation::cur())
+                + meta.query_advice(is_last, Rotation::next());
+
             // Whether this row is part of an event but not the last step. When true, the next step is derived from the current step.
-            let is_continue = is_event.expr()
-                - meta.query_advice(is_last, Rotation::cur())
-                - meta.query_advice(is_last, Rotation::next());
+            let is_continue = is_event.expr() - is_last_step.expr();
 
             // Prevent an event from spilling into the disabled rows. This also ensures that eventually is_last=1.
             cb.require_zero("the next row is enabled", is_continue.expr() * not::expr(meta.query_fixed(q_enable, Rotation::next())));
@@ -441,9 +442,9 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             }
 
             // Decrement rwc_inc_left for the next row, when an RW operation happens. At the end, it must reach 0.
+            let is_rw_type = meta.query_advice(is_memory, Rotation::cur()) + meta.query_advice(is_tx_log, Rotation::cur());
             {
-                let is_rw_type = meta.query_advice(is_memory, Rotation::cur()) + meta.query_advice(is_tx_log, Rotation::cur());
-                let rwc_diff = is_rw_type * is_word_end.expr();
+                let rwc_diff = is_rw_type.expr() * is_word_end.expr();
                 let next_value = meta.query_advice(rwc_inc_left, Rotation::cur()) - rwc_diff;
                 let update_or_finish = select::expr(
                     meta.query_advice(is_last, Rotation::cur()),
@@ -467,6 +468,15 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                         meta.query_advice(rw_counter, Rotation::next()) + meta.query_advice(rwc_inc_left, Rotation::next()),
                     );
                 }
+            );
+
+            // Ensure that the word operation completes.
+            cb.require_zero("is_last_step requires is_word_end for word-based types",
+                and::expr([
+                    is_last_step.expr(),
+                    is_rw_type.expr(),
+                    not::expr(is_word_end.expr()),
+                ]),
             );
 
             // Derive the next step from the current step.
