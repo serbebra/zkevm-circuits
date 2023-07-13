@@ -145,12 +145,14 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
     ) -> Self {
         let q_step = meta.complex_selector();
         let is_last = meta.advice_column();
-        let value = meta.advice_column_in(SecondPhase); // TODO: must be in first phase.
+        let value = meta.advice_column();
         let value_prev = meta.advice_column();
+
+        // RLC accumulators in the second phase.
         let value_word_rlc = meta.advice_column_in(SecondPhase);
         let value_word_rlc_prev = meta.advice_column_in(SecondPhase);
-
         let value_acc = meta.advice_column_in(SecondPhase);
+
         let is_code = meta.advice_column();
         let (is_event, is_precompiled, is_tx_calldata, is_bytecode, is_memory, is_tx_log) = (
             meta.advice_column(),
