@@ -56,6 +56,8 @@ pub struct CopyCircuitConfig<F> {
     pub is_last: Column<Advice>,
     /// The value copied in this copy step.
     pub value: Column<Advice>,
+    /// The value before the write.
+    pub value_prev: Column<Advice>,
     /// The word value for memory lookup.
     pub value_word_rlc: Column<Advice>,
     /// The word value for memory lookup, before the write.
@@ -143,7 +145,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
     ) -> Self {
         let q_step = meta.complex_selector();
         let is_last = meta.advice_column();
-        let value = meta.advice_column_in(SecondPhase);
+        let value = meta.advice_column_in(SecondPhase); // TODO: must be in first phase.
+        let value_prev = meta.advice_column();
         let value_word_rlc = meta.advice_column_in(SecondPhase);
         let value_word_rlc_prev = meta.advice_column_in(SecondPhase);
 
@@ -300,6 +303,17 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     not::expr(meta.query_advice(mask, Rotation::cur())),
                 ]),
             );
+            // On a masked row, the value is the value_prev.
+            cb.condition(
+                meta.query_advice(mask, Rotation::cur()),
+                |cb| {
+                    cb.require_equal(
+                        "value == value_prev on masked rows",
+                        meta.query_advice(value, Rotation::cur()),
+                        meta.query_advice(value_prev, Rotation::cur()),
+                    );
+                },
+            );
 
             // Whether this row is part of an event.
             let is_event = meta.query_advice(is_event, Rotation::cur());
@@ -320,6 +334,13 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             let is_word_end = is_word_end.is_equal_expression.expr();
             let not_word_end = not::expr(is_word_end.expr());
 
+            // Apply the same constraints for the RLCs of words before and after the write.
+            let word_rlc_both = [
+                (value_word_rlc, value),
+                (value_word_rlc_prev, value_prev),
+            ];
+
+            // Initial values derived from the event.
             cb.condition(is_first.expr(),
                 |cb| {
                     // Apply the same constraints on the first reader and first writer rows.
@@ -331,6 +352,14 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                             meta.query_advice(value_acc, rot),
                             meta.query_advice(value, rot) * meta.query_advice(non_pad_non_mask, rot),
                         );
+
+                        for (word_rlc, value) in word_rlc_both {
+                            cb.require_equal(
+                                "word_rlc init to the first value",
+                                meta.query_advice(word_rlc, rot),
+                                meta.query_advice(value, rot),
+                            );
+                        }
                     }
                 },
             );
@@ -348,7 +377,22 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                         "word_index increments or resets to 0",
                         inc_or_reset,
                         meta.query_advice(word_index, Rotation(2)),
-                    )
+                    );
+
+                    // Accumulate the next value into the next word_rlc.
+                    for (word_rlc, value) in word_rlc_both {
+                        let current_or_reset = select::expr(is_word_end.expr(),
+                            0.expr(),
+                            meta.query_advice(word_rlc, Rotation::cur()),
+                        );
+                        let value = meta.query_advice(value, Rotation(2));
+                        let accumulated = current_or_reset.expr() * challenges.evm_word() + value;
+                        cb.require_equal(
+                            "value_word_rlc(2) == value_word_rlc(0) * r + value(2)",
+                            accumulated,
+                            meta.query_advice(word_rlc, Rotation(2)),
+                        );
+                    }
                 },
             );
 
@@ -419,6 +463,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 cb.require_zero("front_mask = 0 by the end of the first word", front_mask.expr());
             });
 
+            // Derive the next step from the current step.
             cb.condition(is_continue.expr(),
             |cb| {
 
@@ -678,6 +723,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             q_step,
             is_last,
             value,
+            value_prev,
             value_word_rlc,
             value_word_rlc_prev,
             word_index,
@@ -768,6 +814,7 @@ impl<F: Field> CopyCircuitConfig<F> {
             for (column, &(value, label)) in [
                 self.is_last,
                 self.value,
+                self.value_prev,
                 self.value_word_rlc,
                 self.value_word_rlc_prev,
                 self.value_acc,
@@ -804,8 +851,8 @@ impl<F: Field> CopyCircuitConfig<F> {
                 Value::known(F::from(31u64)),
             )?;
 
-            let pad = unwrap_value(circuit_row[5].0);
-            let mask = unwrap_value(circuit_row[7].0);
+            let pad = unwrap_value(circuit_row[6].0);
+            let mask = unwrap_value(circuit_row[8].0);
             let non_pad_non_mask = pad.is_zero_vartime() && mask.is_zero_vartime();
             region.assign_advice(
                 || format!("non_pad_non_mask at row: {offset}"),
@@ -884,6 +931,7 @@ impl<F: Field> CopyCircuitConfig<F> {
             |mut region| {
                 region.name_column(|| "is_last", self.is_last);
                 region.name_column(|| "value", self.value);
+                region.name_column(|| "value_prev", self.value_prev);
                 region.name_column(|| "value_word_rlc", self.value_word_rlc);
                 region.name_column(|| "value_word_rlc_prev", self.value_word_rlc_prev);
                 region.name_column(|| "word_index", self.word_index);
@@ -1036,6 +1084,13 @@ impl<F: Field> CopyCircuitConfig<F> {
         region.assign_advice(
             || format!("assign value {}", *offset),
             self.value,
+            *offset,
+            || Value::known(F::zero()),
+        )?;
+        // value_prev
+        region.assign_advice(
+            || format!("assign value_prev {}", *offset),
+            self.value_prev,
             *offset,
             || Value::known(F::zero()),
         )?;
