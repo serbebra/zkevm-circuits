@@ -19,7 +19,6 @@ use eth_types::{Field, Word};
 use gadgets::{
     binary_number::BinaryNumberChip,
     is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
-    less_than::{LtChip, LtConfig, LtInstruction},
     util::{and, not, select, sum, Expr},
 };
 use halo2_proofs::{
@@ -94,10 +93,8 @@ pub struct CopyCircuitConfig<F> {
     /// The Copy Table contains the columns that are exposed via the lookup
     /// expressions
     pub copy_table: CopyTable,
-    /// Lt chip to check: src_addr < src_addr_end.
-    /// Since `src_addr` and `src_addr_end` are u64, 8 bytes are sufficient for
-    /// the Lt chip.
-    pub addr_lt_addr_end: LtConfig<F, 8>,
+    /// Detect when the address reaches the limit src_addr_end.
+    pub is_src_end: IsEqualConfig<F>,
     /// Whether this is the end of a word (last byte).
     pub is_word_end: IsEqualConfig<F>,
     /// non pad and non mask witness to reduce the degree of lookups.
@@ -183,7 +180,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         bytecode_table.annotate_columns(meta);
         copy_table.annotate_columns(meta);
 
-        let addr_lt_addr_end = LtChip::configure(
+        let is_src_end = IsEqualChip::configure(
             meta,
             |meta| meta.query_selector(q_step),
             |meta| meta.query_advice(addr, Rotation::cur()),
@@ -282,7 +279,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 and::expr([
                     not::expr(meta.query_selector(q_step)),
                     is_first.expr(),
-                ]),
+                    ]),
             );
             cb.require_zero(
                 "is_last == 0 when q_step == 1",
@@ -291,14 +288,19 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     meta.query_selector(q_step),
                 ]),
             );
+
+            let is_pad_next = meta.query_advice(is_pad, Rotation(2));
+            let is_pad = meta.query_advice(is_pad, Rotation::cur());
+            cb.require_boolean("is_pad is boolean", is_pad.expr());
             cb.require_equal(
                 "non_pad_non_mask = !pad AND !mask",
                 meta.query_advice(non_pad_non_mask, Rotation::cur()),
                 and::expr([
-                    not::expr(meta.query_advice(is_pad, Rotation::cur())),
+                    not::expr(is_pad.expr()),
                     not::expr(meta.query_advice(mask, Rotation::cur())),
                 ]),
             );
+
             // On a masked row, the value is the value_prev.
             cb.condition(
                 meta.query_advice(mask, Rotation::cur()),
@@ -316,12 +318,17 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             let is_last_step = meta.query_advice(is_last, Rotation::cur())
                 + meta.query_advice(is_last, Rotation::next());
+            let is_last = meta.query_advice(is_last, Rotation::cur());
+
+            // Prevent an event from spilling into the disabled rows. This also ensures that eventually is_last=1.
+            cb.require_zero(
+                "the next row is enabled",
+                (is_event.expr() - is_last.expr())
+                * not::expr(meta.query_fixed(q_enable, Rotation::next()))
+            );
 
             // Whether this row is part of an event but not the last step. When true, the next step is derived from the current step.
             let is_continue = is_event.expr() - is_last_step.expr();
-
-            // Prevent an event from spilling into the disabled rows. This also ensures that eventually is_last=1.
-            cb.require_zero("the next row is enabled", is_continue.expr() * not::expr(meta.query_fixed(q_enable, Rotation::next())));
 
             let is_word_end = is_word_end.is_equal_expression.expr();
 
@@ -451,7 +458,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 let rwc_diff = is_rw_type.expr() * is_word_end.expr();
                 let next_value = meta.query_advice(rwc_inc_left, Rotation::cur()) - rwc_diff;
                 let update_or_finish = select::expr(
-                    meta.query_advice(is_last, Rotation::cur()),
+                    is_last.expr(),
                     0.expr(),
                     meta.query_advice(rwc_inc_left, Rotation::next()),
                 );
@@ -464,7 +471,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             // Maintain rw_counter based on rwc_inc_left. Their sum remains constant in all cases.
             cb.condition(
-                not::expr(meta.query_advice(is_last, Rotation::cur())),
+                not::expr(is_last.expr()),
                 |cb| {
                     cb.require_equal(
                         "rows[0].rw_counter + rows[0].rwc_inc_left == rows[1].rw_counter + rows[1].rwc_inc_left",
@@ -517,7 +524,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     {
                         let current = meta.query_advice(value_acc, Rotation::cur());
                         // If source padding, replace the value with 0.
-                        let value_or_pad = meta.query_advice(value, Rotation(2)) * not::expr(meta.query_advice(is_pad, Rotation(2)));
+                        let value_or_pad = meta.query_advice(value, Rotation(2)) * not::expr(is_pad_next.expr());
                         let accumulated = current.expr() * challenges.keccak_input() + value_or_pad;
                         // If masked, copy the accumulator forward, otherwise update it.
                         let copy_or_acc = select::expr(mask_next, current, accumulated);
@@ -532,7 +539,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             // Forward rlc_acc from the event to all rows.
             cb.condition(
-                not::expr(meta.query_advice(is_last, Rotation::cur())),
+                not::expr(is_last.expr()),
                 |cb| {
                     cb.require_equal(
                         "rows[0].rlc_acc == rows[1].rlc_acc",
@@ -590,15 +597,36 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         meta.create_gate("verify step (q_step == 1)", |meta| {
             let mut cb = BaseConstraintBuilder::default();
 
-            cb.require_equal(
-                "is_pad == 1 - (src_addr < src_addr_end) for read row",
-                1.expr() - addr_lt_addr_end.is_lt(meta, None),
-                meta.query_advice(is_pad, Rotation::cur()),
-            );
-            cb.require_zero(
-                "is_pad == 0 for write row",
-                meta.query_advice(is_pad, Rotation::next()),
-            );
+            let [is_pad, is_pad_writer, is_pad_next] =
+                [Rotation::cur(), Rotation::next(), Rotation(2)]
+                    .map(|at| meta.query_advice(is_pad, at));
+
+            cb.require_zero("is_pad == 0 for write row", is_pad_writer);
+
+            let [is_src_end, is_src_end_next] = [Rotation::cur(), Rotation(2)].map(|at| {
+                let addr = meta.query_advice(addr, at);
+                let src_addr_end = meta.query_advice(src_addr_end, at);
+                is_src_end.expr_at(meta, at, addr, src_addr_end)
+            });
+
+            let is_first = meta.query_advice(is_first, Rotation::cur());
+            let not_last = not::expr(meta.query_advice(is_last, Rotation::next()));
+
+            // When and after the address reaches the limit src_addr_end, zero-padding is enabled.
+            cb.condition(is_first, |cb| {
+                cb.require_equal(
+                    "is_pad starts at src_addr == src_addr_end",
+                    is_pad.expr(),
+                    is_src_end.expr(),
+                );
+            });
+            cb.condition(not_last, |cb| {
+                cb.require_equal(
+                    "is_pad=1 when src_addr == src_addr_end, otherwise it keeps the previous value",
+                    select::expr(is_src_end_next, 1.expr(), is_pad.expr()),
+                    is_pad_next.expr(),
+                );
+            });
 
             cb.gate(and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
@@ -718,7 +746,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             is_memory,
             is_tx_log,
             q_enable,
-            addr_lt_addr_end,
+            is_src_end,
             is_word_end,
             non_pad_non_mask,
             copy_table,
@@ -737,7 +765,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         region: &mut Region<F>,
         offset: &mut usize,
         tag_chip: &BinaryNumberChip<F, CopyDataType, 4>,
-        lt_chip: &LtChip<F, 8>,
+        is_src_end_chip: &IsEqualChip<F>,
         lt_word_end_chip: &IsEqualChip<F>,
         challenges: Challenges<Value<F>>,
         copy_event: &CopyEvent,
@@ -812,8 +840,13 @@ impl<F: Field> CopyCircuitConfig<F> {
 
             // lt chip
             if is_read {
-                let addr = unwrap_value(table_row[2].0);
-                lt_chip.assign(region, *offset, addr, F::from(copy_event.src_addr_end))?;
+                let addr = table_row[2].0;
+                is_src_end_chip.assign(
+                    region,
+                    *offset,
+                    addr,
+                    Value::known(F::from(copy_event.src_addr_end)),
+                )?;
             }
 
             lt_word_end_chip.assign(
@@ -893,7 +926,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         );
 
         let tag_chip = BinaryNumberChip::construct(self.copy_table.tag);
-        let lt_chip = LtChip::construct(self.addr_lt_addr_end);
+        let is_src_end_chip = IsEqualChip::construct(self.is_src_end.clone());
         let lt_word_end_chip = IsEqualChip::construct(self.is_word_end.clone());
 
         layouter.assign_region(
@@ -929,7 +962,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                         &mut region,
                         &mut offset,
                         &tag_chip,
-                        &lt_chip,
+                        &is_src_end_chip,
                         &lt_word_end_chip,
                         challenges,
                         copy_event,
@@ -943,7 +976,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                         &mut offset,
                         false,
                         &tag_chip,
-                        &lt_chip,
+                        &is_src_end_chip,
                         &lt_word_end_chip,
                     )?;
                 }
@@ -953,7 +986,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                     &mut offset,
                     true,
                     &tag_chip,
-                    &lt_chip,
+                    &is_src_end_chip,
                     &lt_word_end_chip,
                 )?;
                 self.assign_padding_row(
@@ -961,7 +994,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                     &mut offset,
                     true,
                     &tag_chip,
-                    &lt_chip,
+                    &is_src_end_chip,
                     &lt_word_end_chip,
                 )?;
 
@@ -977,7 +1010,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         offset: &mut usize,
         is_last_two: bool,
         tag_chip: &BinaryNumberChip<F, CopyDataType, 4>,
-        lt_chip: &LtChip<F, 8>,
+        is_src_end_chip: &IsEqualChip<F>,
         lt_word_end_chip: &IsEqualChip<F>,
     ) -> Result<(), Error> {
         // q_enable
@@ -1138,8 +1171,13 @@ impl<F: Field> CopyCircuitConfig<F> {
         )?;
         // tag
         tag_chip.assign(region, *offset, &CopyDataType::Padding)?;
-        // Assign LT gadget
-        lt_chip.assign(region, *offset, F::zero(), F::one())?;
+        // Assign IsEqual gadgets
+        is_src_end_chip.assign(
+            region,
+            *offset,
+            Value::known(F::zero()),
+            Value::known(F::one()),
+        )?;
         lt_word_end_chip.assign(
             region,
             *offset,
