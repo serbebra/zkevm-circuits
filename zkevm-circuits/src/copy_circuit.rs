@@ -257,14 +257,29 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         meta.create_gate("verify row", |meta| {
             let mut cb = BaseConstraintBuilder::default();
 
+            // Detect the first row of an event. When true, both reader and writer are initialized.
             let is_first = meta.query_advice(is_first, CURRENT);
+            // Whether this row is part of an event.
+            let is_event = meta.query_advice(is_event, CURRENT);
+            // Detect the last step of an event. This works on both reader and writer rows.
+            let is_last_step = meta.query_advice(is_last, CURRENT)
+                + meta.query_advice(is_last, NEXT_ROW);
+            // Whether this row is part of an event but not the last step. When true, the next step is derived from the current step.
+            let is_continue = is_event.expr() - is_last_step.expr();
+            // Detect the last row of an event, which is always a writer row.
+            let not_last = not::expr(meta.query_advice(is_last, CURRENT));
+            let is_last = meta.query_advice(is_last, CURRENT);
+            // Detect the rows which process the last byte of a word. The next word starts at NEXT_STEP.
+            let is_word_end = is_word_end.is_equal_expression.expr();
+
+            // Check is_first and is_last
             cb.require_boolean(
                 "is_first is boolean",
                 is_first.expr(),
             );
             cb.require_boolean(
                 "is_last is boolean",
-                meta.query_advice(is_last, CURRENT),
+                is_last.expr(),
             );
             cb.require_zero(
                 "is_first == 0 when q_step == 0",
@@ -276,11 +291,12 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             cb.require_zero(
                 "is_last == 0 when q_step == 1",
                 and::expr([
-                    meta.query_advice(is_last, CURRENT),
+                    is_last.expr(),
                     meta.query_selector(q_step),
                 ]),
             );
 
+            // Check non_pad_non_mask.
             let is_pad_next = meta.query_advice(is_pad, NEXT_STEP);
             let is_pad = meta.query_advice(is_pad, CURRENT);
             cb.require_boolean("is_pad is boolean", is_pad.expr());
@@ -293,7 +309,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 ]),
             );
 
-            // On a masked row, the value is the value_prev.
+            // When a byte is masked, it must not be overwritten, so its value equals its value before the write.
             cb.condition(
                 meta.query_advice(mask, CURRENT),
                 |cb| {
@@ -305,24 +321,15 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 },
             );
 
-            // Whether this row is part of an event.
-            let is_event = meta.query_advice(is_event, CURRENT);
-
-            let is_last_step = meta.query_advice(is_last, CURRENT)
-                + meta.query_advice(is_last, NEXT_ROW);
-            let is_last = meta.query_advice(is_last, CURRENT);
-
             // Prevent an event from spilling into the disabled rows. This also ensures that eventually is_last=1.
             cb.require_zero(
                 "the next row is enabled",
-                (is_event.expr() - is_last.expr())
-                * not::expr(meta.query_fixed(q_enable, NEXT_ROW))
+                and::expr([
+                    is_event.expr(),
+                    not_last.expr(),
+                    not::expr(meta.query_fixed(q_enable, NEXT_ROW))
+                ]),
             );
-
-            // Whether this row is part of an event but not the last step. When true, the next step is derived from the current step.
-            let is_continue = is_event.expr() - is_last_step.expr();
-
-            let is_word_end = is_word_end.is_equal_expression.expr();
 
             // Apply the same constraints for the RLCs of words before and after the write.
             let word_rlc_both = [
@@ -357,6 +364,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 },
             );
 
+            // Update the word index and RLC.
             cb.condition(is_continue.expr(),
                 |cb| {
 
@@ -423,7 +431,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 // The first 31 bytes may be front_mask, but not the last byte of the first word.
                 cb.require_zero("front_mask = 0 by the end of the first word", front_mask.expr());
             });
-
             /* Note: other words may be completely masked, because reader and writer may have different word counts. A fully masked word is a no-op, not contributing to value_acc, and its word_rlc equals word_rlc_prev.
             cb.require_zero(
                 "back_mask=0 at the start of the next word",
@@ -450,9 +457,9 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 let rwc_diff = is_rw_type.expr() * is_word_end.expr();
                 let next_value = meta.query_advice(rwc_inc_left, CURRENT) - rwc_diff;
                 let update_or_finish = select::expr(
-                    is_last.expr(),
-                    0.expr(),
+                    not_last.expr(),
                     meta.query_advice(rwc_inc_left, NEXT_ROW),
+                    0.expr(),
                 );
                 cb.require_equal(
                     "rwc_inc_left[2] == rwc_inc_left[0] - rwc_diff, or 0 at the end",
@@ -463,7 +470,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             // Maintain rw_counter based on rwc_inc_left. Their sum remains constant in all cases.
             cb.condition(
-                not::expr(is_last.expr()),
+                not_last.expr(),
                 |cb| {
                     cb.require_equal(
                         "rows[0].rw_counter + rows[0].rwc_inc_left == rows[1].rw_counter + rows[1].rwc_inc_left",
@@ -531,7 +538,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             // Forward rlc_acc from the event to all rows.
             cb.condition(
-                not::expr(is_last.expr()),
+                not_last.expr(),
                 |cb| {
                     cb.require_equal(
                         "rows[0].rlc_acc == rows[1].rlc_acc",
@@ -586,6 +593,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             ]))
         });
 
+        // Verify is_pad based on the address.
         meta.create_gate("verify step (q_step == 1)", |meta| {
             let mut cb = BaseConstraintBuilder::default();
 
