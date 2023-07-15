@@ -5,7 +5,6 @@ use crate::{
     Error,
 };
 use eth_types::{GethExecStep, U256};
-use log::trace;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ErrorCreationCode;
@@ -37,22 +36,9 @@ impl Opcode for ErrorCreationCode {
         let byte = state.call_ctx()?.memory.0[offset.as_usize()];
         assert!(byte == 0xef);
 
-        let memory = &state.call_ctx()?.memory;
-        trace!("before mload memory length is {}", memory.0.len());
-
         let offset = offset.as_u64();
-        // expand to offset + 32 as need one word at least.
-        let minimal_length = offset + 32;
-
         let shift = offset % 32;
         let slot = offset - shift;
-        trace!(
-            "minimal_length {} , slot {},  shift {}, memory_length {}",
-            minimal_length,
-            slot,
-            shift,
-            memory.length_to_extend(minimal_length as usize),
-        );
 
         //state.memory_read(&mut exec_step, offset.try_into()?, byte)?;
         state.memory_read_word(&mut exec_step, slot.into())?;

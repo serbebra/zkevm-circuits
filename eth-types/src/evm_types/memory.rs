@@ -343,17 +343,12 @@ impl Memory {
     }
 
     /// Resize the memory for at least length and align to 32 bytes.
-    pub fn extend_at_least(&mut self, minimal_length: usize) {
-        let memory_size = Self::align_length(minimal_length);
+    /// Note: must not be called when the length accessed is zero. Prefer extend_for_range(..).
+    pub fn extend_at_least(&mut self, minimal_size: usize) {
+        let memory_size = Self::align_length(minimal_size);
         if memory_size > self.0.len() {
             self.0.resize(memory_size, 0);
         }
-    }
-
-    /// Calculate the aligned memory length (will be extended) by an expected length
-    /// (no change for current memory).
-    pub fn length_to_extend(&self, expected_length: usize) -> usize {
-        self.0.len().max(Self::align_length(expected_length))
     }
 
     /// Resize the memory for at least `offset+length` and align to 32 bytes, except if `length=0`
@@ -405,7 +400,7 @@ impl Memory {
 
     /// Calculate memory length aligned to 32 bytes.
     #[inline(always)]
-    pub fn align_length(len: usize) -> usize {
+    fn align_length(len: usize) -> usize {
         (len + 31) / 32 * 32
     }
 }
