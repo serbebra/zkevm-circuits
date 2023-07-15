@@ -14,7 +14,6 @@ pub fn constrain_tag<F: Field>(
     meta: &mut ConstraintSystem<F>,
     q_enable: Column<Fixed>,
     tag: BinaryNumberConfig<CopyDataType, 4>,
-    is_event: Column<Advice>,
     is_precompiled: Column<Advice>,
     is_tx_calldata: Column<Advice>,
     is_bytecode: Column<Advice>,
@@ -23,7 +22,6 @@ pub fn constrain_tag<F: Field>(
 ) {
     meta.create_gate("decode tag", |meta| {
         let enabled = meta.query_fixed(q_enable, CURRENT);
-        let is_event = meta.query_advice(is_event, CURRENT);
         let is_precompile = meta.query_advice(is_precompiled, CURRENT);
         let is_tx_calldata = meta.query_advice(is_tx_calldata, CURRENT);
         let is_bytecode = meta.query_advice(is_bytecode, CURRENT);
@@ -50,10 +48,6 @@ pub fn constrain_tag<F: Field>(
             tag.value_equals(CopyDataType::Precompile(PrecompileCalls::Blake2F), CURRENT)(meta),
         ]);
         vec![
-            // If a row is anything but padding (filler of the table), it is in an event.
-            enabled.expr()
-                * ((1.expr() - is_event.expr())
-                    - tag.value_equals(CopyDataType::Padding, CURRENT)(meta)),
             // Match boolean indicators to their respective tag values.
             enabled.expr() * (is_precompile - precompiles),
             enabled.expr()
@@ -90,7 +84,6 @@ pub fn constrain_must_terminate<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
     q_enable: Column<Fixed>,
-    is_event: Expression<F>,
     is_last: Expression<F>,
 ) {
     // Prevent an event from spilling into the rows where constraints are disabled.
@@ -98,7 +91,6 @@ pub fn constrain_must_terminate<F: Field>(
     cb.require_zero(
         "the next row is enabled",
         and::expr([
-            is_event,
             not::expr(is_last),
             not::expr(meta.query_fixed(q_enable, NEXT_ROW)),
         ]),

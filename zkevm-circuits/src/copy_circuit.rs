@@ -87,8 +87,6 @@ pub struct CopyCircuitConfig<F> {
     /// In case of a bytecode tag, this denotes whether or not the copied byte
     /// is an opcode or push data byte.
     pub is_code: Column<Advice>,
-    /// Whether this row is part of an event (versus filler rows).
-    pub is_event: Column<Advice>,
     /// Indicates whether or not the copy event copies bytes to a precompiled call or copies bytes
     /// from a precompiled call back to caller.
     pub is_precompiled: Column<Advice>,
@@ -163,8 +161,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let value_acc = meta.advice_column_in(SecondPhase);
 
         let is_code = meta.advice_column();
-        let (is_event, is_precompiled, is_tx_calldata, is_bytecode, is_memory, is_tx_log) = (
-            meta.advice_column(),
+        let (is_precompiled, is_tx_calldata, is_bytecode, is_memory, is_tx_log) = (
             meta.advice_column(),
             meta.advice_column(),
             meta.advice_column(),
@@ -212,7 +209,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             meta,
             q_enable,
             tag,
-            is_event,
             is_precompiled,
             is_tx_calldata,
             is_bytecode,
@@ -226,14 +222,12 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             let is_reader = meta.query_selector(q_step);
             // Detect the first row of an event. When true, both reader and writer are initialized.
             let is_first = meta.query_advice(is_first, CURRENT);
-            // Whether this row is part of an event.
-            let is_event = meta.query_advice(is_event, CURRENT);
             // Detect the last step of an event. This works on both reader and writer rows.
             let is_last_step =
                 meta.query_advice(is_last, CURRENT) + meta.query_advice(is_last, NEXT_ROW);
             // Whether this row is part of an event but not the last step. When true, the next step
             // is derived from the current step.
-            let is_continue = is_event.expr() - is_last_step.expr();
+            let is_continue = not::expr(is_last_step.expr());
             // Detect the last row of an event, which is always a writer row.
             let is_last_col = is_last;
             let is_last = meta.query_advice(is_last, CURRENT);
@@ -244,7 +238,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
 
-            constrain_must_terminate(cb, meta, q_enable, is_event.expr(), is_last.expr());
+            constrain_must_terminate(cb, meta, q_enable, is_last.expr());
 
             constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
 
@@ -465,7 +459,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             value_acc,
             is_pad,
             is_code,
-            is_event,
             is_precompiled,
             is_tx_calldata,
             is_bytecode,
@@ -525,13 +518,6 @@ impl<F: Field> CopyCircuitConfig<F> {
             region.assign_fixed(
                 || "q_enable",
                 self.q_enable,
-                *offset,
-                || Value::known(F::one()),
-            )?;
-            // is_event = true
-            region.assign_advice(
-                || format!("is_event at row: {}", *offset),
-                self.is_event,
                 *offset,
                 || Value::known(F::one()),
             )?;
@@ -669,7 +655,6 @@ impl<F: Field> CopyCircuitConfig<F> {
                 region.name_column(|| "is_code", self.is_code);
                 region.name_column(|| "is_pad", self.is_pad);
                 region.name_column(|| "non_pad_non_mask", self.non_pad_non_mask);
-                region.name_column(|| "is_event", self.is_event);
 
                 let mut offset = 0;
                 for (ev_idx, copy_event) in copy_events.iter().enumerate() {
@@ -753,13 +738,6 @@ impl<F: Field> CopyCircuitConfig<F> {
             }
         }
 
-        // is_event = false
-        region.assign_advice(
-            || format!("is_event at row: {}", *offset),
-            self.is_event,
-            *offset,
-            || Value::known(F::zero()),
-        )?;
         // is_first
         region.assign_advice(
             || format!("assign is_first {}", *offset),
@@ -772,7 +750,7 @@ impl<F: Field> CopyCircuitConfig<F> {
             || format!("assign is_last {}", *offset),
             self.is_last,
             *offset,
-            || Value::known(F::zero()),
+            || Value::known(F::from(*offset % 2 == 1)),
         )?;
         // id
         region.assign_advice(
