@@ -6,7 +6,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
-                EVMConstraintBuilder, StepStateTransition,
+                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::{Delta, To},
             },
             from_bytes,
@@ -104,6 +104,20 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             value_left_prev.expr(),
             None,
         );
+
+        // mload don't change value
+        cb.condition(is_mload.expr(), |cb| {
+            cb.require_equal(
+                "value_left = value_left_prev",
+                value_left.expr(),
+                value_left_prev.expr(),
+            );
+            cb.require_equal(
+                "value_right = value_right_prev",
+                value_right.expr(),
+                value_right_prev.expr(),
+            );
+        });
 
         cb.condition(is_mstore8.expr(), |cb| {
             // Check the byte that is written.

@@ -452,7 +452,7 @@ impl<F: Field> MemoryWordAddress<F> {
         self.slot.expr()
     }
 
-    // also seen as addr_left
+    // also seen as addr_right
     pub(crate) fn addr_right(&self) -> Expression<F> {
         self.slot.expr() + 32.expr()
     }
@@ -467,7 +467,9 @@ impl<F: Field> MemoryWordAddress<F> {
             .try_into()
             .unwrap();
 
+        println!("address_bytes {:?}", address_bytes);
         for (i, bit) in self.address_first_bits.iter().enumerate() {
+            println!("address_first_bits {} , {}", i, (address >> i) & 1);
             bit.assign(region, offset, Value::known(F::from((address >> i) & 1)))?;
         }
 
@@ -515,7 +517,7 @@ impl<F: Field> MemoryMask<F> {
 
         // Compute 2**shift. As a binary number, it looks like this (example shift=4):
         //   00001000000000000000000000000000
-        let two_pow_shift = Self::make_two_pow(shift_bits);
+        let two_pow_shift: Expression<F> = Self::make_two_pow(shift_bits);
 
         let expect = select::expr(
             is_mstore8,
