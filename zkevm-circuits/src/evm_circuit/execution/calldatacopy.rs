@@ -363,4 +363,9 @@ mod test {
         test_root_ok(0x40, 0, 0x40.into(), Word::MAX);
         test_internal_ok(0x40, 0x40, 0, 0x10.into(), Word::MAX);
     }
+
+    #[test]
+    fn calldatacopy_unaligned_data() {
+        test_internal_ok(0xf, 0x10, 2, 1.into(), 0x0.into());
+    }
 }
