@@ -1844,13 +1844,20 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         let caller_memory = self.caller_ctx()?.memory.clone();
-        let calldata_ends = self.call()?.call_data_length + self.call()?.call_data_offset - 1;
+        let call_data_length = self.call()?.call_data_length;
+        let call_data_offset = self.call()?.call_data_offset;
+        let call_data = if call_data_length != 0 {
+            let ends = call_data_offset + call_data_length;
+            &caller_memory.0[..ends as usize]
+        } else {
+            &[]
+        };
         let call_ctx = self.call_ctx_mut()?;
         let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
             src_addr.into().0,
             dst_addr.into().0,
             copy_length,
-            &caller_memory.0[..calldata_ends as usize],
+            call_data,
             &mut call_ctx.memory,
         );
 
@@ -1898,15 +1905,20 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         let last_callee_memory = self.call()?.last_callee_memory.clone();
-        let return_data_ends = self.call()?.last_callee_return_data_length
-            + self.call()?.last_callee_return_data_offset
-            - 1;
+        let return_data_length = self.call()?.last_callee_return_data_length;
+        let return_data_offset = self.call()?.last_callee_return_data_offset;
+        let return_data: &[u8] = if return_data_length != 0 {
+            let ends = return_data_offset + return_data_length;
+            &last_callee_memory.0[..ends as usize]
+        } else {
+            &[]
+        };
         let call_ctx = self.call_ctx_mut()?;
         let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
             src_addr.into().0,
             dst_addr.into().0,
             copy_length,
-            &last_callee_memory.0[..return_data_ends as usize],
+            return_data,
             &mut call_ctx.memory,
         );
         let read_slot_bytes = self.call()?.last_callee_memory.read_chunk(src_range);

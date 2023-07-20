@@ -116,10 +116,10 @@ impl<F: Field> ExecutionGadget<F> for CallDataCopyGadget<F> {
                 + select::expr(
                     data_offset.lt_cap(),
                     data_offset.valid_value(),
-                    call_data_length.expr() - 1.expr(),
+                    call_data_length.expr(),
                 );
 
-            let src_addr_end = call_data_offset.expr() + call_data_length.expr() - 1.expr();
+            let src_addr_end = call_data_offset.expr() + call_data_length.expr();
 
             cb.copy_table_lookup(
                 src_id.expr(),
