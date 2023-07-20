@@ -308,7 +308,7 @@ mod calldatacopy_tests {
         assert_eq!(copy_events[0].src_addr as usize, offset + call_data_offset);
         assert_eq!(
             copy_events[0].src_addr_end as usize,
-            offset + call_data_offset + call_data_length
+            offset + call_data_offset + call_data_length - 1
         );
         assert_eq!(copy_events[0].dst_addr as usize, dst_offset);
 
