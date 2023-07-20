@@ -1850,7 +1850,7 @@ impl<'a> CircuitInputStateRef<'a> {
             let ends = call_data_offset + call_data_length;
             &caller_memory.0[..ends as usize]
         } else {
-            &[]
+            &caller_memory.0[..call_data_offset as usize]
         };
         let call_ctx = self.call_ctx_mut()?;
         let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
@@ -1911,7 +1911,7 @@ impl<'a> CircuitInputStateRef<'a> {
             let ends = return_data_offset + return_data_length;
             &last_callee_memory.0[..ends as usize]
         } else {
-            &[]
+            &last_callee_memory.0[..return_data_offset as usize]
         };
         let call_ctx = self.call_ctx_mut()?;
         let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
