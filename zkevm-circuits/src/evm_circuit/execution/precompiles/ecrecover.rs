@@ -125,7 +125,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        if let Some(PrecompileAuxData::Ecrecover(aux_data)) = &step.aux_data {
+        if let Some(PrecompileAuxData::Ecrecover(Ok(aux_data))) = &step.aux_data {
             let recovered = !aux_data.recovered_addr.is_zero();
             self.recovered
                 .assign(region, offset, Value::known(F::from(recovered as u64)))?;

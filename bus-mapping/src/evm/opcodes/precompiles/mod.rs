@@ -9,10 +9,12 @@ use crate::{
 
 mod ec_add;
 mod ec_mul;
+mod ec_pairing;
 mod ecrecover;
 
 use ec_add::handle as handle_ec_add;
 use ec_mul::handle as handle_ec_mul;
+use ec_pairing::handle as handle_ec_pairing;
 use ecrecover::handle as handle_ecrecover;
 
 type InOutRetData = (Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>);
@@ -39,6 +41,9 @@ pub fn gen_associated_ops(
         }
         PrecompileCalls::Bn128Mul => {
             handle_ec_mul(input_bytes, output_bytes, state, &mut exec_step)
+        }
+        PrecompileCalls::Bn128Pairing => {
+            handle_ec_pairing(input_bytes, output_bytes, state, &mut exec_step)
         }
         _ => {}
     }

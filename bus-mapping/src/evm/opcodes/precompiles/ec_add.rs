@@ -19,7 +19,7 @@ pub(crate) fn handle(
     });
 
     let aux_data = EcAddAuxData::new(&input_bytes, &output_bytes);
-    exec_step.aux_data = Some(PrecompileAuxData::EcAdd(aux_data));
+    exec_step.aux_data = Some(PrecompileAuxData::EcAdd(Ok(aux_data)));
 
     let ec_add_op = EcAddOp::new_from_bytes(&input_bytes, &output_bytes);
     state.push_precompile_event(PrecompileEvent::EcAdd(ec_add_op));

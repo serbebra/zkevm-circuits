@@ -4,7 +4,7 @@ use eth_types::{evm_types::GasCost, Address, ToBigEndian, Word};
 use revm_precompile::{Precompile, Precompiles};
 use strum::EnumIter;
 
-use crate::circuit_input_builder::EcMulOp;
+use crate::circuit_input_builder::{EcMulOp, EcPairingOp};
 
 /// Check if address is a precompiled or not.
 pub fn is_precompiled(address: &Address) -> bool {
@@ -236,19 +236,57 @@ impl EcMulAuxData {
     }
 }
 
+/// Auxiliary data for EcPairing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EcPairingAuxData(pub EcPairingOp);
+
+impl EcPairingAuxData {
+    /// Fallible method to parse input and output bytes to get auxiliary data to the EcPairing
+    /// Execution State.
+    pub fn new(_input: &[u8], _output: &[u8]) -> PrecompileResult<Self> {
+        unimplemented!()
+    }
+}
+
+/// Error variants possible during a call to the EcPairing precompiled contract.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EcPairingError {
+    /// Input bytes are of invalid length. The expected length for input bytes is:
+    /// input_len ∈ {192, 384, 576, 768}
+    InvalidInputSize,
+    /// Provided G1/G2 point not on curve.
+    NotOnCurve,
+}
+
+/// Error variants possible during call to precompiled contracts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrecompileError {
+    /// Invalid inputs to the EcAdd call.
+    EcAdd,
+    /// Invalid inputs to the EcMul call.
+    EcMul,
+    /// Invalid inputs to the EcPairing call.
+    EcPairing(EcPairingError),
+}
+
+/// Fallible outcome from a precompiled contract call.
+pub type PrecompileResult<T> = std::result::Result<T, PrecompileError>;
+
 /// Auxiliary data attached to an internal state for precompile verification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrecompileAuxData {
     /// Ecrecover.
-    Ecrecover(EcrecoverAuxData),
+    Ecrecover(PrecompileResult<EcrecoverAuxData>),
     /// EcAdd.
-    EcAdd(EcAddAuxData),
+    EcAdd(PrecompileResult<EcAddAuxData>),
     /// EcMul.
-    EcMul(EcMulAuxData),
+    EcMul(PrecompileResult<EcMulAuxData>),
+    /// EcPairing.
+    EcPairing(PrecompileResult<Box<EcPairingAuxData>>),
 }
 
 impl Default for PrecompileAuxData {
     fn default() -> Self {
-        Self::Ecrecover(EcrecoverAuxData::default())
+        Self::Ecrecover(Ok(EcrecoverAuxData::default()))
     }
 }

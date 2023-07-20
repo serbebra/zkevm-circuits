@@ -19,7 +19,7 @@ pub(crate) fn handle(
     });
 
     let aux_data = EcMulAuxData::new(&input_bytes, &output_bytes);
-    exec_step.aux_data = Some(PrecompileAuxData::EcMul(aux_data));
+    exec_step.aux_data = Some(PrecompileAuxData::EcMul(Ok(aux_data)));
 
     let ec_mul_op = EcMulOp::new_from_bytes(&input_bytes, &output_bytes);
     state.push_precompile_event(PrecompileEvent::EcMul(ec_mul_op));

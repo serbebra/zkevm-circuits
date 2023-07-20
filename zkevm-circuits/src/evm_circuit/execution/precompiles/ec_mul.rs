@@ -193,7 +193,7 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        if let Some(PrecompileAuxData::EcMul(aux_data)) = &step.aux_data {
+        if let Some(PrecompileAuxData::EcMul(Ok(aux_data))) = &step.aux_data {
             for (col, is_zero_gadget, word_value) in [
                 (&self.point_p_x_rlc, &self.p_x_is_zero, aux_data.p_x),
                 (&self.point_p_y_rlc, &self.p_y_is_zero, aux_data.p_y),

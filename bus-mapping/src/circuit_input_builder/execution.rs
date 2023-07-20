@@ -1061,7 +1061,7 @@ impl EcMulOp {
 pub const N_PAIRING_PER_OP: usize = 4;
 
 /// EcPairing operation
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EcPairingOp {
     /// tuples of G1 and G2 points.
     pub inputs: [(G1Affine, G2Affine); N_PAIRING_PER_OP],

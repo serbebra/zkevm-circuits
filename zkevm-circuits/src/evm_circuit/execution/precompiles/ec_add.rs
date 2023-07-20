@@ -127,7 +127,7 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        if let Some(PrecompileAuxData::EcAdd(aux_data)) = &step.aux_data {
+        if let Some(PrecompileAuxData::EcAdd(Ok(aux_data))) = &step.aux_data {
             let keccak_rand = region.challenges().keccak_input();
             for (col, word_value) in [
                 (&self.point_p_x_rlc, aux_data.p_x),

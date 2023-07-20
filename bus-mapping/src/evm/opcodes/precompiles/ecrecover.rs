@@ -58,5 +58,5 @@ pub(crate) fn handle(
         );
     }
 
-    exec_step.aux_data = Some(PrecompileAuxData::Ecrecover(aux_data));
+    exec_step.aux_data = Some(PrecompileAuxData::Ecrecover(Ok(aux_data)));
 }
