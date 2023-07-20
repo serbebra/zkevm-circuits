@@ -1844,12 +1844,13 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         let caller_memory = self.caller_ctx()?.memory.clone();
+        let calldata_ends = self.call()?.call_data_length + self.call()?.call_data_offset - 1;
         let call_ctx = self.call_ctx_mut()?;
         let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
             src_addr.into().0,
             dst_addr.into().0,
             copy_length,
-            &caller_memory.0,
+            &caller_memory.0[..calldata_ends as usize],
             &mut call_ctx.memory,
         );
 
@@ -1897,12 +1898,15 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         let last_callee_memory = self.call()?.last_callee_memory.clone();
+        let return_data_ends = self.call()?.last_callee_return_data_length
+            + self.call()?.last_callee_return_data_offset
+            - 1;
         let call_ctx = self.call_ctx_mut()?;
         let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
             src_addr.into().0,
             dst_addr.into().0,
             copy_length,
-            &last_callee_memory.0,
+            &last_callee_memory.0[..return_data_ends as usize],
             &mut call_ctx.memory,
         );
         let read_slot_bytes = self.call()?.last_callee_memory.read_chunk(src_range);

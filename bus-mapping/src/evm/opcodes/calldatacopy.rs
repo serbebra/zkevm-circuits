@@ -98,7 +98,10 @@ fn gen_copy_event(
     let call_data_offset = state.call()?.call_data_offset;
     let call_data_length = state.call()?.call_data_length;
 
-    let src_addr_end = call_data_offset.checked_add(call_data_length).unwrap();
+    let src_addr_end = call_data_offset
+        .checked_add(call_data_length)
+        .unwrap()
+        .saturating_sub(1);
     let src_addr = u64::try_from(data_offset)
         .ok()
         .and_then(|s| s.checked_add(call_data_offset))

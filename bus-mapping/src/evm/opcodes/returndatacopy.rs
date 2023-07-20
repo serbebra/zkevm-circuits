@@ -94,7 +94,7 @@ fn gen_copy_event(
     let last_callee_return_data_length = state.call()?.last_callee_return_data_length;
     let (src_addr, src_addr_end) = (
         last_callee_return_data_offset + data_offset,
-        last_callee_return_data_offset + last_callee_return_data_length,
+        last_callee_return_data_offset + last_callee_return_data_length - 1,
     );
 
     let (read_steps, write_steps, prev_bytes) =
