@@ -6,20 +6,14 @@ use halo2_proofs::halo2curves::{
 use itertools::Itertools;
 
 use crate::{
-    circuit_input_builder::{
-        CircuitInputStateRef, EcPairingOp, ExecStep, PrecompileEvent, N_PAIRING_PER_OP,
-    },
+    circuit_input_builder::{EcPairingOp, PrecompileEvent, N_BYTES_PER_PAIR, N_PAIRING_PER_OP},
     precompile::{EcPairingAuxData, EcPairingError, PrecompileAuxData, PrecompileError},
 };
 
-const N_BYTES_PER_PAIR: usize = 192;
-
-pub(crate) fn handle(
+pub(crate) fn opt_data(
     input_bytes: Option<Vec<u8>>,
     output_bytes: Option<Vec<u8>>,
-    state: &mut CircuitInputStateRef,
-    exec_step: &mut ExecStep,
-) {
+) -> (Option<PrecompileEvent>, Option<PrecompileAuxData>) {
     // assertions.
     let output_bytes = output_bytes.expect("precompile should return at least 0 on failure");
     debug_assert_eq!(output_bytes.len(), 32, "ecPairing returns EVM word: 1 or 0");
@@ -94,11 +88,17 @@ pub(crate) fn handle(
         Ok(Box::new(EcPairingAuxData(ec_pairing_op)))
     };
 
-    // update step and state.
-    // TODO: for now the ECC sub-circuit only handles OK cases. Once we verify invalidity of inputs
-    // as well, we will also push the Err cases.
-    if let Ok(ref data) = aux_data {
-        state.push_precompile_event(PrecompileEvent::EcPairing(Box::new(data.0.clone())));
-    }
-    exec_step.aux_data = Some(PrecompileAuxData::EcPairing(aux_data));
+    (
+        aux_data
+            .clone()
+            .ok()
+            .map(|data| PrecompileEvent::EcPairing(Box::new(data.0))),
+        Some(PrecompileAuxData::EcPairing(aux_data)),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_input_handling() {}
 }

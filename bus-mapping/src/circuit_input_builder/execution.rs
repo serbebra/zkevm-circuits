@@ -1060,6 +1060,9 @@ impl EcMulOp {
 /// call are < 4, we append (G1::infinity, G2::generator) until we have the required no. of inputs.
 pub const N_PAIRING_PER_OP: usize = 4;
 
+/// The number of bytes taken to represent a pair (G1, G2).
+pub const N_BYTES_PER_PAIR: usize = 192;
+
 /// EcPairing operation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EcPairingOp {
