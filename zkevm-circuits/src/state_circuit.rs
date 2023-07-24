@@ -35,6 +35,7 @@ use halo2_proofs::{
     plonk::{Advice, Assigned, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
+use itertools::Itertools;
 use lexicographic_ordering::Config as LexicographicOrderingConfig;
 use lookups::{Chip as LookupsChip, Config as LookupsConfig, Queries as LookupsQueries};
 use multiple_precision_integer::{Chip as MpiChip, Config as MpiConfig, Queries as MpiQueries};
@@ -215,44 +216,59 @@ impl<F: Field> StateCircuitConfig<F> {
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
         layouter.assign_region(
-            || "state circuit",
+            || "state circuit (StateCircuitConfig)",
             |mut region| {
-                self.assign_with_region(&mut region, rows, updates, n_rows, challenges.evm_word())
+                let (rows, padding_length) = RwMap::table_assignments_prepad(rows, n_rows);
+                let is_first_access_vec = self.assign_with_region(
+                    &mut region,
+                    &rows,
+                    0,
+                    padding_length,
+                    updates,
+                    n_rows,
+                    challenges.evm_word(),
+                )?;
+                self.update_state_root(
+                    &mut region,
+                    &rows,
+                    padding_length,
+                    &is_first_access_vec,
+                    updates,
+                    n_rows,
+                    challenges.evm_word(),
+                )
             },
         )?;
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn assign_with_region(
         &self,
         region: &mut Region<'_, F>,
         rows: &[Rw],
+        offset_begin: usize,
+        padding_length: usize,
         updates: &MptUpdates,
         n_rows: usize, // 0 means dynamically calculated from `rows`.
         randomness: Value<F>,
-    ) -> Result<StateCircuitExports<Assigned<F>>, Error> {
+    ) -> Result<Vec<bool>, Error> {
         let tag_chip = BinaryNumberChip::construct(self.sort_keys.tag);
-
-        let (rows, padding_length) = RwMap::table_assignments_prepad(rows, n_rows);
-        log::info!(
-            "state circuit assign total rows {}, n_rows {}, padding_length {}",
-            rows.len(),
-            n_rows,
-            padding_length
-        );
-        let rows_len = rows.len();
-
-        let mut state_root =
-            randomness.map(|randomness| rlc::value(&updates.old_root().to_le_bytes(), randomness));
-
-        let mut start_state_root: Option<AssignedCell<_, F>> = None;
-        let mut end_state_root: Option<AssignedCell<_, F>> = None;
         // annotate columns
         self.annotate_circuit_in_region(region);
 
-        for (offset, row) in rows.iter().enumerate() {
-            if offset == 0 || offset + 1 >= padding_length {
-                log::trace!("state circuit assign offset:{} row:{:?}", offset, row);
+        let mut is_first_access_vec = vec![false; n_rows];
+        let offsets = (0..n_rows).collect::<Vec<_>>();
+        for (offset, is_first_access) in offsets.iter().zip(is_first_access_vec.iter_mut()) {
+            let offset = *offset;
+            let global_offset = offset + offset_begin;
+            let row = &rows[global_offset];
+            if global_offset == 0 || global_offset + 1 >= padding_length {
+                log::trace!(
+                    "state circuit assign offset:{} row:{:?}",
+                    global_offset,
+                    row
+                );
             }
 
             region.assign_fixed(
@@ -282,44 +298,25 @@ impl<F: Field> StateCircuitConfig<F> {
                     .assign(region, offset, randomness, storage_key)?;
             }
 
-            if offset > 0 {
-                let prev_row = &rows[offset - 1];
+            if global_offset > 0 {
+                let prev_row = &rows[global_offset - 1];
                 let index = self
                     .lexicographic_ordering
                     .assign(region, offset, row, prev_row)?;
-                let is_first_access =
-                    !matches!(index, LimbIndex::RwCounter0 | LimbIndex::RwCounter1);
+                *is_first_access = !matches!(index, LimbIndex::RwCounter0 | LimbIndex::RwCounter1);
 
                 region.assign_advice(
                     || "not_first_access",
                     self.not_first_access,
                     offset,
-                    || Value::known(if is_first_access { F::zero() } else { F::one() }),
+                    || {
+                        Value::known(if *is_first_access {
+                            F::zero()
+                        } else {
+                            F::one()
+                        })
+                    },
                 )?;
-
-                if is_first_access {
-                    // If previous row was a last access, we need to update the state root.
-                    state_root = randomness
-                        .zip(state_root)
-                        .map(|(randomness, mut state_root)| {
-                            if let Some(update) = updates.get(prev_row) {
-                                let (new_root, old_root) = update.root_assignments(randomness);
-                                if state_root != old_root {
-                                    log::error!("invalid root randomness {:?}, state_root {:?}, prev_row {:?} update {:?}", 
-                                    randomness, state_root, prev_row, update);
-                                    assert_eq!(state_root, old_root);
-                                }
-                                state_root = new_root;
-                            }
-                            if matches!(row.tag(), RwTableTag::CallContext)
-                                && !row.is_write()
-                                && row.value_assignment(randomness) != F::zero()
-                            {
-                                log::error!("invalid call context: {:?}", row);
-                            }
-                            state_root
-                        });
-                }
             }
 
             // The initial value can be determined from the mpt updates or is 0.
@@ -384,6 +381,69 @@ impl<F: Field> StateCircuitConfig<F> {
                 offset,
                 || mpt_proof_type,
             )?;
+        }
+
+        Ok(is_first_access_vec)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update_state_root(
+        &self,
+        region: &mut Region<'_, F>,
+        rows: &[Rw],
+        padding_length: usize,
+        is_first_access_vec: &[bool],
+        updates: &MptUpdates,
+        n_rows: usize, // 0 means dynamically calculated from `rows`.
+        randomness: Value<F>,
+    ) -> Result<StateCircuitExports<Assigned<F>>, Error> {
+        log::info!(
+            "state circuit assign total rows {}, n_rows {}, padding_length {}",
+            rows.len(),
+            n_rows,
+            padding_length
+        );
+        let rows_len = rows.len();
+
+        let mut state_root =
+            randomness.map(|randomness| rlc::value(&updates.old_root().to_le_bytes(), randomness));
+        let mut start_state_root: Option<AssignedCell<_, F>> = None;
+        let mut end_state_root: Option<AssignedCell<_, F>> = None;
+
+        for (offset, (row, is_first_access)) in
+            rows.iter().zip(is_first_access_vec.iter()).enumerate()
+        {
+            if offset == 0 || offset + 1 >= padding_length {
+                log::trace!("state circuit assign offset:{} row:{:?}", offset, row);
+            }
+
+            if offset > 0 {
+                let prev_row = &rows[offset - 1];
+
+                if *is_first_access {
+                    // If previous row was a last access, we need to update the state root.
+                    state_root = randomness
+                        .zip(state_root)
+                        .map(|(randomness, mut state_root)| {
+                            if let Some(update) = updates.get(prev_row) {
+                                let (new_root, old_root) = update.root_assignments(randomness);
+                                if state_root != old_root {
+                                    log::error!("invalid root randomness {:?}, state_root {:?}, prev_row {:?} update {:?}", 
+                                    randomness, state_root, prev_row, update);
+                                    assert_eq!(state_root, old_root);
+                                }
+                                state_root = new_root;
+                            }
+                            if matches!(row.tag(), RwTableTag::CallContext)
+                                && !row.is_write()
+                                && row.value_assignment(randomness) != F::zero()
+                            {
+                                log::error!("invalid call context: {:?}", row);
+                            }
+                            state_root
+                        });
+                }
+            }
 
             // TODO: Switch from Rw::Start -> Rw::Padding to simplify this logic.
             // State root assignment is at previous row (offset - 1) because the state root
@@ -428,6 +488,166 @@ impl<F: Field> StateCircuitConfig<F> {
             start_state_root: (start_state_root.cell(), start_state_root.value_field()),
             end_state_root: (end_state_root.cell(), end_state_root.value_field()),
         })
+    }
+
+    #[cfg(feature = "parallel_syn")]
+    #[allow(clippy::too_many_arguments)]
+    fn assign_parallel(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        rows: &[Rw],
+        n_rows: usize, // 0 means dynamically calculated from `rows`.
+        updates: &MptUpdates,
+        randomness: Value<F>,
+        #[cfg(any(feature = "test", test, feature = "test-circuits"))] overrides: &HashMap<
+            (dev::AdviceColumn, isize),
+            F,
+        >,
+        circuit_exports: &std::cell::RefCell<Option<StateCircuitExports<Assigned<F>>>>,
+    ) -> Result<(), Error> {
+        let (rows, padding_length) = RwMap::table_assignments_prepad(rows, n_rows);
+        let rows_len = rows.len();
+        let offsets = (0..rows_len).collect::<Vec<_>>();
+        let num_threads = std::thread::available_parallelism()
+            .map(|e| e.get())
+            .unwrap_or(32);
+        let chunk_size = (rows_len + num_threads - 1) / num_threads;
+        let chunk_num = (rows_len + chunk_size - 1) / chunk_size;
+        log::debug!("rows.len() =  {}", rows_len);
+        log::debug!(
+            "rows.len() + num_threads - 1 =  {}",
+            rows_len + num_threads - 1
+        );
+        log::debug!(
+            "assign_with_region num_threads: {}, chunk_size: {}",
+            num_threads,
+            chunk_size
+        );
+
+        // Assigning to same columns in different regions should be avoided.
+        // Here we use one single region to assign `overrides` to both rw table and
+        // other parts.
+        let column = self.rw_table.rw_counter;
+        let mut is_first_time_vec = vec![true; chunk_num];
+        layouter.assign_regions(
+            || "state circuit (synthesize_sub) part1",
+            offsets
+                .chunks(chunk_size)
+                .zip(rows.chunks(chunk_size))
+                .zip(is_first_time_vec.iter_mut())
+                .map(|((offsets, rows), is_first_time)| {
+                    move |region: Region<'_, F>| {
+                        let mut region = region;
+
+                        if *is_first_time {
+                            *is_first_time = false;
+                            region.assign_advice(
+                                || "dummy offset",
+                                column,
+                                offsets.len() - 1,
+                                || Value::known(F::zero()),
+                            )?;
+                            return Ok(());
+                        }
+
+                        self.rw_table.load_with_region_padded_row(
+                            &mut region,
+                            rows,
+                            offsets.len(),
+                            randomness,
+                        )?;
+
+                        Ok(())
+                    }
+                })
+                .collect_vec(),
+        )?;
+
+        let mut is_first_time_vec = vec![true; chunk_num];
+        let column = self.initial_value;
+        let is_first_access_chunks = layouter.assign_regions(
+            || "state circuit (synthesize_sub) part2",
+            offsets
+                .chunks(chunk_size)
+                .zip(is_first_time_vec.iter_mut())
+                .map(|(offsets, is_first_time)| {
+                    let rows = &rows;
+                    let updates = updates;
+                    move |region: Region<'_, F>| {
+                        let mut region = region;
+
+                        if *is_first_time {
+                            *is_first_time = false;
+                            region.assign_advice(
+                                || "dummy offset",
+                                column,
+                                offsets.len() - 1,
+                                || Value::known(F::zero()),
+                            )?;
+                            return Ok(vec![]);
+                        }
+
+                        let is_first_access_chunk: Vec<bool> = self.assign_with_region(
+                            &mut region,
+                            rows,
+                            offsets[0],
+                            padding_length,
+                            updates,
+                            offsets.len(),
+                            randomness,
+                        )?;
+
+                        Ok(is_first_access_chunk)
+                    }
+                })
+                .collect::<Vec<_>>(),
+        )?;
+        let mut is_first_access_vec = vec![];
+        for is_first_access_chunk in is_first_access_chunks {
+            is_first_access_vec.extend(is_first_access_chunk);
+        }
+
+        let mut is_first_time = true;
+        layouter.assign_region(
+            || "state circuit (synthesize_sub) part3",
+            |mut region| {
+                if is_first_time {
+                    is_first_time = false;
+                    return Ok(());
+                }
+
+                let exports = self.update_state_root(
+                    &mut region,
+                    &rows,
+                    padding_length,
+                    &is_first_access_vec,
+                    updates,
+                    n_rows,
+                    randomness,
+                )?;
+                if circuit_exports.borrow().is_none() {
+                    circuit_exports.borrow_mut().replace(exports);
+                }
+
+                #[cfg(any(feature = "test", test, feature = "test-circuits"))]
+                {
+                    for ((column, row_offset), &f) in overrides {
+                        let advice_column = column.value(self);
+                        let offset =
+                            usize::try_from(isize::try_from(padding_length).unwrap() + *row_offset)
+                                .unwrap();
+                        region.assign_advice(
+                            || "override",
+                            advice_column,
+                            offset,
+                            || Value::known(f),
+                        )?;
+                    }
+                }
+
+                Ok(())
+            },
+        )
     }
 
     fn annotate_circuit_in_region(&self, region: &mut Region<F>) {
@@ -548,6 +768,37 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
 
         let randomness = challenges.evm_word();
 
+        #[cfg(feature = "parallel_syn")]
+        {
+            // if feature "parallel_syn" is enabled,
+            // `parallel` assignment is turned on by default
+            // we can turn it off by set the environment variable
+            // `CIRCUIT_ASSIGNMENT_TYPE=serial`
+            let assignment_type = std::env::var("CIRCUIT_ASSIGNMENT_TYPE")
+                .ok()
+                .unwrap_or_default();
+            let is_parallel_assignment = match assignment_type.as_str() {
+                "serial" => false,
+                "parallel" => true,
+                &_ => true,
+            };
+            log::debug!("CIRCUIT_ASSIGNMENT_TYPE: {}", assignment_type);
+            log::debug!("is_parallel_assignment: {}", is_parallel_assignment);
+
+            if is_parallel_assignment {
+                return config.assign_parallel(
+                    layouter,
+                    &self.rows,
+                    self.n_rows,
+                    &self.updates,
+                    randomness,
+                    #[cfg(any(feature = "test", test, feature = "test-circuits"))]
+                    &self.overrides,
+                    &self.exports,
+                );
+            }
+        }
+
         let mut is_first_time = true;
 
         // Assigning to same columns in different regions should be avoided.
@@ -573,13 +824,27 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
                     randomness,
                 )?;
 
-                let exports = config.assign_with_region(
+                let (rows, padding_length) =
+                    RwMap::table_assignments_prepad(&self.rows, self.n_rows);
+                let is_first_access_vec = config.assign_with_region(
                     &mut region,
-                    &self.rows,
+                    &rows,
+                    0,
+                    padding_length,
                     &self.updates,
                     self.n_rows,
                     randomness,
                 )?;
+                let exports = config.update_state_root(
+                    &mut region,
+                    &rows,
+                    padding_length,
+                    &is_first_access_vec,
+                    &self.updates,
+                    self.n_rows,
+                    randomness,
+                )?;
+
                 if self.exports.borrow().is_none() {
                     self.exports.borrow_mut().replace(exports);
                 }
