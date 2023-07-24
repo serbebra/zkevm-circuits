@@ -533,6 +533,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                         &push_data_left_is_zero_chip,
                         &index_length_diff_is_zero_chip,
                         empty_hash,
+                        0,
                         &mut offset,
                         last_row_offset,
                         fail_fast,
@@ -619,6 +620,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
         push_data_left_is_zero_chip: &IsZeroChip<F>,
         index_length_diff_is_zero_chip: &IsZeroChip<F>,
         empty_hash: Value<F>,
+        offset_begin: usize,
         offset: &mut usize,
         last_row_offset: usize,
         fail_fast: bool,
@@ -641,10 +643,13 @@ impl<F: Field> BytecodeCircuitConfig<F> {
         });
 
         for (idx, row) in bytecode.rows.iter().enumerate() {
-            if fail_fast && *offset > last_row_offset {
+            // for serial assignment api assign_region(), offset always begins with 0
+            // `offset` == global_offset
+            let global_offset = *offset + offset_begin;
+            if fail_fast && global_offset > last_row_offset {
                 log::error!(
-                    "Bytecode Circuit: offset={} > last_row_offset={}",
-                    offset,
+                    "Bytecode Circuit: global_offset={} > last_row_offset={}",
+                    global_offset,
                     last_row_offset
                 );
                 return Err(Error::Synthesis);
@@ -670,14 +675,14 @@ impl<F: Field> BytecodeCircuitConfig<F> {
             }
 
             // Set the data for this row
-            if *offset < last_row_offset {
+            if global_offset < last_row_offset {
                 self.set_row(
                     region,
                     push_data_left_is_zero_chip,
                     index_length_diff_is_zero_chip,
                     *offset,
                     true,
-                    *offset == last_row_offset,
+                    global_offset == last_row_offset,
                     code_hash,
                     row.tag,
                     row.index,
@@ -691,8 +696,8 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                 /*
                 trace!(
                     "bytecode.set_row({}): last:{} h:{:?} t:{:?} i:{:?} c:{:?} v:{:?} pdl:{} rlc:{:?} l:{:?} pds:{:?}",
-                    offset,
-                    offset == last_row_offset,
+                    global_offset,
+                    global_offset == last_row_offset,
                     code_hash,
                     row.tag.get_lower_32(),
                     row.index.get_lower_32(),
@@ -708,14 +713,22 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                 *offset += 1;
                 push_data_left = next_push_data_left
             }
-            if *offset == last_row_offset {
+
+            let global_offset = *offset + offset_begin;
+            if global_offset == last_row_offset {
+                // for serial assignment api assign_region(), offset always begins with 0
+                //     `offset` == global_offset,
+                //     so set `offset` here is equivalent to set `last_row_offset`
+                // if assign_bytecode() is called by assign_regions()
+                //     the rows are divided into multiple regions,
+                //     so the maximum value is the accumulated offset
                 self.set_padding_row(
                     region,
                     push_data_left_is_zero_chip,
                     index_length_diff_is_zero_chip,
                     empty_hash,
                     *offset,
-                    last_row_offset,
+                    *offset,
                 )?;
             }
         }
