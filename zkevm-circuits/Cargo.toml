@@ -83,3 +83,4 @@ warn-unimplemented = ["eth-types/warn-unimplemented"]
 onephase = [] # debug only
 zktrie = []
 poseidon-codehash = []
+parallel_syn = ["halo2_proofs/parallel_syn"]
