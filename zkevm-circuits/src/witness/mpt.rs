@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::{util::rlc, witness::Rw},
     table::AccountFieldTag,
 };
-use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word, U256};
+use eth_types::{Address, Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
 use halo2_proofs::circuit::Value;
 use itertools::Itertools;
 use mpt_zktrie::{
@@ -117,30 +117,22 @@ impl MptUpdates {
     }
 
     pub(crate) fn fill_state_roots(&mut self, init_trie: &ZktrieState) {
-        let root_pair = (self.old_root, self.new_root);
-        self.old_root = U256::from_big_endian(init_trie.root());
-        log::trace!("fill_state_roots init {:?}", init_trie.root());
-
         let wit_gen = WitnessGenerator::from(init_trie);
-        let wit_gen = self.fill_state_roots_from_generator(wit_gen);
-
-        let root_pair2 = (self.old_root, self.new_root);
-        if root_pair2 != root_pair {
-            log::error!(
-                "roots non consistent ({:#x},{:#x}) vs ({:#x},{:#x})",
-                root_pair.0,
-                root_pair.1,
-                root_pair2.0,
-                root_pair2.1
-            );
-            wit_gen.dump();
-        }
+        self.fill_state_roots_from_generator(wit_gen);
     }
 
-    fn fill_state_roots_from_generator(
+    /// Replay mpt updates on a partial zktrie storage db,
+    /// Set correct storage roots of mpt updates
+    pub fn fill_state_roots_from_generator(
         &mut self,
         mut wit_gen: WitnessGenerator,
     ) -> WitnessGenerator {
+        let root_pair = (self.old_root, self.new_root);
+        log::trace!("fill_state_roots init, self.old_root {:?}, self.new_root {:?}, wit_gen.root().to_word() {:?}", 
+        self.old_root,
+        self.new_root,
+        wit_gen.root().to_word());
+
         self.smt_traces = Vec::new();
         self.proof_types = Vec::new();
 
@@ -176,6 +168,17 @@ impl MptUpdates {
             self.old_root,
             self.new_root
         );
+        let root_pair2 = (self.old_root, self.new_root);
+        if root_pair2 != root_pair {
+            log::error!(
+                "roots non consistent ({:#x},{:#x}) vs ({:#x},{:#x})",
+                root_pair.0,
+                root_pair.1,
+                root_pair2.0,
+                root_pair2.1
+            );
+            wit_gen.dump();
+        }
         wit_gen
     }
 
