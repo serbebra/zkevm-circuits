@@ -17,11 +17,12 @@ use eth_types::{
     sign_types::SignData,
     GethExecStep, Word, H256,
 };
+use ethers_core::k256::elliptic_curve::subtle::CtOption;
 use gadgets::impl_expr;
 use halo2_proofs::{
-    arithmetic::Field,
+    arithmetic::{CurveAffine, Field},
     halo2curves::{
-        bn256::{Fr, G1Affine, G2Affine},
+        bn256::{Fq, Fr, G1Affine, G2Affine},
         group::cofactor::CofactorCurveAffine,
     },
     plonk::Expression,
@@ -940,6 +941,41 @@ impl EcAddOp {
         Self { p, q, r }
     }
 
+    /// Creates a new EcAdd op given input and output bytes from a precompile call.
+    ///
+    /// Note: At the moment we are handling invalid/erroneous cases for precompiled contract calls
+    /// via a dummy gadget ErrorPrecompileFailure. So we expect the input bytes to be valid, i.e.
+    /// points P and Q are valid points on the curve. In the near future, we should ideally handle
+    /// invalid inputs within the respective precompile call's gadget. And then this function will
+    /// be fallible, since we would handle invalid inputs as well.
+    pub fn new_from_bytes(input: &[u8], output: &[u8]) -> Self {
+        let fq_from_slice = |buf: &mut [u8; 32], bytes: &[u8]| -> CtOption<Fq> {
+            buf.copy_from_slice(bytes);
+            buf.reverse();
+            Fq::from_bytes(buf)
+        };
+
+        let g1_from_slice = |buf: &mut [u8; 32], bytes: &[u8]| -> CtOption<G1Affine> {
+            fq_from_slice(buf, &bytes[0x00..0x20]).and_then(|x| {
+                fq_from_slice(buf, &bytes[0x20..0x40]).and_then(|y| G1Affine::from_xy(x, y))
+            })
+        };
+
+        assert_eq!(input.len(), 128);
+        assert_eq!(output.len(), 64);
+
+        let mut buf = [0u8; 32];
+        let point_p = g1_from_slice(&mut buf, &input[0x00..0x40]).unwrap();
+        let point_q = g1_from_slice(&mut buf, &input[0x40..0x80]).unwrap();
+        let point_r_got = g1_from_slice(&mut buf, &output[0x00..0x40]).unwrap();
+        assert_eq!(G1Affine::from(point_p.add(&point_q)), point_r_got);
+        Self {
+            p: point_p,
+            q: point_q,
+            r: point_r_got,
+        }
+    }
+
     /// A check on the op to tell the ECC Circuit whether or not to skip the op.
     pub fn skip_by_ecc_circuit(&self) -> bool {
         false
@@ -960,13 +996,60 @@ pub struct EcMulOp {
 impl Default for EcMulOp {
     fn default() -> Self {
         let p = G1Affine::generator();
-        let s = Fr::from_raw([2, 0, 0, 0]);
+        let s = Fr::one();
         let r = p.mul(s).into();
         Self { p, s, r }
     }
 }
 
 impl EcMulOp {
+    /// Creates a new EcMul op given the inputs and output.
+    pub fn new(p: G1Affine, s: Fr, r: G1Affine) -> Self {
+        assert_eq!(p.mul(s), r.into());
+        Self { p, s, r }
+    }
+
+    /// Creates a new EcMul op given input and output bytes from a precompile call.    
+    pub fn new_from_bytes(input: &[u8], output: &[u8]) -> Self {
+        let copy_bytes = |buf: &mut [u8; 32], bytes: &[u8]| {
+            buf.copy_from_slice(bytes);
+            buf.reverse();
+        };
+
+        assert_eq!(input.len(), 96);
+        assert_eq!(output.len(), 64);
+
+        let mut buf = [0u8; 32];
+
+        let p: G1Affine = {
+            copy_bytes(&mut buf, &input[0x00..0x20]);
+            Fq::from_bytes(&buf).and_then(|x| {
+                copy_bytes(&mut buf, &input[0x20..0x40]);
+                Fq::from_bytes(&buf).and_then(|y| G1Affine::from_xy(x, y))
+            })
+        }
+        .unwrap();
+
+        let s = Fr::from_raw(Word::from_big_endian(&input[0x40..0x60]).0);
+
+        let r_specified: G1Affine = {
+            copy_bytes(&mut buf, &output[0x00..0x20]);
+            Fq::from_bytes(&buf).and_then(|x| {
+                copy_bytes(&mut buf, &output[0x20..0x40]);
+                Fq::from_bytes(&buf).and_then(|y| G1Affine::from_xy(x, y))
+            })
+        }
+        .unwrap();
+
+        assert_eq!(G1Affine::from(p.mul(s)), r_specified);
+
+        Self {
+            p,
+            s,
+            r: r_specified,
+        }
+    }
+
     /// A check on the op to tell the ECC Circuit whether or not to skip the op.
     pub fn skip_by_ecc_circuit(&self) -> bool {
         self.p.is_identity().into() || self.s.is_zero().into()

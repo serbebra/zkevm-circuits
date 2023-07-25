@@ -2387,6 +2387,19 @@ impl<F: Field> LookupTable<F> for EccTable {
             String::from("output2_rlc"),
         ]
     }
+
+    fn table_exprs(&self, meta: &mut VirtualCells<F>) -> Vec<Expression<F>> {
+        vec![
+            meta.query_fixed(self.op_type, Rotation::cur()),
+            meta.query_advice(self.arg1_rlc, Rotation::cur()),
+            meta.query_advice(self.arg2_rlc, Rotation::cur()),
+            meta.query_advice(self.arg3_rlc, Rotation::cur()),
+            meta.query_advice(self.arg4_rlc, Rotation::cur()),
+            meta.query_advice(self.input_rlc, Rotation::cur()),
+            meta.query_advice(self.output1_rlc, Rotation::cur()),
+            meta.query_advice(self.output2_rlc, Rotation::cur()),
+        ]
+    }
 }
 
 impl EccTable {
@@ -2466,6 +2479,7 @@ impl EccTable {
                 Value::known(F::one()),
                 fq_to_value(mul_op.p.x, keccak_rand),
                 fq_to_value(mul_op.p.y, keccak_rand),
+                // no need to RLC the scalar s, since it will fit within the scalar field.
                 Value::known(mul_op.s.into()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),
