@@ -15,6 +15,7 @@
 // |--------|-----------|-----------|-----------|-----------|-----------|
 
 use eth_types::{Field, ToLittleEndian, Word};
+use crate::less_than::{LtChip, LtInstruction};
 use halo2_proofs::{
     circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
@@ -43,6 +44,12 @@ pub struct MulAddConfig<F> {
     pub col4: Column<Advice>,
     /// Sum of the parts higher than 256-bit in the product.
     pub overflow: Expression<F>,
+    /// Range check of a, b which needs to be in [0, 2^64)
+    pub range_check_64: [(LtChip<F, 9>, LtChip<F, 9>); 4],
+    /// Range check of carry_lo, carry_hi which needs to be in [0, 2^8)
+    pub range_check_8: [(LtChip<F, 2>, LtChip<F, 2>); 9],
+    /// Range check of c, d which needs to be in [0, 2^128)
+    pub range_check_128: [(LtChip<F, 17>, LtChip<F, 17>); 2],
 }
 
 impl<F: Field> MulAddConfig<F> {
@@ -109,7 +116,7 @@ impl<F: Field> MulAddChip<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
-        q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F> + Clone,
     ) -> MulAddConfig<F> {
         let col0 = meta.advice_column();
         let col1 = meta.advice_column();
@@ -119,7 +126,7 @@ impl<F: Field> MulAddChip<F> {
         let mut overflow = 0.expr();
 
         meta.create_gate("mul add gate", |meta| {
-            let q_enable = q_enable(meta);
+            let q_enable = q_enable.clone()(meta);
 
             let a_limbs =
                 [col0, col1, col2, col3].map(|column| meta.query_advice(column, Rotation::cur()));
@@ -173,6 +180,68 @@ impl<F: Field> MulAddChip<F> {
                 .map(move |poly| q_enable.clone() * poly)
         });
 
+        let range_check_64 = [col0, col1, col2, col3].map(|col| {
+            let config_a = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |meta| meta.query_advice(col, Rotation(0)),
+                |_| Expression::Constant(pow_of_two(64)),
+            );
+            let config_b = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |meta| meta.query_advice(col, Rotation(1)),
+                |_| Expression::Constant(pow_of_two(64)),
+            );
+
+            (LtChip::construct(config_a), LtChip::construct(config_b))
+        });
+
+        let carry_los = [col0, col1, col2, col3, col4]
+            .map(|col| (col, Rotation(3)))
+            .into_iter()
+            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(4))));
+        let carry_his = [col0, col1, col2, col3, col4]
+            .map(|col| (col, Rotation(5)))
+            .into_iter()
+            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(6))));
+        let range_check_8 = carry_los
+            .zip(carry_his)
+            .map(|(lo, hi)| {
+                let config_lo = LtChip::configure(
+                    meta,
+                    q_enable.clone(),
+                    |meta| meta.query_advice(lo.0, lo.1),
+                    |_| Expression::Constant(pow_of_two(8)),
+                );
+                let config_hi = LtChip::configure(
+                    meta,
+                    q_enable.clone(),
+                    |meta| meta.query_advice(hi.0, hi.1),
+                    |_| Expression::Constant(pow_of_two(8)),
+                );
+                (LtChip::construct(config_lo), LtChip::construct(config_hi))
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        let range_check_128 = [(col0, col2), (col1, col3)].map(|(c, d)| {
+            let config_c = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |meta| meta.query_advice(c, Rotation(2)),
+                |_| Expression::Constant(pow_of_two(128)),
+            );
+            let config_d = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |meta| meta.query_advice(d, Rotation(2)),
+                |_| Expression::Constant(pow_of_two(128)),
+            );
+            (LtChip::construct(config_c), LtChip::construct(config_d))
+        });
+
         MulAddConfig {
             col0,
             col1,
@@ -180,6 +249,9 @@ impl<F: Field> MulAddChip<F> {
             col3,
             col4,
             overflow,
+            range_check_64,
+            range_check_8,
+            range_check_128,
         }
     }
 
@@ -230,12 +302,16 @@ impl<F: Field> MulAddChip<F> {
         .zip(a_limbs)
         .enumerate()
         {
+            let a = F::from(value.as_u64());
             region.assign_advice(
                 || format!("a limb ({i})"),
                 column,
                 offset,
-                || Value::known(F::from(value.as_u64())),
+                || Value::known(a),
             )?;
+            self.config.range_check_64[i]
+                .0
+                .assign(region, offset, a, pow_of_two(64))?;
         }
         region.assign_advice(
             || format!("unused col: {offset}"),
@@ -255,12 +331,16 @@ impl<F: Field> MulAddChip<F> {
         .zip(b_limbs)
         .enumerate()
         {
+            let b = F::from(value.as_u64());
             region.assign_advice(
                 || format!("b limb ({i})"),
                 column,
                 offset + 1,
-                || Value::known(F::from(value.as_u64())),
+                || Value::known(b),
             )?;
+            self.config.range_check_64[i]
+                .1
+                .assign(region, offset, b, pow_of_two(64))?;
         }
         region.assign_advice(
             || format!("unused col {}", offset + 1),
@@ -282,6 +362,18 @@ impl<F: Field> MulAddChip<F> {
             offset + 2,
             || Value::known(F::from_u128(c_hi.as_u128())),
         )?;
+        self.config.range_check_128[0].0.assign(
+            region,
+            offset,
+            F::from_u128(c_lo.as_u128()),
+            pow_of_two(128),
+        )?;
+        self.config.range_check_128[1].0.assign(
+            region,
+            offset,
+            F::from_u128(c_hi.as_u128()),
+            pow_of_two(128),
+        )?;
         region.assign_advice(
             || "d_lo",
             self.config.col2,
@@ -293,6 +385,18 @@ impl<F: Field> MulAddChip<F> {
             self.config.col3,
             offset + 2,
             || Value::known(F::from_u128(d_hi.as_u128())),
+        )?;
+        self.config.range_check_128[0].1.assign(
+            region,
+            offset,
+            F::from_u128(d_lo.as_u128()),
+            pow_of_two(128),
+        )?;
+        self.config.range_check_128[1].1.assign(
+            region,
+            offset,
+            F::from_u128(d_hi.as_u128()),
+            pow_of_two(128),
         )?;
         region.assign_advice(
             || format!("unused col: {}", offset + 2),
@@ -317,12 +421,11 @@ impl<F: Field> MulAddChip<F> {
         .zip(carry_lo.to_le_bytes().iter())
         .enumerate()
         {
-            region.assign_advice(
-                || format!("carry lo ({i})"),
-                col,
-                rot,
-                || Value::known(F::from(*val as u64)),
-            )?;
+            let v = F::from(*val as u64);
+            region.assign_advice(|| format!("carry lo ({i})"), col, rot, || Value::known(v))?;
+            self.config.range_check_8[i]
+                .0
+                .assign(region, offset, v, pow_of_two(8))?;
         }
         region.assign_advice(
             || format!("unused col: {}", offset + 4),
@@ -347,12 +450,11 @@ impl<F: Field> MulAddChip<F> {
         .zip(carry_hi.to_le_bytes().iter())
         .enumerate()
         {
-            region.assign_advice(
-                || format!("carry hi ({i})"),
-                col,
-                rot,
-                || Value::known(F::from(*val as u64)),
-            )?;
+            let v = F::from(*val as u64);
+            region.assign_advice(|| format!("carry hi ({i})"), col, rot, || Value::known(v))?;
+            self.config.range_check_8[i]
+                .1
+                .assign(region, offset, v, pow_of_two(8))?;
         }
         region.assign_advice(
             || format!("unused col: {}", offset + 6),
