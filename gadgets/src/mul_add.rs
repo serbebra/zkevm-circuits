@@ -44,10 +44,10 @@ pub struct MulAddConfig<F> {
     pub col4: Column<Advice>,
     /// Sum of the parts higher than 256-bit in the product.
     pub overflow: Expression<F>,
-    /// Range check of a, b which needs to be in [0, 2^64)
-    pub range_check_64: [(LtChip<F, 8>, LtChip<F, 8>); 4],
     /// Range check of carry_lo, carry_hi which needs to be in [0, 2^8)
     pub range_check_8: [(LtChip<F, 1>, LtChip<F, 1>); 9],
+    /// Range check of a, b which needs to be in [0, 2^64)
+    pub range_check_64: [(LtChip<F, 8>, LtChip<F, 8>); 4],
     /// Range check of c, d which needs to be in [0, 2^128)
     pub range_check_128: [(LtChip<F, 16>, LtChip<F, 16>); 2],
 }
@@ -258,12 +258,12 @@ impl<F: Field> MulAddChip<F> {
                 .map(move |poly| q_enable.clone() * poly)
         });
 
+        let range_check_8 =
+            range_check_8_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
         let range_check_64 =
             range_check_64_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
         let range_check_128 =
             range_check_128_config.map(|(c, d)| (LtChip::construct(c), LtChip::construct(d)));
-        let range_check_8 =
-            range_check_8_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
 
         MulAddConfig {
             col0,
