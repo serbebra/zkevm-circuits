@@ -191,7 +191,7 @@ impl<F: Field> MulAddChip<F> {
         });
 
         meta.create_gate("mul add gate", |meta| {
-            let q_enable = q_enable.clone()(meta);
+            let q_enable = q_enable(meta);
 
             let a_limbs =
                 [col0, col1, col2, col3].map(|column| meta.query_advice(column, Rotation::cur()));
