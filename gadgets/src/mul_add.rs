@@ -15,14 +15,17 @@
 // |--------|-----------|-----------|-----------|-----------|-----------|
 
 use eth_types::{Field, ToLittleEndian, Word};
-use crate::less_than::{LtChip, LtConfig, LtInstruction};
+
 use halo2_proofs::{
     circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
     poly::Rotation,
 };
 
-use crate::util::{expr_from_bytes, or, pow_of_two, split_u256, split_u256_limb64, Expr};
+use crate::{
+    less_than::{LtChip, LtConfig, LtInstruction},
+    util::{expr_from_bytes, or, pow_of_two, split_u256, split_u256_limb64, Expr},
+};
 
 /// Config for the MulAddChip.
 #[derive(Clone, Debug)]
