@@ -15,14 +15,14 @@
 // |--------|-----------|-----------|-----------|-----------|-----------|
 
 use eth_types::{Field, ToLittleEndian, Word};
-use crate::less_than::{LtChip, LtInstruction};
+use crate::less_than::{LtChip, LtConfig, LtInstruction};
 use halo2_proofs::{
     circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
     poly::Rotation,
 };
 
-use crate::util::{expr_from_bytes, pow_of_two, split_u256, split_u256_limb64, Expr};
+use crate::util::{expr_from_bytes, or, pow_of_two, split_u256, split_u256_limb64, Expr};
 
 /// Config for the MulAddChip.
 #[derive(Clone, Debug)]
@@ -45,11 +45,11 @@ pub struct MulAddConfig<F> {
     /// Sum of the parts higher than 256-bit in the product.
     pub overflow: Expression<F>,
     /// Range check of a, b which needs to be in [0, 2^64)
-    pub range_check_64: [(LtChip<F, 9>, LtChip<F, 9>); 4],
+    pub range_check_64: [(LtChip<F, 8>, LtChip<F, 8>); 4],
     /// Range check of carry_lo, carry_hi which needs to be in [0, 2^8)
-    pub range_check_8: [(LtChip<F, 2>, LtChip<F, 2>); 9],
+    pub range_check_8: [(LtChip<F, 1>, LtChip<F, 1>); 9],
     /// Range check of c, d which needs to be in [0, 2^128)
-    pub range_check_128: [(LtChip<F, 17>, LtChip<F, 17>); 2],
+    pub range_check_128: [(LtChip<F, 16>, LtChip<F, 16>); 2],
 }
 
 impl<F: Field> MulAddConfig<F> {
@@ -125,6 +125,68 @@ impl<F: Field> MulAddChip<F> {
         let col4 = meta.advice_column();
         let mut overflow = 0.expr();
 
+        let carry_los = [col0, col1, col2, col3, col4]
+            .map(|col| (col, Rotation(3)))
+            .into_iter()
+            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(4))));
+        let carry_his = [col0, col1, col2, col3, col4]
+            .map(|col| (col, Rotation(5)))
+            .into_iter()
+            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(6))));
+        let range_check_8_config: [(LtConfig<F, 1>, LtConfig<F, 1>); 9] = carry_los
+            .zip(carry_his)
+            .map(|(lo, hi)| {
+                let config_lo = LtChip::configure(
+                    meta,
+                    q_enable.clone(),
+                    |_| Expression::Constant(F::from(u8::MAX as u64)),
+                    |meta| meta.query_advice(lo.0, lo.1),
+                );
+                let config_hi = LtChip::configure(
+                    meta,
+                    q_enable.clone(),
+                    |_| Expression::Constant(F::from(u8::MAX as u64)),
+                    |meta| meta.query_advice(hi.0, hi.1),
+                );
+                (config_lo, config_hi)
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        let range_check_64_config = [col0, col1, col2, col3].map(|col| {
+            let config_a = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |_| Expression::Constant(F::from(u64::MAX)),
+                |meta| meta.query_advice(col, Rotation(0)),
+            );
+            let config_b = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |_| Expression::Constant(F::from(u64::MAX)),
+                |meta| meta.query_advice(col, Rotation(1)),
+            );
+
+            (config_a, config_b)
+        });
+
+        let range_check_128_config = [(col0, col2), (col1, col3)].map(|(c, d)| {
+            let config_c = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |_| Expression::Constant(F::from_u128(u128::MAX)),
+                |meta| meta.query_advice(c, Rotation(2)),
+            );
+            let config_d = LtChip::configure(
+                meta,
+                q_enable.clone(),
+                |_| Expression::Constant(F::from_u128(u128::MAX)),
+                |meta| meta.query_advice(d, Rotation(2)),
+            );
+            (config_c, config_d)
+        });
+
         meta.create_gate("mul add gate", |meta| {
             let q_enable = q_enable.clone()(meta);
 
@@ -175,72 +237,33 @@ impl<F: Field> MulAddChip<F> {
             let check_b = t2.expr() + t3.expr() * pow_of_two::<F>(64) + c_hi + carry_lo_expr
                 - (d_hi + carry_hi_expr * pow_of_two::<F>(128));
 
-            [check_a, check_b]
+            let range_check_8_expr = range_check_8_config.map(|(config_lo, config_hi)| {
+                config_lo.is_lt(meta, None) + config_hi.is_lt(meta, None)
+            });
+            let range_check_64_expr = range_check_64_config.map(|(config_a, config_b)| {
+                config_a.is_lt(meta, None) + config_b.is_lt(meta, None)
+            });
+            let range_check_128_expr = range_check_128_config.map(|(config_c, config_d)| {
+                config_c.is_lt(meta, None) + config_d.is_lt(meta, None)
+            });
+            let range_check_expr = or::expr(
+                range_check_8_expr
+                    .into_iter()
+                    .chain(range_check_64_expr)
+                    .chain(range_check_128_expr),
+            );
+
+            [check_a, check_b, range_check_expr]
                 .into_iter()
                 .map(move |poly| q_enable.clone() * poly)
         });
 
-        let range_check_64 = [col0, col1, col2, col3].map(|col| {
-            let config_a = LtChip::configure(
-                meta,
-                q_enable.clone(),
-                |meta| meta.query_advice(col, Rotation(0)),
-                |_| Expression::Constant(pow_of_two(64)),
-            );
-            let config_b = LtChip::configure(
-                meta,
-                q_enable.clone(),
-                |meta| meta.query_advice(col, Rotation(1)),
-                |_| Expression::Constant(pow_of_two(64)),
-            );
-
-            (LtChip::construct(config_a), LtChip::construct(config_b))
-        });
-
-        let carry_los = [col0, col1, col2, col3, col4]
-            .map(|col| (col, Rotation(3)))
-            .into_iter()
-            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(4))));
-        let carry_his = [col0, col1, col2, col3, col4]
-            .map(|col| (col, Rotation(5)))
-            .into_iter()
-            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(6))));
-        let range_check_8 = carry_los
-            .zip(carry_his)
-            .map(|(lo, hi)| {
-                let config_lo = LtChip::configure(
-                    meta,
-                    q_enable.clone(),
-                    |meta| meta.query_advice(lo.0, lo.1),
-                    |_| Expression::Constant(pow_of_two(8)),
-                );
-                let config_hi = LtChip::configure(
-                    meta,
-                    q_enable.clone(),
-                    |meta| meta.query_advice(hi.0, hi.1),
-                    |_| Expression::Constant(pow_of_two(8)),
-                );
-                (LtChip::construct(config_lo), LtChip::construct(config_hi))
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let range_check_128 = [(col0, col2), (col1, col3)].map(|(c, d)| {
-            let config_c = LtChip::configure(
-                meta,
-                q_enable.clone(),
-                |meta| meta.query_advice(c, Rotation(2)),
-                |_| Expression::Constant(pow_of_two(128)),
-            );
-            let config_d = LtChip::configure(
-                meta,
-                q_enable.clone(),
-                |meta| meta.query_advice(d, Rotation(2)),
-                |_| Expression::Constant(pow_of_two(128)),
-            );
-            (LtChip::construct(config_c), LtChip::construct(config_d))
-        });
+        let range_check_64 =
+            range_check_64_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
+        let range_check_128 =
+            range_check_128_config.map(|(c, d)| (LtChip::construct(c), LtChip::construct(d)));
+        let range_check_8 =
+            range_check_8_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
 
         MulAddConfig {
             col0,
@@ -249,8 +272,8 @@ impl<F: Field> MulAddChip<F> {
             col3,
             col4,
             overflow,
-            range_check_64,
             range_check_8,
+            range_check_64,
             range_check_128,
         }
     }
@@ -311,7 +334,7 @@ impl<F: Field> MulAddChip<F> {
             )?;
             self.config.range_check_64[i]
                 .0
-                .assign(region, offset, a, pow_of_two(64))?;
+                .assign(region, offset, F::from(u64::MAX), a)?;
         }
         region.assign_advice(
             || format!("unused col: {offset}"),
@@ -340,7 +363,7 @@ impl<F: Field> MulAddChip<F> {
             )?;
             self.config.range_check_64[i]
                 .1
-                .assign(region, offset, b, pow_of_two(64))?;
+                .assign(region, offset, F::from(u64::MAX), b)?;
         }
         region.assign_advice(
             || format!("unused col {}", offset + 1),
@@ -365,14 +388,14 @@ impl<F: Field> MulAddChip<F> {
         self.config.range_check_128[0].0.assign(
             region,
             offset,
+            F::from_u128(u128::MAX),
             F::from_u128(c_lo.as_u128()),
-            pow_of_two(128),
         )?;
         self.config.range_check_128[1].0.assign(
             region,
             offset,
+            F::from_u128(u128::MAX),
             F::from_u128(c_hi.as_u128()),
-            pow_of_two(128),
         )?;
         region.assign_advice(
             || "d_lo",
@@ -389,14 +412,14 @@ impl<F: Field> MulAddChip<F> {
         self.config.range_check_128[0].1.assign(
             region,
             offset,
+            F::from_u128(u128::MAX),
             F::from_u128(d_lo.as_u128()),
-            pow_of_two(128),
         )?;
         self.config.range_check_128[1].1.assign(
             region,
             offset,
+            F::from_u128(u128::MAX),
             F::from_u128(d_hi.as_u128()),
-            pow_of_two(128),
         )?;
         region.assign_advice(
             || format!("unused col: {}", offset + 2),
@@ -425,7 +448,7 @@ impl<F: Field> MulAddChip<F> {
             region.assign_advice(|| format!("carry lo ({i})"), col, rot, || Value::known(v))?;
             self.config.range_check_8[i]
                 .0
-                .assign(region, offset, v, pow_of_two(8))?;
+                .assign(region, offset, F::from(u8::MAX as u64), v)?;
         }
         region.assign_advice(
             || format!("unused col: {}", offset + 4),
@@ -454,7 +477,7 @@ impl<F: Field> MulAddChip<F> {
             region.assign_advice(|| format!("carry hi ({i})"), col, rot, || Value::known(v))?;
             self.config.range_check_8[i]
                 .1
-                .assign(region, offset, v, pow_of_two(8))?;
+                .assign(region, offset, F::from(u8::MAX as u64), v)?;
         }
         region.assign_advice(
             || format!("unused col: {}", offset + 6),
