@@ -814,6 +814,8 @@ pub struct PoseidonTable {
     pub input1: Column<Advice>,
     /// control
     pub control: Column<Advice>,
+    /// domain spec
+    pub domain_spec: Column<Advice>,
     /// heading_mark
     pub heading_mark: Column<Advice>,
 }
@@ -826,6 +828,7 @@ impl<F: Field> LookupTable<F> for PoseidonTable {
             self.input0.into(),
             self.input1.into(),
             self.control.into(),
+            self.domain_spec.into(),
             self.heading_mark.into(),
         ]
     }
@@ -837,6 +840,7 @@ impl<F: Field> LookupTable<F> for PoseidonTable {
             String::from("input0"),
             String::from("input1"),
             String::from("control"),
+            String::from("domain spec"),
             String::from("heading_mark"),
         ]
     }
@@ -857,6 +861,7 @@ impl PoseidonTable {
             input0: meta.advice_column(),
             input1: meta.advice_column(),
             control: meta.advice_column(),
+            domain_spec: meta.advice_column(),
             heading_mark: meta.advice_column(),
         }
     }
@@ -907,7 +912,7 @@ impl PoseidonTable {
         region: &mut Region<'_, F>,
         hashes: impl Iterator<Item = &'d [Value<F>]>,
     ) -> Result<(), Error> {
-        self.assign(region, 0, [Value::known(F::zero()); 5].as_slice())?;
+        self.assign(region, 0, [Value::known(F::zero()); 6].as_slice())?;
         for (offset, row) in hashes.enumerate() {
             self.assign(region, offset + 1, row)?;
         }
@@ -928,7 +933,7 @@ impl PoseidonTable {
         use hash_circuit::hash::HASHABLE_DOMAIN_SPEC;
 
         layouter.assign_region(
-            || "poseidon table",
+            || "poseidon codehash table",
             |mut region| {
                 let mut offset = 0;
                 let poseidon_table_columns =
@@ -938,7 +943,7 @@ impl PoseidonTable {
                     || "poseidon table all-zero row",
                     self.q_enable,
                     offset,
-                    || Value::known(F::one()),
+                    || Value::known(F::zero()),
                 )?;
                 for column in poseidon_table_columns.iter().copied() {
                     region.assign_advice(
@@ -949,26 +954,26 @@ impl PoseidonTable {
                     )?;
                 }
                 offset += 1;
-                let nil_hash =
-                    Value::known(CodeDB::empty_code_hash().to_word().to_scalar().unwrap());
-                region.assign_fixed(
-                    || "poseidon table nil input row",
-                    self.q_enable,
-                    offset,
-                    || Value::known(F::one()),
-                )?;
-                for (column, value) in poseidon_table_columns
-                    .iter()
-                    .copied()
-                    .zip(once(nil_hash).chain(repeat(Value::known(F::zero()))))
-                {
-                    region.assign_advice(
-                        || "poseidon table nil input row",
-                        column,
-                        offset,
-                        || value,
-                    )?;
-                }
+                // let nil_hash =
+                //     Value::known(CodeDB::empty_code_hash().to_word().to_scalar().unwrap());
+                // region.assign_fixed(
+                //     || "poseidon table nil input row",
+                //     self.q_enable,
+                //     offset,
+                //     || Value::known(F::one()),
+                // )?;
+                // for (column, value) in poseidon_table_columns
+                //     .iter()
+                //     .copied()
+                //     .zip(once(nil_hash).chain(repeat(Value::known(F::zero()))))
+                // {
+                //     region.assign_advice(
+                //         || "poseidon table nil input row",
+                //         column,
+                //         offset,
+                //         || value,
+                //     )?;
+                // }
                 offset += 1;
 
                 for input in inputs.clone() {
@@ -1001,6 +1006,7 @@ impl PoseidonTable {
                             once(ref_hash)
                                 .chain(row.map(Value::known))
                                 .chain(once(Value::known(control_len_as_flag)))
+                                .chain(once(Value::known(F::zero()))) // always use domain 0 in codehash
                                 .chain(once(Value::known(if first_row {
                                     F::one()
                                 } else {
