@@ -45,6 +45,7 @@ use halo2_proofs::plonk::FirstPhase as SecondPhase;
 #[cfg(not(feature = "onephase"))]
 use halo2_proofs::plonk::SecondPhase;
 
+use halo2_proofs::plonk::TableColumn;
 use itertools::Itertools;
 use keccak256::plain::Keccak;
 use std::array;
@@ -2681,21 +2682,21 @@ impl<F: Field> LookupTable<F> for PowOfRandTable {
 
 /// Lookup table for [0, MAX) range
 #[derive(Clone, Copy, Debug)]
-pub struct RangeTable<const MAX: usize>(Column<Fixed>);
+pub struct RangeTable<const MAX: usize>(TableColumn);
 
 impl<const MAX: usize> RangeTable<MAX> {
     /// Construct the range table.
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
-        Self(meta.fixed_column())
+        Self(meta.lookup_table_column())
     }
 
     /// Assign values to the table.
     pub fn load<F: Field>(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        layouter.assign_region(
+        layouter.assign_table(
             || format!("range table [0, {MAX})"),
-            |mut region| {
+            |mut table| {
                 for i in 0..MAX {
-                    region.assign_fixed(
+                    table.assign_cell(
                         || format!("range at offset = {i}"),
                         self.0,
                         i,
@@ -2709,12 +2710,8 @@ impl<const MAX: usize> RangeTable<MAX> {
     }
 }
 
-impl<F: Field, const MAX: usize> LookupTable<F> for RangeTable<MAX> {
-    fn columns(&self) -> Vec<Column<Any>> {
-        vec![self.0.into()]
-    }
-
-    fn annotations(&self) -> Vec<String> {
-        vec![format!("value in [0, {MAX})")]
+impl<const MAX: usize> From<RangeTable<MAX>> for TableColumn {
+    fn from(table: RangeTable<MAX>) -> TableColumn {
+        table.0
     }
 }

@@ -538,17 +538,16 @@ impl<F: Field> RlpCircuitConfig<F> {
             cb.gate(meta.query_fixed(q_enabled, Rotation::cur()))
         });
 
-        meta.lookup_any("byte value check", |meta| {
+        meta.lookup("byte value check", |meta| {
             let cond = and::expr([
                 meta.query_fixed(q_enabled, Rotation::cur()),
                 is_padding_in_dt.expr(Rotation::cur())(meta),
             ]);
 
-            vec![meta.query_advice(data_table.byte_value, Rotation::cur())]
-                .into_iter()
-                .zip(u8_table.table_exprs(meta).into_iter())
-                .map(|(arg, table)| (cond.expr() * arg, table))
-                .collect()
+            vec![(
+                cond * meta.query_advice(data_table.byte_value, Rotation::cur()),
+                u8_table.into(),
+            )]
         });
 
         debug_assert!(meta.degree() <= 9);

@@ -732,7 +732,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             |meta| meta.query_advice(tx_table.tx_id, Rotation::next()),
         );
 
-        meta.lookup_any("tx_id_diff must in u16", |meta| {
+        meta.lookup("tx_id_diff must in u16", |meta| {
             let q_enable = meta.query_fixed(q_enable, Rotation::next());
             let is_calldata = meta.query_advice(is_calldata, Rotation::cur());
             let tx_id = meta.query_advice(tx_table.tx_id, Rotation::cur());
@@ -742,11 +742,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             let lookup_condition =
                 and::expr([q_enable, is_calldata, not::expr(tx_id_next_is_zero)]);
 
-            vec![tx_id_next - tx_id]
-                .into_iter()
-                .zip(u16_table.table_exprs(meta).into_iter())
-                .map(|(arg, table)| (lookup_condition.expr() * arg, table))
-                .collect()
+            vec![(lookup_condition * (tx_id_next - tx_id), u16_table.into())]
         });
 
         meta.create_gate("tx call data bytes", |meta| {
