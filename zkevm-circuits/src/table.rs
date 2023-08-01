@@ -2870,6 +2870,11 @@ impl<F: Field> LookupTable<F> for PowOfRandTable {
 #[derive(Clone, Copy, Debug)]
 pub struct RangeTable<const MAX: usize>(TableColumn);
 
+/// Type Alias of u8 table, [0, 1 << 8)
+pub type U8Table = RangeTable<{ 1 << 8 }>;
+/// Type Alias of u16 table, [0, 1 << 16)
+pub type U16Table = RangeTable<{ 1 << 16 }>;
+
 impl<const MAX: usize> RangeTable<MAX> {
     /// Construct the range table.
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {

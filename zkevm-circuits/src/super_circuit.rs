@@ -83,8 +83,8 @@ use crate::{
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
-        MptTable, PoseidonTable, PowOfRandTable, RangeTable, RlpFsmRlpTable as RlpTable, RwTable,
-        SigTable, TxTable,
+        MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable,
+        TxTable, U16Table, U8Table,
     },
 };
 
@@ -116,8 +116,8 @@ pub struct SuperCircuitConfig<F: Field> {
     rlp_table: RlpTable,
     tx_table: TxTable,
     poseidon_table: PoseidonTable,
-    u8_table: RangeTable<{ 1 << 8 }>,
-    u16_table: RangeTable<{ 1 << 16 }>,
+    u8_table: U8Table,
+    u16_table: U16Table,
     evm_circuit: EvmCircuitConfig<F>,
     state_circuit: StateCircuitConfig<F>,
     tx_circuit: TxCircuitConfig<F>,
@@ -205,9 +205,9 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
         log_circuit_info(meta, "power of randomness table");
 
-        let u8_table = RangeTable::construct(meta);
+        let u8_table = U8Table::construct(meta);
         log_circuit_info(meta, "u8 table");
-        let u16_table = RangeTable::construct(meta);
+        let u16_table = U16Table::construct(meta);
         log_circuit_info(meta, "u16 table");
 
         let keccak_circuit = KeccakCircuitConfig::new(

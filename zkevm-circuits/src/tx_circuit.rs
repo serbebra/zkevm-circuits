@@ -58,7 +58,7 @@ use halo2_proofs::plonk::Fixed;
 use halo2_proofs::plonk::SecondPhase;
 
 use crate::{
-    table::{BlockContextFieldTag::CumNumTxs, RangeTable, TxFieldTag::ChainID},
+    table::{BlockContextFieldTag::CumNumTxs, TxFieldTag::ChainID, U16Table},
     util::rlc_be_bytes,
     witness::{
         Format::{L1MsgHash, TxHashEip155, TxHashPreEip155, TxSignEip155, TxSignPreEip155},
@@ -106,7 +106,7 @@ pub struct TxCircuitConfig<F: Field> {
     // Whether tag's RLP-encoded value is 0x80 = rlp([])
     is_none: Column<Advice>,
 
-    u16_table: RangeTable<{ 1 << 16 }>,
+    u16_table: U16Table,
 
     /// Verify if the tx_id is zero or not.
     tx_id_is_zero: IsZeroConfig<F>,
@@ -166,7 +166,7 @@ pub struct TxCircuitConfigArgs<F: Field> {
     /// SigTable
     pub sig_table: SigTable,
     /// Reusable u16 lookup table,
-    pub u16_table: RangeTable<{ 1 << 16 }>,
+    pub u16_table: U16Table,
     /// Challenges
     pub challenges: crate::util::Challenges<Expression<F>>,
 }
