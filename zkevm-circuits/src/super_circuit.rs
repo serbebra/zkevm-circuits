@@ -66,6 +66,7 @@ use crate::{
     evm_circuit::{EvmCircuit, EvmCircuitConfig, EvmCircuitConfigArgs},
     exp_circuit::{ExpCircuit, ExpCircuitConfig},
     keccak_circuit::{KeccakCircuit, KeccakCircuitConfig, KeccakCircuitConfigArgs},
+    modexp_circuit::{ModExpCircuit, ModExpCircuitConfig},
     poseidon_circuit::{PoseidonCircuit, PoseidonCircuitConfig, PoseidonCircuitConfigArgs},
     sig_circuit::{SigCircuit, SigCircuitConfig, SigCircuitConfigArgs},
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
@@ -81,9 +82,9 @@ use crate::util::Challenges;
 use crate::{
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, MptTable,
-        PoseidonTable, PowOfRandTable, RangeTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable,
-        TxTable,
+        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
+        MptTable, PoseidonTable, PowOfRandTable, RangeTable, RlpFsmRlpTable as RlpTable, RwTable,
+        SigTable, TxTable,
     },
 };
 
@@ -121,6 +122,7 @@ pub struct SuperCircuitConfig<F: Field> {
     state_circuit: StateCircuitConfig<F>,
     tx_circuit: TxCircuitConfig<F>,
     sig_circuit: SigCircuitConfig<F>,
+    modexp_circuit: ModExpCircuitConfig,
     ecc_circuit: EccCircuitConfig<F>,
     #[cfg(not(feature = "poseidon-codehash"))]
     bytecode_circuit: BytecodeCircuitConfig<F>,
@@ -196,6 +198,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         log_circuit_info(meta, "keccak table");
         let sig_table = SigTable::construct(meta);
         log_circuit_info(meta, "sig table");
+        let modexp_table = ModExpTable::construct(meta);
+        log_circuit_info(meta, "modexp table");
         let ecc_table = EccTable::construct(meta);
         log_circuit_info(meta, "ecc table");
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
@@ -306,25 +310,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         #[cfg(feature = "zktrie")]
         log_circuit_info(meta, "zktrie circuit");
 
-        let sig_circuit = SigCircuitConfig::new(
-            meta,
-            SigCircuitConfigArgs {
-                keccak_table: keccak_table.clone(),
-                sig_table,
-                challenges: challenges_expr.clone(),
-            },
-        );
-        log_circuit_info(meta, "sig circuit");
-
-        let ecc_circuit = EccCircuitConfig::new(
-            meta,
-            EccCircuitConfigArgs {
-                ecc_table,
-                challenges: challenges_expr.clone(),
-            },
-        );
-        log_circuit_info(meta, "ecc circuit");
-
+        let modexp_circuit = ModExpCircuitConfig::new(meta, modexp_table);
+        log_circuit_info(meta, "modexp circuit");
         let state_circuit = StateCircuitConfig::new(
             meta,
             StateCircuitConfigArgs {
@@ -341,20 +328,43 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let evm_circuit = EvmCircuitConfig::new(
             meta,
             EvmCircuitConfigArgs {
-                challenges: challenges_expr,
+                challenges: challenges_expr.clone(),
                 tx_table: tx_table.clone(),
                 rw_table,
                 bytecode_table,
                 block_table: block_table.clone(),
                 copy_table,
-                keccak_table,
+                keccak_table: keccak_table.clone(),
                 exp_table,
                 sig_table,
+                modexp_table,
                 ecc_table,
                 pow_of_rand_table,
             },
         );
         log_circuit_info(meta, "evm circuit");
+
+        // Sig Circuit and ECC Circuit use halo2-lib's vertifcal assignments gates
+        // and need to be configured after Circuits with higher counts of unique rotation queries
+        // (ex. Keccak, EVM) to avoid assigning advice values into blinding area.
+        let sig_circuit = SigCircuitConfig::new(
+            meta,
+            SigCircuitConfigArgs {
+                keccak_table,
+                sig_table,
+                challenges: challenges_expr.clone(),
+            },
+        );
+        log_circuit_info(meta, "sig circuit");
+
+        let ecc_circuit = EccCircuitConfig::new(
+            meta,
+            EccCircuitConfigArgs {
+                ecc_table,
+                challenges: challenges_expr,
+            },
+        );
+        log_circuit_info(meta, "ecc circuit");
 
         #[cfg(feature = "onephase")]
         if meta.max_phase() != 0 {
@@ -380,6 +390,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             tx_circuit,
             exp_circuit,
             sig_circuit,
+            modexp_circuit,
             ecc_circuit,
             #[cfg(feature = "zktrie")]
             mpt_circuit,
@@ -416,6 +427,8 @@ pub struct SuperCircuit<
     pub poseidon_circuit: PoseidonCircuit<F>,
     /// Sig Circuit
     pub sig_circuit: SigCircuit<F>,
+    /// Modexp Circuit
+    pub modexp_circuit: ModExpCircuit<F>,
     /// Ecc Circuit
     pub ecc_circuit: EccCircuit<F, 9>,
     /// Rlp Circuit
@@ -453,8 +466,11 @@ impl<
         let tx = TxCircuit::min_num_rows_block(block);
         let rlp = RlpCircuit::min_num_rows_block(block);
         let exp = ExpCircuit::min_num_rows_block(block);
+        let mod_exp = ModExpCircuit::min_num_rows_block(block);
         let pi = PiCircuit::min_num_rows_block(block);
         let poseidon = (0, 0); //PoseidonCircuit::min_num_rows_block(block);
+        let sig = SigCircuit::min_num_rows_block(block);
+        let ecc = EccCircuit::<Fr, 9>::min_num_rows_block(block);
         #[cfg(feature = "zktrie")]
         let mpt = MptCircuit::<Fr>::min_num_rows_block(block);
 
@@ -467,8 +483,11 @@ impl<
             tx,
             rlp,
             exp,
+            mod_exp,
             pi,
             poseidon,
+            sig,
+            ecc,
             #[cfg(feature = "zktrie")]
             mpt,
         ];
@@ -501,7 +520,9 @@ impl<
             EvmCircuit::<Fr>::unusable_rows(),
             StateCircuit::<Fr>::unusable_rows(),
             TxCircuit::<Fr>::unusable_rows(),
-            PiCircuit::<Fr>::unusable_rows(),
+            // TODO: The PiCircuit unusable_rows fn is not implemented
+            // and returns the arbitrary default number, causing overflow
+            // PiCircuit::<Fr>::unusable_rows(),
             BytecodeCircuit::<Fr>::unusable_rows(),
             CopyCircuit::<Fr>::unusable_rows(),
             ExpCircuit::<Fr>::unusable_rows(),
@@ -518,6 +539,7 @@ impl<
         let bytecode_circuit = BytecodeCircuit::new_from_block(block);
         let copy_circuit = CopyCircuit::new_from_block_no_external(block);
         let exp_circuit = ExpCircuit::new_from_block(block);
+        let modexp_circuit = ModExpCircuit::new_from_block(block);
         let keccak_circuit = KeccakCircuit::new_from_block(block);
         let poseidon_circuit = PoseidonCircuit::new_from_block(block);
         let rlp_circuit = RlpCircuit::new_from_block(block);
@@ -537,6 +559,7 @@ impl<
             poseidon_circuit,
             rlp_circuit,
             sig_circuit,
+            modexp_circuit,
             ecc_circuit,
             #[cfg(feature = "zktrie")]
             mpt_circuit,
@@ -584,6 +607,8 @@ impl<
             .synthesize_sub(&config.tx_circuit, challenges, layouter)?;
         self.sig_circuit
             .synthesize_sub(&config.sig_circuit, challenges, layouter)?;
+        self.modexp_circuit
+            .synthesize_sub(&config.modexp_circuit, challenges, layouter)?;
         self.state_circuit
             .synthesize_sub(&config.state_circuit, challenges, layouter)?;
         self.copy_circuit
