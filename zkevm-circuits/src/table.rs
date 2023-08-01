@@ -2697,7 +2697,7 @@ impl<const MAX: usize> RangeTable<MAX> {
                 for i in 0..MAX {
                     region.assign_fixed(
                         || format!("range at offset = {i}"),
-                        self.range,
+                        self.0,
                         i,
                         || Value::known(F::from(i as u64)),
                     )?;
