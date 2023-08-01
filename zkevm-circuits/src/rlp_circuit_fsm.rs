@@ -27,7 +27,7 @@ use strum::IntoEnumIterator;
 
 use crate::{
     evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
-    table::{LookupTable, RangeTable, RlpFsmRlpTable},
+    table::{LookupTable, RlpFsmRlpTable, U16Table, U8Table},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness::{
         Block, DataTable, Format, RlpFsmWitnessGen, RlpFsmWitnessRow, RlpTag, RomTableRow, State,
@@ -280,9 +280,9 @@ pub struct RlpCircuitConfig<F> {
     /// ROM table
     rom_table: RlpFsmRomTable,
     /// Range256 table
-    u8_table: RangeTable<{ 1 << 8 }>,
+    u8_table: U8Table,
     /// Range u16 table
-    u16_table: RangeTable<{ 1 << 16 }>,
+    u16_table: U16Table,
 }
 
 impl<F: Field> RlpCircuitConfig<F> {
@@ -291,8 +291,8 @@ impl<F: Field> RlpCircuitConfig<F> {
         meta: &mut ConstraintSystem<F>,
         rom_table: RlpFsmRomTable,
         data_table: RlpFsmDataTable,
-        u8_table: RangeTable<{ 1 << 8 }>,
-        u16_table: RangeTable<{ 1 << 16 }>,
+        u8_table: U8Table,
+        u16_table: U16Table,
         rlp_table: RlpFsmRlpTable,
         challenges: &Challenges<Expression<F>>,
     ) -> Self {
@@ -1782,9 +1782,9 @@ pub struct RlpCircuitConfigArgs<F: Field> {
     /// RLP table.
     pub rlp_table: RlpFsmRlpTable,
     /// u8 table
-    pub u8_table: RangeTable<{ 1 << 8 }>,
+    pub u8_table: U8Table,
     /// u16 table
-    pub u16_table: RangeTable<{ 1 << 16 }>,
+    pub u16_table: U16Table,
     /// Challenge API.
     pub challenges: Challenges<Expression<F>>,
 }

@@ -1,6 +1,6 @@
 use crate::{
     rlp_circuit_fsm::{RlpCircuit, RlpCircuitConfig, RlpCircuitConfigArgs},
-    table::{RangeTable, RlpFsmRlpTable},
+    table::{RlpFsmRlpTable, U16Table, U8Table},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness::Transaction,
 };
@@ -22,8 +22,8 @@ impl<F: Field> Circuit<F> for RlpCircuit<F, Transaction> {
         let rlp_table = RlpFsmRlpTable::construct(meta);
         let challenges = Challenges::construct(meta);
         let challenge_exprs = challenges.exprs(meta);
-        let u8_table = RangeTable::construct(meta);
-        let u16_table = RangeTable::construct(meta);
+        let u8_table = U8Table::construct(meta);
+        let u16_table = U16Table::construct(meta);
 
         let config = RlpCircuitConfig::new(
             meta,
