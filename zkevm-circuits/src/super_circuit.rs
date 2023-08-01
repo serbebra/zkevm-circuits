@@ -228,6 +228,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             RlpCircuitConfigArgs {
                 rlp_table,
                 u8_table,
+                u16_table,
                 challenges: challenges_expr.clone(),
             },
         );

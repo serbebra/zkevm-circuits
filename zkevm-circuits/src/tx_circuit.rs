@@ -686,6 +686,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             |meta| meta.query_fixed(q_enable, Rotation::cur()),
             |meta| meta.query_advice(tx_table.tx_id, Rotation::cur()),
             |meta| meta.query_advice(cum_num_txs, Rotation::cur()),
+            u16_table.into(),
         );
 
         meta.create_gate("tx_id <= cum_num_txs", |meta| {

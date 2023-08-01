@@ -3,8 +3,8 @@
 use eth_types::Field;
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Chip, Layouter, Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
+    circuit::{Chip, Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, TableColumn, VirtualCells},
     poly::Rotation,
 };
 
@@ -24,8 +24,9 @@ pub trait LtInstruction<F: FieldExt> {
         rhs: F,
     ) -> Result<(), Error>;
 
-    /// Load the u8x2 lookup table.
-    fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error>;
+    #[cfg(test)]
+    /// Load the u16 lookup table.
+    fn dev_load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error>;
 }
 
 /// Config for the Lt chip.
@@ -36,7 +37,7 @@ pub struct LtConfig<F, const N_BYTES: usize> {
     /// Denotes the bytes representation of the difference between lhs and rhs.
     pub diff: [Column<Advice>; N_BYTES],
     /// Denotes the range within which each byte should lie.
-    pub u8x2: Column<Fixed>,
+    pub u16_table: TableColumn,
     /// Denotes the range within which both lhs and rhs lie.
     pub range: F,
 }
@@ -67,10 +68,10 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
         q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         lhs: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
         rhs: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        u16_table: TableColumn,
     ) -> LtConfig<F, N_BYTES> {
         let lt = meta.advice_column();
         let diff = [(); N_BYTES].map(|_| meta.advice_column());
-        let u8x2 = meta.fixed_column();
         let range = pow_of_two(N_BYTES * 8);
 
         meta.create_gate("lt gate", |meta| {
@@ -92,10 +93,8 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
                 .map(move |poly| q_enable.clone() * poly)
         });
 
-        meta.annotate_lookup_any_column(u8x2, || "LOOKUP_u8x2");
-
         for cell_columns in diff.chunks(2) {
-            meta.lookup_any("range check for u8x2", |meta| {
+            meta.lookup("range check for u16", |meta| {
                 let cell_expr = if cell_columns.len() == 2 {
                     meta.query_advice(cell_columns[0], Rotation::cur())
                         * Expression::Constant(pow_of_two(8))
@@ -104,15 +103,14 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
                     meta.query_advice(cell_columns[0], Rotation::cur())
                         * Expression::Constant(pow_of_two(8))
                 };
-                let u8x2_range = meta.query_fixed(u8x2, Rotation::cur());
-                vec![(cell_expr, u8x2_range)]
+                vec![(cell_expr, u16_table)]
             });
         }
 
         LtConfig {
             lt,
             diff,
-            u8x2,
+            u16_table,
             range,
         }
     }
@@ -155,16 +153,17 @@ impl<F: Field, const N_BYTES: usize> LtInstruction<F> for LtChip<F, N_BYTES> {
         Ok(())
     }
 
-    fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+    #[cfg(test)]
+    fn dev_load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         const RANGE: usize = u16::MAX as usize;
 
-        layouter.assign_region(
-            || "load u8x2 range check table",
-            |mut region| {
+        layouter.assign_table(
+            || "load u16 range check table",
+            |mut table| {
                 for i in 0..=RANGE {
-                    region.assign_fixed(
+                    table.assign_cell(
                         || "assign cell in fixed column",
-                        self.config.u8x2,
+                        self.config.u16_table,
                         i,
                         || Value::known(F::from(i as u64)),
                     )?;
@@ -266,12 +265,14 @@ mod test {
                 let q_enable = meta.complex_selector();
                 let value = meta.advice_column();
                 let check = meta.advice_column();
+                let u16_table = meta.lookup_table_column();
 
                 let lt = LtChip::configure(
                     meta,
                     |meta| meta.query_selector(q_enable),
                     |meta| meta.query_advice(value, Rotation::prev()),
                     |meta| meta.query_advice(value, Rotation::cur()),
+                    u16_table,
                 );
 
                 let config = Self::Config {
@@ -309,7 +310,7 @@ mod test {
                 let (first_value, values) = values.split_at(1);
                 let first_value = first_value[0];
 
-                chip.load(&mut layouter)?;
+                chip.dev_load(&mut layouter)?;
 
                 layouter.assign_region(
                     || "witness",
@@ -386,12 +387,14 @@ mod test {
                 let q_enable = meta.complex_selector();
                 let (value_a, value_b) = (meta.advice_column(), meta.advice_column());
                 let check = meta.advice_column();
+                let u16_table = meta.lookup_table_column();
 
                 let lt = LtChip::configure(
                     meta,
                     |meta| meta.query_selector(q_enable),
                     |meta| meta.query_advice(value_a, Rotation::cur()),
                     |meta| meta.query_advice(value_b, Rotation::cur()),
+                    u16_table,
                 );
 
                 let config = Self::Config {
@@ -433,7 +436,7 @@ mod test {
                     .ok_or(Error::Synthesis)?;
                 let checks = self.checks.as_ref().ok_or(Error::Synthesis)?;
 
-                chip.load(&mut layouter)?;
+                chip.dev_load(&mut layouter)?;
 
                 layouter.assign_region(
                     || "witness",

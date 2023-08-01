@@ -281,6 +281,8 @@ pub struct RlpCircuitConfig<F> {
     rom_table: RlpFsmRomTable,
     /// Range256 table
     u8_table: RangeTable<{ 1 << 8 }>,
+    /// Range u16 table
+    u16_table: RangeTable<{ 1 << 16 }>,
 }
 
 impl<F: Field> RlpCircuitConfig<F> {
@@ -290,6 +292,7 @@ impl<F: Field> RlpCircuitConfig<F> {
         rom_table: RlpFsmRomTable,
         data_table: RlpFsmDataTable,
         u8_table: RangeTable<{ 1 << 8 }>,
+        u16_table: RangeTable<{ 1 << 16 }>,
         rlp_table: RlpFsmRlpTable,
         challenges: &Challenges<Expression<F>>,
     ) -> Self {
@@ -619,6 +622,7 @@ impl<F: Field> RlpCircuitConfig<F> {
                     cmp_enabled,
                     |meta| meta.query_advice(byte_value, Rotation::cur()),
                     |_| $value.expr(),
+                    u16_table.into(),
                 );
             };
         }
@@ -629,6 +633,7 @@ impl<F: Field> RlpCircuitConfig<F> {
                     cmp_enabled,
                     |_| $value.expr(),
                     |meta| meta.query_advice(byte_value, Rotation::cur()),
+                    u16_table.into(),
                 );
             };
         }
@@ -711,12 +716,14 @@ impl<F: Field> RlpCircuitConfig<F> {
             cmp_enabled,
             |meta| meta.query_advice(tag_idx, Rotation::cur()),
             |meta| meta.query_advice(tag_length, Rotation::cur()),
+            u16_table.into(),
         );
         let mlength_lte_0x20 = ComparatorChip::configure(
             meta,
             cmp_enabled,
             |meta| meta.query_advice(max_length, Rotation::cur()),
             |_meta| 0x20.expr(),
+            u16_table.into(),
         );
         let depth_check = IsEqualChip::configure(
             meta,
@@ -1361,6 +1368,7 @@ impl<F: Field> RlpCircuitConfig<F> {
             data_table,
             rom_table,
             u8_table,
+            u16_table,
         }
     }
 
@@ -1775,6 +1783,8 @@ pub struct RlpCircuitConfigArgs<F: Field> {
     pub rlp_table: RlpFsmRlpTable,
     /// u8 table
     pub u8_table: RangeTable<{ 1 << 8 }>,
+    /// u16 table
+    pub u16_table: RangeTable<{ 1 << 16 }>,
     /// Challenge API.
     pub challenges: Challenges<Expression<F>>,
 }
@@ -1791,6 +1801,7 @@ impl<F: Field> SubCircuitConfig<F> for RlpCircuitConfig<F> {
             rom_table,
             data_table,
             args.u8_table,
+            args.u16_table,
             args.rlp_table,
             &args.challenges,
         )

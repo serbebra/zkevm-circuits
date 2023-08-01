@@ -23,12 +23,14 @@ impl<F: Field> Circuit<F> for RlpCircuit<F, Transaction> {
         let challenges = Challenges::construct(meta);
         let challenge_exprs = challenges.exprs(meta);
         let u8_table = RangeTable::construct(meta);
+        let u16_table = RangeTable::construct(meta);
 
         let config = RlpCircuitConfig::new(
             meta,
             RlpCircuitConfigArgs {
                 rlp_table,
                 u8_table,
+                u16_table,
                 challenges: challenge_exprs,
             },
         );
