@@ -2884,7 +2884,9 @@ pub type U16Table = RangeTable<{ 1 << 16 }>;
 impl<const MAX: usize> RangeTable<MAX> {
     /// Construct the range table.
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
-        Self(meta.lookup_table_column())
+        let inner = meta.lookup_table_column();
+        meta.annotate_lookup_column(inner, || format!("range table [0, {MAX})"));
+        Self(inner)
     }
 
     /// Assign values to the table.
