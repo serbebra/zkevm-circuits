@@ -66,7 +66,7 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
     /// Configures the Lt chip.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
-        q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
+        q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F> + Clone,
         lhs: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
         rhs: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
         u16_table: TableColumn,
@@ -76,7 +76,7 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
         let range = pow_of_two(N_BYTES * 8);
 
         meta.create_gate("lt gate", |meta| {
-            let q_enable = q_enable(meta);
+            let q_enable = q_enable.clone()(meta);
             let lt = meta.query_advice(lt, Rotation::cur());
 
             let diff_bytes = diff
@@ -96,6 +96,7 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
 
         for cell_columns in diff.chunks(2) {
             meta.lookup("range check for u16", |meta| {
+                let q_enable = q_enable.clone()(meta);
                 let cell_expr = if cell_columns.len() == 2 {
                     meta.query_advice(cell_columns[0], Rotation::cur())
                         * Expression::Constant(pow_of_two(8))
@@ -104,7 +105,7 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
                     meta.query_advice(cell_columns[0], Rotation::cur())
                         * Expression::Constant(pow_of_two(8))
                 };
-                vec![(cell_expr, u16_table)]
+                vec![(q_enable * cell_expr, u16_table)]
             });
         }
 
