@@ -1,6 +1,6 @@
 use crate::{
     rlp_circuit_fsm::{RlpCircuit, RlpCircuitConfig, RlpCircuitConfigArgs},
-    table::RlpFsmRlpTable,
+    table::{RlpFsmRlpTable, U16Table, U8Table},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness::Transaction,
 };
@@ -22,11 +22,15 @@ impl<F: Field> Circuit<F> for RlpCircuit<F, Transaction> {
         let rlp_table = RlpFsmRlpTable::construct(meta);
         let challenges = Challenges::construct(meta);
         let challenge_exprs = challenges.exprs(meta);
+        let u8_table = U8Table::construct(meta);
+        let u16_table = U16Table::construct(meta);
 
         let config = RlpCircuitConfig::new(
             meta,
             RlpCircuitConfigArgs {
                 rlp_table,
+                u8_table,
+                u16_table,
                 challenges: challenge_exprs,
             },
         );
@@ -41,6 +45,7 @@ impl<F: Field> Circuit<F> for RlpCircuit<F, Transaction> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let challenges = &config.1.values(&layouter);
+        config.0.u8_table.load(&mut layouter)?;
 
         self.synthesize_sub(&config.0, challenges, &mut layouter)
     }

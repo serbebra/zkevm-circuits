@@ -4,15 +4,13 @@ use eth_types::Field;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, TableColumn, VirtualCells},
     poly::Rotation,
 };
 
-use crate::util::sum;
-
-use super::{
+use crate::{
     bool_check,
-    util::{expr_from_bytes, pow_of_two},
+    util::{expr_from_bytes, pow_of_two, sum},
 };
 
 /// Instruction that the Lt chip needs to implement.
@@ -25,6 +23,10 @@ pub trait LtInstruction<F: FieldExt> {
         lhs: F,
         rhs: F,
     ) -> Result<(), Error>;
+
+    #[cfg(test)]
+    /// Load the u16 lookup table.
+    fn dev_load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error>;
 }
 
 /// Config for the Lt chip.
@@ -33,8 +35,9 @@ pub struct LtConfig<F, const N_BYTES: usize> {
     /// Denotes the lt outcome. If lhs < rhs then lt == 1, otherwise lt == 0.
     pub lt: Column<Advice>,
     /// Denotes the bytes representation of the difference between lhs and rhs.
-    /// Note that the range of each byte is not checked by this config.
     pub diff: [Column<Advice>; N_BYTES],
+    /// Denotes the range within which each byte should lie.
+    pub u16_table: TableColumn,
     /// Denotes the range within which both lhs and rhs lie.
     pub range: F,
 }
@@ -65,6 +68,7 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
         q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F>,
         lhs: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
         rhs: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        u16_table: TableColumn,
     ) -> LtConfig<F, N_BYTES> {
         let lt = meta.advice_column();
         let diff = [(); N_BYTES].map(|_| meta.advice_column());
@@ -89,7 +93,26 @@ impl<F: Field, const N_BYTES: usize> LtChip<F, N_BYTES> {
                 .map(move |poly| q_enable.clone() * poly)
         });
 
-        LtConfig { lt, diff, range }
+        for cell_columns in diff.chunks(2) {
+            meta.lookup("range check for u16", |meta| {
+                let cell_expr = if cell_columns.len() == 2 {
+                    meta.query_advice(cell_columns[0], Rotation::cur())
+                        * Expression::Constant(pow_of_two(8))
+                        + (meta.query_advice(cell_columns[1], Rotation::cur()))
+                } else {
+                    meta.query_advice(cell_columns[0], Rotation::cur())
+                        * Expression::Constant(pow_of_two(8))
+                };
+                vec![(cell_expr, u16_table)]
+            });
+        }
+
+        LtConfig {
+            lt,
+            diff,
+            u16_table,
+            range,
+        }
     }
 
     /// Constructs a Lt chip given a config.
@@ -129,6 +152,26 @@ impl<F: Field, const N_BYTES: usize> LtInstruction<F> for LtChip<F, N_BYTES> {
 
         Ok(())
     }
+
+    #[cfg(test)]
+    fn dev_load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        const RANGE: usize = u16::MAX as usize;
+
+        layouter.assign_table(
+            || "load u16 range check table",
+            |mut table| {
+                for i in 0..=RANGE {
+                    table.assign_cell(
+                        || "assign cell in fixed column",
+                        self.config.u16_table,
+                        i,
+                        || Value::known(F::from(i as u64)),
+                    )?;
+                }
+                Ok(())
+            },
+        )
+    }
 }
 
 impl<F: Field, const N_BYTES: usize> Chip<F> for LtChip<F, N_BYTES> {
@@ -164,7 +207,7 @@ mod test {
 
             // TODO: remove zk blinding factors in halo2 to restore the
             // correct k (without the extra + 2).
-            let k = usize::BITS - $values.len().leading_zeros() + 2;
+            let k = (usize::BITS - $values.len().leading_zeros() + 2).max(17);
             let circuit = TestCircuit::<Fp> {
                 values: Some($values),
                 checks: Some($checks),
@@ -181,7 +224,7 @@ mod test {
 
             // TODO: remove zk blinding factors in halo2 to restore the
             // correct k (without the extra + 2).
-            let k = usize::BITS - $values.len().leading_zeros() + 2;
+            let k = (usize::BITS - $values.len().leading_zeros() + 2).max(17);
             let circuit = TestCircuit::<Fp> {
                 values: Some($values),
                 checks: Some($checks),
@@ -222,12 +265,14 @@ mod test {
                 let q_enable = meta.complex_selector();
                 let value = meta.advice_column();
                 let check = meta.advice_column();
+                let u16_table = meta.lookup_table_column();
 
                 let lt = LtChip::configure(
                     meta,
                     |meta| meta.query_selector(q_enable),
                     |meta| meta.query_advice(value, Rotation::prev()),
                     |meta| meta.query_advice(value, Rotation::cur()),
+                    u16_table,
                 );
 
                 let config = Self::Config {
@@ -264,6 +309,8 @@ mod test {
                 let checks = self.checks.as_ref().ok_or(Error::Synthesis)?;
                 let (first_value, values) = values.split_at(1);
                 let first_value = first_value[0];
+
+                chip.dev_load(&mut layouter)?;
 
                 layouter.assign_region(
                     || "witness",
@@ -340,12 +387,14 @@ mod test {
                 let q_enable = meta.complex_selector();
                 let (value_a, value_b) = (meta.advice_column(), meta.advice_column());
                 let check = meta.advice_column();
+                let u16_table = meta.lookup_table_column();
 
                 let lt = LtChip::configure(
                     meta,
                     |meta| meta.query_selector(q_enable),
                     |meta| meta.query_advice(value_a, Rotation::cur()),
                     |meta| meta.query_advice(value_b, Rotation::cur()),
+                    u16_table,
                 );
 
                 let config = Self::Config {
@@ -386,6 +435,8 @@ mod test {
                     })
                     .ok_or(Error::Synthesis)?;
                 let checks = self.checks.as_ref().ok_or(Error::Synthesis)?;
+
+                chip.dev_load(&mut layouter)?;
 
                 layouter.assign_region(
                     || "witness",
