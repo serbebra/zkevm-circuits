@@ -18,12 +18,12 @@ use eth_types::{Field, ToLittleEndian, Word};
 
 use halo2_proofs::{
     circuit::{Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, VirtualCells},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, TableColumn, VirtualCells},
     poly::Rotation,
 };
 
 use crate::{
-    less_than::{LtChip, LtConfig, LtInstruction},
+    less_than::{LtChip, LtInstruction},
     util::{expr_from_bytes, or, pow_of_two, split_u256, split_u256_limb64, Expr},
 };
 
@@ -48,7 +48,8 @@ pub struct MulAddConfig<F> {
     /// Sum of the parts higher than 256-bit in the product.
     pub overflow: Expression<F>,
     /// Range check of carry_lo, carry_hi which needs to be in [0, 2^8)
-    pub range_check_8: [(LtChip<F, 1>, LtChip<F, 1>); 9],
+    /// also, Lookup table for LtChips
+    pub u16_table: TableColumn,
     /// Range check of a, b which needs to be in [0, 2^64)
     pub range_check_64: [(LtChip<F, 8>, LtChip<F, 8>); 4],
     /// Range check of c, d which needs to be in [0, 2^128)
@@ -120,6 +121,7 @@ impl<F: Field> MulAddChip<F> {
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         q_enable: impl FnOnce(&mut VirtualCells<'_, F>) -> Expression<F> + Clone,
+        u16_table: TableColumn,
     ) -> MulAddConfig<F> {
         let col0 = meta.advice_column();
         let col1 = meta.advice_column();
@@ -128,34 +130,31 @@ impl<F: Field> MulAddChip<F> {
         let col4 = meta.advice_column();
         let mut overflow = 0.expr();
 
-        let carry_los = [col0, col1, col2, col3, col4]
-            .map(|col| (col, Rotation(3)))
+        let carry_lo_cols = [col0, col1, col2, col3, col4]
+            .map(|col| (col, 3))
             .into_iter()
-            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(4))));
-        let carry_his = [col0, col1, col2, col3, col4]
-            .map(|col| (col, Rotation(5)))
+            .chain([col0, col1, col2, col3].map(|col| (col, 4)))
+            .collect::<Vec<_>>();
+
+        let carry_hi_cols = [col0, col1, col2, col3, col4]
+            .map(|col| (col, 5))
             .into_iter()
-            .chain([col0, col1, col2, col3].map(|col| (col, Rotation(6))));
-        let range_check_8_config: [(LtConfig<F, 1>, LtConfig<F, 1>); 9] = carry_los
-            .zip(carry_his)
-            .map(|(lo, hi)| {
-                let config_lo = LtChip::configure(
-                    meta,
-                    q_enable.clone(),
-                    |_| Expression::Constant(F::from(u8::MAX as u64)),
-                    |meta| meta.query_advice(lo.0, lo.1),
-                );
-                let config_hi = LtChip::configure(
-                    meta,
-                    q_enable.clone(),
-                    |_| Expression::Constant(F::from(u8::MAX as u64)),
-                    |meta| meta.query_advice(hi.0, hi.1),
-                );
-                (config_lo, config_hi)
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+            .chain([col0, col1, col2, col3].map(|col| (col, 6)))
+            .collect::<Vec<_>>();
+
+        let carry_lo_expr = |meta: &mut VirtualCells<F>| {
+            carry_lo_cols
+                .iter()
+                .map(|(col, rot)| meta.query_advice(*col, Rotation(*rot)))
+                .collect::<Vec<Expression<F>>>()
+        };
+
+        let carry_hi_expr = |meta: &mut VirtualCells<F>| {
+            carry_hi_cols
+                .iter()
+                .map(|(col, rot)| meta.query_advice(*col, Rotation(*rot)))
+                .collect::<Vec<Expression<F>>>()
+        };
 
         let range_check_64_config = [col0, col1, col2, col3].map(|col| {
             let config_a = LtChip::configure(
@@ -163,12 +162,14 @@ impl<F: Field> MulAddChip<F> {
                 q_enable.clone(),
                 |_| Expression::Constant(F::from(u64::MAX)),
                 |meta| meta.query_advice(col, Rotation(0)),
+                u16_table,
             );
             let config_b = LtChip::configure(
                 meta,
                 q_enable.clone(),
                 |_| Expression::Constant(F::from(u64::MAX)),
                 |meta| meta.query_advice(col, Rotation(1)),
+                u16_table,
             );
 
             (config_a, config_b)
@@ -180,15 +181,33 @@ impl<F: Field> MulAddChip<F> {
                 q_enable.clone(),
                 |_| Expression::Constant(F::from_u128(u128::MAX)),
                 |meta| meta.query_advice(c, Rotation(2)),
+                u16_table,
             );
             let config_d = LtChip::configure(
                 meta,
                 q_enable.clone(),
                 |_| Expression::Constant(F::from_u128(u128::MAX)),
                 |meta| meta.query_advice(d, Rotation(2)),
+                u16_table,
             );
             (config_c, config_d)
         });
+
+        {
+            let mut carry_cols = carry_lo_cols.clone();
+            carry_cols.append(&mut carry_hi_cols.clone());
+
+            for cols in carry_cols.chunks(2) {
+                debug_assert_eq!(cols.len(), 2);
+                meta.lookup("mul carry range check lo/hi lookup u8", |meta| {
+                    let q_enable = q_enable.clone()(meta);
+                    let cell1 = meta.query_advice(cols[0].0, Rotation(cols[0].1));
+                    let cell2 = meta.query_advice(cols[1].0, Rotation(cols[1].1));
+                    let expr = cell1 * Expression::Constant(pow_of_two(8)) + cell2;
+                    vec![(q_enable * expr, u16_table)]
+                });
+            }
+        }
 
         meta.create_gate("mul add gate", |meta| {
             let q_enable = q_enable(meta);
@@ -203,16 +222,8 @@ impl<F: Field> MulAddChip<F> {
             let d_lo = meta.query_advice(col2, Rotation(2));
             let d_hi = meta.query_advice(col3, Rotation(2));
 
-            let carry_los = [col0, col1, col2, col3, col4]
-                .map(|col| meta.query_advice(col, Rotation(3)))
-                .into_iter()
-                .chain([col0, col1, col2, col3].map(|col| meta.query_advice(col, Rotation(4))))
-                .collect::<Vec<Expression<F>>>();
-            let carry_his = [col0, col1, col2, col3, col4]
-                .map(|col| meta.query_advice(col, Rotation(5)))
-                .into_iter()
-                .chain([col0, col1, col2, col3].map(|col| meta.query_advice(col, Rotation(6))))
-                .collect::<Vec<Expression<F>>>();
+            let carry_los = carry_lo_expr(meta);
+            let carry_his = carry_hi_expr(meta);
 
             let carry_lo_expr = expr_from_bytes(&carry_los);
             let carry_hi_expr = expr_from_bytes(&carry_his);
@@ -240,29 +251,20 @@ impl<F: Field> MulAddChip<F> {
             let check_b = t2.expr() + t3.expr() * pow_of_two::<F>(64) + c_hi + carry_lo_expr
                 - (d_hi + carry_hi_expr * pow_of_two::<F>(128));
 
-            let range_check_8_expr = range_check_8_config.map(|(config_lo, config_hi)| {
-                config_lo.is_lt(meta, None) + config_hi.is_lt(meta, None)
-            });
             let range_check_64_expr = range_check_64_config.map(|(config_a, config_b)| {
                 config_a.is_lt(meta, None) + config_b.is_lt(meta, None)
             });
             let range_check_128_expr = range_check_128_config.map(|(config_c, config_d)| {
                 config_c.is_lt(meta, None) + config_d.is_lt(meta, None)
             });
-            let range_check_expr = or::expr(
-                range_check_8_expr
-                    .into_iter()
-                    .chain(range_check_64_expr)
-                    .chain(range_check_128_expr),
-            );
+            let range_check_expr =
+                or::expr(range_check_64_expr.into_iter().chain(range_check_128_expr));
 
             [check_a, check_b, range_check_expr]
                 .into_iter()
                 .map(move |poly| q_enable.clone() * poly)
         });
 
-        let range_check_8 =
-            range_check_8_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
         let range_check_64 =
             range_check_64_config.map(|(a, b)| (LtChip::construct(a), LtChip::construct(b)));
         let range_check_128 =
@@ -275,7 +277,7 @@ impl<F: Field> MulAddChip<F> {
             col3,
             col4,
             overflow,
-            range_check_8,
+            u16_table,
             range_check_64,
             range_check_128,
         }
@@ -449,9 +451,6 @@ impl<F: Field> MulAddChip<F> {
         {
             let v = F::from(*val as u64);
             region.assign_advice(|| format!("carry lo ({i})"), col, rot, || Value::known(v))?;
-            self.config.range_check_8[i]
-                .0
-                .assign(region, offset, F::from(u8::MAX as u64), v)?;
         }
         region.assign_advice(
             || format!("unused col: {}", offset + 4),
@@ -478,9 +477,6 @@ impl<F: Field> MulAddChip<F> {
         {
             let v = F::from(*val as u64);
             region.assign_advice(|| format!("carry hi ({i})"), col, rot, || Value::known(v))?;
-            self.config.range_check_8[i]
-                .1
-                .assign(region, offset, F::from(u8::MAX as u64), v)?;
         }
         region.assign_advice(
             || format!("unused col: {}", offset + 6),
@@ -512,7 +508,7 @@ mod test {
 
     use eth_types::{Field, Word};
     use halo2_proofs::{
-        circuit::SimpleFloorPlanner,
+        circuit::{SimpleFloorPlanner, Value},
         dev::MockProver,
         halo2curves::bn256::Fr as Fp,
         plonk::{Circuit, Selector},
@@ -523,7 +519,7 @@ mod test {
 
     macro_rules! try_test_circuit {
         ($values:expr) => {{
-            let k = 10;
+            let k = 17;
             let circuit = TestCircuit::<Fp> {
                 values: $values,
                 _marker: PhantomData,
@@ -535,7 +531,7 @@ mod test {
 
     macro_rules! try_test_circuit_error {
         ($values:expr) => {{
-            let k = 10;
+            let k = 17;
             let circuit = TestCircuit::<Fp> {
                 values: $values,
                 _marker: PhantomData,
@@ -574,7 +570,9 @@ mod test {
 
             fn configure(meta: &mut halo2_proofs::plonk::ConstraintSystem<F>) -> Self::Config {
                 let q_enable = meta.complex_selector();
-                let mul_config = MulAddChip::configure(meta, |meta| meta.query_selector(q_enable));
+                let u16_table = meta.lookup_table_column();
+                let mul_config =
+                    MulAddChip::configure(meta, |meta| meta.query_selector(q_enable), u16_table);
                 Self::Config {
                     q_enable,
                     mul_config,
@@ -587,6 +585,22 @@ mod test {
                 mut layouter: impl halo2_proofs::circuit::Layouter<F>,
             ) -> Result<(), halo2_proofs::plonk::Error> {
                 let chip = MulAddChip::construct(config.mul_config);
+
+                layouter.assign_table(
+                    || "u16 table",
+                    |mut table| {
+                        for i in 0..=65535 {
+                            table.assign_cell(
+                                || format!("u16 table row {i}"),
+                                chip.config.u16_table,
+                                i,
+                                || Value::known(F::from(i as u64)),
+                            )?;
+                        }
+                        Ok(())
+                    },
+                )?;
+
                 layouter.assign_region(
                     || "witness",
                     |mut region| {

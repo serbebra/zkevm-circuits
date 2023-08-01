@@ -9,8 +9,8 @@ mod test;
 pub use dev::ExpCircuit as TestExpCircuit;
 
 use crate::{
-    evm_circuit::util::constraint_builder::BaseConstraintBuilder,
-    table::{ExpTable, LookupTable},
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    table::{ExpTable, LookupTable, U16Table},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
@@ -26,7 +26,6 @@ use halo2_proofs::{
     poly::Rotation,
 };
 
-use crate::evm_circuit::util::constraint_builder::ConstrainBuilderCommon;
 use param::*;
 use std::{marker::PhantomData, ops::Add};
 
@@ -37,30 +36,54 @@ pub struct ExpCircuitConfig<F> {
     pub q_enable: Column<Fixed>,
     /// The Exponentiation circuit's table.
     pub exp_table: ExpTable,
+    /// u16 lookup table,
+    pub u16_table: U16Table,
     /// Multiplication gadget for verification of each step.
     pub mul_gadget: MulAddConfig<F>,
     /// Multiplication gadget to perform 2*n + k.
     pub parity_check: MulAddConfig<F>,
 }
 
+/// Arguments to configure Exp circuit
+pub struct ExpCircuitArgs {
+    /// The Exponentiation circuit's table.
+    pub exp_table: ExpTable,
+    /// u16 lookup table,
+    pub u16_table: U16Table,
+}
+
 impl<F: Field> SubCircuitConfig<F> for ExpCircuitConfig<F> {
-    type ConfigArgs = ExpTable;
+    type ConfigArgs = ExpCircuitArgs;
 
     /// Return a new ExpCircuitConfig
-    fn new(meta: &mut ConstraintSystem<F>, exp_table: Self::ConfigArgs) -> Self {
+    fn new(
+        meta: &mut ConstraintSystem<F>,
+        ExpCircuitArgs {
+            exp_table,
+            u16_table,
+        }: Self::ConfigArgs,
+    ) -> Self {
         let q_enable = exp_table.q_enable;
-        let mul_gadget = MulAddChip::configure(meta, |meta| {
-            and::expr([
-                meta.query_fixed(q_enable, Rotation::cur()),
-                meta.query_fixed(exp_table.is_step, Rotation::cur()),
-            ])
-        });
-        let parity_check = MulAddChip::configure(meta, |meta| {
-            and::expr([
-                meta.query_fixed(q_enable, Rotation::cur()),
-                meta.query_fixed(exp_table.is_step, Rotation::cur()),
-            ])
-        });
+        let mul_gadget = MulAddChip::configure(
+            meta,
+            |meta| {
+                and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_fixed(exp_table.is_step, Rotation::cur()),
+                ])
+            },
+            u16_table.into(),
+        );
+        let parity_check = MulAddChip::configure(
+            meta,
+            |meta| {
+                and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_fixed(exp_table.is_step, Rotation::cur()),
+                ])
+            },
+            u16_table.into(),
+        );
 
         // multiplier <- 2^64
         let two = U256::from(2);
@@ -279,6 +302,7 @@ impl<F: Field> SubCircuitConfig<F> for ExpCircuitConfig<F> {
         Self {
             q_enable,
             exp_table,
+            u16_table,
             mul_gadget,
             parity_check,
         }
