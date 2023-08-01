@@ -2678,3 +2678,43 @@ impl<F: Field> LookupTable<F> for PowOfRandTable {
         ]
     }
 }
+
+/// Lookup table for [0, MAX) range
+#[derive(Clone, Copy, Debug)]
+pub struct RangeTable<const MAX: usize>(Column<Fixed>);
+
+impl<const MAX: usize> RangeTable<MAX> {
+    /// Construct the range table.
+    pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
+        Self(meta.fixed_column())
+    }
+
+    /// Assign values to the table.
+    pub fn load<F: Field>(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        layouter.assign_region(
+            || format!("range table [0, {MAX})"),
+            |mut region| {
+                for i in 0..MAX {
+                    region.assign_fixed(
+                        || format!("range at offset = {i}"),
+                        self.range,
+                        i,
+                        || Value::known(F::from(i as u64)),
+                    )?;
+                }
+
+                Ok(())
+            },
+        )
+    }
+}
+
+impl<F: Field, const MAX: usize> LookupTable<F> for RangeTable<MAX> {
+    fn columns(&self) -> Vec<Column<Any>> {
+        vec![self.0.into()]
+    }
+
+    fn annotations(&self) -> Vec<String> {
+        vec![format!("value in [0, {MAX})")]
+    }
+}
