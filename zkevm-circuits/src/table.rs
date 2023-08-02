@@ -176,6 +176,8 @@ pub enum TxFieldTag {
     TxHash,
     /// The block number in which this tx is included.
     BlockNumber,
+    /// TxType: Type of the transaction
+    TxType,
 }
 impl_expr!(TxFieldTag);
 
