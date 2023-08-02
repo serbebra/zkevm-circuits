@@ -46,6 +46,7 @@ impl<F: Field> Circuit<F> for RlpCircuit<F, Transaction> {
     ) -> Result<(), Error> {
         let challenges = &config.1.values(&layouter);
         config.0.u8_table.load(&mut layouter)?;
+        config.0.u16_table.load(&mut layouter)?;
 
         self.synthesize_sub(&config.0, challenges, &mut layouter)
     }
