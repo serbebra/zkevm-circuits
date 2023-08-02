@@ -52,7 +52,7 @@ pub struct MulAddConfig<F> {
     /// also, Lookup table for LtChips
     pub u16_table: TableColumn,
     /// Range check of a, b which needs to be in [0, 2^64)
-    pub range_check_64: RangeCheckChip<F, 4>,
+    pub range_check_64: [(RangeCheckChip<F, 4>, RangeCheckChip<F, 4>); 4],
     /// Range check of c, d which needs to be in [0, 2^128)
     pub range_check_128: [(LtChip<F, 16>, LtChip<F, 16>); 2],
 }
@@ -242,20 +242,24 @@ impl<F: Field> MulAddChip<F> {
                 .map(move |poly| q_enable.clone() * poly)
         });
 
-        let range_check_64_config = RangeCheckChip::configure(
-            meta,
-            q_enable.clone(),
-            |meta| {
-                [col0, col1, col2, col3]
-                    .map(|col| meta.query_advice(col, Rotation(0)))
-                    .into_iter()
-                    .chain([col0, col1, col2, col3].map(|col| meta.query_advice(col, Rotation(1))))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap()
-            },
-            u16_table,
-        );
+        let range_check_64 = [col0, col1, col2, col3].map(|col| {
+            let config_a = RangeCheckChip::configure(
+                meta,
+                q_enable.clone(),
+                |meta| meta.query_advice(col, Rotation(0)),
+                u16_table,
+            );
+            let config_b = RangeCheckChip::configure(
+                meta,
+                q_enable.clone(),
+                |meta| meta.query_advice(col, Rotation(1)),
+                u16_table,
+            );
+            (
+                RangeCheckChip::construct(config_a),
+                RangeCheckChip::construct(config_b),
+            )
+        });
 
         let range_check_128 =
             range_check_128_config.map(|(c, d)| (LtChip::construct(c), LtChip::construct(d)));
@@ -268,7 +272,7 @@ impl<F: Field> MulAddChip<F> {
             col4,
             overflow,
             u16_table,
-            range_check_64: RangeCheckChip::construct(range_check_64_config),
+            range_check_64,
             range_check_128,
         }
     }
@@ -327,6 +331,7 @@ impl<F: Field> MulAddChip<F> {
                 offset,
                 || Value::known(a),
             )?;
+            self.config.range_check_64[i].0.assign(region, offset, a)?;
         }
         region.assign_advice(
             || format!("unused col: {offset}"),
@@ -352,23 +357,13 @@ impl<F: Field> MulAddChip<F> {
                 offset + 1,
                 || Value::known(b),
             )?;
+            self.config.range_check_64[i].1.assign(region, offset, b)?;
         }
         region.assign_advice(
             || format!("unused col {}", offset + 1),
             self.config.col4,
             offset + 1,
             || Value::known(F::zero()),
-        )?;
-        self.config.range_check_64.assign(
-            region,
-            offset,
-            a_limbs
-                .into_iter()
-                .chain(b_limbs)
-                .map(|x| F::from(x.as_u64()))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
         )?;
 
         // c_lo, c_hi, d_lo, d_hi.

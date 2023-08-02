@@ -13,10 +13,9 @@ use halo2_proofs::{
 };
 
 /// Instruction that the Range chip needs to implement.
-pub trait RangeCheckInstruction<F: FieldExt, const N_2BYTE: usize, const N_EXPR: usize> {
+pub trait RangeCheckInstruction<F: FieldExt, const N_2BYTE: usize> {
     /// Assign the expr and u16 le repr witnesses to the Comparator chip's region.
-    fn assign(&self, region: &mut Region<F>, offset: usize, expr: [F; N_EXPR])
-        -> Result<(), Error>;
+    fn assign(&self, region: &mut Region<F>, offset: usize, value: F) -> Result<(), Error>;
 }
 
 /// Config for the Range chip.
@@ -26,7 +25,7 @@ pub trait RangeCheckInstruction<F: FieldExt, const N_2BYTE: usize, const N_EXPR:
 ///
 /// `N_EXPR` is the number of lookup expressions to check.
 #[derive(Clone, Copy, Debug)]
-pub struct RangeCheckConfig<F, const N_2BYTE: usize, const N_EXPR: usize> {
+pub struct RangeCheckConfig<F, const N_2BYTE: usize> {
     /// Denotes the little-endian representation of expression in u16.
     pub u16_repr: [Column<Advice>; N_2BYTE],
     /// Denotes the u16 lookup table.
@@ -36,45 +35,35 @@ pub struct RangeCheckConfig<F, const N_2BYTE: usize, const N_EXPR: usize> {
 
 /// Chip that checks if expressions are in range.
 #[derive(Clone, Debug)]
-pub struct RangeCheckChip<F, const N_2BYTE: usize, const N_EXPR: usize> {
-    config: RangeCheckConfig<F, N_2BYTE, N_EXPR>,
+pub struct RangeCheckChip<F, const N_2BYTE: usize> {
+    config: RangeCheckConfig<F, N_2BYTE>,
 }
 
-impl<F: Field, const N_2BYTE: usize, const N_EXPR: usize> RangeCheckChip<F, N_2BYTE, N_EXPR> {
+impl<F: Field, const N_2BYTE: usize> RangeCheckChip<F, N_2BYTE> {
     /// Configures the range chip.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         q_enable: impl FnOnce(&mut VirtualCells<F>) -> Expression<F> + Clone,
-        expressions: impl FnOnce(&mut VirtualCells<F>) -> [Expression<F>; N_EXPR],
+        expressions: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
         u16_table: TableColumn,
-    ) -> RangeCheckConfig<F, N_2BYTE, N_EXPR> {
+    ) -> RangeCheckConfig<F, N_2BYTE> {
         let u16_repr = [(); N_2BYTE].map(|_| meta.advice_column());
 
         meta.create_gate("range gate", |meta| {
             let q_enable = q_enable.clone()(meta);
-            expressions(meta)
-                .into_iter()
-                .enumerate()
-                .map(|(row_idx, expr)| {
-                    let acc = (0..N_2BYTE)
-                        .rev()
-                        .map(|col_idx| {
-                            meta.query_advice(u16_repr[col_idx], Rotation(row_idx as i32))
-                        })
-                        .fold(0.expr(), |acc, cell| acc * 0x10000.expr() + cell);
-                    q_enable.clone() * (expr - acc)
-                })
-                .collect::<Vec<_>>()
+            let acc = (0..N_2BYTE)
+                .rev()
+                .map(|col_idx| meta.query_advice(u16_repr[col_idx], Rotation::cur()))
+                .fold(0.expr(), |acc, cell| acc * 0x10000.expr() + cell);
+            vec![q_enable.clone() * (expressions(meta) - acc)]
         });
 
-        for offset in 0..N_EXPR {
-            for column in u16_repr {
-                meta.lookup(concat!("u16 cell range check"), |meta| {
-                    let q_enable = q_enable.clone()(meta);
-                    let cell = meta.query_advice(column, Rotation(offset as i32));
-                    vec![(q_enable.clone() * cell, u16_table)]
-                });
-            }
+        for column in u16_repr {
+            meta.lookup(concat!("u16 cell range check"), |meta| {
+                let q_enable = q_enable.clone()(meta);
+                let cell = meta.query_advice(column, Rotation::cur());
+                vec![(q_enable.clone() * cell, u16_table)]
+            });
         }
 
         RangeCheckConfig {
@@ -84,51 +73,40 @@ impl<F: Field, const N_2BYTE: usize, const N_EXPR: usize> RangeCheckChip<F, N_2B
         }
     }
 
-    pub fn construct(config: RangeCheckConfig<F, N_2BYTE, N_EXPR>) -> Self {
+    pub fn construct(config: RangeCheckConfig<F, N_2BYTE>) -> Self {
         Self { config }
     }
 }
 
-impl<F: Field, const N_2BYTE: usize, const N_EXPR: usize> RangeCheckInstruction<F, N_2BYTE, N_EXPR>
-    for RangeCheckChip<F, N_2BYTE, N_EXPR>
+impl<F: Field, const N_2BYTE: usize> RangeCheckInstruction<F, N_2BYTE>
+    for RangeCheckChip<F, N_2BYTE>
 {
-    fn assign(
-        &self,
-        region: &mut Region<'_, F>,
-        offset: usize,
-        values: [F; N_EXPR],
-    ) -> Result<(), Error> {
+    fn assign(&self, region: &mut Region<'_, F>, offset: usize, value: F) -> Result<(), Error> {
         let config = self.config();
 
         // assign u16 repr
-        for (row_idx, value) in values.into_iter().enumerate() {
-            let repr: [u8; 32] = value.to_repr();
-            println!("{repr:X?}");
-            for (col_idx, (column, value)) in config
-                .u16_repr
-                .iter()
-                .copied()
-                .zip(repr.chunks(2).take(N_2BYTE))
-                .enumerate()
-            {
-                println!("{value:X?}");
-                region.assign_advice(
-                    || format!("range expr[{row_idx}] u16_cell[{col_idx}]"),
-                    column,
-                    offset + row_idx,
-                    || Value::known(F::from((value[0] as u16 | ((value[1] as u16) << 8)) as u64)),
-                )?;
-            }
+        let repr: [u8; 32] = value.to_repr();
+        for (col_idx, (column, value)) in config
+            .u16_repr
+            .iter()
+            .copied()
+            .zip(repr.chunks(2).take(N_2BYTE))
+            .enumerate()
+        {
+            region.assign_advice(
+                || format!("range expr u16_cell[{col_idx}]"),
+                column,
+                offset,
+                || Value::known(F::from((value[0] as u16 | ((value[1] as u16) << 8)) as u64)),
+            )?;
         }
 
         Ok(())
     }
 }
 
-impl<F: Field, const N_2BYTE: usize, const N_EXPR: usize> Chip<F>
-    for RangeCheckChip<F, N_2BYTE, N_EXPR>
-{
-    type Config = RangeCheckConfig<F, N_2BYTE, N_EXPR>;
+impl<F: Field, const N_2BYTE: usize> Chip<F> for RangeCheckChip<F, N_2BYTE> {
+    type Config = RangeCheckConfig<F, N_2BYTE>;
     type Loaded = ();
 
     fn config(&self) -> &Self::Config {
