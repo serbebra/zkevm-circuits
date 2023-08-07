@@ -1,4 +1,5 @@
 mod aggregation;
+mod bench_hash;
 mod compression;
 mod mock_chunk;
 mod rlc;
