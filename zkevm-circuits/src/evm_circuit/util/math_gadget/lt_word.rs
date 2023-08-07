@@ -35,11 +35,6 @@ impl<F: Field> LtWordGadget<F> {
         }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        let (hi_lt, hi_eq) = self.comparison_hi.expr();
-        hi_lt + hi_eq * self.lt_lo.expr()
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -62,6 +57,13 @@ impl<F: Field> LtWordGadget<F> {
             F::from_u128(rhs_lo.as_u128()),
         )?;
         Ok(())
+    }
+}
+
+impl<F: Field> Expr<F> for LtWordGadget<F> {
+    fn expr(&self) -> Expression<F> {
+        let (hi_lt, hi_eq) = self.comparison_hi.expr();
+        hi_lt + hi_eq * self.lt_lo.expr()
     }
 }
 

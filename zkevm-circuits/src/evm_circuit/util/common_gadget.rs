@@ -880,8 +880,10 @@ impl<F: Field> SloadGasGadget<F> {
 
         Self { is_warm, gas_cost }
     }
+}
 
-    pub(crate) fn expr(&self) -> Expression<F> {
+impl<F: Field> Expr<F> for SloadGasGadget<F> {
+    fn expr(&self) -> Expression<F> {
         // Return the gas cost
         self.gas_cost.clone()
     }
@@ -942,10 +944,6 @@ impl<F: Field> SstoreGasGadget<F> {
         }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        // Return the gas cost
-        self.gas_cost.clone()
-    }
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -977,6 +975,13 @@ impl<F: Field> SstoreGasGadget<F> {
         self.original_is_zero
             .assign_value(region, offset, region.word_rlc(original_value))?;
         Ok(())
+    }
+}
+
+impl<F: Field> Expr<F> for SstoreGasGadget<F> {
+    fn expr(&self) -> Expression<F> {
+        // Return the gas cost
+        self.gas_cost.clone()
     }
 }
 

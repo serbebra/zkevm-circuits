@@ -49,10 +49,6 @@ impl<F: Field> IsZeroGadget<F> {
         Self { inverse, is_zero }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        self.is_zero.clone()
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -75,6 +71,12 @@ impl<F: Field> IsZeroGadget<F> {
         value: Value<F>,
     ) -> Result<Value<F>, Error> {
         transpose_val_ret(value.map(|value| self.assign(region, offset, value)))
+    }
+}
+
+impl<F: Field> Expr<F> for IsZeroGadget<F> {
+    fn expr(&self) -> Expression<F> {
+        self.is_zero.clone()
     }
 }
 

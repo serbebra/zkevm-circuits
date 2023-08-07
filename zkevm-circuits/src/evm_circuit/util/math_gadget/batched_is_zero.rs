@@ -49,10 +49,6 @@ impl<F: Field, const N: usize> BatchedIsZeroGadget<F, N> {
         }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        self.is_zero.expr()
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -81,6 +77,12 @@ impl<F: Field, const N: usize> BatchedIsZeroGadget<F, N> {
         let values: Value<[F; N]> =
             Value::<Vec<F>>::from_iter(values).map(|vv| vv.try_into().unwrap());
         transpose_val_ret(values.map(|values| self.assign(region, offset, values)))
+    }
+}
+
+impl<F: Field, const N: usize> Expr<F> for BatchedIsZeroGadget<F, N> {
+    fn expr(&self) -> Expression<F> {
+        self.is_zero.expr()
     }
 }
 

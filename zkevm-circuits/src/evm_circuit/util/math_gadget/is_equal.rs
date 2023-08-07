@@ -24,10 +24,6 @@ impl<F: Field> IsEqualGadget<F> {
         Self { is_zero }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        self.is_zero.expr()
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -49,6 +45,12 @@ impl<F: Field> IsEqualGadget<F> {
             lhs.zip(rhs)
                 .map(|(lhs, rhs)| self.assign(region, offset, lhs, rhs)),
         )
+    }
+}
+
+impl<F: Field> Expr<F> for IsEqualGadget<F> {
+    fn expr(&self) -> Expression<F> {
+        self.is_zero.expr()
     }
 }
 

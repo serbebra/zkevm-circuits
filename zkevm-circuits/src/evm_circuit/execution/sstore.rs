@@ -322,11 +322,6 @@ impl<F: Field> SstoreTxRefundGadget<F> {
         }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        // Return the new tx_refund
-        self.tx_refund_new.clone()
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn assign(
         &self,
@@ -377,6 +372,13 @@ impl<F: Field> SstoreTxRefundGadget<F> {
             tx_refund
         );
         Ok(())
+    }
+}
+
+impl<F: Field> Expr<F> for SstoreTxRefundGadget<F> {
+    fn expr(&self) -> Expression<F> {
+        // Return the new tx_refund
+        self.tx_refund_new.clone()
     }
 }
 

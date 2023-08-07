@@ -385,10 +385,6 @@ impl<F: Field> MemoryWordSizeGadget<F> {
         Self { memory_word_size }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        self.memory_word_size.quotient()
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -399,6 +395,12 @@ impl<F: Field> MemoryWordSizeGadget<F> {
             .memory_word_size
             .assign(region, offset, (address as u128) + 31)?;
         Ok(quotient as u64)
+    }
+}
+
+impl<F: Field> Expr<F> for MemoryWordSizeGadget<F> {
+    fn expr(&self) -> Expression<F> {
+        self.memory_word_size.quotient()
     }
 }
 

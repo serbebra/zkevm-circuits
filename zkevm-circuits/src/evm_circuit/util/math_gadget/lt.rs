@@ -52,10 +52,6 @@ impl<F: Field, const N_BYTES: usize> LtGadget<F, N_BYTES> {
         Self { lt, diff, range }
     }
 
-    pub(crate) fn expr(&self) -> Expression<F> {
-        self.lt.expr()
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -100,6 +96,12 @@ impl<F: Field, const N_BYTES: usize> LtGadget<F, N_BYTES> {
             lhs.zip(rhs)
                 .map(|(lhs, rhs)| self.assign(region, offset, lhs, rhs)),
         )
+    }
+}
+
+impl<F: Field, const N_BYTES: usize> Expr<F> for LtGadget<F, N_BYTES> {
+    fn expr(&self) -> Expression<F> {
+        self.lt.expr()
     }
 }
 
