@@ -10,7 +10,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{Expr, ExprMulti},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
@@ -47,12 +47,13 @@ impl<F: Field> ExecutionGadget<F> for AddSubGadget<F> {
             OpcodeId::SUB.expr(),
             OpcodeId::ADD.expr(),
         );
+        let [is_sub_expr, _] = is_sub.expr_multi();
 
         // ADD: Pop a and b from the stack, push c on the stack
         // SUB: Pop c and b from the stack, push a on the stack
-        cb.stack_pop(select::expr(is_sub.expr().0, c.expr(), a.expr()));
+        cb.stack_pop(select::expr(is_sub_expr.expr(), c.expr(), a.expr()));
         cb.stack_pop(b.expr());
-        cb.stack_push(select::expr(is_sub.expr().0, a.expr(), c.expr()));
+        cb.stack_push(select::expr(is_sub_expr.expr(), a.expr(), c.expr()));
 
         // State transition
         let step_state_transition = StepStateTransition {

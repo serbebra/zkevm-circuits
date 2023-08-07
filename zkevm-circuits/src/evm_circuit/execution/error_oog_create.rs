@@ -14,6 +14,7 @@ use crate::{
             or, select, CachedRegion, Cell, Word,
         },
     },
+    util::{Expr, ExprMulti},
     witness::{Block, Call, ExecStep, Transaction},
 };
 use eth_types::{
@@ -22,7 +23,6 @@ use eth_types::{
     },
     Field, ToLittleEndian, U256,
 };
-use gadgets::util::Expr;
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
@@ -57,6 +57,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCreateGadget<F> {
             OpcodeId::CREATE2.expr(),
             OpcodeId::CREATE.expr(),
         );
+        let [is_create2_expr, _] = is_create2.expr_multi();
 
         let value = cb.query_word_rlc();
         let salt = cb.query_word_rlc();
@@ -66,7 +67,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCreateGadget<F> {
         cb.stack_pop(value.expr());
         cb.stack_pop(memory_address.offset_rlc());
         cb.stack_pop(memory_address.length_rlc());
-        cb.condition(is_create2.expr().0, |cb| cb.stack_pop(salt.expr()));
+        cb.condition(is_create2_expr.expr(), |cb| cb.stack_pop(salt.expr()));
 
         let init_code_size_overflow =
             LtGadget::construct(cb, MAX_INIT_CODE_SIZE.expr(), memory_address.length());
@@ -76,7 +77,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCreateGadget<F> {
 
         let keccak_gas_cost = minimum_word_size.expr()
             * select::expr(
-                is_create2.expr().0,
+                is_create2_expr.expr(),
                 CREATE2_GAS_PER_CODE_WORD.expr(),
                 CREATE_GAS_PER_CODE_WORD.expr(),
             );
@@ -96,7 +97,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCreateGadget<F> {
         let common_error_gadget = CommonErrorGadget::construct(
             cb,
             opcode.expr(),
-            select::expr(is_create2.expr().0, 6.expr(), 5.expr()),
+            select::expr(is_create2_expr.expr(), 6.expr(), 5.expr()),
         );
 
         Self {

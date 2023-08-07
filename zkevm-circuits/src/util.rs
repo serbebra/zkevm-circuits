@@ -17,7 +17,7 @@ use halo2_proofs::plonk::SecondPhase;
 use crate::{evm_circuit::util::rlc, table::TxLogFieldTag, witness};
 use eth_types::{Field, ToAddress, Word};
 pub use ethers_core::types::{Address, U256};
-pub use gadgets::util::Expr;
+pub use gadgets::util::{Expr, ExprMulti};
 
 /// A wrapper of is_zero in gadgets which gives is_zero at any rotation
 pub mod is_zero;

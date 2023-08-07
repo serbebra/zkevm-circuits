@@ -6,10 +6,12 @@ use crate::{
     util::Expr,
 };
 use eth_types::Field;
+use gadgets::util::ExprMulti;
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
+
 /// Returns (is_a, is_b):
 /// - `is_a` is `1` when `value == a`, else `0`
 /// - `is_b` is `1` when `value == b`, else `0`
@@ -41,10 +43,6 @@ impl<F: Field> PairSelectGadget<F> {
         Self { is_a, is_b }
     }
 
-    pub(crate) fn expr(&self) -> (Expression<F>, Expression<F>) {
-        (self.is_a.expr(), self.is_b.clone())
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -57,6 +55,12 @@ impl<F: Field> PairSelectGadget<F> {
         self.is_a.assign(region, offset, Value::known(is_a))?;
 
         Ok((is_a, F::one() - is_a))
+    }
+}
+
+impl<F: Field> ExprMulti<F, 2> for PairSelectGadget<F> {
+    fn expr_multi(&self) -> [Expression<F>; 2] {
+        [self.is_a.expr(), self.is_b.clone()]
     }
 }
 
@@ -85,16 +89,13 @@ mod tests {
             let a = cb.query_cell();
             let b = cb.query_cell();
             let select_gadget = PairSelectGadget::<F>::construct(cb, v.expr(), a.expr(), b.expr());
-            cb.require_equal(
-                "is_a * is_b == 0",
-                select_gadget.expr().0 * select_gadget.expr().1,
-                0.expr(),
-            );
+            let [is_a, is_b] = select_gadget.expr_multi();
+            cb.require_equal("is_a * is_b == 0", is_a.expr() * is_b.expr(), 0.expr());
 
             if SELECT_A {
-                cb.require_equal("is_a == 1", select_gadget.expr().0, 1.expr());
+                cb.require_equal("is_a == 1", is_a, 1.expr());
             } else {
-                cb.require_equal("is_b == 1", select_gadget.expr().1, 1.expr());
+                cb.require_equal("is_b == 1", is_b, 1.expr());
             }
 
             PairSelectionTestContainer {

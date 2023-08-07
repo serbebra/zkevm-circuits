@@ -2,6 +2,7 @@ use crate::evm_circuit::util::{
     constraint_builder::EVMConstraintBuilder, math_gadget::*, sum, CachedRegion,
 };
 use eth_types::Field;
+use gadgets::util::ExprMulti;
 use halo2_proofs::plonk::{Error, Expression};
 
 /// Returns (lt, eq):
@@ -27,10 +28,6 @@ impl<F: Field, const N_BYTES: usize> ComparisonGadget<F, N_BYTES> {
         Self { lt, eq }
     }
 
-    pub(crate) fn expr(&self) -> (Expression<F>, Expression<F>) {
-        (self.lt.expr(), self.eq.expr())
-    }
-
     pub(crate) fn assign(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
@@ -45,6 +42,12 @@ impl<F: Field, const N_BYTES: usize> ComparisonGadget<F, N_BYTES> {
         let eq = self.eq.assign(region, offset, sum::value(&diff))?;
 
         Ok((lt, eq))
+    }
+}
+
+impl<F: Field, const N_BYTES: usize> ExprMulti<F, 2> for ComparisonGadget<F, N_BYTES> {
+    fn expr_multi(&self) -> [Expression<F>; 2] {
+        [self.lt.expr(), self.eq.expr()]
     }
 }
 
@@ -70,16 +73,18 @@ mod tests {
             let a = cb.query_cell();
             let b = cb.query_cell();
             let cmp_gadget = ComparisonGadget::<F, N>::construct(cb, a.expr(), b.expr());
+            let [lt_expr, eq_expr] = cmp_gadget.expr_multi();
+
             cb.require_equal(
                 "(a < b) * (a == b) == 0",
-                cmp_gadget.expr().0 * cmp_gadget.expr().1,
+                lt_expr.expr() * eq_expr.expr(),
                 0.expr(),
             );
 
             if CHECK_EQ {
-                cb.require_equal("a == b", cmp_gadget.expr().1, 1.expr());
+                cb.require_equal("a == b", eq_expr, 1.expr());
             } else {
-                cb.require_equal("a < b", cmp_gadget.expr().0, 1.expr());
+                cb.require_equal("a < b", lt_expr, 1.expr());
             }
 
             ComparisonTestContainer { cmp_gadget, a, b }

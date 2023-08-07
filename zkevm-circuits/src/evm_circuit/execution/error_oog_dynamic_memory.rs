@@ -16,7 +16,7 @@ use crate::{
     witness::{Block, Call, ExecStep, Transaction},
 };
 use eth_types::{evm_types::OpcodeId, Field};
-use gadgets::util::{select, Expr};
+use gadgets::util::{select, Expr, ExprMulti};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
@@ -42,6 +42,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGDynamicMemoryGadget<F> {
             OpcodeId::RETURN.expr(),
             OpcodeId::REVERT.expr(),
         );
+        let [is_return_expr, _] = is_return.expr_multi();
 
         let memory_address = MemoryExpandedAddressGadget::construct_self(cb);
         cb.stack_pop(memory_address.offset_rlc());
@@ -53,7 +54,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGDynamicMemoryGadget<F> {
             cb,
             cb.curr.state.gas_left.expr(),
             select::expr(
-                is_return.expr().0,
+                is_return_expr,
                 OpcodeId::RETURN.constant_gas_cost().expr(),
                 OpcodeId::REVERT.constant_gas_cost().expr(),
             ) + memory_expansion.gas_cost(),

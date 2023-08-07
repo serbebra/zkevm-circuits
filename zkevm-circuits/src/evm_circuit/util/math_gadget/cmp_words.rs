@@ -3,7 +3,7 @@ use crate::{
         self, constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, select,
         CachedRegion,
     },
-    util::Expr,
+    util::{Expr, ExprMulti},
 };
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::plonk::{Error, Expression};
@@ -30,7 +30,7 @@ impl<F: Field> CmpWordsGadget<F> {
             from_bytes::expr(&b.cells[0..16]),
         );
 
-        let (lt_lo, eq_lo) = comparison_lo.expr();
+        let [lt_lo, eq_lo] = comparison_lo.expr_multi();
 
         // `a[16..32] <= b[16..32]`
         let comparison_hi = ComparisonGadget::construct(
@@ -38,7 +38,7 @@ impl<F: Field> CmpWordsGadget<F> {
             from_bytes::expr(&a.cells[16..32]),
             from_bytes::expr(&b.cells[16..32]),
         );
-        let (lt_hi, eq_hi) = comparison_hi.expr();
+        let [lt_hi, eq_hi] = comparison_hi.expr_multi();
 
         // `a < b` when:
         // - `a[16..32] < b[16..32]` OR

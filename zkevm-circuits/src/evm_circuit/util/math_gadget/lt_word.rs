@@ -1,6 +1,9 @@
-use crate::evm_circuit::util::{
-    self, constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
-    CachedRegion,
+use crate::{
+    evm_circuit::util::{
+        self, constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
+        CachedRegion,
+    },
+    util::ExprMulti,
 };
 use eth_types::{Field, Word};
 use halo2_proofs::plonk::{Error, Expression};
@@ -62,7 +65,7 @@ impl<F: Field> LtWordGadget<F> {
 
 impl<F: Field> Expr<F> for LtWordGadget<F> {
     fn expr(&self) -> Expression<F> {
-        let (hi_lt, hi_eq) = self.comparison_hi.expr();
+        let [hi_lt, hi_eq] = self.comparison_hi.expr_multi();
         hi_lt + hi_eq * self.lt_lo.expr()
     }
 }

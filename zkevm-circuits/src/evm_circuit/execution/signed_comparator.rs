@@ -11,7 +11,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{Expr, ExprMulti},
 };
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};
 use halo2_proofs::{circuit::Value, plonk::Error};
@@ -83,7 +83,7 @@ impl<F: Field> ExecutionGadget<F> for SignedComparatorGadget<F> {
             from_bytes::expr(&b.cells[16..32]),
         );
         let a_lt_b_lo = lt_lo.expr();
-        let (a_lt_b_hi, a_eq_b_hi) = comparison_hi.expr();
+        let [a_lt_b_hi, a_eq_b_hi] = comparison_hi.expr_multi();
 
         // Add selector only for the cases where both a and b are positive or
         // negative. This selector will be used after handling the cases

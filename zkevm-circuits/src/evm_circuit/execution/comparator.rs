@@ -11,7 +11,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{Expr, ExprMulti},
 };
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};
 use halo2_proofs::{circuit::Value, plonk::Error};
@@ -51,7 +51,7 @@ impl<F: Field> ExecutionGadget<F> for ComparatorGadget<F> {
             from_bytes::expr(&a.cells[0..16]),
             from_bytes::expr(&b.cells[0..16]),
         );
-        let (lt_lo, eq_lo) = comparison_lo.expr();
+        let [lt_lo, eq_lo] = comparison_lo.expr_multi();
 
         // `a[16..32] <= b[16..32]`
         let comparison_hi = ComparisonGadget::construct(
@@ -59,7 +59,7 @@ impl<F: Field> ExecutionGadget<F> for ComparatorGadget<F> {
             from_bytes::expr(&a.cells[16..32]),
             from_bytes::expr(&b.cells[16..32]),
         );
-        let (lt_hi, eq_hi) = comparison_hi.expr();
+        let [lt_hi, eq_hi] = comparison_hi.expr_multi();
 
         // `a < b` when:
         // - `a[16..32] < b[16..32]` OR

@@ -142,6 +142,13 @@ pub trait Expr<F: FieldExt> {
     fn expr(&self) -> Expression<F>;
 }
 
+/// Trait that implements functionality to get an array of constant expression
+/// from commonly used types.
+pub trait ExprMulti<F: FieldExt, const N: usize> {
+    /// Returns an expression for the type.
+    fn expr_multi(&self) -> [Expression<F>; N];
+}
+
 /// Implementation trait `Expr` for type able to be casted to u64
 #[macro_export]
 macro_rules! impl_expr {

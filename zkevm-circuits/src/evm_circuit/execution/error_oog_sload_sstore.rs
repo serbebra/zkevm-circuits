@@ -16,7 +16,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::CallContextFieldTag,
-    util::Expr,
+    util::{Expr, ExprMulti},
 };
 use eth_types::{
     evm_types::{GasCost, OpcodeId},
@@ -59,6 +59,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGSloadSstoreGadget<F> {
             OpcodeId::SSTORE.expr(),
             OpcodeId::SLOAD.expr(),
         );
+        let [is_sstore_expr, _] = is_sstore.expr_multi();
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let is_static = cb.call_context(None, CallContextFieldTag::IsStatic);
@@ -82,7 +83,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGSloadSstoreGadget<F> {
         );
 
         let sload_gas_cost = SloadGasGadget::construct(cb, is_warm.expr());
-        let sstore_gas_cost = cb.condition(is_sstore.expr().0, |cb| {
+        let sstore_gas_cost = cb.condition(is_sstore_expr.expr(), |cb| {
             cb.stack_pop(phase2_value.expr());
 
             cb.account_storage_read(
@@ -106,7 +107,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGSloadSstoreGadget<F> {
             cb,
             cb.curr.state.gas_left.expr(),
             select::expr(
-                is_sstore.expr().0,
+                is_sstore_expr.expr(),
                 sstore_gas_cost.expr(),
                 sload_gas_cost.expr(),
             ),
@@ -121,16 +122,13 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGSloadSstoreGadget<F> {
             "Gas left is less than gas cost or gas sentry (only for SSTORE)",
             or::expr([
                 insufficient_gas_cost.expr(),
-                and::expr([is_sstore.expr().0, insufficient_gas_sentry.expr()]),
+                and::expr([is_sstore_expr.expr(), insufficient_gas_sentry.expr()]),
             ]),
             1.expr(),
         );
 
-        let common_error_gadget = CommonErrorGadget::construct(
-            cb,
-            opcode.expr(),
-            7.expr() + 2.expr() * is_sstore.expr().0,
-        );
+        let common_error_gadget =
+            CommonErrorGadget::construct(cb, opcode.expr(), 7.expr() + 2.expr() * is_sstore_expr);
 
         Self {
             opcode,
