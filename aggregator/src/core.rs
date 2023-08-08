@@ -372,8 +372,8 @@ fn copy_constraints(
                         &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + WITHDRAW_ROOT_INDEX],
                         format!(
                             "chunk and batch's withdraw_root do not match: {:?} {:?}",
-                            &batch_pi_hash_preimage[i + POST_STATE_ROOT_INDEX].value(),
-                            &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + POST_STATE_ROOT_INDEX]
+                            &batch_pi_hash_preimage[i + WITHDRAW_ROOT_INDEX].value(),
+                            &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + WITHDRAW_ROOT_INDEX],
                                 .value(),
                         )
                         .as_str(),
