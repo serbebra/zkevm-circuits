@@ -337,6 +337,12 @@ fn copy_constraints(
                     assert_equal(
                         &batch_pi_hash_preimage[i + PREV_STATE_ROOT_INDEX],
                         &chunk_pi_hash_preimages[0][i + PREV_STATE_ROOT_INDEX],
+                        format!(
+                            "chunk and batch's prev_state_root do not match: {:?} {:?}",
+                            &batch_pi_hash_preimage[i + PREV_STATE_ROOT_INDEX].value(),
+                            &chunk_pi_hash_preimages[0][i + PREV_STATE_ROOT_INDEX].value(),
+                        )
+                        .as_str(),
                     );
                     region.constrain_equal(
                         batch_pi_hash_preimage[i + PREV_STATE_ROOT_INDEX].cell(),
@@ -347,6 +353,13 @@ fn copy_constraints(
                     assert_equal(
                         &batch_pi_hash_preimage[i + POST_STATE_ROOT_INDEX],
                         &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + POST_STATE_ROOT_INDEX],
+                        format!(
+                            "chunk and batch's post_state_root do not match: {:?} {:?}",
+                            &batch_pi_hash_preimage[i + POST_STATE_ROOT_INDEX].value(),
+                            &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + POST_STATE_ROOT_INDEX]
+                                .value(),
+                        )
+                        .as_str(),
                     );
                     region.constrain_equal(
                         batch_pi_hash_preimage[i + POST_STATE_ROOT_INDEX].cell(),
@@ -357,6 +370,13 @@ fn copy_constraints(
                     assert_equal(
                         &batch_pi_hash_preimage[i + WITHDRAW_ROOT_INDEX],
                         &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + WITHDRAW_ROOT_INDEX],
+                        format!(
+                            "chunk and batch's withdraw_root do not match: {:?} {:?}",
+                            &batch_pi_hash_preimage[i + POST_STATE_ROOT_INDEX].value(),
+                            &chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + POST_STATE_ROOT_INDEX]
+                                .value(),
+                        )
+                        .as_str(),
                     );
                     region.constrain_equal(
                         batch_pi_hash_preimage[i + WITHDRAW_ROOT_INDEX].cell(),
@@ -365,14 +385,23 @@ fn copy_constraints(
                 }
 
                 // 5 assert hashes use a same chain id
-                for chunk_pi_hash_preimage in chunk_pi_hash_preimages.iter() {
+                for (i, chunk_pi_hash_preimage) in chunk_pi_hash_preimages.iter().enumerate() {
                     for (lhs, rhs) in batch_pi_hash_preimage
                         .iter()
                         .take(CHAIN_ID_LEN)
                         .zip(chunk_pi_hash_preimage.iter().take(CHAIN_ID_LEN))
                     {
                         // sanity check
-                        assert_equal(lhs, rhs);
+                        assert_equal(
+                            lhs,
+                            rhs,
+                            format!(
+                                "chunk_{i} and batch's chain id do not match: {:?} {:?}",
+                                &lhs.value(),
+                                &rhs.value(),
+                            )
+                            .as_str(),
+                        );
                         region.constrain_equal(lhs.cell(), rhs.cell())?;
                     }
                 }
@@ -595,6 +624,13 @@ pub(crate) fn conditional_constraints(
                             &chunk_pi_hash_preimages[i][j + CHUNK_DATA_HASH_INDEX],
                             &potential_batch_data_hash_preimage[i * DIGEST_LEN + j],
                             &chunk_is_valid_cells[i],
+                            format!(
+                                "chunk_{i}'s data hash does not match batch's: {:?} {:?} {:?}",
+                                &chunk_pi_hash_preimages[i][j + CHUNK_DATA_HASH_INDEX].value(),
+                                &potential_batch_data_hash_preimage[i * DIGEST_LEN + j].value(),
+                                &chunk_is_valid_cells[i].value()
+                            )
+                            .as_str(),
                         );
                         rlc_config.conditional_enforce_equal(
                             &mut region,
@@ -614,6 +650,13 @@ pub(crate) fn conditional_constraints(
                             &chunk_pi_hash_preimages[i + 1][PREV_STATE_ROOT_INDEX + j],
                             &chunk_pi_hash_preimages[i][POST_STATE_ROOT_INDEX + j],
                             &chunk_is_valid_cells[i + 1],
+                            format!(
+                                "chunk_{i} is not continuous: {:?} {:?} {:?}",
+                                &chunk_pi_hash_preimages[i + 1][PREV_STATE_ROOT_INDEX + j].value(),
+                                &chunk_pi_hash_preimages[i][POST_STATE_ROOT_INDEX + j].value(),
+                                &chunk_is_valid_cells[i + 1].value(),
+                            )
+                            .as_str(),
                         );
                         rlc_config.conditional_enforce_equal(
                             &mut region,
@@ -724,7 +767,16 @@ pub(crate) fn conditional_constraints(
                 )?;
 
                 // sanity check
-                assert_equal(&data_hash_inputs_len, &data_hash_inputs_len_rec);
+                assert_equal(
+                    &data_hash_inputs_len,
+                    &data_hash_inputs_len_rec,
+                    format!(
+                        "data_hash_input_len do not match: {:?} {:?}",
+                        &data_hash_inputs_len.value(),
+                        &data_hash_inputs_len_rec.value(),
+                    )
+                    .as_str(),
+                );
                 region.constrain_equal(
                     data_hash_inputs_len.cell(),
                     data_hash_inputs_len_rec.cell(),
