@@ -74,8 +74,8 @@ pub(crate) fn extract_accumulators_and_proof(
     {
         for (i, acc) in accumulators.iter().enumerate() {
             let KzgAccumulator { lhs, rhs } = acc;
-            let left = Bn256::pairing(&lhs, g2);
-            let right = Bn256::pairing(&rhs, s_g2);
+            let left = Bn256::pairing(lhs, g2);
+            let right = Bn256::pairing(rhs, s_g2);
             log::trace!("acc extraction {}-th acc check: left {:?}", i, left);
             log::trace!("acc extraction {}-th acc check: right {:?}", i, right);
             assert_eq!(left, right, "accumulator check failed");
