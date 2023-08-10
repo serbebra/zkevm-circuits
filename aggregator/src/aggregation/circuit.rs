@@ -99,15 +99,15 @@ impl AggregationCircuit {
         // this aggregates MULTIPLE snarks
         //  (instead of ONE as in proof compression)
         let (accumulator, as_proof) =
-            extract_accumulators_and_proof(params, snarks_with_padding, rng)?;
+            extract_accumulators_and_proof(params, snarks_with_padding, rng, g2, s_g2)?;
         let KzgAccumulator::<G1Affine, NativeLoader> { lhs, rhs } = accumulator;
 
         // sanity check on the accumulator
         {
             let left = Bn256::pairing(&lhs, g2);
             let right = Bn256::pairing(&rhs, s_g2);
-            log::trace!("acc check: left {:?}", left);
-            log::trace!("acc check: right {:?}", right);
+            log::trace!("aggregation circuit acc check: left {:?}", left);
+            log::trace!("aggregation circuit acc check: right {:?}", right);
             assert_eq!(left, right, "accumulator check failed");
         }
 

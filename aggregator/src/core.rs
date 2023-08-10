@@ -1,7 +1,10 @@
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Region, Value},
-    halo2curves::bn256::{Bn256, Fr, G1Affine},
+    halo2curves::{
+        bn256::{Bn256, Fr, G1Affine, G2Affine},
+        pairing::Engine,
+    },
     poly::{commitment::ParamsProver, kzg::commitment::ParamsKZG},
 };
 use itertools::Itertools;
@@ -45,6 +48,8 @@ pub(crate) fn extract_accumulators_and_proof(
     params: &ParamsKZG<Bn256>,
     snarks: &[Snark],
     rng: impl Rng + Send,
+    g2: &G2Affine,
+    s_g2: &G2Affine,
 ) -> Result<(KzgAccumulator<G1Affine, NativeLoader>, Vec<u8>), Error> {
     let svk = params.get_g()[0].into();
 
@@ -65,6 +70,17 @@ pub(crate) fn extract_accumulators_and_proof(
             Shplonk::succinct_verify(&svk, &snark.protocol, &snark.instances, &proof)
         })
         .collect::<Vec<_>>();
+    // sanity check on the accumulator
+    {
+        for (i, acc) in accumulators.iter().enumerate() {
+            let KzgAccumulator { lhs, rhs } = acc;
+            let left = Bn256::pairing(&lhs, g2);
+            let right = Bn256::pairing(&rhs, s_g2);
+            log::trace!("acc extraction {}-th acc check: left {:?}", i, left);
+            log::trace!("acc extraction {}-th acc check: right {:?}", i, right);
+            assert_eq!(left, right, "accumulator check failed");
+        }
+    }
 
     let mut transcript_write =
         PoseidonTranscript::<NativeLoader, Vec<u8>>::from_spec(vec![], POSEIDON_SPEC.clone());
