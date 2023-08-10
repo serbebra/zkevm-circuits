@@ -1,17 +1,30 @@
 use std::{fs, path::Path, process};
 
 use ark_std::{end_timer, start_timer, test_rng};
-use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr, poly::commitment::Params};
+use halo2_proofs::{
+    arithmetic::CurveAffine,
+    dev::MockProver,
+    halo2curves::{
+        bn256::{Bn256, Fq, Fr, G1Affine},
+        pairing::Engine,
+    },
+    poly::commitment::Params,
+};
 use itertools::Itertools;
-use snark_verifier::loader::halo2::halo2_ecc::halo2_base::utils::fs::gen_srs;
+use snark_verifier::{
+    loader::halo2::halo2_ecc::halo2_base::utils::fs::gen_srs, util::arithmetic::fe_from_limbs,
+};
 use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
 
 use crate::{
-    aggregation::AggregationCircuit, batch::BatchHash, constants::MAX_AGG_SNARKS, layer_0,
-    ChunkHash,
+    aggregation::AggregationCircuit,
+    batch::BatchHash,
+    compression_layer_evm, compression_layer_snark,
+    constants::{ACC_LEN, BITS, LIMBS, MAX_AGG_SNARKS},
+    layer_0,
+    tests::mock_chunk::MockChunkCircuit,
+    ChunkHash, CompressionCircuit,
 };
-
-use super::mock_chunk::MockChunkCircuit;
 
 #[test]
 fn test_aggregation_circuit() {
