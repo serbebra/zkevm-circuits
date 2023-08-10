@@ -7,7 +7,7 @@ use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     halo2curves::{
         bn256::{Fq, G1Affine, G2Affine},
-        pairing::{Engine, MultiMillerLoop},
+        pairing::Engine,
     },
     plonk::{Circuit, ConstraintSystem, Error},
 };
@@ -198,13 +198,13 @@ impl CompressionCircuit {
         let KzgAccumulator::<G1Affine, NativeLoader> { lhs, rhs } = accumulator;
 
         // sanity check on the accumulator
-        log::trace!("acc left: {:?}", Bn256::pairing(&lhs, g2));
-        log::trace!("acc right: {:?}", Bn256::pairing(&rhs, s_g2));
-        log::trace!("acc right: {:?}", Bn256::pairing(&rhs, s_g2));
-        log::trace!(
-            "acc right: {:?}",
-            Bn256::multi_miller_loop(&[(&lhs, &(*g2).into()), (&-rhs, &(*s_g2).into()),])
-        );
+        {
+            let left = Bn256::pairing(&lhs, g2);
+            let right = Bn256::pairing(&rhs, s_g2);
+            log::trace!("acc check: left {:?}", left);
+            log::trace!("acc check: right {:?}", right);
+            assert_eq!(left, right, "accumulator check failed");
+        }
 
         let acc_instances = [lhs.x, lhs.y, rhs.x, rhs.y]
             .map(fe_to_limbs::<Fq, Fr, { LIMBS }, { BITS }>)
