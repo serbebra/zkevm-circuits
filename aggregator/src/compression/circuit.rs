@@ -5,7 +5,10 @@ use std::fs::File;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
-    halo2curves::bn256::{Fq, G1Affine},
+    halo2curves::{
+        bn256::{Fq, G1Affine, G2Affine},
+        pairing::{Engine, MultiMillerLoop},
+    },
     plonk::{Circuit, ConstraintSystem, Error},
 };
 use rand::Rng;
@@ -174,6 +177,8 @@ impl CompressionCircuit {
         snark: Snark,
         has_accumulator: bool,
         rng: impl Rng + Send,
+        g2: &G2Affine,
+        s_g2: &G2Affine,
     ) -> Result<Self, snark_verifier::Error> {
         let svk = params.get_g()[0].into();
 
@@ -191,6 +196,16 @@ impl CompressionCircuit {
         // it is important that new accumulator is the first 12 elements
         // as specified in CircuitExt::accumulator_indices()
         let KzgAccumulator::<G1Affine, NativeLoader> { lhs, rhs } = accumulator;
+
+        // sanity check on the accumulator
+        log::trace!("acc left: {:?}", Bn256::pairing(&lhs, g2));
+        log::trace!("acc right: {:?}", Bn256::pairing(&rhs, s_g2));
+        log::trace!("acc right: {:?}", Bn256::pairing(&rhs, s_g2));
+        log::trace!(
+            "acc right: {:?}",
+            Bn256::multi_miller_loop(&[(&lhs, &(*g2).into()), (&-rhs, &(*s_g2).into()),])
+        );
+
         let acc_instances = [lhs.x, lhs.y, rhs.x, rhs.y]
             .map(fe_to_limbs::<Fq, Fr, { LIMBS }, { BITS }>)
             .concat();
