@@ -84,22 +84,10 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             // || v | r | s | msg_hash | recovered_addr ||
 
             cb.sig_table_lookup(
-                cb.word_rlc({
-                    let mut exprs = msg_hash_word.cells.clone().map(|x| x.expr());
-                    //exprs.reverse();
-                    exprs
-                }),
+                cb.word_rlc(msg_hash_word.cells.clone().map(|x| x.expr())),
                 sig_v_rlc.expr() - 27.expr(),
-                cb.word_rlc({
-                    let mut exprs = sig_r_word.cells.clone().map(|x| x.expr());
-                    //exprs.reverse();
-                    exprs
-                }),
-                cb.word_rlc({
-                    let mut exprs = sig_s_word.cells.clone().map(|x| x.expr());
-                    //exprs.reverse();
-                    exprs
-                }),
+                cb.word_rlc(sig_r_word.cells.clone().map(|x| x.expr())),
+                cb.word_rlc(sig_s_word.cells.clone().map(|x| x.expr())),
                 from_bytes::expr(&recovered_addr_rlc.cells),
             );
         });
