@@ -60,17 +60,17 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         cb.require_equal(
             "msg_hash_rlc",
             msg_hash_rlc.expr(),
-            cb.keccak_rlc(msg_hash_word.cells.map(|x| x.expr())),
+            cb.keccak_rlc(msg_hash_word.cells.clone().map(|x| x.expr())),
         );
         cb.require_equal(
             "sig_r_rlc",
             sig_r_rlc.expr(),
-            cb.keccak_rlc(sig_r_word.cells.map(|x| x.expr())),
+            cb.keccak_rlc(sig_r_word.cells.clone().map(|x| x.expr())),
         );
         cb.require_equal(
             "sig_s_rlc",
             sig_s_rlc.expr(),
-            cb.keccak_rlc(sig_s_word.cells.map(|x| x.expr())),
+            cb.keccak_rlc(sig_s_word.cells.clone().map(|x| x.expr())),
         );
 
         cb.condition(recovered.expr(), |cb| {
@@ -85,18 +85,18 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
 
             cb.sig_table_lookup(
                 cb.word_rlc({
-                    let mut exprs = msg_hash_word.cells.map(|x| x.expr());
+                    let mut exprs = msg_hash_word.cells.clone().map(|x| x.expr());
                     //exprs.reverse();
                     exprs
                 }),
                 sig_v_rlc.expr() - 27.expr(),
                 cb.word_rlc({
-                    let mut exprs = sig_r_word.cells.map(|x| x.expr());
+                    let mut exprs = sig_r_word.cells.clone().map(|x| x.expr());
                     //exprs.reverse();
                     exprs
                 }),
                 cb.word_rlc({
-                    let mut exprs = sig_s_word.cells.map(|x| x.expr());
+                    let mut exprs = sig_s_word.cells.clone().map(|x| x.expr());
                     //exprs.reverse();
                     exprs
                 }),
