@@ -187,7 +187,7 @@ impl CompressionCircuit {
         // in case not first time:
         // (old_accumulator, public inputs) -> (new_accumulator, public inputs)
         let (accumulator, as_proof) =
-            extract_accumulators_and_proof(params, &[snark.clone()], rng)?;
+            extract_accumulators_and_proof(params, &[snark.clone()], rng, g2, s_g2)?;
 
         // the instance for the outer circuit is
         // - new accumulator, consists of 12 elements
@@ -201,8 +201,8 @@ impl CompressionCircuit {
         {
             let left = Bn256::pairing(&lhs, g2);
             let right = Bn256::pairing(&rhs, s_g2);
-            log::trace!("acc check: left {:?}", left);
-            log::trace!("acc check: right {:?}", right);
+            log::trace!("compression circuit acc check: left {:?}", left);
+            log::trace!("compression circuit acc check: right {:?}", right);
             assert_eq!(left, right, "accumulator check failed");
         }
 
