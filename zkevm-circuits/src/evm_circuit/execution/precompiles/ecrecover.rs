@@ -11,7 +11,7 @@ use crate::{
         util::{
             common_gadget::RestoreContextGadget,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-            from_bytes, rlc, CachedRegion, Cell, RandomLinearCombination,
+            from_bytes, rlc, CachedRegion, Cell, RandomLinearCombination, Word,
         },
     },
     table::CallContextFieldTag,
@@ -21,10 +21,13 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct EcrecoverGadget<F> {
     recovered: Cell<F>,
-    msg_hash_rlc: Cell<F>,
     sig_v_rlc: Cell<F>,
+    sig_r_word: Word<F>,
+    sig_s_word: Word<F>,
+    msg_hash_word: Word<F>,
     sig_r_rlc: Cell<F>,
     sig_s_rlc: Cell<F>,
+    msg_hash_rlc: Cell<F>,
     recovered_addr_rlc: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
 
     is_success: Cell<F>,
@@ -51,6 +54,24 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             cb.query_cell_phase2(),
             cb.query_keccak_rlc(),
         );
+        let msg_hash_word: RandomLinearCombination<F, 32> = cb.query_word_rlc();
+        let sig_s_word: RandomLinearCombination<F, 32> = cb.query_word_rlc();
+        let sig_r_word: RandomLinearCombination<F, 32> = cb.query_word_rlc();
+        cb.require_equal(
+            "msg_hash_rlc",
+            msg_hash_rlc.expr(),
+            cb.keccak_rlc(msg_hash_word.cells.clone().map(|x| x.expr())),
+        );
+        cb.require_equal(
+            "sig_r_rlc",
+            sig_r_rlc.expr(),
+            cb.keccak_rlc(sig_r_word.cells.clone().map(|x| x.expr())),
+        );
+        cb.require_equal(
+            "sig_s_rlc",
+            sig_s_rlc.expr(),
+            cb.keccak_rlc(sig_s_word.cells.clone().map(|x| x.expr())),
+        );
 
         cb.condition(recovered.expr(), |cb| {
             // if address was recovered, the sig_v (recovery ID) was correct.
@@ -61,11 +82,12 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
 
             // lookup to the sign_verify table
             // || v | r | s | msg_hash | recovered_addr ||
+
             cb.sig_table_lookup(
-                msg_hash_rlc.expr(),
+                cb.word_rlc(msg_hash_word.cells.clone().map(|x| x.expr())),
                 sig_v_rlc.expr() - 27.expr(),
-                sig_r_rlc.expr(),
-                sig_s_rlc.expr(),
+                cb.word_rlc(sig_r_word.cells.clone().map(|x| x.expr())),
+                cb.word_rlc(sig_s_word.cells.clone().map(|x| x.expr())),
                 from_bytes::expr(&recovered_addr_rlc.cells),
             );
         });
@@ -100,9 +122,12 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
 
         Self {
             recovered,
+            msg_hash_word,
             msg_hash_rlc,
             sig_v_rlc,
+            sig_r_word,
             sig_r_rlc,
+            sig_s_word,
             sig_s_rlc,
             recovered_addr_rlc,
             is_success,
@@ -129,6 +154,8 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             let recovered = !aux_data.recovered_addr.is_zero();
             self.recovered
                 .assign(region, offset, Value::known(F::from(recovered as u64)))?;
+            self.msg_hash_word
+                .assign(region, offset, Some(aux_data.msg_hash.to_le_bytes()))?;
             self.msg_hash_rlc.assign(
                 region,
                 offset,
@@ -145,6 +172,10 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                     .keccak_input()
                     .map(|r| rlc::value(&aux_data.sig_v.to_le_bytes(), r)),
             )?;
+            self.sig_r_word
+                .assign(region, offset, Some(aux_data.sig_r.to_le_bytes()))?;
+            self.sig_s_word
+                .assign(region, offset, Some(aux_data.sig_s.to_le_bytes()))?;
             self.sig_r_rlc.assign(
                 region,
                 offset,
