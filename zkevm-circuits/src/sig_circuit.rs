@@ -648,14 +648,16 @@ impl<F: Field> SigCircuit<F> {
         // ================================================
         // step 0. powers of aux parameters
         // ================================================
-        let evm_challenge_powers = iter::successors(Some(Value::known(F::one())), |coeff| {
-            Some(challenges.evm_word() * coeff)
+
+        // use keccak challenges to be consistent with EvmCircuit callop
+        let word_challenge_powers = iter::successors(Some(Value::known(F::one())), |coeff| {
+            Some(challenges.keccak_input() * coeff)
         })
         .take(32)
         .map(|x| QuantumCell::Witness(x))
         .collect_vec();
 
-        log::trace!("evm challenge: {:?} ", challenges.evm_word());
+        log::trace!("word challenge: {:?} ", challenges.keccak_input());
 
         let keccak_challenge_powers = iter::successors(Some(Value::known(F::one())), |coeff| {
             Some(challenges.keccak_input() * coeff)
@@ -676,7 +678,7 @@ impl<F: Field> SigCircuit<F> {
                 .take(32)
                 .cloned()
                 .collect_vec(),
-            evm_challenge_powers.clone(),
+            word_challenge_powers.clone(),
         );
 
         log::trace!("assigned msg hash rlc: {:?}", msg_hash_rlc.value());
@@ -697,19 +699,19 @@ impl<F: Field> SigCircuit<F> {
         let pk_hash_rlc = rlc_chip.gate.inner_product(
             ctx,
             sign_data_decomposed.pk_hash_cells.clone(),
-            evm_challenge_powers.clone(),
+            word_challenge_powers.clone(),
         );
 
         // step 4: r,s rlc
         let r_rlc = rlc_chip.gate.inner_product(
             ctx,
             sign_data_decomposed.r_cells.clone(),
-            evm_challenge_powers.clone(),
+            word_challenge_powers.clone(),
         );
         let s_rlc = rlc_chip.gate.inner_product(
             ctx,
             sign_data_decomposed.s_cells.clone(),
-            evm_challenge_powers,
+            word_challenge_powers,
         );
 
         log::trace!("pk hash rlc halo2ecc: {:?}", pk_hash_rlc.value());
