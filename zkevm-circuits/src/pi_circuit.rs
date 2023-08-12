@@ -55,7 +55,6 @@ use crate::{
     },
     util::rlc_be_bytes,
 };
-use eth_types::geth_types::TxType::L1Msg;
 use halo2_proofs::circuit::{Cell, RegionIndex};
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 use halo2_proofs::{circuit::SimpleFloorPlanner, plonk::Circuit};
@@ -100,25 +99,20 @@ impl Default for PublicData {
 }
 
 impl PublicData {
-    fn get_num_txs(&self) -> BTreeMap<u64, usize> {
+    fn get_num_txs(&self) -> BTreeMap<u64, u64> {
         let mut num_txs_in_blocks = BTreeMap::new();
         // short for total number of l1 msgs popped before
         let mut total_l1_popped = self.start_l1_queue_index;
-        for &block_num in self
-            .block_ctxs
-            .ctxs
-            .iter()
-            .map(|(block_num, ctx)| block_num)
-        {
+        for &block_num in self.block_ctxs.ctxs.iter().map(|(block_num, _)| block_num) {
             let num_l2_txs = self
                 .transactions
                 .iter()
-                .filter(|tx| !tx.tx_type.is_l1_msg() && tx.block_number == *block_num)
-                .count();
+                .filter(|tx| !tx.tx_type.is_l1_msg() && tx.block_number == block_num)
+                .count() as u64;
             let num_l1_msgs = self
                 .transactions
                 .iter()
-                .filter(|tx| tx.tx_type.is_l1_msg() && tx.block_number == *block_num)
+                .filter(|tx| tx.tx_type.is_l1_msg() && tx.block_number == block_num)
                 // tx.nonce alias for queue_index for l1 msg tx
                 .map(|tx| tx.nonce)
                 .max()
@@ -149,7 +143,7 @@ impl PublicData {
                 let num_txs = num_txs_in_blocks
                     .get(block_num)
                     .cloned()
-                    .expect(format!("get num_txs in block {block_num}").as_str())
+                    .unwrap_or_else(|| panic!("get num_txs in block {block_num}"))
                     as u16;
                 iter::empty()
                     // Block Values
@@ -697,7 +691,7 @@ impl<F: Field> PiCircuitConfig<F> {
             let num_txs = num_txs_in_blocks
                 .get(&block_num)
                 .cloned()
-                .expect(format!("get num_txs in block {block_num}").as_str())
+                .unwrap_or_else(|| panic!("get num_txs in block {block_num}"))
                 as u16;
 
             // Assign fields in pi columns and connect them to block table
@@ -726,10 +720,14 @@ impl<F: Field> PiCircuitConfig<F> {
                     false,
                     challenges,
                 )?;
-                block_copy_cells.push((
-                    cells[RPI_CELL_IDX].clone(),
-                    block_table_offset + block_offset,
-                ));
+                // do not copy num_txs to block table as the meaning of num_txs
+                // in block table is len(block.txs), and this is different from num_l1_msgs + num_l2_txs
+                if block_offset != NUM_TXS_OFFSET {
+                    block_copy_cells.push((
+                        cells[RPI_CELL_IDX].clone(),
+                        block_table_offset + block_offset,
+                    ));
+                }
             }
 
             block_table_offset += BLOCK_LEN;
@@ -1354,16 +1352,18 @@ impl<F: Field> PiCircuitConfig<F> {
         let mut cum_num_txs = 0usize;
         let mut block_value_cells = vec![];
         let block_ctxs = &public_data.block_ctxs;
-        let num_txs_in_blocks = public_data.get_num_txs();
+        // let num_txs_in_blocks = public_data.get_num_txs();
         for block_ctx in block_ctxs.ctxs.values().cloned().chain(
             (block_ctxs.ctxs.len()..max_inner_blocks)
                 .into_iter()
                 .map(|_| BlockContext::padding(public_data.chain_id)),
         ) {
-            let num_txs = num_txs_in_blocks
-                .get(&block_ctx.number.as_u64())
-                .cloned()
-                .unwrap();
+            // note that
+            let num_txs = public_data
+                .transactions
+                .iter()
+                .filter(|tx| tx.block_number == block_ctx.number.as_u64())
+                .count();
             let tag = [
                 Coinbase, Timestamp, Number, Difficulty, GasLimit, BaseFee, ChainId, NumTxs,
                 CumNumTxs,
