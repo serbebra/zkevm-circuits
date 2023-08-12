@@ -131,6 +131,46 @@ impl BlockHead {
             eth_block: eth_block.clone(),
         })
     }
+
+    /// Create a new block.
+    pub fn new_with_l1_queue_index(
+        chain_id: u64,
+        history_hashes: Vec<Word>,
+        eth_block: &eth_types::Block<eth_types::Transaction>,
+    ) -> Result<Self, Error> {
+        if eth_block.base_fee_per_gas.is_none() {
+            // FIXME: resolve this once we have proper EIP-1559 support
+            log::debug!(
+                "This does not look like a EIP-1559 block - base_fee_per_gas defaults to zero"
+            );
+        }
+
+        Ok(Self {
+            chain_id,
+            history_hashes,
+            coinbase: eth_block
+                .author
+                .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
+            gas_limit: eth_block.gas_limit.low_u64(),
+            number: eth_block
+                .number
+                .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?
+                .low_u64()
+                .into(),
+            timestamp: eth_block.timestamp,
+            difficulty: if eth_block.difficulty.is_zero() {
+                eth_block
+                    .mix_hash
+                    .unwrap_or_default()
+                    .to_fixed_bytes()
+                    .into()
+            } else {
+                eth_block.difficulty
+            },
+            base_fee: eth_block.base_fee_per_gas.unwrap_or_default(),
+            eth_block: eth_block.clone(),
+        })
+    }
 }
 
 /// Circuit Input related to a block.
