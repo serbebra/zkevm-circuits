@@ -196,7 +196,7 @@ impl PublicData {
 
     fn get_pi(&self) -> H256 {
         let data_hash = H256(keccak256(self.data_bytes()));
-        log::debug!("data hash: {}", hex::encode(&data_hash.to_fixed_bytes()));
+        log::debug!("data hash: {}", hex::encode(data_hash.to_fixed_bytes()));
 
         let pi_bytes = self.pi_bytes(data_hash);
         let pi_hash = keccak256(pi_bytes);
