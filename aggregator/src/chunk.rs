@@ -35,13 +35,38 @@ impl ChunkHash {
     pub fn from_witness_block(block: &Block<Fr>, is_padding: bool) -> Self {
         // <https://github.com/scroll-tech/zkevm-circuits/blob/25dd32aa316ec842ffe79bb8efe9f05f86edc33e/bus-mapping/src/circuit_input_builder.rs#L690>
 
+        let mut total_l1_popped = block.start_l1_queue_index;
+        log::debug!(
+            "ChunkHash::from_witness_block: start_l1_queue_index = {}",
+            total_l1_popped
+        );
         let data_bytes = iter::empty()
+            // .chain(block_headers.iter().flat_map(|(&block_num, block)| {
             .chain(block.context.ctxs.iter().flat_map(|(b_num, b_ctx)| {
-                let num_txs = block
+                let num_l2_txs = block
                     .txs
                     .iter()
-                    .filter(|tx| tx.block_number == *b_num)
-                    .count() as u16;
+                    .filter(|tx| !tx.tx_type.is_l1_msg() && tx.block_number == *b_num)
+                    .count() as u64;
+                let num_l1_msgs = block
+                    .txs
+                    .iter()
+                    .filter(|tx| tx.tx_type.is_l1_msg() && tx.block_number == *b_num)
+                    // tx.nonce alias for queue_index for l1 msg tx
+                    .map(|tx| tx.nonce)
+                    .max()
+                    .map_or(0, |max_queue_index| max_queue_index - total_l1_popped + 1);
+                total_l1_popped += num_l1_msgs;
+
+                let num_txs = (num_l2_txs + num_l1_msgs) as u16;
+                log::debug!(
+                    "ChunkHash::from_witness_block: [block {}] total_l1_popped = {}, num_l1_msgs = {}, num_l2_txs = {}, num_txs = {}",
+                    b_num,
+                    total_l1_popped,
+                    num_l1_msgs,
+                    num_l2_txs,
+                    num_txs,
+                );
 
                 iter::empty()
                     // Block Values
@@ -55,7 +80,7 @@ impl ChunkHash {
             .chain(block.txs.iter().flat_map(|tx| tx.hash.to_fixed_bytes()))
             .collect::<Vec<u8>>();
 
-        let data_hash = H256(keccak256(data_bytes));
+        let data_hash = H256(keccak256(&data_bytes));
 
         let post_state_root = block
             .context
