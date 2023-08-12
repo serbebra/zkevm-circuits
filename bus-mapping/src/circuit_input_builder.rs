@@ -785,6 +785,10 @@ fn keccak_inputs_pi_circuit(
         .chain(transactions.iter().flat_map(|tx| tx.hash.to_fixed_bytes()))
         .collect::<Vec<u8>>();
     let data_hash = H256(keccak256(&data_bytes));
+    log::debug!(
+        "chunk data hash: {}",
+        hex::encode(data_hash.to_fixed_bytes())
+    );
     let after_state_root = block_headers
         .last_key_value()
         .map(|(_, blk)| blk.eth_block.state_root)
