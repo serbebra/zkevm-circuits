@@ -465,6 +465,7 @@ pub fn block_convert<F: Field>(
     })
 }
 
+/// Convert a block struct in bus-mapping to a witness block used in circuits
 pub fn block_convert_with_l1_queue_index<F: Field>(
     block: &circuit_input_builder::Block,
     code_db: &bus_mapping::state_db::CodeDB,
