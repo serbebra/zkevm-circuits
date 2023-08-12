@@ -163,6 +163,8 @@ pub struct Block {
     pub circuits_params: CircuitsParams,
     /// chain id
     pub chain_id: u64,
+    /// start_l1_queue_index
+    pub start_l1_queue_index: u64,
     /// IO to/from the precompiled contract calls.
     pub precompile_events: PrecompileEvents,
 }
@@ -209,6 +211,36 @@ impl Block {
             },
             exp_events: Vec::new(),
             chain_id,
+            circuits_params,
+            ..Default::default()
+        };
+        let info = BlockHead::new(chain_id, history_hashes, eth_block)?;
+        block.headers.insert(info.number.as_u64(), info);
+        Ok(block)
+    }
+
+    /// Create a new block.
+    pub fn new_with_l1_queue_index(
+        chain_id: u64,
+        start_l1_queue_index: u64,
+        history_hashes: Vec<Word>,
+        eth_block: &eth_types::Block<eth_types::Transaction>,
+        circuits_params: CircuitsParams,
+    ) -> Result<Self, Error> {
+        let mut block = Self {
+            block_steps: BlockSteps {
+                end_block_not_last: ExecStep {
+                    exec_state: ExecState::EndBlock,
+                    ..ExecStep::default()
+                },
+                end_block_last: ExecStep {
+                    exec_state: ExecState::EndBlock,
+                    ..ExecStep::default()
+                },
+            },
+            exp_events: Vec::new(),
+            chain_id,
+            start_l1_queue_index,
             circuits_params,
             ..Default::default()
         };

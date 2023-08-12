@@ -103,7 +103,7 @@ impl PublicData {
         let mut num_txs_in_blocks = BTreeMap::new();
         // short for total number of l1 msgs popped before
         let mut total_l1_popped = self.start_l1_queue_index;
-        for &block_num in self.block_ctxs.ctxs.iter().map(|(block_num, _)| block_num) {
+        for &block_num in self.block_ctxs.ctxs.keys() {
             let num_l2_txs = self
                 .transactions
                 .iter()
@@ -583,11 +583,13 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
                     meta.query_advice(cum_num_txs, Rotation::cur()) + num_txs,
                 );
 
-                cb.require_equal(
-                    "block_table.value' == cum_num_txs' if block_table.tag == Nums",
-                    meta.query_advice(block_table.value, Rotation::next()),
-                    meta.query_advice(cum_num_txs, Rotation::next()),
-                );
+                cb.condition(meta.query_fixed(is_block_num_txs, Rotation::cur()), |cb| {
+                    cb.require_equal(
+                        "block_table.value' == cum_num_txs' if block_table.tag == Nums",
+                        meta.query_advice(block_table.value, Rotation::next()),
+                        meta.query_advice(cum_num_txs, Rotation::next()),
+                    );
+                });
 
                 // NOTE: cum_num_txs is already enforced to start with 0 using copy constraint.
 
@@ -688,11 +690,7 @@ impl<F: Field> PiCircuitConfig<F> {
         {
             let is_rpi_padding = i >= block_values.ctxs.len();
             let block_num = block.number.as_u64();
-            let num_txs = num_txs_in_blocks
-                .get(&block_num)
-                .cloned()
-                .unwrap_or_else(|| panic!("get num_txs in block {block_num}"))
-                as u16;
+            let num_txs = num_txs_in_blocks.get(&block_num).cloned().unwrap_or(0) as u16;
 
             // Assign fields in pi columns and connect them to block table
             let fields = vec![
@@ -721,7 +719,8 @@ impl<F: Field> PiCircuitConfig<F> {
                     challenges,
                 )?;
                 // do not copy num_txs to block table as the meaning of num_txs
-                // in block table is len(block.txs), and this is different from num_l1_msgs + num_l2_txs
+                // in block table is len(block.txs), and this is different from num_l1_msgs +
+                // num_l2_txs
                 if block_offset != NUM_TXS_OFFSET {
                     block_copy_cells.push((
                         cells[RPI_CELL_IDX].clone(),
