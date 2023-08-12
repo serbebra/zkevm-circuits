@@ -744,6 +744,10 @@ fn keccak_inputs_pi_circuit(
     transactions: &[Transaction],
 ) -> Vec<Vec<u8>> {
     let mut total_l1_popped = start_l1_queue_index;
+    log::debug!(
+        "start_l1_queue_index in keccak_inputs: {}",
+        start_l1_queue_index
+    );
     let data_bytes = iter::empty()
         .chain(block_headers.iter().flat_map(|(&block_num, block)| {
             let num_l2_txs = transactions
@@ -759,7 +763,15 @@ fn keccak_inputs_pi_circuit(
                 .map_or(0, |max_queue_index| max_queue_index - total_l1_popped + 1);
             total_l1_popped += num_l1_msgs;
 
-            let num_txs = num_l2_txs + num_l1_msgs;
+            let num_txs = (num_l2_txs + num_l1_msgs) as u16;
+            log::debug!(
+                "[block {}] total_l1_popped: {}, num_l1_msgs: {}, num_l2_txs: {}, num_txs: {}",
+                block_num,
+                total_l1_popped,
+                num_l1_msgs,
+                num_l2_txs,
+                num_txs,
+            );
 
             iter::empty()
                 // Block Values

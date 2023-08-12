@@ -103,6 +103,7 @@ impl PublicData {
         let mut num_txs_in_blocks = BTreeMap::new();
         // short for total number of l1 msgs popped before
         let mut total_l1_popped = self.start_l1_queue_index;
+        log::debug!("start_l1_queue_index: {}", total_l1_popped);
         for &block_num in self.block_ctxs.ctxs.keys() {
             let num_l2_txs = self
                 .transactions
@@ -693,6 +694,7 @@ impl<F: Field> PiCircuitConfig<F> {
             let is_rpi_padding = i >= block_values.ctxs.len();
             let block_num = block.number.as_u64();
             let num_txs = num_txs_in_blocks.get(&block_num).cloned().unwrap_or(0) as u16;
+            log::debug!("num_txs in block {}: {}", block_num, num_txs);
 
             // Assign fields in pi columns and connect them to block table
             let fields = vec![
