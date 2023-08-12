@@ -289,7 +289,12 @@ impl Block {
             circuits_params,
             ..Default::default()
         };
-        let info = BlockHead::new(chain_id, history_hashes, eth_block)?;
+        let info = BlockHead::new_with_l1_queue_index(
+            chain_id,
+            start_l1_queue_index,
+            history_hashes,
+            eth_block,
+        )?;
         block.headers.insert(info.number.as_u64(), info);
         Ok(block)
     }
