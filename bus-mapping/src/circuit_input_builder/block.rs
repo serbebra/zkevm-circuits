@@ -88,6 +88,8 @@ pub struct BlockHead {
     pub difficulty: Word,
     /// base fee
     pub base_fee: Word,
+    /// start l1 queue index
+    pub start_l1_queue_index: u64,
     /// Original block from geth
     pub eth_block: eth_types::Block<eth_types::Transaction>,
 }
@@ -108,6 +110,7 @@ impl BlockHead {
         Ok(Self {
             chain_id,
             history_hashes,
+            start_l1_queue_index: 0,
             coinbase: eth_block
                 .author
                 .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
@@ -135,6 +138,7 @@ impl BlockHead {
     /// Create a new block.
     pub fn new_with_l1_queue_index(
         chain_id: u64,
+        start_l1_queue_index: u64,
         history_hashes: Vec<Word>,
         eth_block: &eth_types::Block<eth_types::Transaction>,
     ) -> Result<Self, Error> {
@@ -148,6 +152,7 @@ impl BlockHead {
         Ok(Self {
             chain_id,
             history_hashes,
+            start_l1_queue_index,
             coinbase: eth_block
                 .author
                 .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
