@@ -471,10 +471,13 @@ pub fn block_convert_with_l1_queue_index<F: Field>(
     code_db: &bus_mapping::state_db::CodeDB,
     start_l1_queue_index: u64,
 ) -> Result<Block<F>, Error> {
-    let mut block = block_convert(block, code_db)?;
-    block.start_l1_queue_index = start_l1_queue_index;
+    let mut witness_block = block_convert(block, code_db)?;
+    witness_block.start_l1_queue_index = start_l1_queue_index;
+    // keccak_inputs_pi_circuit needs correct start_l1_queue_index
+    // TODO kunxian
+    witness_block.keccak_inputs = circuit_input_builder::keccak_inputs(block, code_db)?;
 
-    Ok(block)
+    Ok(witness_block)
 }
 
 /// Attach witness block with mpt states
