@@ -1226,7 +1226,6 @@ mod test {
         }
     }
 
-    #[ignore]
     #[test]
     fn callop_simple() {
         let stacks = [
