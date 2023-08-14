@@ -9,7 +9,7 @@ use crate::{
         AccountFieldTag, BytecodeFieldTag, CallContextFieldTag, RwTableTag, TxContextFieldTag,
         TxLogFieldTag, TxReceiptFieldTag,
     },
-    util::{build_tx_log_expression, Challenges, Expr, MayStaticString},
+    util::{build_tx_log_expression, Challenges, Expr},
 };
 use bus_mapping::{
     state_db::EMPTY_CODE_HASH_LE,
@@ -1508,11 +1508,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     pub(crate) fn annotation<R>(
         &mut self,
-        annotation: impl ToOwned<Owned = String>,
+        annotation: impl AsRef<str>,
         constraint: impl FnOnce(&mut Self) -> R,
     ) -> R {
         #[cfg(feature = "debug-annotations")]
-        self.annotations.push(annotation.to_owned());
+        self.annotations.push(annotation.as_ref().to_string());
         let ret = constraint(self);
         #[cfg(feature = "debug-annotations")]
         self.annotations.pop();

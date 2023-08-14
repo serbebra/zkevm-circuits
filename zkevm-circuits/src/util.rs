@@ -1,5 +1,5 @@
 //! Common utility traits and functions.
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 use bus_mapping::evm::OpcodeId;
 use halo2_proofs::{
