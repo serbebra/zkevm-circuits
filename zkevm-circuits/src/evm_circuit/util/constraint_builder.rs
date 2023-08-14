@@ -25,6 +25,7 @@ use halo2_proofs::{
     },
 };
 use itertools::Itertools;
+use std::fmt::Display;
 
 use super::{rlc, CachedRegion, CellType, StoredExpression};
 
@@ -313,9 +314,7 @@ pub(crate) struct EVMConstraintBuilder<'a, F> {
 
 impl<'a, F: Field> ConstrainBuilderCommon<F> for EVMConstraintBuilder<'a, F> {
     fn add_constraint(&mut self, name: &'static str, constraint: Expression<F>) {
-        #[cfg(feature = "debug-annotations")]
-        let name =
-            Box::leak(format!("{}: {}", self.annotations.iter().join("::"), name).into_boxed_str());
+        let name = self.prefix_annotation_static(name);
         let constraint = self.split_expression(
             name,
             constraint * self.condition_expr(),
@@ -1517,6 +1516,22 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         #[cfg(feature = "debug-annotations")]
         self.annotations.pop();
         ret
+    }
+
+    pub(crate) fn prefix_annotation(&self, name: impl Display) -> String {
+        if cfg!(feature = "debug-annotations") {
+            format!("{}: {}", self.annotations.iter().join("::"), name)
+        } else {
+            format!("{}", name)
+        }
+    }
+
+    pub(crate) fn prefix_annotation_static(&self, name: &'static str) -> &'static str {
+        if cfg!(feature = "debug-annotations") {
+            Box::leak(self.prefix_annotation(name).into_boxed_str())
+        } else {
+            name
+        }
     }
 
     /// Constraints the next step, given mutually exclusive conditions to determine the next state
