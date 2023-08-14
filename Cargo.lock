@@ -2933,7 +2933,6 @@ dependencies = [
 name = "mpt-zktrie"
 version = "0.1.0"
 dependencies = [
- "bus-mapping",
  "env_logger 0.9.3",
  "eth-types",
  "halo2-mpt-circuits",

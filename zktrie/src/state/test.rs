@@ -245,8 +245,9 @@ fn witgen_update_one() {
             .unwrap()
             .as_slice(),
     );
-    let (existed, start_state) = state.state().get_account(&target_addr);
-    assert!(existed, "we picked an existed account");
+    let start_state = state.state().get(&target_addr);
+    assert!(start_state.is_some(), "we picked an existed account");
+    let start_state = start_state.unwrap();
 
     let trace = w.handle_new_state(
         MPTProofType::BalanceChanged,
@@ -267,8 +268,8 @@ fn witgen_update_one() {
         MPTProofType::StorageChanged,
         target_addr,
         U256::from(1u32),
-        if let Some(v) = start_state.storage.get(&U256::zero()) {
-            *v
+        if let Some(v) = state.storage().get(&(target_addr, U256::zero())) {
+            *v.as_ref()
         } else {
             U256::default()
         },

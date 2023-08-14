@@ -3,7 +3,7 @@ use super::{
     builder::{extend_address_to_h256, AccountData, BytesArray, CanRead, TrieProof},
     MPTProofType, ZktrieState,
 };
-use bus_mapping::{state_db::CodeDB, util::KECCAK_CODE_HASH_ZERO};
+// use bus_mapping::{state_db::CodeDB, util::KECCAK_CODE_HASH_ZERO};
 use eth_types::{Address, Hash, Word, H256, U256};
 use halo2_proofs::halo2curves::group::ff::PrimeField;
 use mpt_circuits::serde::{
@@ -43,38 +43,37 @@ pub struct WitnessGenerator {
 
 impl From<&ZktrieState> for WitnessGenerator {
     fn from(state: &ZktrieState) -> Self {
-        let sdb = &state.sdb;
-
         let trie = state.zk_db.borrow_mut().new_trie(&state.trie_root).unwrap();
+        let accounts = state.account_states.clone();
 
-        let accounts: HashMap<_, _> = state
-            .accounts
-            .iter()
-            .map(|(addr, storage_root)| {
-                let (existed, acc_data) = sdb.get_account(addr);
-                assert!(
-                    existed,
-                    "expected to be consistented between records in sdb and account root"
-                );
-                (*addr, acc_data, storage_root)
-            })
-            // filter out the account data which is empty can provide update applying some
-            // convenient
-            .filter(|(_, acc_data, _)| !acc_data.is_empty())
-            .map(|(addr, acc_data, storage_root)| {
-                (
-                    addr,
-                    AccountData {
-                        nonce: acc_data.nonce.as_u64(),
-                        balance: acc_data.balance,
-                        poseidon_code_hash: acc_data.code_hash,
-                        keccak_code_hash: acc_data.keccak_code_hash,
-                        code_size: acc_data.code_size.as_u64(),
-                        storage_root: H256::from(storage_root),
-                    },
-                )
-            })
-            .collect();
+        // let accounts: HashMap<_, _> = state
+        //     .accounts
+        //     .iter()
+        //     .map(|(addr, storage_root)| {
+        //         let (existed, acc_data) = sdb.get_account(addr);
+        //         assert!(
+        //             existed,
+        //             "expected to be consistented between records in sdb and account root"
+        //         );
+        //         (*addr, acc_data, storage_root)
+        //     })
+        //     // filter out the account data which is empty can provide update applying some
+        //     // convenient
+        //     .filter(|(_, acc_data, _)| !acc_data.is_empty())
+        //     .map(|(addr, acc_data, storage_root)| {
+        //         (
+        //             addr,
+        //             AccountData {
+        //                 nonce: acc_data.nonce.as_u64(),
+        //                 balance: acc_data.balance,
+        //                 poseidon_code_hash: acc_data.code_hash,
+        //                 keccak_code_hash: acc_data.keccak_code_hash,
+        //                 code_size: acc_data.code_size.as_u64(),
+        //                 storage_root: H256::from(storage_root),
+        //             },
+        //         )
+        //     })
+        //     .collect();
 
         let storages: HashMap<_, _> = state
             .accounts
@@ -344,14 +343,12 @@ impl WitnessGenerator {
                     MPTProofType::CodeHashExists => {
                         let mut code_hash = [0u8; 32];
                         old_val.to_big_endian(code_hash.as_mut_slice());
-                        if H256::from(code_hash) != acc_data.poseidon_code_hash {
-                            if H256::from(code_hash).is_zero()
-                                && acc_data.keccak_code_hash == *KECCAK_CODE_HASH_ZERO
-                            {
-                                log::trace!("codehash 0->keccak(nil)");
-                            } else {
-                                debug_assert_eq!(H256::from(code_hash), acc_data.keccak_code_hash);
-                            }
+                        if H256::from(code_hash) != acc_data.keccak_code_hash {
+                            log::trace!(
+                                "codehash {} ->keccak {}(nil)",
+                                H256::from(code_hash),
+                                acc_data.keccak_code_hash
+                            );
                         }
                         new_val.to_big_endian(code_hash.as_mut_slice());
                         acc_data.keccak_code_hash = H256::from(code_hash);
@@ -360,16 +357,11 @@ impl WitnessGenerator {
                         let mut code_hash = [0u8; 32];
                         old_val.to_big_endian(code_hash.as_mut_slice());
                         if H256::from(code_hash) != acc_data.poseidon_code_hash {
-                            if H256::from(code_hash).is_zero()
-                                && acc_data.poseidon_code_hash == CodeDB::empty_code_hash()
-                            {
-                                log::trace!("codehash 0->poseidon(nil)");
-                            } else {
-                                debug_assert_eq!(
-                                    H256::from(code_hash),
-                                    acc_data.poseidon_code_hash
-                                );
-                            }
+                            log::trace!(
+                                "codehash {} ->poseidon {}(nil)",
+                                H256::from(code_hash),
+                                acc_data.poseidon_code_hash
+                            );
                         }
                         new_val.to_big_endian(code_hash.as_mut_slice());
                         acc_data.poseidon_code_hash = H256::from(code_hash);
