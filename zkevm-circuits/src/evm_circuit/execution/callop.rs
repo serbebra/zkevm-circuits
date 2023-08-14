@@ -1278,7 +1278,7 @@ mod test {
                 ..Default::default()
             },
         ];
-        let callees = [callee(bytecode! {})];
+        let callees = [callee(bytecode! {}), callee(bytecode! { STOP })];
 
         TEST_CALL_OPCODES
             .iter()
