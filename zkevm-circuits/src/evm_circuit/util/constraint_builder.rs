@@ -315,7 +315,7 @@ impl<'a, F: Field> ConstrainBuilderCommon<F> for EVMConstraintBuilder<'a, F> {
     fn add_constraint(&mut self, name: &'static str, constraint: Expression<F>) {
         #[cfg(feature = "debug-annotations")]
         let name =
-            Box::leak(format!("{}: {}", self.annotations.iter().join(">"), name).into_boxed_str());
+            Box::leak(format!("{}: {}", self.annotations.iter().join("::"), name).into_boxed_str());
         let constraint = self.split_expression(
             name,
             constraint * self.condition_expr(),
