@@ -276,7 +276,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         let gas_cost = call_gadget.gas_cost_expr(is_warm_prev.expr(), is_call.expr());
         // Apply EIP 150
         let gas_available = cb.curr.state.gas_left.expr() - gas_cost.clone();
-        let one_64th_gas = ConstantDivisionGadget::construct(cb, gas_available.clone(), 64);
+        let one_64th_gas = cb.annotation("one_64th_gas", |cb| {
+            ConstantDivisionGadget::construct(cb, gas_available.clone(), 64)
+        });
         let all_but_one_64th_gas = gas_available - one_64th_gas.quotient();
         let capped_callee_gas_left =
             MinMaxGadget::construct(cb, call_gadget.gas_expr(), all_but_one_64th_gas.clone());
