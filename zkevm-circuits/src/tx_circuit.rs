@@ -218,9 +218,6 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         let block_num = meta.advice_column();
 
         let total_l1_popped_before = meta.advice_column();
-        // num_l1_msgs takes skipped L1Msg tx into account.
-        let num_l1_msgs_acc = meta.advice_column();
-        let num_l2_txs_acc = meta.advice_column();
         // num_all_txs = num_l1_msgs + num_l2_txs
         let num_all_txs_acc = meta.advice_column();
 
@@ -1105,8 +1102,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             tx_nonce,
             block_num,
             block_num_unchanged,
-            num_l1_msgs: num_l1_msgs_acc,
-            num_l2_txs: num_l2_txs_acc,
+            num_all_txs_acc,
             total_l1_popped_before,
             is_l1_msg,
             is_chain_id,
@@ -1923,7 +1919,6 @@ impl<F: Field> TxCircuit<F> {
                     None,
                     None,
                     None,
-                    None,
                 )?;
 
                 // Assign all tx fields except for call data
@@ -2183,8 +2178,7 @@ impl<F: Field> TxCircuit<F> {
                             None,
                             Some(cur_block_num),
                             Some(next_block_num),
-                            Some(num_l1_msgs),
-                            Some(num_l2_txs),
+                            Some(num_all_txs_acc),
                             Some(total_l1_popped_before),
                         )?;
                         let sv_address: F = sign_data.get_addr().to_scalar().unwrap();
@@ -2240,7 +2234,6 @@ impl<F: Field> TxCircuit<F> {
                             None,
                             Some(is_final),
                             Some(calldata_gas_cost),
-                            None,
                             None,
                             None,
                             None,
