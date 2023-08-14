@@ -190,7 +190,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         let is_insufficient_balance =
             LtWordGadget::construct(cb, &caller_balance_word, &call_gadget.value);
         // depth < 1025
-        let is_depth_ok = LtGadget::construct(cb, depth.expr(), 1025.expr());
+        let is_depth_ok = cb.annotation("is_depth_ok", |cb| {
+            LtGadget::construct(cb, depth.expr(), 1025.expr())
+        });
 
         let is_precheck_ok = and::expr([
             is_depth_ok.expr(),
@@ -208,8 +210,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         // whether the call is to a precompiled contract.
         // precompile contracts are stored from address 0x01 to 0x09.
         let is_code_address_zero = IsZeroGadget::construct(cb, call_gadget.callee_address_expr());
-        let is_precompile_lt =
-            LtGadget::construct(cb, call_gadget.callee_address_expr(), 0x0A.expr());
+        let is_precompile_lt = cb.annotation("is_precompile_lt", |cb| {
+            LtGadget::construct(cb, call_gadget.callee_address_expr(), 0x0A.expr())
+        });
         let is_precompile = and::expr([
             not::expr(is_code_address_zero.expr()),
             is_precompile_lt.expr(),
