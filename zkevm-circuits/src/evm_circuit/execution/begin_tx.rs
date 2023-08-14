@@ -214,8 +214,12 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             is_precompile_lt.expr(),
         ]);
 
-        let tx_call_data_word_length =
-            ConstantDivisionGadget::construct(cb, tx_call_data_length.expr() + 31.expr(), 32);
+        let tx_call_data_word_length = ConstantDivisionGadget::construct(
+            cb,
+            tx_call_data_length.expr() + 31.expr(),
+            32,
+            "BeginTxGadget::tx_call_data_word_length",
+        );
 
         // TODO1: Take gas cost of access list (EIP 2930) into consideration.
         // Use intrinsic gas

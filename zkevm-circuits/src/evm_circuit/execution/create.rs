@@ -339,6 +339,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             cb,
             init_code.length() + (N_BYTES_WORD - 1).expr(),
             N_BYTES_WORD as u64,
+            "CreateGadget::init_code_word_size",
         );
         let keccak_gas_cost = init_code_word_size.quotient()
             * if IS_CREATE2 {
@@ -350,7 +351,12 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
         let gas_cost = GasCost::CREATE.expr() + memory_expansion.gas_cost() + keccak_gas_cost;
         let gas_remaining = cb.curr.state.gas_left.expr() - gas_cost.clone();
-        let gas_left = ConstantDivisionGadget::construct(cb, gas_remaining.clone(), 64);
+        let gas_left = ConstantDivisionGadget::construct(
+            cb,
+            gas_remaining.clone(),
+            64,
+            "CreateGadget::gas_left",
+        );
         let callee_gas_left = gas_remaining - gas_left.quotient();
         for (field_tag, value) in [
             (

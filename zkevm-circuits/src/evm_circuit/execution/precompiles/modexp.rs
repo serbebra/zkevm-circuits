@@ -570,7 +570,12 @@ impl<F: Field> ModExpGasCost<F> {
         m_size: &SizeRepresent<F>,
     ) -> Self {
         let max_length = MinMaxGadget::construct(cb, b_size.value(), m_size.value());
-        let words = ConstantDivisionGadget::construct(cb, max_length.max() + 7.expr(), 8);
+        let words = ConstantDivisionGadget::construct(
+            cb,
+            max_length.max() + 7.expr(),
+            8,
+            "ModExpGasCost::words",
+        );
         let multiplication_complexity = words.quotient() * words.quotient();
         let exp_is_zero = IsZeroGadget::construct(cb, "modexp: exponent", expr_from_bytes(exp));
 
@@ -610,8 +615,12 @@ impl<F: Field> ModExpGasCost<F> {
             0.expr(),
             exp_bit_length.expr() - 1.expr(),
         );
-        let calc_gas =
-            ConstantDivisionGadget::construct(cb, multiplication_complexity * iteration_count, 3);
+        let calc_gas = ConstantDivisionGadget::construct(
+            cb,
+            multiplication_complexity * iteration_count,
+            3,
+            "ModExpGasCost::calc_gas",
+        );
         let dynamic_gas = MinMaxGadget::construct(
             cb,
             GasCost::PRECOMPILE_MODEXP_MIN.expr(),

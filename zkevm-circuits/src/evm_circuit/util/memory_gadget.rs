@@ -380,7 +380,12 @@ pub(crate) struct MemoryWordSizeGadget<F> {
 
 impl<F: Field> MemoryWordSizeGadget<F> {
     pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, address: Expression<F>) -> Self {
-        let memory_word_size = ConstantDivisionGadget::construct(cb, address + 31.expr(), 32);
+        let memory_word_size = ConstantDivisionGadget::construct(
+            cb,
+            address + 31.expr(),
+            32,
+            "MemoryWordSizeGadget::memory_word_size",
+        );
 
         Self { memory_word_size }
     }
@@ -765,11 +770,13 @@ impl<F: Field, const N: usize, const N_BYTES_MEMORY_WORD_SIZE: usize>
             cb,
             curr_memory_word_size.clone() * curr_memory_word_size.clone(),
             GasCost::MEMORY_EXPANSION_QUAD_DENOMINATOR.as_u64(),
+            "MemoryExpansionGadget::curr_quad_memory_cost",
         );
         let next_quad_memory_cost = ConstantDivisionGadget::construct(
             cb,
             next_memory_word_size.clone() * next_memory_word_size.clone(),
             GasCost::MEMORY_EXPANSION_QUAD_DENOMINATOR.as_u64(),
+            "MemoryExpansionGadget::next_quad_memory_cost",
         );
 
         // Calculate the gas cost for the memory expansion.

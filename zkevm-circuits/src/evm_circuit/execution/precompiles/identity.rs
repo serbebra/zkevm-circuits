@@ -57,6 +57,7 @@ impl<F: Field> ExecutionGadget<F> for IdentityGadget<F> {
             cb,
             call_data_length.expr() + (N_BYTES_WORD - 1).expr(),
             N_BYTES_WORD as u64,
+            "IdentityGadget::input_word_size",
         );
         cb.require_equal(
             "ecrcover: gas cost",

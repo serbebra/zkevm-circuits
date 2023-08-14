@@ -33,6 +33,7 @@ impl<F: Field, const N_BYTES: usize> ConstantDivisionGadget<F, N_BYTES> {
         cb: &mut EVMConstraintBuilder<F>,
         numerator: Expression<F>,
         denominator: u64,
+        name: &str,
     ) -> Self {
         assert!(N_BYTES * 8 + 64 - denominator.leading_zeros() as usize <= MAX_N_BYTES_INTEGER * 8);
         let quotient = cb.query_cell_with_type(CellType::storage_for_expr(&numerator));
@@ -47,7 +48,12 @@ impl<F: Field, const N_BYTES: usize> ConstantDivisionGadget<F, N_BYTES> {
 
         // Check if the division was done correctly
         cb.require_equal(
-            "numerator - remainder == quotient ⋅ denominator",
+            Box::leak(
+                format!(
+                    "IsZeroGadget(\"{name}\"): numerator - remainder == quotient ⋅ denominator"
+                )
+                .into_boxed_str(),
+            ),
             numerator - remainder.expr(),
             quotient.expr() * denominator.expr(),
         );
@@ -132,8 +138,12 @@ mod tests {
     {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
             let a = cb.query_cell();
-            let constdiv_gadget =
-                ConstantDivisionGadget::<F, N_BYTES>::construct(cb, a.expr(), DENOMINATOR);
+            let constdiv_gadget = ConstantDivisionGadget::<F, N_BYTES>::construct(
+                cb,
+                a.expr(),
+                DENOMINATOR,
+                "MathGadgetTestContainer::constdiv_gadget",
+            );
 
             cb.require_equal(
                 "correct reminder",

@@ -81,6 +81,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             cb,
             gas_used.clone(),
             MAX_REFUND_QUOTIENT_OF_GAS_USED as u64,
+            "EndTxGadget::max_refund",
         );
         let refund = cb.query_cell();
         cb.tx_refund_read(tx_id.expr(), refund.expr());
