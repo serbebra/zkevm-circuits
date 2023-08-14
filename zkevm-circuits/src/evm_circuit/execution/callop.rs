@@ -507,8 +507,13 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             ]),
             |cb| {
                 // Save caller's call state
-                for field_tag in [
+                cb.call_context_lookup(
+                    true.expr(),
+                    None,
                     CallContextFieldTag::LastCalleeId,
+                    callee_call_id.expr(),
+                );
+                for field_tag in [
                     CallContextFieldTag::LastCalleeReturnDataOffset,
                     CallContextFieldTag::LastCalleeReturnDataLength,
                 ] {
@@ -558,8 +563,13 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         // handle ErrDepth or ErrInsufficientBalance step transition
         cb.condition(not::expr(is_precheck_ok.expr()), |cb| {
             // Save caller's call state
-            for field_tag in [
+            cb.call_context_lookup(
+                true.expr(),
+                None,
                 CallContextFieldTag::LastCalleeId,
+                callee_call_id.expr(),
+            );
+            for field_tag in [
                 CallContextFieldTag::LastCalleeReturnDataOffset,
                 CallContextFieldTag::LastCalleeReturnDataLength,
             ] {
