@@ -13,7 +13,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::{collections::HashMap, env::set_var};
 
-use eth_types::{address, bytecode, geth_types::GethData, word, Bytecode, ToWord, Word};
+use eth_types::{address, bytecode, geth_types::GethData, word, Bytecode, ToWord, Word, l2_types::BlockTrace};
 
 #[test]
 fn super_circuit_degree() {
@@ -30,7 +30,7 @@ fn test_super_circuit<
     const MAX_INNER_BLOCKS: usize,
     const MOCK_RANDOMNESS: u64,
 >(
-    geth_data: GethData,
+    l2_trace: BlockTrace,
     circuits_params: CircuitsParams,
 ) {
     set_var("COINBASE", "0x0000000000000000000000000000000000000000");
@@ -39,6 +39,8 @@ fn test_super_circuit<
     MOCK_DIFFICULTY.to_big_endian(&mut difficulty_be_bytes);
     set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
 
+    let eth_block: EthBlock = block_trace.clone().into();
+    
     let block_data = BlockData::new_from_geth_data_with_params(geth_data, circuits_params);
     let mut builder = block_data.new_circuit_input_builder();
     builder

@@ -4,6 +4,8 @@ use eth_types::{
     geth_types::{Account, BlockConstants, Transaction},
     Address, Error, GethExecTrace, Word,
 };
+#[cfg(feature="scroll")]
+use eth_types::l2_types::BlockTrace;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -91,6 +93,23 @@ impl ChainConfig {
 pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
     // Get the trace
     let trace_string = geth_utils::trace(&serde_json::to_string(&config).unwrap()).map_err(
+        |error| match error {
+            geth_utils::Error::TracingError(error) => Error::TracingError(error),
+        },
+    )?;
+
+    log::trace!("trace: {}", trace_string);
+
+    let trace = serde_json::from_str(&trace_string).map_err(Error::SerdeError)?;
+    Ok(trace)
+}
+
+
+/// Creates a l2-trace for the specified config
+#[cfg(feature="scroll")]
+pub fn l2trace(config: &TraceConfig) -> Result<BlockTrace, Error> {
+    // Get the trace
+    let trace_string = geth_utils::l2trace(&serde_json::to_string(&config).unwrap()).map_err(
         |error| match error {
             geth_utils::Error::TracingError(error) => Error::TracingError(error),
         },

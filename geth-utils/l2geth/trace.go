@@ -214,10 +214,7 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 
 	traceEnv := core.CreateTraceEnvDirect(
 		&chainConfig,
-		&vm.LogConfig{
-			EnableMemory:     true,
-			EnableReturnData: true,
-		},
+		config.LoggerConfig,
 		blockCtx,
 		blockCtx.Coinbase,
 		stateDB,
