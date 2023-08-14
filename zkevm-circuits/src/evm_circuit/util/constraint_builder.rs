@@ -308,7 +308,7 @@ pub(crate) struct EVMConstraintBuilder<'a, F> {
     stored_expressions: Vec<StoredExpression<F>>,
     pub(crate) max_inner_degree: (&'static str, usize),
     #[cfg(feature = "debug-annotations")]
-    annotations: Vec<MayStaticString>,
+    annotations: Vec<String>,
 }
 
 impl<'a, F: Field> ConstrainBuilderCommon<F> for EVMConstraintBuilder<'a, F> {
@@ -1508,11 +1508,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     pub(crate) fn annotation<R>(
         &mut self,
-        annotation: impl Into<MayStaticString>,
+        annotation: impl ToOwned<Owned = String>,
         constraint: impl FnOnce(&mut Self) -> R,
     ) -> R {
         #[cfg(feature = "debug-annotations")]
-        self.annotations.push(annotation.into());
+        self.annotations.push(annotation.to_owned());
         let ret = constraint(self);
         #[cfg(feature = "debug-annotations")]
         self.annotations.pop();
