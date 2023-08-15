@@ -35,6 +35,7 @@ func CreateTrace(configStr *C.char) *C.char {
 	return C.CString(string(bytes))
 }
 
+//export CreateL2Trace
 func CreateL2Trace(configStr *C.char) *C.char {
 	//fmt.Printf("%s", C.GoString(configStr))
 	var config TraceConfig
