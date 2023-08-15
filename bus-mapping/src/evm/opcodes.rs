@@ -754,10 +754,7 @@ pub fn gen_begin_tx_ops(
                     CallContextField::CallDataOffset,
                     call.call_data_offset.into(),
                 ),
-                (
-                    CallContextField::CallDataLength,
-                    state.tx.input.len().into(),
-                ),
+                (CallContextField::CallDataLength, 0.into()),
                 (CallContextField::Value, call.value),
                 (CallContextField::IsStatic, (call.is_static as usize).into()),
                 (CallContextField::LastCalleeId, 0.into()),
@@ -858,6 +855,10 @@ pub fn gen_end_tx_ops(state: &mut CircuitInputStateRef) -> Result<ExecStep, Erro
         CallContextField::IsPersistent,
         Word::from(call.is_persistent as u8),
     );
+
+    if !state.tx.tx_type.is_l1_msg() {
+        gen_tx_l1_fee_ops(state, &mut exec_step);
+    }
 
     let refund = state.sdb.refund();
     state.push_op(
