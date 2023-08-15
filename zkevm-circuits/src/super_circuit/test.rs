@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 pub use super::*;
 use bus_mapping::{
     circuit_input_builder::CircuitInputBuilder,
@@ -12,8 +13,8 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::env::set_var;
 
-use eth_types::{address, bytecode, word, Bytecode, ToWord, Word, l2_types::BlockTrace};
 use crate::witness::block_apply_mpt_state;
+use eth_types::{address, bytecode, l2_types::BlockTrace, word, Bytecode, ToWord, Word};
 
 #[test]
 fn super_circuit_degree() {
@@ -40,13 +41,12 @@ fn test_super_circuit<
     MOCK_DIFFICULTY.to_big_endian(&mut difficulty_be_bytes);
     set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
 
-    let mut builder = CircuitInputBuilder::new_from_l2_trace(
-        circuits_params, 
-        &l2_trace, 
-        false,
-    ).expect("could not handle block tx");
+    let mut builder = CircuitInputBuilder::new_from_l2_trace(circuits_params, &l2_trace, false)
+        .expect("could not handle block tx");
 
-    builder.finalize_building().expect("could not finalize building block");
+    builder
+        .finalize_building()
+        .expect("could not finalize building block");
 
     let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
     block.randomness = Fr::from(MOCK_RANDOMNESS);
@@ -117,7 +117,8 @@ fn block_1tx_deploy() -> BlockTrace {
         |block, _tx| block.number(0xcafeu64),
     )
     .unwrap()
-    .l2_trace().clone()
+    .l2_trace()
+    .clone()
 }
 
 fn block_1tx_ctx() -> TestContext<2, 1> {
@@ -152,7 +153,7 @@ fn block_1tx_ctx() -> TestContext<2, 1> {
         },
         |block, _tx| block.number(0xcafeu64),
     )
-    .unwrap()    
+    .unwrap()
 }
 
 #[cfg(feature = "scroll")]
@@ -377,8 +378,8 @@ fn block_ec_ops() -> BlockTrace {
         |block, _tx| block.number(0xcafeu64),
     )
     .unwrap()
-    .l2_trace().clone()
-    
+    .l2_trace()
+    .clone()
 }
 
 const TEST_MOCK_RANDOMNESS: u64 = 0x100;

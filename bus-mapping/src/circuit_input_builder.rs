@@ -6,11 +6,11 @@ mod block;
 mod call;
 mod execution;
 mod input_state_ref;
+#[cfg(feature = "scroll")]
+mod l2;
 #[cfg(test)]
 mod tracer_tests;
 mod transaction;
-#[cfg(feature="scroll")]
-mod l2;
 
 use self::access::gen_state_access_trace;
 pub use self::block::BlockHead;
@@ -48,6 +48,8 @@ use ethers_core::utils::keccak256;
 pub use input_state_ref::CircuitInputStateRef;
 use itertools::Itertools;
 use log::warn;
+#[cfg(feature = "scroll")]
+use mpt_zktrie::state::ZktrieState;
 use std::{
     collections::{BTreeMap, HashMap},
     iter,
@@ -55,8 +57,6 @@ use std::{
 pub use transaction::{
     Transaction, TransactionContext, TxL1Fee, TX_L1_COMMIT_EXTRA_COST, TX_L1_FEE_PRECISION,
 };
-#[cfg(feature="scroll")]
-use mpt_zktrie::state::ZktrieState;
 
 /// Setup parameters for ECC-related precompile calls.
 #[derive(Debug, Clone, Copy)]
@@ -164,7 +164,7 @@ pub struct CircuitInputBuilder {
     pub block: Block,
     /// Block Context
     pub block_ctx: BlockContext,
-    #[cfg(feature="scroll")]
+    #[cfg(feature = "scroll")]
     /// Zktrie Status
     pub mpt_state: ZktrieState,
 }
@@ -178,7 +178,7 @@ impl<'a> CircuitInputBuilder {
             code_db,
             block: block.clone(),
             block_ctx: BlockContext::new(),
-            #[cfg(feature="scroll")]
+            #[cfg(feature = "scroll")]
             mpt_state: Default::default(),
         }
     }

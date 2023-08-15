@@ -378,7 +378,7 @@ pub struct GethData {
     /// Accounts
     pub accounts: Vec<Account>,
 }
-/* 
+/*
 impl GethData {
     /// Signs transactions with selected wallets
     pub fn sign(&mut self, wallets: &HashMap<Address, LocalWallet>) {

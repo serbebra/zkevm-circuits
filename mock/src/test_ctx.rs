@@ -1,17 +1,17 @@
 //! Mock types and functions to generate Test enviroments for ZKEVM tests
 
 use crate::{eth, MockAccount, MockBlock, MockTransaction};
+#[cfg(feature = "scroll")]
+use eth_types::l2_types::BlockTrace;
 use eth_types::{
     geth_types::{Account, BlockConstants, GethData},
     BigEndianHash, Block, Bytecode, Error, Transaction, Word, H256,
 };
-#[cfg(feature="scroll")]
-use eth_types::l2_types::BlockTrace;
-use external_tracer::TraceConfig;
-#[cfg(not(feature="scroll"))]
-use external_tracer::trace;
-#[cfg(feature="scroll")]
+#[cfg(feature = "scroll")]
 use external_tracer::l2trace;
+#[cfg(not(feature = "scroll"))]
+use external_tracer::trace;
+use external_tracer::TraceConfig;
 use helpers::*;
 use itertools::Itertools;
 
@@ -96,7 +96,7 @@ pub struct TestContext<const NACC: usize, const NTX: usize> {
     /// Execution Trace from geth
     pub geth_traces: Vec<eth_types::GethExecTrace>,
 
-    #[cfg(feature="scroll")]
+    #[cfg(feature = "scroll")]
     block_trace: BlockTrace,
 }
 
@@ -190,14 +190,17 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
             logger_config,
         )?;
 
-        #[cfg(feature="scroll")]
+        #[cfg(feature = "scroll")]
         let block_trace = l2trace(&trace_config)?;
 
-        #[cfg(feature="scroll")]
-        let geth_traces = block_trace.execution_results
-            .iter().map(From::from).collect::<Vec<_>>();
+        #[cfg(feature = "scroll")]
+        let geth_traces = block_trace
+            .execution_results
+            .iter()
+            .map(From::from)
+            .collect::<Vec<_>>();
 
-        #[cfg(not(feature="scroll"))]
+        #[cfg(not(feature = "scroll"))]
         let geth_traces = trace(&trace_config)?;
 
         Ok(Self {
@@ -206,7 +209,7 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
             history_hashes: history_hashes.unwrap_or_default(),
             eth_block: block,
             geth_traces,
-            #[cfg(feature="scroll")]
+            #[cfg(feature = "scroll")]
             block_trace,
         })
     }
@@ -238,8 +241,10 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
     }
 
     /// obtain the full l2 block trace
-    #[cfg(feature="scroll")]
-    pub fn l2_trace(&self) -> &BlockTrace { &self.block_trace }
+    #[cfg(feature = "scroll")]
+    pub fn l2_trace(&self) -> &BlockTrace {
+        &self.block_trace
+    }
 
     /// Returns a simple TestContext setup with a single tx executing the
     /// bytecode passed as parameters. The balances of the 2 accounts and
