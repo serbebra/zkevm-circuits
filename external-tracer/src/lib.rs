@@ -27,6 +27,9 @@ pub struct TraceConfig {
     pub logger_config: LoggerConfig,
     /// chain config
     pub chain_config: Option<ChainConfig>,
+    /// beginning index of l1 queue
+    #[cfg(feature = "scroll")]
+    pub l1_queue_index: u64,
 }
 
 /// Configuration structure for `logger.Config`

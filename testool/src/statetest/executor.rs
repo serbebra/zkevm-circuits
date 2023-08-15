@@ -205,6 +205,7 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
             chain_config: Some(external_tracer::ChainConfig::shanghai()),
             #[cfg(not(feature = "shanghai"))]
             chain_config: None,
+            ..Default::default()
         },
         st.result,
     )

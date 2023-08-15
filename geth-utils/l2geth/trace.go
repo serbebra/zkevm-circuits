@@ -52,7 +52,8 @@ type Transaction struct {
 }
 
 type TraceConfig struct {
-	ChainID uint64 `json:"chain_id"`
+	ChainID           uint64 `json:"chain_id"`
+	StartL1QueueIndex uint64 `json:"l1_queue_index"`
 	// HistoryHashes contains most recent 256 block hashes in history,
 	// where the lastest one is at HistoryHashes[len(HistoryHashes)-1].
 	HistoryHashes []*hexutil.Big             `json:"history_hashes"`
@@ -216,6 +217,7 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 		&chainConfig,
 		config.LoggerConfig,
 		blockCtx,
+		config.StartL1QueueIndex,
 		blockCtx.Coinbase,
 		stateDB,
 		parent,
