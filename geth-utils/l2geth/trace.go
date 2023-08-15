@@ -245,6 +245,7 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 	}
 
 	trace.StorageTrace.RootAfter = rootAfter
+	trace.Header.Root = rootAfter
 	return trace, nil
 }
 
