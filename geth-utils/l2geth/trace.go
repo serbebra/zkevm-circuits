@@ -216,7 +216,9 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 			stateDB.SetState(address, key, value)
 		}
 	}
-	if _, err := stateDB.Commit(true); err != nil {
+
+	rootBefore, err := stateDB.Commit(true)
+	if err != nil {
 		return nil, err
 	}
 
@@ -227,12 +229,23 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 		config.StartL1QueueIndex,
 		blockCtx.Coinbase,
 		stateDB,
-		parent,
+		rootBefore,
 		block,
 		true,
 	)
 
-	return traceEnv.GetBlockTrace(block)
+	trace, err := traceEnv.GetBlockTrace(block)
+	if err != nil {
+		return nil, err
+	}
+
+	rootAfter, err := stateDB.Commit(true)
+	if err != nil {
+		return nil, err
+	}
+
+	trace.StorageTrace.RootAfter = rootAfter
+	return trace, nil
 }
 
 func Trace(config TraceConfig) ([]*types.ExecutionResult, error) {
