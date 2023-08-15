@@ -13,6 +13,7 @@ import (
 	"github.com/scroll-tech/go-ethereum/core/types"
 	"github.com/scroll-tech/go-ethereum/core/vm"
 	"github.com/scroll-tech/go-ethereum/params"
+	"github.com/scroll-tech/go-ethereum/trie"
 )
 
 type Block struct {
@@ -199,8 +200,12 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 	}
 	block := types.NewBlockWithHeader(header).WithBody(txs, nil)
 
+	trieCfg := &trie.Config{Zktrie: true}
 	// Setup state db with accounts from argument
-	stateDB, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
+	stateDB, _ := state.New(
+		common.Hash{},
+		state.NewDatabaseWithConfig(rawdb.NewMemoryDatabase(), trieCfg),
+		nil)
 	for address, account := range config.Accounts {
 		stateDB.SetNonce(address, uint64(account.Nonce))
 		stateDB.SetCode(address, account.Code)
@@ -211,7 +216,9 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 			stateDB.SetState(address, key, value)
 		}
 	}
-	stateDB.Finalise(true)
+	if _, err := stateDB.Commit(true); err != nil {
+		return nil, err
+	}
 
 	traceEnv := core.CreateTraceEnvDirect(
 		&chainConfig,
