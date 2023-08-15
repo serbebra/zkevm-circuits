@@ -111,10 +111,12 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
         let init_code_memory_offset = cb.query_cell_phase2();
         let init_code_length = cb.query_word_rlc();
-        let init_code =
-            MemoryAddressGadget::construct(cb, init_code_memory_offset, init_code_length);
-        let init_code_size_not_overflow =
-            LtGadget::construct(cb, init_code.length(), MAX_INIT_CODE_SIZE.expr() + 1.expr());
+        let init_code = cb.annotation("init_code", |cb| {
+            MemoryAddressGadget::construct(cb, init_code_memory_offset, init_code_length)
+        });
+        let init_code_size_not_overflow = cb.annotation("init_code_size_not_overflow", |cb| {
+            LtGadget::construct(cb, init_code.length(), MAX_INIT_CODE_SIZE.expr() + 1.expr())
+        });
 
         // Init code size overflow is checked before ErrDepth, ErrInsufficientBalance,
         // ErrNonceUintOverflow and ErrContractAddressCollision.
@@ -138,7 +140,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         let new_address = expr_from_bytes(&keccak_output.cells[..N_BYTES_ACCOUNT_ADDRESS]);
         let callee_is_success = cb.query_bool();
 
-        let create = ContractCreateGadget::construct(cb);
+        let create = cb.annotation("create", |cb| ContractCreateGadget::construct(cb));
 
         cb.stack_pop(value.expr());
         cb.stack_pop(init_code.offset_rlc());
@@ -194,7 +196,9 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         );
 
         let depth = cb.call_context(None, CallContextFieldTag::Depth);
-        let is_depth_in_range = LtGadget::construct(cb, depth.expr(), 1025.expr());
+        let is_depth_in_range = cb.annotation("is_depth_in_range", |cb| {
+            LtGadget::construct(cb, depth.expr(), 1025.expr())
+        });
 
         cb.call_context_lookup(
             0.expr(),

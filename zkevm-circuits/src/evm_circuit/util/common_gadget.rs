@@ -1011,8 +1011,8 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         let value = cb.query_word_rlc();
         let is_success = cb.query_bool();
 
-        let cd_address = MemAddrGadget::construct_self(cb);
-        let rd_address = MemAddrGadget::construct_self(cb);
+        let cd_address = cb.annotation("cd_address", MemAddrGadget::construct_self);
+        let rd_address = cb.annotation("rd_address", MemAddrGadget::construct_self);
 
         // Lookup values from stack
         // `callee_address` is poped from stack and used to check if it exists in
@@ -1038,14 +1038,17 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         });
 
         // Recomposition of random linear combination to integer
-        let gas_is_u64 = IsZeroGadget::construct(cb, sum::expr(&gas_word.cells[N_BYTES_GAS..]));
-        let memory_expansion = MemoryExpansionGadget::construct(
-            cb,
-            [cd_address.end_offset(), rd_address.end_offset()],
-        );
+        let gas_is_u64 = cb.annotation("gas_is_u64", |cb| {
+            IsZeroGadget::construct(cb, sum::expr(&gas_word.cells[N_BYTES_GAS..]))
+        });
+        let memory_expansion = cb.annotation("memory_expansion", |cb| {
+            MemoryExpansionGadget::construct(cb, [cd_address.end_offset(), rd_address.end_offset()])
+        });
 
         // construct common gadget
-        let value_is_zero = IsZeroGadget::construct(cb, sum::expr(&value.cells));
+        let value_is_zero = cb.annotation("value_is_zero", |cb| {
+            IsZeroGadget::construct(cb, sum::expr(&value.cells))
+        });
         let has_value = select::expr(
             is_delegatecall.expr() + is_staticcall.expr(),
             0.expr(),
@@ -1058,9 +1061,12 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
             AccountFieldTag::CodeHash,
             phase2_callee_code_hash.expr(),
         );
-        let is_empty_code_hash =
-            IsEqualGadget::construct(cb, phase2_callee_code_hash.expr(), cb.empty_code_hash_rlc());
-        let callee_not_exists = IsZeroGadget::construct(cb, phase2_callee_code_hash.expr());
+        let is_empty_code_hash = cb.annotation("is_empty_code_hash", |cb| {
+            IsEqualGadget::construct(cb, phase2_callee_code_hash.expr(), cb.empty_code_hash_rlc())
+        });
+        let callee_not_exists = cb.annotation("callee_not_exists", |cb| {
+            IsZeroGadget::construct(cb, phase2_callee_code_hash.expr())
+        });
 
         Self {
             is_success,

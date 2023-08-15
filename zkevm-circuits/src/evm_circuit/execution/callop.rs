@@ -95,12 +95,18 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         cb.opcode_lookup(opcode.expr(), 1.expr());
-        let is_call = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALL.expr());
-        let is_callcode = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALLCODE.expr());
-        let is_delegatecall =
-            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::DELEGATECALL.expr());
-        let is_staticcall =
-            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::STATICCALL.expr());
+        let is_call = cb.annotation("is_call", |cb| {
+            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALL.expr())
+        });
+        let is_callcode = cb.annotation("is_callcode", |cb| {
+            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALLCODE.expr())
+        });
+        let is_delegatecall = cb.annotation("is_delegatecall", |cb| {
+            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::DELEGATECALL.expr())
+        });
+        let is_staticcall = cb.annotation("is_staticcall", |cb| {
+            IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::STATICCALL.expr())
+        });
 
         // Use rw_counter of the step which triggers next call as its call_id.
         let callee_call_id = cb.curr.state.rw_counter.clone();
@@ -122,13 +128,15 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         });
 
         let call_gadget: CommonCallGadget<F, MemoryAddressGadget<F>, true> =
-            CommonCallGadget::construct(
-                cb,
-                is_call.expr(),
-                is_callcode.expr(),
-                is_delegatecall.expr(),
-                is_staticcall.expr(),
-            );
+            cb.annotation("call_gadget", |cb| {
+                CommonCallGadget::construct(
+                    cb,
+                    is_call.expr(),
+                    is_callcode.expr(),
+                    is_delegatecall.expr(),
+                    is_staticcall.expr(),
+                )
+            });
         cb.condition(not::expr(is_call.expr() + is_callcode.expr()), |cb| {
             cb.require_zero(
                 "for non call/call code, value is zero",
@@ -187,8 +195,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             AccountFieldTag::Balance,
             caller_balance_word.expr(),
         );
-        let is_insufficient_balance =
-            LtWordGadget::construct(cb, &caller_balance_word, &call_gadget.value);
+        let is_insufficient_balance = cb.annotation("is_insufficient_balance", |cb| {
+            LtWordGadget::construct(cb, &caller_balance_word, &call_gadget.value)
+        });
         // depth < 1025
         let is_depth_ok = cb.annotation("is_depth_ok", |cb| {
             LtGadget::construct(cb, depth.expr(), 1025.expr())
@@ -209,7 +218,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
 
         // whether the call is to a precompiled contract.
         // precompile contracts are stored from address 0x01 to 0x09.
-        let is_code_address_zero = IsZeroGadget::construct(cb, call_gadget.callee_address_expr());
+        let is_code_address_zero = cb.annotation("is_code_address_zero", |cb| {
+            IsZeroGadget::construct(cb, call_gadget.callee_address_expr())
+        });
         let is_precompile_lt = cb.annotation("is_precompile_lt", |cb| {
             LtGadget::construct(cb, call_gadget.callee_address_expr(), 0x0A.expr())
         });
@@ -218,13 +229,17 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             is_precompile_lt.expr(),
         ]);
         let precompile_return_length = cb.query_cell();
-        let precompile_return_length_zero =
-            IsZeroGadget::construct(cb, precompile_return_length.expr());
-        let precompile_return_data_copy_size = MinMaxGadget::construct(
-            cb,
-            precompile_return_length.expr(),
-            call_gadget.rd_address.length(),
-        );
+        let precompile_return_length_zero = cb.annotation("precompile_return_length_zero", |cb| {
+            IsZeroGadget::construct(cb, precompile_return_length.expr())
+        });
+        let precompile_return_data_copy_size =
+            cb.annotation("precompile_return_data_copy_size", |cb| {
+                MinMaxGadget::construct(
+                    cb,
+                    precompile_return_length.expr(),
+                    call_gadget.rd_address.length(),
+                )
+            });
 
         let precompile_input_rws = cb.query_cell();
         let precompile_output_rws = cb.query_cell();
@@ -239,21 +254,23 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         #[cfg(feature = "scroll")]
         let keccak_code_hash_previous = cb.query_cell_phase2();
         let transfer = cb.condition(and::expr(&[is_call.expr(), is_precheck_ok.expr()]), |cb| {
-            TransferGadget::construct(
-                cb,
-                caller_address.expr(),
-                callee_address.expr(),
-                or::expr([
-                    not::expr(call_gadget.callee_not_exists.expr()),
-                    is_precompile.expr(),
-                ]),
-                0.expr(),
-                code_hash_previous.expr(),
-                #[cfg(feature = "scroll")]
-                keccak_code_hash_previous.expr(),
-                call_gadget.value.clone(),
-                &mut callee_reversion_info,
-            )
+            cb.annotation("transfer", |cb| {
+                TransferGadget::construct(
+                    cb,
+                    caller_address.expr(),
+                    callee_address.expr(),
+                    or::expr([
+                        not::expr(call_gadget.callee_not_exists.expr()),
+                        is_precompile.expr(),
+                    ]),
+                    0.expr(),
+                    code_hash_previous.expr(),
+                    #[cfg(feature = "scroll")]
+                    keccak_code_hash_previous.expr(),
+                    call_gadget.value.clone(),
+                    &mut callee_reversion_info,
+                )
+            })
         });
 
         // For CALLCODE opcode, verify caller balance is greater than or equal to stack
@@ -281,8 +298,9 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             ConstantDivisionGadget::construct(cb, gas_available.clone(), 64)
         });
         let all_but_one_64th_gas = gas_available - one_64th_gas.quotient();
-        let capped_callee_gas_left =
-            MinMaxGadget::construct(cb, call_gadget.gas_expr(), all_but_one_64th_gas.clone());
+        let capped_callee_gas_left = cb.annotation("capped_callee_gas_left", |cb| {
+            MinMaxGadget::construct(cb, call_gadget.gas_expr(), all_but_one_64th_gas.clone())
+        });
         let callee_gas_left = select::expr(
             call_gadget.gas_is_u64.expr(),
             capped_callee_gas_left.min(),

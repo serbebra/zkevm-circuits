@@ -43,7 +43,9 @@ impl<F: Field, const N_BYTES: usize> ConstantDivisionGadget<F, N_BYTES> {
 
         // Require that quotient < 256**N_BYTES
         // so we can't have any overflow when doing `quotient * denominator`.
-        let quotient_range_check = RangeCheckGadget::construct(cb, quotient.expr());
+        let quotient_range_check = cb.annotation("quotient_range_check", |cb| {
+            RangeCheckGadget::construct(cb, quotient.expr())
+        });
 
         // Check if the division was done correctly
         cb.require_equal(

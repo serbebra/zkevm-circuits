@@ -78,7 +78,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         let length = cb.query_word_rlc();
         cb.stack_pop(offset.expr());
         cb.stack_pop(length.expr());
-        let range = MemoryAddressGadget::construct(cb, offset, length);
+        let range = cb.annotation("range", |cb| {
+            MemoryAddressGadget::construct(cb, offset, length)
+        });
 
         let is_success = cb.call_context(None, CallContextFieldTag::IsSuccess);
         cb.require_boolean("is_success is boolean", is_success.expr());
@@ -92,9 +94,13 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
         // These are globally defined because they are used across multiple cases.
         let copy_rw_increase = cb.query_cell();
-        let copy_rw_increase_is_zero = IsZeroGadget::construct(cb, copy_rw_increase.expr());
+        let copy_rw_increase_is_zero = cb.annotation("copy_rw_increase_is_zero", |cb| {
+            IsZeroGadget::construct(cb, copy_rw_increase.expr())
+        });
 
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [range.end_offset()]);
+        let memory_expansion = cb.annotation("memory_expansion", |cb| {
+            MemoryExpansionGadget::construct(cb, [range.end_offset()])
+        });
 
         // Case A in the specs.
         // not work for memory word rw counter increase now.
@@ -214,27 +220,29 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         });
 
         // Case B in the specs.
-        cb.condition(is_root.expr(), |cb| {
-            cb.require_next_state(ExecutionState::EndTx);
-            cb.call_context_lookup(
-                false.expr(),
-                None,
-                CallContextFieldTag::IsPersistent,
-                is_success.expr(),
-            );
-            cb.require_step_state_transition(StepStateTransition {
-                program_counter: To(0.expr()),
-                stack_pointer: To(STACK_CAPACITY.expr()),
-                rw_counter: Delta(
-                    cb.rw_counter_offset()
-                        + not::expr(is_success.expr())
-                            * cb.curr.state.reversible_write_counter.expr(),
-                ),
-                gas_left: Delta(-memory_expansion.gas_cost() - code_deposit_cost.expr()),
-                reversible_write_counter: To(0.expr()),
-                memory_word_size: To(0.expr()),
-                ..StepStateTransition::default()
-            });
+        cb.annotation("case_b", |cb| {
+            cb.condition(is_root.expr(), |cb| {
+                cb.require_next_state(ExecutionState::EndTx);
+                cb.call_context_lookup(
+                    false.expr(),
+                    None,
+                    CallContextFieldTag::IsPersistent,
+                    is_success.expr(),
+                );
+                cb.require_step_state_transition(StepStateTransition {
+                    program_counter: To(0.expr()),
+                    stack_pointer: To(STACK_CAPACITY.expr()),
+                    rw_counter: Delta(
+                        cb.rw_counter_offset()
+                            + not::expr(is_success.expr())
+                                * cb.curr.state.reversible_write_counter.expr(),
+                    ),
+                    gas_left: Delta(-memory_expansion.gas_cost() - code_deposit_cost.expr()),
+                    reversible_write_counter: To(0.expr()),
+                    memory_word_size: To(0.expr()),
+                    ..StepStateTransition::default()
+                });
+            })
         });
 
         // Case C in the specs.
@@ -242,56 +250,62 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         let contract_deployment_reversible_write_num = 3; // dual code hash + code size
         #[cfg(not(feature = "scroll"))]
         let contract_deployment_reversible_write_num = 1;
-        let restore_context = cb.condition(not::expr(is_root.expr()), |cb| {
-            RestoreContextGadget::construct(
-                cb,
-                is_success.expr(),
-                not::expr(is_create.clone()) * (2.expr() + copy_rw_increase.expr()),
-                range.offset(),
-                range.length(),
-                memory_expansion.gas_cost(),
-                contract_deployment_reversible_write_num.expr() * is_contract_deployment,
-            )
+        let restore_context = cb.annotation("restore_context", |cb| {
+            cb.condition(not::expr(is_root.expr()), |cb| {
+                RestoreContextGadget::construct(
+                    cb,
+                    is_success.expr(),
+                    not::expr(is_create.clone()) * (2.expr() + copy_rw_increase.expr()),
+                    range.offset(),
+                    range.length(),
+                    memory_expansion.gas_cost(),
+                    contract_deployment_reversible_write_num.expr() * is_contract_deployment,
+                )
+            })
         });
 
         // Case D in the specs.
-        let (return_data_offset, return_data_length, copy_length) = cb.condition(
-            not::expr(is_create.clone()) * not::expr(is_root.clone()),
-            |cb| {
-                let [return_data_offset, return_data_length] = [
-                    CallContextFieldTag::ReturnDataOffset,
-                    CallContextFieldTag::ReturnDataLength,
-                ]
-                .map(|field_tag| cb.call_context(None, field_tag));
-                let copy_length =
-                    MinMaxGadget::construct(cb, return_data_length.expr(), range.length());
-                // cb.require_equal(
-                //     "increase rw counter twice for each memory to memory byte copied",
-                //     copy_length.min() + copy_length.min(),
-                //     copy_rw_increase.expr(),
-                // );
-                (return_data_offset, return_data_length, copy_length)
-            },
-        );
-        cb.condition(
-            not::expr(is_create.clone())
-                * not::expr(is_root.clone())
-                * not::expr(copy_rw_increase_is_zero.expr()),
-            |cb| {
-                cb.copy_table_lookup(
-                    cb.curr.state.call_id.expr(),
-                    CopyDataType::Memory.expr(),
-                    cb.next.state.call_id.expr(),
-                    CopyDataType::Memory.expr(),
-                    range.offset(),
-                    range.end_offset(),
-                    return_data_offset.expr(),
-                    copy_length.min(),
-                    0.expr(),
-                    copy_rw_increase.expr(),
-                );
-            },
-        );
+        let (return_data_offset, return_data_length, copy_length) = cb.annotation("case_d", |cb| {
+            let (return_data_offset, return_data_length, copy_length) = cb.condition(
+                not::expr(is_create.clone()) * not::expr(is_root.clone()),
+                |cb| {
+                    let [return_data_offset, return_data_length] = [
+                        CallContextFieldTag::ReturnDataOffset,
+                        CallContextFieldTag::ReturnDataLength,
+                    ]
+                    .map(|field_tag| cb.call_context(None, field_tag));
+                    let copy_length = cb.annotation("copy_length", |cb| {
+                        MinMaxGadget::construct(cb, return_data_length.expr(), range.length())
+                    });
+                    // cb.require_equal(
+                    //     "increase rw counter twice for each memory to memory byte copied",
+                    //     copy_length.min() + copy_length.min(),
+                    //     copy_rw_increase.expr(),
+                    // );
+                    (return_data_offset, return_data_length, copy_length)
+                },
+            );
+            cb.condition(
+                not::expr(is_create.clone())
+                    * not::expr(is_root.clone())
+                    * not::expr(copy_rw_increase_is_zero.expr()),
+                |cb| {
+                    cb.copy_table_lookup(
+                        cb.curr.state.call_id.expr(),
+                        CopyDataType::Memory.expr(),
+                        cb.next.state.call_id.expr(),
+                        CopyDataType::Memory.expr(),
+                        range.offset(),
+                        range.end_offset(),
+                        return_data_offset.expr(),
+                        copy_length.min(),
+                        0.expr(),
+                        copy_rw_increase.expr(),
+                    );
+                },
+            );
+            (return_data_offset, return_data_length, copy_length)
+        });
 
         // Without this, copy_rw_increase would be unconstrained for non-create root
         // calls.

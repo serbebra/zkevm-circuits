@@ -41,7 +41,9 @@ impl<F: Field> PrecompileGadget<F> {
         // returned bytes back to caller.
         _return_bytes_rlc: Expression<F>,
     ) -> Self {
-        let address = BinaryNumberGadget::construct(cb, callee_address.expr());
+        let address = cb.annotation("address", |cb| {
+            BinaryNumberGadget::construct(cb, callee_address.expr())
+        });
 
         // input length represents:
         // - 128 bytes for ecrecover/ecAdd
@@ -64,17 +66,21 @@ impl<F: Field> PrecompileGadget<F> {
                 ),
             )
         };
-        let pad_right = LtGadget::construct(cb, cd_length.expr(), input_len.expr());
+        let pad_right = cb.annotation("pad_right", |cb| {
+            LtGadget::construct(cb, cd_length.expr(), input_len.expr())
+        });
 
         // we right-pad zeroes only if calldata length provided was less than the expected/required
         // input length for that precompile call.
-        let padding_gadget = cb.condition(pad_right.expr(), |cb| {
-            PaddingGadget::construct(
-                cb,
-                input_bytes_rlc.expr(),
-                cd_length.expr(),
-                input_len.expr(),
-            )
+        let padding_gadget = cb.annotation("padding_gadget", |cb| {
+            cb.condition(pad_right.expr(), |cb| {
+                PaddingGadget::construct(
+                    cb,
+                    input_bytes_rlc.expr(),
+                    cd_length.expr(),
+                    input_len.expr(),
+                )
+            })
         });
         cb.condition(not::expr(pad_right.expr()), |cb| {
             cb.require_equal(
@@ -320,7 +326,9 @@ impl<F: Field> PaddingGadget<F> {
         cd_len: Expression<F>,
         input_len: Expression<F>,
     ) -> Self {
-        let is_cd_len_zero = IsZeroGadget::construct(cb, cd_len.expr());
+        let is_cd_len_zero = cb.annotation("is_cd_len_zero", |cb| {
+            IsZeroGadget::construct(cb, cd_len.expr())
+        });
         let padded_rlc = cb.query_cell_phase2();
         let power_of_rand = cb.query_cell_phase2();
 
