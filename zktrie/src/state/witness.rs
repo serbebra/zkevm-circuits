@@ -44,45 +44,28 @@ pub struct WitnessGenerator {
 impl From<&ZktrieState> for WitnessGenerator {
     fn from(state: &ZktrieState) -> Self {
         let trie = state.zk_db.borrow_mut().new_trie(&state.trie_root).unwrap();
-        let accounts = state.account_states.clone();
-
-        // let accounts: HashMap<_, _> = state
-        //     .accounts
-        //     .iter()
-        //     .map(|(addr, storage_root)| {
-        //         let (existed, acc_data) = sdb.get_account(addr);
-        //         assert!(
-        //             existed,
-        //             "expected to be consistented between records in sdb and account root"
-        //         );
-        //         (*addr, acc_data, storage_root)
-        //     })
-        //     // filter out the account data which is empty can provide update applying some
-        //     // convenient
-        //     .filter(|(_, acc_data, _)| !acc_data.is_empty())
-        //     .map(|(addr, acc_data, storage_root)| {
-        //         (
-        //             addr,
-        //             AccountData {
-        //                 nonce: acc_data.nonce.as_u64(),
-        //                 balance: acc_data.balance,
-        //                 poseidon_code_hash: acc_data.code_hash,
-        //                 keccak_code_hash: acc_data.keccak_code_hash,
-        //                 code_size: acc_data.code_size.as_u64(),
-        //                 storage_root: H256::from(storage_root),
-        //             },
-        //         )
-        //     })
-        //     .collect();
+        let accounts: HashMap<_, _> = state
+            .accounts
+            .iter()
+            // filter out the account data which is empty can provide update applying some
+            // convenient
+            .filter(|(_, acc)| !acc.keccak_code_hash.is_zero())
+            .map(|(key, acc)| (*key, *acc))
+            .collect();
 
         let storages: HashMap<_, _> = state
             .accounts
             .iter()
-            .map(|(addr, storage_root)| (*addr, state.zk_db.borrow_mut().new_trie(storage_root)))
+            .map(|(addr, acc)| {
+                (
+                    *addr,
+                    state.zk_db.borrow_mut().new_trie(&acc.storage_root.0),
+                )
+            })
             // if an account has no storage slot being touched in execution, they do not need
             // storage trie and would be filter out here
-            .filter(|(_, storage_root)| storage_root.is_some())
-            .map(|(addr, storage_root)| (addr, storage_root.expect("None has been filtered")))
+            .filter(|(_, storage_trie)| storage_trie.is_some())
+            .map(|(addr, storage_trie)| (addr, storage_trie.expect("None has been filtered")))
             .collect();
 
         Self {
