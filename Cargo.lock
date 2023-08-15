@@ -465,6 +465,7 @@ dependencies = [
  "lazy_static",
  "log",
  "mock",
+ "mpt-zktrie",
  "once_cell",
  "poseidon-circuit",
  "pretty_assertions",

@@ -9,6 +9,7 @@ mod input_state_ref;
 #[cfg(test)]
 mod tracer_tests;
 mod transaction;
+mod l2;
 
 use self::access::gen_state_access_trace;
 pub use self::block::BlockHead;
@@ -53,6 +54,8 @@ use std::{
 pub use transaction::{
     Transaction, TransactionContext, TxL1Fee, TX_L1_COMMIT_EXTRA_COST, TX_L1_FEE_PRECISION,
 };
+#[cfg(feature="scroll")]
+use mpt_zktrie::state::ZktrieState;
 
 /// Setup parameters for ECC-related precompile calls.
 #[derive(Debug, Clone, Copy)]
@@ -160,6 +163,9 @@ pub struct CircuitInputBuilder {
     pub block: Block,
     /// Block Context
     pub block_ctx: BlockContext,
+    #[cfg(feature="scroll")]
+    /// Zktrie Status
+    pub mpt_state: ZktrieState,
 }
 
 impl<'a> CircuitInputBuilder {
@@ -171,6 +177,8 @@ impl<'a> CircuitInputBuilder {
             code_db,
             block: block.clone(),
             block_ctx: BlockContext::new(),
+            #[cfg(feature="scroll")]
+            mpt_state: Default::default(),
         }
     }
     /// Create a new CircuitInputBuilder from the given `eth_block` and
