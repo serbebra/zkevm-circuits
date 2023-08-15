@@ -1,18 +1,18 @@
-use mpt_zktrie::state::{ZktrieState, AccountData, StorageData};
-use crate::state_db::{self, CodeDB, StateDB};
-use crate::circuit_input_builder::{self, CircuitInputBuilder, CircuitsParams};
+use mpt_zktrie::state::{ZktrieState, AccountData};
+use crate::{
+    error::Error,
+    state_db::{self, CodeDB, StateDB},
+    circuit_input_builder::{self, CircuitInputBuilder, BlockHead, CircuitsParams},
+};
+pub use super::block::{Block, BlockContext};
 use ethers_core::types::{Bytes, U256};
 use eth_types::{
     self,
     l2_types::{BlockTrace, ExecStep, EthBlock},
     evm_types::OpcodeId,
-    geth_types,
-    sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
-    ToAddress, Address, GethExecStep, GethExecTrace, ToBigEndian, ToWord, Word, H256,
+    ToAddress, H256,
 };
-use std::{
-    collections::{hash_map::Entry, HashMap},
-};
+use std::collections::hash_map::Entry;
 
 impl From<&AccountData> for state_db::Account {
 
@@ -41,7 +41,7 @@ impl From<&ZktrieState> for StateDB {
         for (storage_key, data) in mpt_state.storage() {
             //TODO: add an warning on non-existed account?
             let (_, acc) = sdb.get_account_mut(&storage_key.0);
-            acc.storage.insert(*&storage_key.1, *data.as_ref());
+            acc.storage.insert(storage_key.1, *data.as_ref());
         }
 
         sdb
@@ -165,7 +165,7 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
                             1
                         };
                         let callee_code = data.get_code_at(code_idx);
-                        assert!(callee_code.is_none(), "invalid trace: cannot get code of call: {:?}", step);
+                        assert!(callee_code.is_none(), "invalid trace: cannot get code of call: {step:?}");
                         let code_hash = match step.op {
                             OpcodeId::CALL | OpcodeId::CALLCODE => data.get_code_hash_at(1),
                             OpcodeId::STATICCALL => data.get_code_hash_at(0),
@@ -179,7 +179,7 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
                     }
                     OpcodeId::EXTCODESIZE | OpcodeId::EXTCODECOPY => {
                         let code = data.get_code_at(0);
-                        assert!(code.is_none(), "invalid trace: cannot get code of ext: {:?}", step);
+                        assert!(code.is_none(), "invalid trace: cannot get code of ext: {step:?}");
                         trace_code(cdb, None, code.unwrap(), step, sdb, 0);
                     }
 
@@ -200,15 +200,49 @@ fn dump_code_db(cdb: &CodeDB){
 }
 
 impl CircuitInputBuilder {
+
+    fn apply_l2_trace(
+        &mut self,
+        block_trace: &BlockTrace,
+        is_last: bool,
+    ) -> Result<(), Error>{
+        let geth_trace : Vec<eth_types::GethExecTrace> 
+            = block_trace.execution_results.iter().map(From::from).collect();
+        let eth_block: EthBlock = block_trace.clone().into();
+        assert_eq!(
+            self.block.chain_id, block_trace.chain_id,
+            "unexpected chain id in new block_trace"
+        );
+        // TODO: Get the history_hashes.
+        let mut header = BlockHead::new_with_l1_queue_index(
+            self.block.chain_id,
+            block_trace.start_l1_queue_index,
+            Vec::new(),
+            &eth_block,
+        )?;
+        // override zeroed minder field with additional "coinbase" field in blocktrace
+        if let Some(address) = block_trace.coinbase.address {
+            header.coinbase = address;
+        }
+        let block_num = header.number.as_u64();
+        self.block.start_l1_queue_index = block_trace.start_l1_queue_index;
+        // TODO: should be check the block number is in sequence?
+        self.block.headers.insert(block_num, header);
+        // note the actions when `handle_rwc_reversion` argument (the 4th one)
+        // is true is executing outside this closure
+        self.handle_block_inner(&eth_block, &geth_trace, false, is_last)?;
+        log::debug!("handle_block_inner done for block {:?}", block_num);
+        Ok(())
+    }
+
     /// Create a new CircuitInputBuilder from the given `l2_trace` and `circuits_params`
     pub fn new_from_l2_trace(
         circuits_params: CircuitsParams,
         l2_trace: &BlockTrace,
         more: bool,
-    ) -> Self {
+    ) -> Result<Self, Error> {
 
         let chain_id = l2_trace.chain_id;
-        let start_l1_queue_index = l2_trace.start_l1_queue_index;
 
         let mut code_db = CodeDB::new();
         code_db.insert(Vec::new());
@@ -263,12 +297,24 @@ impl CircuitInputBuilder {
         let mut builder_block = circuit_input_builder::Block::from_headers(&[], circuits_params);
         builder_block.chain_id = chain_id;
         builder_block.prev_state_root = U256::from(mpt_state.root());
-        let mut builder = CircuitInputBuilder::new(sdb, code_db, &builder_block);
+        let mut builder = Self {
+            sdb,
+            code_db,
+            block: builder_block,
+            block_ctx: BlockContext::new(),
+            mpt_state,
+        };
 
-        let eth_block: EthBlock = l2_trace.clone().into();
-
-        builder
+        builder.apply_l2_trace(l2_trace, !more)?;
+        Ok(builder)
     }
     
+    /// make finalize actions on building, must called after
+    /// all block trace have been input
+    pub fn finalize_building(&mut self) -> Result<(), Error>{
+        self.set_value_ops_call_context_rwc_eor();
+        self.set_end_block()         
+    }
+
 }
 

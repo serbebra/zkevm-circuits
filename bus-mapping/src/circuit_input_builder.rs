@@ -9,6 +9,7 @@ mod input_state_ref;
 #[cfg(test)]
 mod tracer_tests;
 mod transaction;
+#[cfg(feature="scroll")]
 mod l2;
 
 use self::access::gen_state_access_trace;
