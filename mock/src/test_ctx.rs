@@ -288,7 +288,8 @@ pub fn gen_trace_config(
         chain_config: Some(external_tracer::ChainConfig::shanghai()),
         #[cfg(not(feature = "shanghai"))]
         chain_config: None,
-        ..Default::default()
+        #[cfg(feature = "scroll")]
+        l1_queue_index: 0,
     })
 }
 
