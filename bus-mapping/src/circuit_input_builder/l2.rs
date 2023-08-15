@@ -16,13 +16,17 @@ use std::collections::hash_map::Entry;
 
 impl From<&AccountData> for state_db::Account {
     fn from(acc_data: &AccountData) -> Self {
-        Self {
-            nonce: acc_data.nonce.into(),
-            balance: acc_data.balance,
-            code_hash: acc_data.poseidon_code_hash,
-            keccak_code_hash: acc_data.keccak_code_hash,
-            code_size: acc_data.code_size.into(),
-            storage: Default::default(),
+        if acc_data.keccak_code_hash.is_zero() {
+            state_db::Account::zero()
+        } else {
+            Self {
+                nonce: acc_data.nonce.into(),
+                balance: acc_data.balance,
+                code_hash: acc_data.poseidon_code_hash,
+                keccak_code_hash: acc_data.keccak_code_hash,
+                code_size: acc_data.code_size.into(),
+                storage: Default::default(),
+            }                
         }
     }
 }
@@ -36,11 +40,12 @@ impl From<&ZktrieState> for StateDB {
         }
 
         for (storage_key, data) in mpt_state.storage() {
-            //TODO: add an warning on non-existed account?
-            let (_, acc) = sdb.get_account_mut(&storage_key.0);
-            acc.storage.insert(storage_key.1, *data.as_ref());
+            if !data.as_ref().is_zero() {
+                //TODO: add an warning on non-existed account?
+                let (_, acc) = sdb.get_account_mut(&storage_key.0);
+                acc.storage.insert(storage_key.1, *data.as_ref());
+            }
         }
-
         sdb
     }
 }
