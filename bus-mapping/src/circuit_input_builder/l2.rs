@@ -26,7 +26,7 @@ impl From<&AccountData> for state_db::Account {
                 keccak_code_hash: acc_data.keccak_code_hash,
                 code_size: acc_data.code_size.into(),
                 storage: Default::default(),
-            }                
+            }
         }
     }
 }
@@ -208,6 +208,11 @@ fn dump_code_db(cdb: &CodeDB) {
 
 impl CircuitInputBuilder {
     fn apply_l2_trace(&mut self, block_trace: &BlockTrace, is_last: bool) -> Result<(), Error> {
+        update_codedb(&mut self.code_db, &self.sdb, block_trace);
+        if is_last {
+            dump_code_db(&self.code_db);
+        }
+
         let geth_trace: Vec<eth_types::GethExecTrace> = block_trace
             .execution_results
             .iter()
@@ -250,10 +255,6 @@ impl CircuitInputBuilder {
 
         let mut code_db = CodeDB::new();
         code_db.insert(Vec::new());
-
-        if !more {
-            dump_code_db(&code_db);
-        }
 
         let old_root = l2_trace.storage_trace.root_before;
         log::debug!(

@@ -37,8 +37,8 @@ fn test_super_circuit<
 ) {
     set_var("COINBASE", "0x0000000000000000000000000000000000000000");
     set_var("CHAIN_ID", MOCK_CHAIN_ID.to_string());
-    let mut difficulty_be_bytes = [0u8; 32];
-    MOCK_DIFFICULTY.to_big_endian(&mut difficulty_be_bytes);
+    // the difficuilty of l2 is always 0
+    let difficulty_be_bytes = [0u8; 32];
     set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
 
     let mut builder = CircuitInputBuilder::new_from_l2_trace(circuits_params, &l2_trace, false)
