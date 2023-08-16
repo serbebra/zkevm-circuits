@@ -8,7 +8,11 @@ use bus_mapping::{
 use ethers_signers::{LocalWallet, Signer};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 use log::error;
-use mock::{eth, TestContext, MOCK_CHAIN_ID, MOCK_DIFFICULTY};
+#[cfg(not(feature = "scroll"))]
+use mock::MOCK_DIFFICULTY;
+#[cfg(feature = "scroll")]
+use mock::MOCK_DIFFICULTY_L2GETH as MOCK_DIFFICULTY;
+use mock::{eth, TestContext, MOCK_CHAIN_ID};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::env::set_var;
@@ -37,8 +41,8 @@ fn test_super_circuit<
 ) {
     set_var("COINBASE", "0x0000000000000000000000000000000000000000");
     set_var("CHAIN_ID", MOCK_CHAIN_ID.to_string());
-    // the difficuilty of l2 is always 0
-    let difficulty_be_bytes = [0u8; 32];
+    let mut difficulty_be_bytes = [0u8; 32];
+    MOCK_DIFFICULTY.to_big_endian(&mut difficulty_be_bytes);
     set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
 
     let mut builder = CircuitInputBuilder::new_from_l2_trace(circuits_params, &l2_trace, false)

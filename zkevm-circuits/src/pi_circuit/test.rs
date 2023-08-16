@@ -5,7 +5,11 @@ use halo2_proofs::{
     dev::{MockProver, VerifyFailure},
     halo2curves::bn256::Fr,
 };
-use mock::{test_ctx::helpers::tx_from_1_to_0, CORRECT_MOCK_TXS, MOCK_CHAIN_ID, MOCK_DIFFICULTY};
+#[cfg(not(feature = "scroll"))]
+use mock::MOCK_DIFFICULTY;
+#[cfg(feature = "scroll")]
+use mock::MOCK_DIFFICULTY_L2GETH as MOCK_DIFFICULTY;
+use mock::{test_ctx::helpers::tx_from_1_to_0, CORRECT_MOCK_TXS, MOCK_CHAIN_ID};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::env::set_var;
@@ -83,8 +87,8 @@ fn serial_test_simple_pi() {
     const MAX_CALLDATA: usize = 20;
     const MAX_INNER_BLOCKS: usize = 4;
 
-    // the difficuilty of l2 is always 0
-    let difficulty_be_bytes = [0u8; 32];
+    let mut difficulty_be_bytes = [0u8; 32];
+    MOCK_DIFFICULTY.to_big_endian(&mut difficulty_be_bytes);
     set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
     set_var("COINBASE", "0x0000000000000000000000000000000000000000");
 
