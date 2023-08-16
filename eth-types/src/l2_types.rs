@@ -1,7 +1,7 @@
 //! L2 types used to deserialize traces for l2geth.
 
 use crate::{
-    evm_types::{Gas, GasCost, OpcodeId, ProgramCounter, Stack, Storage},
+    evm_types::{Gas, GasCost, OpcodeId, ProgramCounter, Stack, Storage, Memory},
     Block, GethExecStep, GethExecTrace, Hash, Transaction, Word, H256,
 };
 use ethers_core::types::{Address, Bytes, U256, U64};
@@ -223,6 +223,7 @@ impl From<&ExecStep> for GethExecStep {
     fn from(e: &ExecStep) -> Self {
         let stack = e.stack.clone().map_or_else(Stack::new, Stack::from);
         let storage = e.storage.clone().map_or_else(Storage::empty, Storage::from);
+        let memory = e.memory.clone().map_or_else(Memory::default, Memory::from);
 
         GethExecStep {
             pc: ProgramCounter(e.pc as usize),
@@ -234,7 +235,7 @@ impl From<&ExecStep> for GethExecStep {
             depth: e.depth as u16,
             error: e.error.clone(),
             stack,
-            memory: Default::default(),
+            memory,
             storage,
         }
     }
