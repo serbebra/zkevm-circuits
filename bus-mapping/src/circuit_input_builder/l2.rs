@@ -166,16 +166,23 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
                             1
                         };
                         let callee_code = data.get_code_at(code_idx);
-                        assert!(
-                            callee_code.is_none(),
-                            "invalid trace: cannot get code of call: {step:?}"
-                        );
+                        // assert!(
+                        //     callee_code.is_none(),
+                        //     "invalid trace: cannot get code of call: {step:?}"
+                        // );
                         let code_hash = match step.op {
                             OpcodeId::CALL | OpcodeId::CALLCODE => data.get_code_hash_at(1),
                             OpcodeId::STATICCALL => data.get_code_hash_at(0),
                             _ => None,
                         };
-                        trace_code(cdb, code_hash, callee_code.unwrap(), step, sdb, 1);
+                        trace_code(
+                            cdb,
+                            code_hash,
+                            callee_code.unwrap_or_default(),
+                            step,
+                            sdb,
+                            1,
+                        );
                     }
                     OpcodeId::CREATE | OpcodeId::CREATE2 => {
                         // notice we do not need to insert code for CREATE,
