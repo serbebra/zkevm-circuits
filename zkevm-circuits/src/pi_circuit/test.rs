@@ -83,8 +83,8 @@ fn serial_test_simple_pi() {
     const MAX_CALLDATA: usize = 20;
     const MAX_INNER_BLOCKS: usize = 4;
 
-    let mut difficulty_be_bytes = [0u8; 32];
-    MOCK_DIFFICULTY.to_big_endian(&mut difficulty_be_bytes);
+    // the difficuilty of l2 is always 0
+    let difficulty_be_bytes = [0u8; 32];
     set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
     set_var("COINBASE", "0x0000000000000000000000000000000000000000");
 
