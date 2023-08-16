@@ -1,7 +1,7 @@
 //! L2 types used to deserialize traces for l2geth.
 
 use crate::{
-    evm_types::{Gas, GasCost, OpcodeId, ProgramCounter, Stack, Storage, Memory},
+    evm_types::{Gas, GasCost, Memory, OpcodeId, ProgramCounter, Stack, Storage},
     Block, GethExecStep, GethExecTrace, Hash, Transaction, Word, H256,
 };
 use ethers_core::types::{Address, Bytes, U256, U64};
