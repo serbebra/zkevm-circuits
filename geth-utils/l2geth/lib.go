@@ -35,28 +35,6 @@ func CreateTrace(configStr *C.char) *C.char {
 	return C.CString(string(bytes))
 }
 
-//export CreateL2Trace
-func CreateL2Trace(configStr *C.char) *C.char {
-	//fmt.Printf("%s", C.GoString(configStr))
-	var config TraceConfig
-	err := json.Unmarshal([]byte(C.GoString(configStr)), &config)
-	if err != nil {
-		return C.CString(fmt.Sprintf("Failed to unmarshal config, err: %v", err))
-	}
-
-	l2trace, err := L2Trace(config)
-	if err != nil {
-		return C.CString(fmt.Sprintf("Failed to run Trace, err: %v", err))
-	}
-
-	bytes, err := json.MarshalIndent(l2trace, "", "  ")
-	if err != nil {
-		return C.CString(fmt.Sprintf("Failed to marshal []ExecutionResult, err: %v", err))
-	}
-
-	return C.CString(string(bytes))
-}
-
 //export FreeString
 func FreeString(str *C.char) {
 	C.free(unsafe.Pointer(str))

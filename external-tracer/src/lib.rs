@@ -93,6 +93,7 @@ impl ChainConfig {
 }
 
 /// Creates a trace for the specified config
+#[cfg(not(feature = "scroll"))]
 pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
     // Get the trace
     let trace_string = geth_utils::trace(&serde_json::to_string(&config).unwrap()).map_err(
@@ -111,7 +112,7 @@ pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
 #[cfg(feature = "scroll")]
 pub fn l2trace(config: &TraceConfig) -> Result<BlockTrace, Error> {
     // Get the trace
-    let trace_string = geth_utils::l2trace(&serde_json::to_string(&config).unwrap()).map_err(
+    let trace_string = geth_utils::trace(&serde_json::to_string(&config).unwrap()).map_err(
         |error| match error {
             geth_utils::Error::TracingError(error) => Error::TracingError(error),
         },
@@ -121,4 +122,15 @@ pub fn l2trace(config: &TraceConfig) -> Result<BlockTrace, Error> {
 
     let trace = serde_json::from_str(&trace_string).map_err(Error::SerdeError)?;
     Ok(trace)
+}
+
+#[cfg(feature = "scroll")]
+pub fn trace(config: &TraceConfig) -> Result<Vec<GethExecTrace>, Error> {
+    let block_trace = l2trace(config)?;
+
+    Ok(block_trace
+        .execution_results
+        .iter()
+        .map(From::from)
+        .collect::<Vec<_>>())
 }

@@ -70,7 +70,13 @@ func newUint64(val uint64) *uint64 { return &val }
 func transferTxs(txs []Transaction) types.Transactions {
 
 	t_txs := make([]*types.Transaction, 0, len(txs))
+
 	for _, tx := range txs {
+		// ensure every field must be initialized, especially the To addr
+		toAddr := tx.To
+		if toAddr == nil {
+			toAddr = &common.Address{}
+		}
 
 		// if no signature, we can only handle it as l1msg tx
 		// notice the type is defined in geth_types
@@ -78,7 +84,7 @@ func transferTxs(txs []Transaction) types.Transactions {
 			l1msgTx := &types.L1MessageTx{
 				Gas:        uint64(tx.GasLimit),
 				QueueIndex: uint64(tx.Nonce),
-				To:         tx.To,
+				To:         toAddr,
 				Value:      toBigInt(tx.Value),
 				Data:       tx.CallData,
 				Sender:     tx.From,
@@ -90,7 +96,7 @@ func transferTxs(txs []Transaction) types.Transactions {
 			case "Eip155":
 				legacyTx := &types.LegacyTx{
 					Nonce:    uint64(tx.Nonce),
-					To:       tx.To,
+					To:       toAddr,
 					Value:    toBigInt(tx.Value),
 					Gas:      uint64(tx.GasLimit),
 					GasPrice: toBigInt(tx.GasPrice),
@@ -122,7 +128,7 @@ func transferTxs(txs []Transaction) types.Transactions {
 	return types.Transactions(t_txs)
 }
 
-func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
+func Trace(config TraceConfig) (*types.BlockTrace, error) {
 
 	chainConfig := params.ChainConfig{
 		ChainID:             new(big.Int).SetUint64(config.ChainID),
@@ -247,13 +253,4 @@ func L2Trace(config TraceConfig) (*types.BlockTrace, error) {
 	trace.StorageTrace.RootAfter = rootAfter
 	trace.Header.Root = rootAfter
 	return trace, nil
-}
-
-func Trace(config TraceConfig) ([]*types.ExecutionResult, error) {
-	l2trace, err := L2Trace(config)
-	if err != nil {
-		return nil, err
-	}
-
-	return l2trace.ExecutionResults, nil
 }
