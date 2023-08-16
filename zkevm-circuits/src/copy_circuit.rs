@@ -157,6 +157,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
     ) -> Self {
         let q_step = meta.complex_selector();
         let is_last = meta.advice_column();
+        log::info!("is_last {is_last:?}");
         let value = meta.advice_column();
         let value_prev = meta.advice_column();
 
@@ -182,6 +183,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let word_index = meta.advice_column();
         let mask = meta.advice_column();
         let front_mask = meta.advice_column();
+        log::error!("front_mask {front_mask:?}");
 
         let rlc_acc = copy_table.rlc_acc;
         let rw_counter = copy_table.rw_counter;
@@ -209,7 +211,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         );
 
         let non_pad_non_mask = meta.advice_column();
-
+        log::error!("non_pad_non_mask {non_pad_non_mask:?}");
         constrain_tag(
             meta,
             q_enable,

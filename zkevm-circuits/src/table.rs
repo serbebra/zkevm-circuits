@@ -602,7 +602,11 @@ impl RwTable {
             tag: meta.advice_column(),
             id: meta.advice_column(),
             address: meta.advice_column(),
-            field_tag: meta.advice_column(),
+            field_tag: {
+                let f = meta.advice_column();
+                log::error!("field tag {:?}", f);
+                f
+            },
             storage_key: meta.advice_column_in(SecondPhase),
             value: meta.advice_column_in(SecondPhase),
             value_prev: meta.advice_column_in(SecondPhase),
@@ -1077,6 +1081,7 @@ impl BytecodeTable {
     /// Construct a new BytecodeTable
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         let [tag, index, is_code, value] = array::from_fn(|_| meta.advice_column());
+        log::error!("bytecode table tag {tag:?}");
         let code_hash = meta.advice_column_in(SecondPhase);
         Self {
             q_enable: meta.fixed_column(),
@@ -1529,12 +1534,24 @@ impl CopyTable {
         Self {
             q_enable,
             is_first: meta.advice_column(),
-            id: meta.advice_column_in(SecondPhase),
+            id: {
+                let c = meta.advice_column_in(SecondPhase);
+                log::error!("id {c:?}");
+                c
+            },
             tag: BinaryNumberChip::configure(meta, q_enable, None),
-            addr: meta.advice_column(),
+            addr: {
+                let c = meta.advice_column();
+                log::error!("addr {c:?}");
+                c
+            },
             src_addr_end: meta.advice_column(),
             real_bytes_left: meta.advice_column(),
-            value_wrod_rlc: meta.advice_column(), // TODO: rm
+            value_wrod_rlc:  {
+                let c = meta.advice_column_in(SecondPhase);
+                log::error!("value_wrod_rlc {c:?}");
+                c
+            },
             rlc_acc: meta.advice_column_in(SecondPhase),
             rw_counter: meta.advice_column(),
             rwc_inc_left: meta.advice_column(),
