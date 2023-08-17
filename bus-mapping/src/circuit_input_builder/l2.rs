@@ -7,8 +7,8 @@ use crate::{
 use eth_types::{
     self,
     evm_types::OpcodeId,
-    l2_types::{BlockTrace, EthBlock, ExecStep},
-    ToAddress, H256,
+    l2_types::{BlockTrace, EthBlock, ExecStep, StorageTrace},
+    Address, ToAddress, Word, H256,
 };
 use ethers_core::types::{Bytes, U256};
 use mpt_zktrie::state::{AccountData, ZktrieState};
@@ -50,7 +50,7 @@ impl From<&ZktrieState> for StateDB {
     }
 }
 
-fn decode_bytecode(bytecode: &str) -> Result<Vec<u8>, hex::FromHexError> {
+fn decode_bytecode(bytecode: &str) -> Result<Vec<u8>, Error> {
     let mut stripped = if let Some(stripped) = bytecode.strip_prefix("0x") {
         stripped.to_string()
     } else {
@@ -62,7 +62,7 @@ fn decode_bytecode(bytecode: &str) -> Result<Vec<u8>, hex::FromHexError> {
         stripped = format!("0{stripped}");
     }
 
-    hex::decode(stripped)
+    hex::decode(stripped).map_err(Error::HexError)
 }
 
 fn trace_code(
@@ -128,11 +128,11 @@ fn trace_code(
     });
 }
 
-fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
+fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) -> Result<(), Error> {
     log::debug!("build_codedb for block {:?}", block.header.number);
     for (er_idx, execution_result) in block.execution_results.iter().enumerate() {
         if let Some(bytecode) = &execution_result.byte_code {
-            let bytecode = decode_bytecode(bytecode).unwrap().to_vec();
+            let bytecode = decode_bytecode(bytecode)?.to_vec();
 
             let code_hash = execution_result
                 .to
@@ -166,6 +166,7 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
                             1
                         };
                         let callee_code = data.get_code_at(code_idx);
+                        // TODO: make nil code ("0x") is not None and assert None case
                         // assert!(
                         //     callee_code.is_none(),
                         //     "invalid trace: cannot get code of call: {step:?}"
@@ -190,10 +191,12 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
                     }
                     OpcodeId::EXTCODESIZE | OpcodeId::EXTCODECOPY => {
                         let code = data.get_code_at(0);
-                        assert!(
-                            code.is_none(),
-                            "invalid trace: cannot get code of ext: {step:?}"
-                        );
+                        if code.is_none() {
+                            return Err(Error::InvalidGethExecStep(
+                                "invalid trace: cannot get code of ext",
+                                Box::new(eth_types::GethExecStep::from(step)),
+                            ));
+                        }
                         trace_code(cdb, None, code.unwrap(), step, sdb, 0);
                     }
 
@@ -204,6 +207,7 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) {
     }
 
     log::debug!("updating codedb done");
+    Ok(())
 }
 
 fn dump_code_db(cdb: &CodeDB) {
@@ -215,7 +219,6 @@ fn dump_code_db(cdb: &CodeDB) {
 
 impl CircuitInputBuilder {
     fn apply_l2_trace(&mut self, block_trace: &BlockTrace, is_last: bool) -> Result<(), Error> {
-        update_codedb(&mut self.code_db, &self.sdb, block_trace);
         if is_last {
             dump_code_db(&self.code_db);
         }
@@ -242,7 +245,6 @@ impl CircuitInputBuilder {
             header.coinbase = address;
         }
         let block_num = header.number.as_u64();
-        self.block.start_l1_queue_index = block_trace.start_l1_queue_index;
         // TODO: should be check the block number is in sequence?
         self.block.headers.insert(block_num, header);
         // note the actions when `handle_rwc_reversion` argument (the 4th one)
@@ -250,6 +252,26 @@ impl CircuitInputBuilder {
         self.handle_block_inner(&eth_block, &geth_trace, false, is_last)?;
         log::debug!("handle_block_inner done for block {:?}", block_num);
         Ok(())
+    }
+
+    fn collect_account_proofs(
+        storage_trace: &StorageTrace,
+    ) -> impl Iterator<Item = (&Address, impl IntoIterator<Item = &[u8]>)> + Clone {
+        storage_trace.proofs.iter().flat_map(|kv_map| {
+            kv_map
+                .iter()
+                .map(|(k, bts)| (k, bts.iter().map(Bytes::as_ref)))
+        })
+    }
+
+    fn collect_storage_proofs(
+        storage_trace: &StorageTrace,
+    ) -> impl Iterator<Item = (&Address, &Word, impl IntoIterator<Item = &[u8]>)> + Clone {
+        storage_trace.storage_proofs.iter().flat_map(|(k, kv_map)| {
+            kv_map
+                .iter()
+                .map(move |(sk, bts)| (k, sk, bts.iter().map(Bytes::as_ref)))
+        })
     }
 
     /// Create a new CircuitInputBuilder from the given `l2_trace` and `circuits_params`
@@ -260,41 +282,22 @@ impl CircuitInputBuilder {
     ) -> Result<Self, Error> {
         let chain_id = l2_trace.chain_id;
 
-        let mut code_db = CodeDB::new();
-        code_db.insert(Vec::new());
-
         let old_root = l2_trace.storage_trace.root_before;
         log::debug!(
             "building zktrie state for block {:?}, old root {}",
             l2_trace.header.number,
             hex::encode(old_root),
         );
-        let account_proofs = l2_trace.storage_trace.proofs.iter().flat_map(|kv_map| {
-            kv_map
-                .iter()
-                .map(|(k, bts)| (k, bts.iter().map(Bytes::as_ref)))
-        });
-        let storage_proofs =
-            l2_trace
-                .storage_trace
-                .storage_proofs
-                .iter()
-                .flat_map(|(k, kv_map)| {
-                    kv_map
-                        .iter()
-                        .map(move |(sk, bts)| (k, sk, bts.iter().map(Bytes::as_ref)))
-                });
-        let additional_proofs = l2_trace
-            .storage_trace
-            .deletion_proofs
-            .iter()
-            .map(Bytes::as_ref);
 
         let mpt_state = ZktrieState::from_trace_with_additional(
             old_root,
-            account_proofs,
-            storage_proofs,
-            additional_proofs,
+            Self::collect_account_proofs(&l2_trace.storage_trace),
+            Self::collect_storage_proofs(&l2_trace.storage_trace),
+            l2_trace
+                .storage_trace
+                .deletion_proofs
+                .iter()
+                .map(Bytes::as_ref),
         )
         .unwrap();
 
@@ -305,9 +308,14 @@ impl CircuitInputBuilder {
 
         let sdb = StateDB::from(&mpt_state);
 
+        let mut code_db = CodeDB::new();
+        code_db.insert(Vec::new());
+        update_codedb(&mut code_db, &sdb, l2_trace)?;
+
         let mut builder_block = circuit_input_builder::Block::from_headers(&[], circuits_params);
         builder_block.chain_id = chain_id;
         builder_block.prev_state_root = U256::from(mpt_state.root());
+        builder_block.start_l1_queue_index = l2_trace.start_l1_queue_index;
         let mut builder = Self {
             sdb,
             code_db,
@@ -318,6 +326,46 @@ impl CircuitInputBuilder {
 
         builder.apply_l2_trace(l2_trace, !more)?;
         Ok(builder)
+    }
+
+    /// ...
+    pub fn add_more_l2_trace(&mut self, l2_trace: &BlockTrace, more: bool) -> Result<(), Error> {
+        // update sdb for new data from storage
+        self.mpt_state.update_nodes_from_proofs(
+            Self::collect_account_proofs(&l2_trace.storage_trace),
+            Self::collect_storage_proofs(&l2_trace.storage_trace),
+            l2_trace
+                .storage_trace
+                .deletion_proofs
+                .iter()
+                .map(Bytes::as_ref),
+        );
+
+        self.mpt_state
+            .update_account_from_proofs(
+                Self::collect_account_proofs(&l2_trace.storage_trace),
+                |addr, acc_data| {
+                    self.sdb.set_account(addr, acc_data.into());
+                    Ok(())
+                },
+            )
+            .map_err(Error::IoError)?;
+
+        self.mpt_state
+            .update_storage_from_proofs(
+                Self::collect_storage_proofs(&l2_trace.storage_trace),
+                |storage_key, value| {
+                    self.sdb
+                        .set_storage(&storage_key.0, &storage_key.1, value.as_ref());
+                    Ok(())
+                },
+            )
+            .map_err(Error::IoError)?;
+
+        update_codedb(&mut self.code_db, &self.sdb, l2_trace)?;
+
+        self.apply_l2_trace(l2_trace, !more)?;
+        Ok(())
     }
 
     /// make finalize actions on building, must called after
