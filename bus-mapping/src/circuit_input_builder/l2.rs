@@ -306,7 +306,12 @@ impl CircuitInputBuilder {
             hex::encode(mpt_state.root())
         );
 
-        let sdb = StateDB::from(&mpt_state);
+        let mut sdb = StateDB::from(&mpt_state);
+
+        let (zero_coinbase_exist, _) = sdb.get_account(&Default::default());
+        if !zero_coinbase_exist {
+            sdb.set_account(&Default::default(), state_db::Account::zero());
+        }
 
         let mut code_db = CodeDB::new();
         code_db.insert(Vec::new());
