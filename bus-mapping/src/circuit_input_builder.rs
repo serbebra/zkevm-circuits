@@ -171,8 +171,8 @@ pub struct CircuitInputBuilder {
     /// Block Context
     pub block_ctx: BlockContext,
     #[cfg(feature = "scroll")]
-    /// Zktrie Status
-    pub mpt_state: ZktrieState,
+    /// Initial Zktrie Status for a incremental updating
+    pub mpt_init_state: ZktrieState,
 }
 
 impl<'a> CircuitInputBuilder {
@@ -185,7 +185,7 @@ impl<'a> CircuitInputBuilder {
             block: block.clone(),
             block_ctx: BlockContext::new(),
             #[cfg(feature = "scroll")]
-            mpt_state: Default::default(),
+            mpt_init_state: Default::default(),
         }
     }
     /// Create a new CircuitInputBuilder from the given `eth_block` and

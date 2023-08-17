@@ -289,7 +289,7 @@ impl CircuitInputBuilder {
             hex::encode(old_root),
         );
 
-        let mpt_state = ZktrieState::from_trace_with_additional(
+        let mpt_init_state = ZktrieState::from_trace_with_additional(
             old_root,
             Self::collect_account_proofs(&l2_trace.storage_trace),
             Self::collect_storage_proofs(&l2_trace.storage_trace),
@@ -303,10 +303,10 @@ impl CircuitInputBuilder {
 
         log::debug!(
             "building partial statedb done, root {}",
-            hex::encode(mpt_state.root())
+            hex::encode(mpt_init_state.root())
         );
 
-        let mut sdb = StateDB::from(&mpt_state);
+        let mut sdb = StateDB::from(&mpt_init_state);
 
         let (zero_coinbase_exist, _) = sdb.get_account(&Default::default());
         if !zero_coinbase_exist {
@@ -319,14 +319,14 @@ impl CircuitInputBuilder {
 
         let mut builder_block = circuit_input_builder::Block::from_headers(&[], circuits_params);
         builder_block.chain_id = chain_id;
-        builder_block.prev_state_root = U256::from(mpt_state.root());
+        builder_block.prev_state_root = U256::from(mpt_init_state.root());
         builder_block.start_l1_queue_index = l2_trace.start_l1_queue_index;
         let mut builder = Self {
             sdb,
             code_db,
             block: builder_block,
             block_ctx: BlockContext::new(),
-            mpt_state,
+            mpt_init_state,
         };
 
         builder.apply_l2_trace(l2_trace, !more)?;
@@ -336,7 +336,7 @@ impl CircuitInputBuilder {
     /// ...
     pub fn add_more_l2_trace(&mut self, l2_trace: &BlockTrace, more: bool) -> Result<(), Error> {
         // update sdb for new data from storage
-        self.mpt_state.update_nodes_from_proofs(
+        self.mpt_init_state.update_nodes_from_proofs(
             Self::collect_account_proofs(&l2_trace.storage_trace),
             Self::collect_storage_proofs(&l2_trace.storage_trace),
             l2_trace
@@ -346,7 +346,7 @@ impl CircuitInputBuilder {
                 .map(Bytes::as_ref),
         );
 
-        self.mpt_state
+        self.mpt_init_state
             .update_account_from_proofs(
                 Self::collect_account_proofs(&l2_trace.storage_trace),
                 |addr, acc_data| {
@@ -356,7 +356,7 @@ impl CircuitInputBuilder {
             )
             .map_err(Error::IoError)?;
 
-        self.mpt_state
+        self.mpt_init_state
             .update_storage_from_proofs(
                 Self::collect_storage_proofs(&l2_trace.storage_trace),
                 |storage_key, value| {
