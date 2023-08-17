@@ -602,11 +602,7 @@ impl RwTable {
             tag: meta.advice_column(),
             id: meta.advice_column(),
             address: meta.advice_column(),
-            field_tag: {
-                let f = meta.advice_column();
-                log::error!("field tag {:?}", f);
-                f
-            },
+            field_tag: meta.advice_column(),
             storage_key: meta.advice_column_in(SecondPhase),
             value: meta.advice_column_in(SecondPhase),
             value_prev: meta.advice_column_in(SecondPhase),
@@ -1081,7 +1077,6 @@ impl BytecodeTable {
     /// Construct a new BytecodeTable
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         let [tag, index, is_code, value] = array::from_fn(|_| meta.advice_column());
-        log::error!("bytecode table tag {tag:?}");
         let code_hash = meta.advice_column_in(SecondPhase);
         Self {
             q_enable: meta.fixed_column(),
@@ -1197,11 +1192,15 @@ pub enum BlockContextFieldTag {
     /// add it here for convenience.
     ChainId,
     /// In a multi-block setup, this variant represents the total number of txs
-    /// included in this block.
+    /// included (executed) in this block.
     NumTxs,
     /// In a multi-block setup, this variant represents the cumulative number of
     /// txs included up to this block, including the txs in this block.
     CumNumTxs,
+    /// In a multi-block setup, this variant represents the total number of txs
+    /// included in this block which also taking skipped l1 msgs into account.
+    /// This could possibly be larger than NumTxs.
+    NumAllTxs,
 }
 impl_expr!(BlockContextFieldTag);
 
@@ -1262,7 +1261,7 @@ impl BlockTable {
                         .filter(|tx| tx.block_number == block_ctx.number.as_u64())
                         .count();
                     cum_num_txs += num_txs;
-                    for row in block_ctx.table_assignments(num_txs, cum_num_txs, challenges) {
+                    for row in block_ctx.table_assignments(num_txs, cum_num_txs, 0, challenges) {
                         region.assign_fixed(
                             || format!("block table row {offset}"),
                             self.tag,
@@ -1534,24 +1533,12 @@ impl CopyTable {
         Self {
             q_enable,
             is_first: meta.advice_column(),
-            id: {
-                let c = meta.advice_column_in(SecondPhase);
-                log::error!("id {c:?}");
-                c
-            },
+            id: meta.advice_column_in(SecondPhase),
             tag: BinaryNumberChip::configure(meta, q_enable, None),
-            addr: {
-                let c = meta.advice_column();
-                log::error!("addr {c:?}");
-                c
-            },
+            addr: meta.advice_column(),
             src_addr_end: meta.advice_column(),
             real_bytes_left: meta.advice_column(),
-            value_wrod_rlc:  {
-                let c = meta.advice_column_in(SecondPhase);
-                log::error!("value_wrod_rlc {c:?}");
-                c
-            },
+            value_wrod_rlc: meta.advice_column(), // TODO: rm
             rlc_acc: meta.advice_column_in(SecondPhase),
             rw_counter: meta.advice_column(),
             rwc_inc_left: meta.advice_column(),
@@ -2094,6 +2081,10 @@ pub struct RlpFsmRlpTable {
     pub rlp_tag: Column<Advice>,
     /// The actual value of the current tag being decoded.
     pub tag_value: Column<Advice>,
+    /// RLC of the tag's big-endian bytes
+    pub tag_bytes_rlc: Column<Advice>,
+    /// The actual length of bytes of the current tag being decoded.
+    pub tag_length: Column<Advice>,
     /// Whether or not the row emits an output value.
     pub is_output: Column<Advice>,
     /// Whether or not the current tag's value was nil.
@@ -2108,6 +2099,8 @@ impl<F: Field> LookupTable<F> for RlpFsmRlpTable {
             self.format.into(),
             self.rlp_tag.into(),
             self.tag_value.into(),
+            self.tag_bytes_rlc.into(),
+            self.tag_length.into(),
             self.is_output.into(),
             self.is_none.into(),
         ]
@@ -2120,6 +2113,8 @@ impl<F: Field> LookupTable<F> for RlpFsmRlpTable {
             String::from("format"),
             String::from("rlp_tag"),
             String::from("tag_value_acc"),
+            String::from("tag_bytes_rlc"),
+            String::from("tag_length"),
             String::from("is_output"),
             String::from("is_none"),
         ]
@@ -2135,6 +2130,8 @@ impl RlpFsmRlpTable {
             format: meta.advice_column(),
             rlp_tag: meta.advice_column(),
             tag_value: meta.advice_column_in(SecondPhase),
+            tag_bytes_rlc: meta.advice_column_in(SecondPhase),
+            tag_length: meta.advice_column(),
             is_output: meta.advice_column(),
             is_none: meta.advice_column(),
         }
@@ -2188,6 +2185,16 @@ impl RlpFsmRlpTable {
                             Value::known(F::from(usize::from(row.rlp_tag) as u64)),
                         ),
                         ("tag_value", self.tag_value.into(), row.tag_value),
+                        (
+                            "tag_bytes_rlc",
+                            self.tag_bytes_rlc.into(),
+                            row.tag_bytes_rlc,
+                        ),
+                        (
+                            "tag_length",
+                            self.tag_length.into(),
+                            Value::known(F::from(row.tag_length as u64)),
+                        ),
                         ("is_output", self.is_output.into(), Value::known(F::one())),
                         (
                             "is_none",

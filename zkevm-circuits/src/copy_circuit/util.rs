@@ -17,17 +17,9 @@ pub fn number_or_hash_to_field<F: Field>(v: &NumberOrHash, challenge: Value<F>) 
                 b
             };
             if cfg!(feature = "poseidon-codehash") {
-                Value::known(rlc::value(
-                    &le_bytes,
-                        F::from(0x100u64)))
+                Value::known(rlc::value(&le_bytes, F::from(0x100u64)))
             } else {
-                challenge.map(|challenge| {
-                    rlc::value(
-                        &le_bytes,
-                            challenge
-                        ,
-                    )
-                })
+                challenge.map(|challenge| rlc::value(&le_bytes, challenge))
             }
         }
     }
