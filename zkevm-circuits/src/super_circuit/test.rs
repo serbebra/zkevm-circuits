@@ -358,7 +358,7 @@ fn block_ec_ops() -> BlockTrace {
             PUSH32(word!("0x0000000000000000000000000000000000000000000000000000000000000008"))
             PUSH1(0x60)
             MSTORE
-            PUSH32(word!("0x1000000000000000000000000000000000000000000000000000000000000009"))
+            PUSH32(word!("0x0000000000000000000000000000000000000000000000000000000000000009"))
             PUSH1(0x80)
             MSTORE
             PUSH32(word!("0xfcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"))
@@ -577,15 +577,16 @@ fn serial_test_super_circuit_2tx_2max_tx() {
     );
 }
 
+#[ignore]
 #[cfg(feature = "scroll")]
 #[test]
-fn test_super_circuit_ec_ops_txs() {
+fn serial_test_super_circuit_ec_ops_txs() {
     let block = block_ec_ops();
     const MAX_TXS: usize = 4;
     const MAX_CALLDATA: usize = 320;
     const MAX_INNER_BLOCKS: usize = 1;
     const MAX_RWS: usize = 1024;
-    const MAX_COPY_ROWS: usize = 2048;
+    const MAX_COPY_ROWS: usize = 16384; // precompile require many copies
     let circuits_params = CircuitsParams {
         max_txs: MAX_TXS,
         max_calldata: MAX_CALLDATA,
