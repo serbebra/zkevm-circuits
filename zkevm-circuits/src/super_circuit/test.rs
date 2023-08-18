@@ -16,7 +16,6 @@ use std::{collections::HashMap, env::set_var};
 
 #[cfg(test)]
 use crate::evm_circuit::execution::precompiles::tests as precompile_tests;
-use crate::modexp_circuit::MODEXPCONFIG_EACH_CHIP_ROWS;
 
 #[test]
 fn super_circuit_degree() {
@@ -390,52 +389,53 @@ pub(crate) fn block_ec_ops() -> GethData {
 }
 
 #[cfg(test)]
-pub(crate) fn block_modexp_ops() -> GethData {
+pub(crate) fn block_modexp_ops() -> [GethData; 4] {
     let mut rng = ChaCha20Rng::seed_from_u64(2);
     let sender = LocalWallet::new(&mut rng).with_chain_id(*MOCK_CHAIN_ID);
     let sender_address = sender.address();
     let mut wallets = HashMap::new();
     wallets.insert(sender_address, sender);
-
-    let accounts = precompile_tests::modexp::TEST_VECTOR
-        .iter()
-        .cartesian_product([
-            OpcodeId::CALL,
-            OpcodeId::STATICCALL,
-            OpcodeId::DELEGATECALL,
-            OpcodeId::CALLCODE,
-        ])
-        .enumerate()
-        .map(|(idx, (case, opcode))| {
-            let code = case.with_call_op(opcode);
-            eth_types::geth_types::Account {
-                address: address!(format!("0x000000000000000000000C0DE{idx:015X}")),
-                code: code.into(),
-                ..Default::default()
-            }
-        })
-        .collect::<Vec<_>>();
-    let mut block: GethData = TestContext::<37, 36>::new(
-        Some(vec![Word::zero()]),
-        |mut accs| {
-            accs[0].address(sender_address).balance(eth(10));
-            accs[1..].iter_mut().enumerate().for_each(|(idx, acc)| {
-                acc.account(&accounts[idx]);
-            });
-        },
-        |mut txs, accs| {
-            txs.iter_mut().enumerate().for_each(|(idx, tx)| {
-                tx.from(accs[0].address)
-                    .to(accs[idx + 1].address)
-                    .gas(Word::from(1_000_000u64));
-            });
-        },
-        |block, _tx| block.number(0xcafeu64),
-    )
-    .unwrap()
-    .into();
-    block.sign(&wallets);
-    block
+    [
+        OpcodeId::CALL,
+        OpcodeId::STATICCALL,
+        OpcodeId::DELEGATECALL,
+        OpcodeId::CALLCODE,
+    ]
+    .map(|opcode| {
+        let accounts = precompile_tests::modexp::TEST_VECTOR
+            .iter()
+            .enumerate()
+            .map(|(idx, (case, opcode))| {
+                let code = case.with_call_op(opcode);
+                eth_types::geth_types::Account {
+                    address: address!(format!("0x000000000000000000000C0DE{idx:015X}")),
+                    code: code.into(),
+                    ..Default::default()
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut block: GethData = TestContext::<10, 9>::new(
+            Some(vec![Word::zero()]),
+            |mut accs| {
+                accs[0].address(sender_address).balance(eth(10));
+                accs[1..].iter_mut().enumerate().for_each(|(idx, acc)| {
+                    acc.account(&accounts[idx]);
+                });
+            },
+            |mut txs, accs| {
+                txs.iter_mut().enumerate().for_each(|(idx, tx)| {
+                    tx.from(accs[0].address)
+                        .to(accs[idx + 1].address)
+                        .gas(Word::from(1_000_000u64));
+                });
+            },
+            |block, _tx| block.number(0xcafeu64),
+        )
+        .unwrap()
+        .into();
+        block.sign(&wallets);
+        block
+    })
 }
 
 const TEST_MOCK_RANDOMNESS: u64 = 0x100;
@@ -618,7 +618,7 @@ fn test_super_circuit_ec_ops_txs() {
 #[cfg(feature = "scroll")]
 #[test]
 fn test_super_circuit_modexp_ops_txs() {
-    let block = block_modexp_ops();
+    let blocks = block_modexp_ops();
     const MAX_TXS: usize = 36;
     const MAX_CALLDATA: usize = 320;
     const MAX_INNER_BLOCKS: usize = 1;
@@ -632,14 +632,16 @@ fn test_super_circuit_modexp_ops_txs() {
         max_bytecode: 4096,
         max_mpt_rows: 2048,
         max_evm_rows: 0,
-        max_keccak_rows: MODEXPCONFIG_EACH_CHIP_ROWS * 32,
+        max_keccak_rows: crate::modexp_circuit::MODEXPCONFIG_EACH_CHIP_ROWS * 8,
         max_inner_blocks: MAX_INNER_BLOCKS,
         max_exp_steps: 256,
         max_rlp_rows: 800,
         ..Default::default()
     };
-    test_super_circuit::<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>(
-        block,
-        circuits_params,
-    );
+    for block in blocks.into_iter() {
+        test_super_circuit::<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>(
+            block,
+            circuits_params,
+        );
+    }
 }
