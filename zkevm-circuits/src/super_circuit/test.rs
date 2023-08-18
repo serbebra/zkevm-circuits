@@ -417,9 +417,7 @@ pub(crate) fn block_modexp_ops() -> GethData {
     let mut block: GethData = TestContext::<37, 36>::new(
         Some(vec![Word::zero()]),
         |mut accs| {
-            accs[0]
-                .address(sender_address)
-                .balance(Word::from(1u64 << 20));
+            accs[0].address(sender_address).balance(eth(10));
             accs[1..].iter_mut().enumerate().for_each(|(idx, acc)| {
                 acc.account(&accounts[idx]);
             });
@@ -623,7 +621,7 @@ fn test_super_circuit_modexp_ops_txs() {
     const MAX_TXS: usize = 36;
     const MAX_CALLDATA: usize = 320;
     const MAX_INNER_BLOCKS: usize = 1;
-    const MAX_RWS: usize = 1024;
+    const MAX_RWS: usize = 6000;
     const MAX_COPY_ROWS: usize = 2048;
     let circuits_params = CircuitsParams {
         max_txs: MAX_TXS,
