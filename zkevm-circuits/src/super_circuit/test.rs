@@ -405,7 +405,7 @@ pub(crate) fn block_modexp_ops() -> [GethData; 4] {
         let accounts = precompile_tests::modexp::TEST_VECTOR
             .iter()
             .enumerate()
-            .map(|(idx, (case, opcode))| {
+            .map(|(idx, case)| {
                 let code = case.with_call_op(opcode);
                 eth_types::geth_types::Account {
                     address: address!(format!("0x000000000000000000000C0DE{idx:015X}")),
