@@ -99,14 +99,18 @@ impl<F: Field> SubCircuitConfig<F> for EccCircuitConfig<F> {
         let num_advice = [33];
         #[cfg(not(feature = "onephase"))]
         let num_advice = [33, 1];
+        #[cfg(feature = "onephase")]
+        let num_lookup_advice = [17];
+        #[cfg(not(feature = "onephase"))]
+        let num_lookup_advice = [17, 1];
 
         let fp_config = FpConfig::configure(
             meta,
             FpStrategy::Simple,
             &num_advice,
-            &[17, 1], // num lookup advice
-            1,        // num fixed
-            13,       // lookup bits
+            &num_lookup_advice,
+            1,  // num fixed
+            13, // lookup bits
             limb_bits,
             num_limbs,
             modulus::<Fq>(),
