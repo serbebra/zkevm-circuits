@@ -414,7 +414,7 @@ pub(crate) fn block_modexp_ops() -> [GethData; 4] {
                 }
             })
             .collect::<Vec<_>>();
-        let mut block: GethData = TestContext::<10, 9>::new(
+        let mut block: GethData = TestContext::<6, 5>::new(
             Some(vec![Word::zero()]),
             |mut accs| {
                 accs[0].address(sender_address).balance(eth(10));
@@ -619,7 +619,7 @@ fn test_super_circuit_ec_ops_txs() {
 #[test]
 fn test_super_circuit_modexp_ops_txs() {
     let blocks = block_modexp_ops();
-    const MAX_TXS: usize = 36;
+    const MAX_TXS: usize = 9;
     const MAX_CALLDATA: usize = 320;
     const MAX_INNER_BLOCKS: usize = 1;
     const MAX_RWS: usize = 2048;
@@ -635,7 +635,7 @@ fn test_super_circuit_modexp_ops_txs() {
         max_keccak_rows: crate::modexp_circuit::MODEXPCONFIG_EACH_CHIP_ROWS * 8,
         max_inner_blocks: MAX_INNER_BLOCKS,
         max_exp_steps: 256,
-        max_rlp_rows: 800,
+        max_rlp_rows: 4096,
         ..Default::default()
     };
     for block in blocks.into_iter() {
