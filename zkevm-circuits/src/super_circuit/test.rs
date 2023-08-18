@@ -339,6 +339,40 @@ fn block_ec_ops() -> BlockTrace {
         ..Default::default()
     }
     .with_call_op(OpcodeId::DELEGATECALL);
+    let bytecode_modexp_256 = PrecompileCallArgs {
+        name: "modexp length in u256",
+        setup_code: bytecode! {
+            // Base size
+            PUSH1(0x20)
+            PUSH1(0x00)
+            MSTORE
+            // Esize
+            PUSH1(0x20)
+            PUSH1(0x20)
+            MSTORE
+            // Msize
+            PUSH1(0x20)
+            PUSH1(0x40)
+            MSTORE
+            // B, E and M
+            PUSH32(word!("0x0000000000000000000000000000000000000000000000000000000000000008"))
+            PUSH1(0x60)
+            MSTORE
+            PUSH32(word!("0x1000000000000000000000000000000000000000000000000000000000000009"))
+            PUSH1(0x80)
+            MSTORE
+            PUSH32(word!("0xfcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"))
+            PUSH1(0xA0)
+            MSTORE
+        },
+        call_data_offset: 0x0.into(),
+        call_data_length: 0xc0.into(),
+        ret_offset: 0xe0.into(),
+        ret_size: 0x01.into(),
+        address: PrecompileCalls::Modexp.address().to_word(),
+        ..Default::default()
+    }
+    .with_call_op(OpcodeId::STATICCALL);
 
     let wallet_a = LocalWallet::new(&mut rng).with_chain_id(chain_id);
 
@@ -346,12 +380,13 @@ fn block_ec_ops() -> BlockTrace {
     let addr_b = address!("0x000000000000000000000000000000000000BBBB");
     let addr_c = address!("0x000000000000000000000000000000000000CCCC");
     let addr_d = address!("0x000000000000000000000000000000000000DDDD");
+    let addr_e = address!("0x000000000000000000000000000000000000EEEE");
 
-    // 4 accounts and 3 txs.
-    TestContext::<4, 3>::new(
+    // 5 accounts and 4 txs.
+    TestContext::<5, 4>::new(
         Some(vec![Word::zero()]),
         |accs| {
-            accs[0].address(addr_a).balance(Word::from(1u64 << 20));
+            accs[0].address(addr_a).balance(Word::from(1u64 << 24));
             accs[1]
                 .address(addr_b)
                 .balance(Word::from(1u64 << 20))
@@ -364,6 +399,10 @@ fn block_ec_ops() -> BlockTrace {
                 .address(addr_d)
                 .balance(Word::from(1u64 << 20))
                 .code(bytecode_ec_pairing);
+            accs[4]
+                .address(addr_e)
+                .balance(Word::from(1u64 << 20))
+                .code(bytecode_modexp_256);
         },
         |mut txs, accs| {
             txs[0]
@@ -377,6 +416,10 @@ fn block_ec_ops() -> BlockTrace {
             txs[2]
                 .from(wallet_a.clone())
                 .to(accs[3].address)
+                .gas(Word::from(1_000_000u64));
+            txs[3]
+                .from(wallet_a.clone())
+                .to(accs[4].address)
                 .gas(Word::from(1_000_000u64));
         },
         |block, _tx| block.number(0xcafeu64),
@@ -538,7 +581,7 @@ fn serial_test_super_circuit_2tx_2max_tx() {
 #[test]
 fn test_super_circuit_ec_ops_txs() {
     let block = block_ec_ops();
-    const MAX_TXS: usize = 3;
+    const MAX_TXS: usize = 4;
     const MAX_CALLDATA: usize = 320;
     const MAX_INNER_BLOCKS: usize = 1;
     const MAX_RWS: usize = 1024;
@@ -551,7 +594,9 @@ fn test_super_circuit_ec_ops_txs() {
         max_bytecode: 4096,
         max_mpt_rows: 2048,
         max_evm_rows: 0,
-        max_keccak_rows: 0,
+        // modexp ref this to decide its ability, we
+        // need at least one (~25000 rows)
+        max_keccak_rows: 30000,
         max_inner_blocks: MAX_INNER_BLOCKS,
         max_exp_steps: 256,
         max_rlp_rows: 800,
