@@ -622,7 +622,7 @@ fn test_super_circuit_modexp_ops_txs() {
     const MAX_TXS: usize = 36;
     const MAX_CALLDATA: usize = 320;
     const MAX_INNER_BLOCKS: usize = 1;
-    const MAX_RWS: usize = 6000;
+    const MAX_RWS: usize = 1024;
     const MAX_COPY_ROWS: usize = 2048;
     let circuits_params = CircuitsParams {
         max_txs: MAX_TXS,
