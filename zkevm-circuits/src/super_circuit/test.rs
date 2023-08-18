@@ -16,6 +16,7 @@ use std::{collections::HashMap, env::set_var};
 
 #[cfg(test)]
 use crate::evm_circuit::execution::precompiles::tests as precompile_tests;
+use crate::modexp_circuit::MODEXPCONFIG_EACH_CHIP_ROWS;
 
 #[test]
 fn super_circuit_degree() {
@@ -631,7 +632,7 @@ fn test_super_circuit_modexp_ops_txs() {
         max_bytecode: 4096,
         max_mpt_rows: 2048,
         max_evm_rows: 0,
-        max_keccak_rows: 0,
+        max_keccak_rows: MODEXPCONFIG_EACH_CHIP_ROWS * 32,
         max_inner_blocks: MAX_INNER_BLOCKS,
         max_exp_steps: 256,
         max_rlp_rows: 800,
