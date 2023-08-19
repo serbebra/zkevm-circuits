@@ -36,7 +36,7 @@ fn test_precompiled_aggregation_circuit() {
     let k = 20;
 
     // This set up requires one round of keccak for chunk's data hash
-    let circuit = build_circuit_from_file(10);
+    let circuit = build_circuit_from_file();
     let instance = circuit.instances();
     let mock_prover = MockProver::<Fr>::run(k, &circuit, instance).unwrap();
     mock_prover.assert_satisfied_par();
@@ -53,7 +53,7 @@ fn test_precompiled_aggregation_circuit_full() {
     fs::create_dir(path).unwrap();
 
     // This set up requires one round of keccak for chunk's data hash
-    let circuit = build_circuit_from_file(10);
+    let circuit = build_circuit_from_file();
     let instance = circuit.instances();
     let mock_prover = MockProver::<Fr>::run(25, &circuit, instance).unwrap();
     mock_prover.assert_satisfied_par();
@@ -88,8 +88,6 @@ fn test_precompiled_aggregation_circuit_full() {
     ));
     log::trace!("finished verification for circuit");
 }
-
-
 
 /// - Test aggregation proof generation and verification.
 /// - Test a same pk can be used for various number of chunk proofs.
@@ -141,7 +139,6 @@ fn test_aggregation_circuit_full() {
 }
 
 fn build_new_aggregation_circuit(num_real_chunks: usize) -> AggregationCircuit {
-
     let mut rng = test_rng();
     let mut chunks_without_padding = (0..num_real_chunks)
         .map(|_| ChunkHash::mock_random_chunk_hash_for_testing(&mut rng))
@@ -168,10 +165,16 @@ fn build_new_aggregation_circuit(num_real_chunks: usize) -> AggregationCircuit {
     build_circuit(num_real_chunks, &chunks_with_padding)
 }
 
-fn build_circuit_from_file(num_real_chunks: usize) -> AggregationCircuit {
+fn build_circuit_from_file() -> AggregationCircuit {
     let file = File::open("chunks.json").unwrap();
     let chunks_with_padding: Vec<ChunkHash> = serde_json::from_reader(file).unwrap();
     println!("read chunks from disk: {:?}", chunks_with_padding);
+    let mut num_real_chunks = 0;
+    for chunk in chunks_with_padding.iter() {
+        if !chunk.is_padding {
+            num_real_chunks += 1;
+        }
+    }
     build_circuit(num_real_chunks, &chunks_with_padding)
 }
 
