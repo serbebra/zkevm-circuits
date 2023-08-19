@@ -759,7 +759,7 @@ pub(crate) fn conditional_constraints(
                     "candidate 2: {:?}",
                     hash_input_len_cells[MAX_AGG_SNARKS * 2 + 4].value()
                 );
-                log::trace!(
+                log::warn!(
                     "candidate 3: {:?}",
                     hash_input_len_cells[MAX_AGG_SNARKS * 2 + 5].value()
                 );
