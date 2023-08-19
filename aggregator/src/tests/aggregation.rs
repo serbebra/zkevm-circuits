@@ -168,7 +168,7 @@ fn build_new_aggregation_circuit(num_real_chunks: usize) -> AggregationCircuit {
 fn build_circuit_from_file() -> AggregationCircuit {
     let file = File::open("chunks.json").unwrap();
     let chunks_with_padding: Vec<ChunkHash> = serde_json::from_reader(file).unwrap();
-    println!("read chunks from disk: {:?}", chunks_with_padding);
+    println!("read chunks from disk: {chunks_with_padding:?}",);
     let mut num_real_chunks = 0;
     for chunk in chunks_with_padding.iter() {
         if !chunk.is_padding {
@@ -207,7 +207,7 @@ fn build_circuit(num_real_chunks: usize, chunks_with_padding: &[ChunkHash]) -> A
     // ==========================
     // batch
     // ==========================
-    let batch_hash = BatchHash::construct(&chunks_with_padding);
+    let batch_hash = BatchHash::construct(chunks_with_padding);
 
     AggregationCircuit::new(
         &params,
