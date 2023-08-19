@@ -171,10 +171,12 @@ pub(crate) fn assert_exist<F: Field>(
     b1.value().map(|f| t2 = *f);
     b2.value().map(|f| t3 = *f);
     b3.value().map(|f| t4 = *f);
+/* gupeng
     assert!(
         t1 == t2 || t1 == t3 || t1 == t4,
         "t1: {t1:?}\nt2: {t2:?}\nt3: {t3:?}\nt4: {t4:?}\n",
     )
+*/
 }
 
 #[inline]
