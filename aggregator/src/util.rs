@@ -174,11 +174,7 @@ pub(crate) fn assert_exist<F: Field>(
                 a == b1 || a == b2 || a == b3,
                 "a: {a:?}\nb1: {b1:?}\nb2: {b2:?}\nb3: {b3:?}\n",
             );
-            if a == b1 || a == b2 || a == b3 {
-                false
-            } else {
-                true
-            }
+            !(a == b1 || a == b2 || a == b3)
         });
 }
 
