@@ -222,7 +222,7 @@ func Trace(config TraceConfig) (*types.BlockTrace, error) {
 		return nil, err
 	}
 
-	traceEnv := core.CreateTraceEnvDirect(
+	traceEnv := core.CreateTraceEnvHelper(
 		&chainConfig,
 		config.LoggerConfig,
 		blockCtx,
