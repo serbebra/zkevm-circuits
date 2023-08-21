@@ -149,19 +149,6 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
     let rlp_signed = tx.rlp_signed(&sig).to_vec();
     let tx_hash = keccak256(tx.rlp_signed(&sig));
     let mut accounts = st.pre;
-    for i in 1..=9 {
-        let mut addr_bytes = [0u8; 20];
-        addr_bytes[19] = i as u8;
-        let address = Address::from(addr_bytes);
-        accounts
-            .entry(address)
-            .or_insert(eth_types::geth_types::Account {
-                // balance: 1.into(),
-                // nonce: 1.into(),
-                address,
-                ..Default::default()
-            });
-    }
 
     (
         st.id,

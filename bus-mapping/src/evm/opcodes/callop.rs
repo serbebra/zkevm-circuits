@@ -104,7 +104,6 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         let callee_code_hash = callee_call.code_hash;
         let callee_acc = state.sdb.get_account(&callee_address).1;
         let callee_exists = !callee_acc.is_empty();
-
         let (callee_code_hash_word, is_empty_code_hash) = if callee_exists {
             (
                 callee_code_hash.to_word(),
@@ -170,14 +169,14 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         let is_precompile = code_address
             .map(|ref addr| is_precompiled(addr))
             .unwrap_or(false);
-        // TODO: What about transfer for CALLCODE?
+        // CALLCODE does not need to do real transfer.
         // Transfer value only for CALL opcode, is_precheck_ok = true.
         if callee_call.kind == CallKind::Call && is_precheck_ok {
             state.transfer(
                 &mut exec_step,
                 callee_call.caller_address,
                 callee_call.address,
-                callee_exists || is_precompile,
+                callee_exists,
                 false,
                 callee_call.value,
             )?;
