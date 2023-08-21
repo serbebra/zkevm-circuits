@@ -196,7 +196,7 @@ fn go() -> Result<()> {
                     .tests
                     .retain(|_, test| !whitelist_levels.contains(&test.level));
             } else {
-                // by default only skip ignore
+                // by default skip ignore and success tests
                 previous_results.tests.retain(|_, test| {
                     test.level == ResultLevel::Ignored || test.level == ResultLevel::Success
                 });
