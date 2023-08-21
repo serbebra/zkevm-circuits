@@ -322,14 +322,14 @@ pub fn run_test(
     if !circuits_config.super_circuit {
         let circuits_params = CircuitsParams {
             max_txs: 1,
-            max_rws: 0,
-            max_calldata: 5000,
+            max_rws: 0,      // dynamic
+            max_calldata: 0, // dynamic
             max_bytecode: 5000,
             max_mpt_rows: 5000,
             max_copy_rows: 55000,
-            max_evm_rows: 0,
+            max_evm_rows: 0, // dynamic
             max_exp_steps: 5000,
-            max_keccak_rows: 0,
+            max_keccak_rows: 0, // dynamic?
             max_inner_blocks: 64,
             max_rlp_rows: 6000,
             max_ec_ops: PrecompileEcParams {
