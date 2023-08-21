@@ -185,7 +185,7 @@ fn go() -> Result<()> {
         let mut previous_results = if let Some(cache_filename) = cache_file_name {
             let whitelist_levels = HashSet::<ResultLevel>::from_iter(args.levels);
 
-            let mut previous_results = Results::from_file(PathBuf::from(cache_filename))
+            let mut previous_results = Results::from_file(cache_filename)
                 .unwrap_or_else(|_| {
                     log::warn!("malformed cache file, won't use cache");
                     Results::default()
@@ -238,7 +238,7 @@ fn go() -> Result<()> {
         info!("{}", html_filename);
     } else {
         let mut results = if let Some(cache_filename) = args.cache {
-            Results::with_cache(PathBuf::from(cache_filename))?
+            Results::with_cache(cache_filename)?
         } else {
             Results::default()
         };
