@@ -472,7 +472,9 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
 
                 debug_assert_eq!(
                     geth_steps[0].gas.0 - gas_cost - precompile_call_gas_cost + stipend,
-                    geth_steps[1].gas.0
+                    geth_steps[1].gas.0,
+                    "precompile_call_gas_cost wrong {:?}",
+                    precompile_step.exec_state
                 );
 
                 Ok(vec![exec_step, precompile_step])
