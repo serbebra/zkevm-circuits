@@ -395,10 +395,11 @@ impl Results {
                 .open(path)?;
             for (test_id, result) in &self.tests {
                 let entry = format!(
-                    "{:?};{};{}\n",
+                    "{:?};{};{};{}\n",
                     result.level,
                     test_id,
-                    urlencoding::encode(&result.details)
+                    urlencoding::encode(&result.details),
+                    result.path,
                 );
                 file.write_all(entry.as_bytes())?;
             }
