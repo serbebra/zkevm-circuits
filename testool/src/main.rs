@@ -200,7 +200,6 @@ fn go() -> Result<()> {
                     test.level == ResultLevel::Ignored || test.level == ResultLevel::Success
                 });
             }
-            previous_results.write_cache()?;
 
             previous_results
         } else {
@@ -208,6 +207,7 @@ fn go() -> Result<()> {
         };
 
         previous_results.set_cache(PathBuf::from(csv_filename));
+        previous_results.write_cache()?;
         run_statetests_suite(state_tests, &circuits_config, &suite, &mut previous_results)?;
 
         // filter non-csv files and files from the same commit
