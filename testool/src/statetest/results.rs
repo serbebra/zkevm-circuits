@@ -385,7 +385,7 @@ impl Results {
         self.tests.contains_key(test)
     }
 
-    pub fn _write_cache(&self) -> Result<()> {
+    pub fn write_cache(&self) -> Result<()> {
         if let Some(path) = &self.cache {
             let mut file = std::fs::OpenOptions::new()
                 .read(true)

@@ -200,6 +200,7 @@ fn go() -> Result<()> {
                     test.level == ResultLevel::Ignored || test.level == ResultLevel::Success
                 });
             }
+            previous_results.write_cache()?;
 
             previous_results
         } else {
