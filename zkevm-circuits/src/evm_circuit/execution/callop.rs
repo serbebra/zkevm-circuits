@@ -791,7 +791,6 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             [U256::zero(), U256::zero()]
         };
         let [gas, callee_address] = [(); 2].map(|_| rws.next().stack_value());
-        let is_precompile = is_precompiled(&callee_address.to_address());
         let value = if is_call || is_callcode {
             rws.next().stack_value()
         } else {

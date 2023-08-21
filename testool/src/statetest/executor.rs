@@ -148,7 +148,7 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
     let sig = wallet.sign_transaction_sync(&tx);
     let rlp_signed = tx.rlp_signed(&sig).to_vec();
     let tx_hash = keccak256(tx.rlp_signed(&sig));
-    let mut accounts = st.pre;
+    let accounts = st.pre;
 
     (
         st.id,
