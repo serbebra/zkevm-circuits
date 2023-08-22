@@ -68,13 +68,13 @@ use std::{
     marker::PhantomData,
 };
 
+use crate::witness::rlp_fsm::get_rlp_len_tag_length;
 #[cfg(feature = "onephase")]
 use halo2_proofs::plonk::FirstPhase as SecondPhase;
 use halo2_proofs::plonk::Fixed;
 #[cfg(not(feature = "onephase"))]
 use halo2_proofs::plonk::SecondPhase;
 use itertools::Itertools;
-use crate::witness::rlp_fsm::get_rlp_len_tag_length;
 
 /// Number of rows of one tx occupies in the fixed part of tx table
 pub const TX_LEN: usize = 23;
