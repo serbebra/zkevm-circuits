@@ -38,12 +38,12 @@ fn run<F: Field, const MUST_FAIL: bool>(
         Err(e) => panic!("{e:#?}"),
     };
 
-    let result = prover.verify();
-    log::info!("result = {:?}", result);
     if MUST_FAIL {
-        assert!(result.is_err())
-    } else {
-        assert!(result.is_ok())
+        if let Ok(()) = prover.verify() {
+            panic!("expected failure, found success");
+        }
+    } else if let Err(e) = prover.verify() {
+        panic!("{e:#?}");
     }
 }
 
@@ -199,13 +199,42 @@ fn test_ecc_circuit_valid_invalid() {
                 },
             ]
         };
+        static ref EC_MUL_OPS: Vec<EcMulOp> = {
+            vec![
+                // 1. valid: P = G1::generator, s = 3
+                EcMulOp {
+                    p: (U256::from(1), U256::from(2)),
+                    s: Fr::from(3),
+                    r: Some({
+                        let p = G1Affine::generator();
+                        let s = Fr::from(3);
+                        p.mul(s).into()
+                    }),
+                },
+                // 2. invalid: P = (2, 3), i.e. not on curve
+                EcMulOp {
+                    p: (U256::from(2), U256::from(3)),
+                    s: Fr::from(3),
+                    r: None,
+                },
+                // 3. invalid: P == (p + 1, p + 2), i.e. > Fq::MODULUS
+                EcMulOp {
+                    p: (
+                        word!("0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD48"), // p + 1
+                        word!("0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD49"), // p + 2
+                    ),
+                    s: Fr::from(3),
+                    r: None,
+                },
+            ]
+        };
     }
 
     run::<Fr, false>(
         LOG_TOTAL_NUM_ROWS,
         PrecompileEcParams::default(),
         EC_ADD_OPS.clone(),
-        gen(&mut rng, 10, false),
+        EC_MUL_OPS.clone(),
         gen(&mut rng, 2, false),
     );
 }

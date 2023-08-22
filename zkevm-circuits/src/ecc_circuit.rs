@@ -271,7 +271,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                 {
                     // finalize after first phase.
                     config.fp_config.finalize(&mut ctx);
-                    log::info!("finalized after first phase");
                     ctx.next_phase();
                 }
 
@@ -485,35 +484,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             self.precheck_fq(ctx, ecc_chip, op.q.1, powers_of_256);
         let q_is_on_curve_or_infinity =
             self.is_on_curve_or_infinity(ctx, ecc_chip, &qx, qx_is_zero, &qy, qy_is_zero);
-        log::info!("done with precheck");
-        log::info!(
-            "px_valid = {:?}, px_is_zero = {:?}",
-            px_valid.value,
-            px_is_zero.value
-        );
-        log::info!(
-            "py_valid = {:?}, py_is_zero = {:?}",
-            py_valid.value,
-            py_is_zero.value
-        );
-        log::info!(
-            "p is on curve or infinity = {:?}\n\n",
-            p_is_on_curve_or_infinity.value,
-        );
-        log::info!(
-            "qx_valid = {:?}, qx_is_zero = {:?}",
-            qx_valid.value,
-            qx_is_zero.value
-        );
-        log::info!(
-            "qy_valid = {:?}, qy_is_zero = {:?}",
-            qy_valid.value,
-            qy_is_zero.value
-        );
-        log::info!(
-            "q is on curve or infinity = {:?}\n\n",
-            q_is_on_curve_or_infinity.value,
-        );
 
         let point_p = EcPoint::construct(px, py);
         let p_valid = ecc_chip.field_chip().range().gate().and(
@@ -526,14 +496,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             QuantumCell::Existing(p_valid),
             QuantumCell::Existing(p_is_on_curve_or_infinity),
         );
-        let p_invalid = ecc_chip
-            .field_chip()
-            .range()
-            .gate()
-            .not(ctx, QuantumCell::Existing(p_valid));
-        log::info!("p is valid = {:?}", p_valid.value);
-        log::info!("p  invalid = {:?}", p_invalid.value);
-        log::info!("managed P");
 
         let point_q = EcPoint::construct(qx, qy);
         let q_valid = ecc_chip.field_chip().range().gate().and(
@@ -546,14 +508,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             QuantumCell::Existing(q_valid),
             QuantumCell::Existing(q_is_on_curve_or_infinity),
         );
-        let q_invalid = ecc_chip
-            .field_chip()
-            .range()
-            .gate()
-            .not(ctx, QuantumCell::Existing(q_valid));
-        log::info!("q is valid = {:?}", q_valid.value);
-        log::info!("q  invalid = {:?}", q_invalid.value);
-        log::info!("managed Q");
 
         let inputs_valid = ecc_chip.field_chip().range().gate().and(
             ctx,
@@ -565,9 +519,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             .range()
             .gate()
             .not(ctx, QuantumCell::Existing(inputs_valid));
-        log::info!("p and q are valid = {:?}", inputs_valid.value);
-        log::info!("p and q   invalid = {:?}", inputs_invalid.value);
-        log::info!("is valid done");
 
         // We follow the approach mentioned below to handle many edge cases for the points P, Q and
         // R so that we can maintain the same fixed and permutation columns and reduce the overall
@@ -584,7 +535,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         let point_r = self.assign_g1(ctx, ecc_chip, res, powers_of_256);
         let rx_is_zero = ecc_chip.field_chip.is_zero(ctx, &point_r.ec_point.x);
         let ry_is_zero = ecc_chip.field_chip.is_zero(ctx, &point_r.ec_point.y);
-        log::info!("manage R");
 
         let rand_point = ecc_chip.load_random_point::<G1Affine>(ctx);
         let point_p_is_zero = ecc_chip.field_chip.range().gate().or_and(
@@ -605,25 +555,18 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             QuantumCell::Existing(rx_is_zero),
             QuantumCell::Existing(ry_is_zero),
         );
-        log::info!("P is zero = {:?}", point_p_is_zero.value);
-        log::info!("Q is zero = {:?}", point_q_is_zero.value);
-        log::info!("R is zero = {:?}", point_r_is_zero.value);
-        log::info!("is zero?");
 
         // sum1 = if P == (0, 0) then r else r + P
         let sum1 = ecc_chip.add_unequal(ctx, &rand_point, &point_p, true);
         let sum1 = ecc_chip.select(ctx, &rand_point, &sum1, &point_p_is_zero);
-        log::info!("sum1 OK");
 
         // sum2 = if Q == (0, 0) then sum1 else sum1 + Q
         let sum2 = ecc_chip.add_unequal(ctx, &sum1, &point_q, true);
         let sum2 = ecc_chip.select(ctx, &sum1, &sum2, &point_q_is_zero);
-        log::info!("sum2 OK");
 
         // sum3 = if R == (0, 0) then sum2 else sum2 - R
         let sum3 = ecc_chip.sub_unequal(ctx, &sum2, &point_r.ec_point, true);
         let sum3 = ecc_chip.select(ctx, &sum2, &sum3, &point_r_is_zero);
-        log::info!("sum3 OK");
 
         ecc_chip.assert_equal(ctx, &rand_point, &sum3);
 
@@ -666,6 +609,24 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         let p_is_on_curve_or_infinity =
             self.is_on_curve_or_infinity(ctx, ecc_chip, &px, px_is_zero, &py, py_is_zero);
 
+        // point at infinity
+        let infinity = EcPoint::construct(
+            ecc_chip
+                .field_chip()
+                .load_private(ctx, Value::known(0.into())),
+            ecc_chip
+                .field_chip()
+                .load_private(ctx, Value::known(0.into())),
+        );
+        let dummy = EcPoint::construct(
+            ecc_chip
+                .field_chip()
+                .load_private(ctx, Value::known(1.into())),
+            ecc_chip
+                .field_chip()
+                .load_private(ctx, Value::known(2.into())),
+        );
+
         let point_p = EcPoint::construct(px, py);
         let is_valid = ecc_chip.field_chip().range().gate().and(
             ctx,
@@ -677,6 +638,7 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             QuantumCell::Existing(is_valid),
             QuantumCell::Existing(p_is_on_curve_or_infinity),
         );
+        let point_p = ecc_chip.select(ctx, &point_p, &dummy, &is_valid);
 
         let scalar_s = self.assign_fr(ctx, fr_chip, op.s);
 
@@ -692,14 +654,6 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             &scalar_s.scalar.limbs().to_vec(),
             fr_chip.limb_bits,
             4,
-        );
-        let infinity = EcPoint::construct(
-            ecc_chip
-                .field_chip()
-                .load_private(ctx, Value::known(0.into())),
-            ecc_chip
-                .field_chip()
-                .load_private(ctx, Value::known(0.into())),
         );
         let point_r_got = ecc_chip.select(ctx, &point_r_got, &infinity, &is_valid);
         ecc_chip.assert_equal(ctx, &point_r.ec_point, &point_r_got);
