@@ -74,6 +74,7 @@ use halo2_proofs::plonk::Fixed;
 #[cfg(not(feature = "onephase"))]
 use halo2_proofs::plonk::SecondPhase;
 use itertools::Itertools;
+use crate::witness::rlp_fsm::get_rlp_len_tag_length;
 
 /// Number of rows of one tx occupies in the fixed part of tx table
 pub const TX_LEN: usize = 23;
@@ -2500,7 +2501,7 @@ impl<F: Field> TxCircuit<F> {
                             Some(Len),
                             Some(false),
                             zero_rlc,
-                            Some(rlp_unsigned_tx_be_bytes.len().tag_length()),
+                            Some(get_rlp_len_tag_length(&rlp_unsigned_tx_be_bytes)),
                             Value::known(F::from(rlp_unsigned_tx_be_bytes.len() as u64)),
                         ),
                         (
@@ -2521,7 +2522,7 @@ impl<F: Field> TxCircuit<F> {
                             Some(Len),
                             Some(false),
                             zero_rlc,
-                            Some(rlp_signed_tx_be_bytes.len().tag_length()),
+                            Some(get_rlp_len_tag_length(&rlp_signed_tx_be_bytes)),
                             Value::known(F::from(rlp_signed_tx_be_bytes.len() as u64)),
                         ),
                         (
