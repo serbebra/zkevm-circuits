@@ -2354,6 +2354,11 @@ impl<F: Field> TxCircuit<F> {
                         })
                     };
                     log::debug!("calldata len: {}", tx.call_data.len());
+                    let rlp_sign_tag_length = if tx.tx_type.is_l1_msg() {
+                        0
+                    } else {
+                        get_rlp_len_tag_length(&rlp_unsigned_tx_be_bytes)
+                    };
                     for (tag, rlp_tag, is_none, be_bytes_rlc, be_bytes_length, value) in [
                         // need to be in same order as that tx table load function uses
                         (
@@ -2501,7 +2506,7 @@ impl<F: Field> TxCircuit<F> {
                             Some(Len),
                             Some(false),
                             zero_rlc,
-                            Some(get_rlp_len_tag_length(&rlp_unsigned_tx_be_bytes)),
+                            Some(rlp_sign_tag_length),
                             Value::known(F::from(rlp_unsigned_tx_be_bytes.len() as u64)),
                         ),
                         (
