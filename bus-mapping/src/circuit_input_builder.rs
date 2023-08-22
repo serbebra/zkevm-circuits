@@ -112,7 +112,7 @@ pub struct CircuitsParams {
     /// calculated, so the same circuit will not be able to prove different
     /// witnesses.
     pub max_keccak_rows: usize,
-    /// Maximum number of rows that the Poseidon Circuit can have 
+    /// Maximum number of rows that the Poseidon Circuit can have
     pub max_poseidon_rows: usize,
     /// Max number of ECC-related ops supported in the ECC circuit.
     pub max_ec_ops: PrecompileEcParams,
