@@ -14,7 +14,7 @@ pub(super) const COLUMN_NUM_LIMIT: usize = 150; // Max number of columns allowed
 
 /// Decomposed state of a G1 curve point.
 pub(super) struct G1Decomposed<F: Field> {
-    /// The assigned EcPoint.
+    /// EcPoint on G1.
     pub ec_point: EcPoint<F, CRTInteger<F>>,
     /// Cells for the x-coordinate of the G1 curve point in LE format.
     pub x_cells: Vec<QuantumCell<F>>,
@@ -53,6 +53,7 @@ pub(super) struct G2Decomposed<F: Field> {
 
 /// State of EcAdd operation post first phase.
 pub(super) struct EcAddDecomposed<F: Field> {
+    pub is_valid: AssignedValue<F>,
     pub point_p: G1Decomposed<F>,
     pub point_q: G1Decomposed<F>,
     pub point_r: G1Decomposed<F>,

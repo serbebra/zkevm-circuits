@@ -15,7 +15,7 @@ use crate::{
 use eth_types::{
     evm_types::{memory::MemoryWordRange, Gas, GasCost, MemoryAddress, OpcodeId, ProgramCounter},
     sign_types::SignData,
-    GethExecStep, Word, H256,
+    GethExecStep, Word, H256, U256,
 };
 use ethers_core::k256::elliptic_curve::subtle::CtOption;
 use gadgets::impl_expr;
@@ -933,12 +933,12 @@ impl Default for PrecompileEvent {
 /// EcAdd operation: P + Q = R
 #[derive(Clone, Debug)]
 pub struct EcAddOp {
-    /// First EC point.
-    pub p: G1Affine,
-    /// Second EC point.
-    pub q: G1Affine,
+    /// EVM input for first operand to EcAdd.
+    pub p: (U256, U256),
+    /// EVM input for second operand to EcAdd.
+    pub q: (U256, U256),
     /// Addition of the first and second EC points.
-    pub r: G1Affine,
+    pub r: Option<G1Affine>,
 }
 
 impl Default for EcAddOp {
@@ -946,17 +946,21 @@ impl Default for EcAddOp {
         let p = G1Affine::generator();
         let q = G1Affine::generator();
         let r = p.add(q).into();
-        Self { p, q, r }
+        Self {
+            p: (
+                U256::from_little_endian(&p.x.to_bytes()),
+                U256::from_little_endian(&p.y.to_bytes()),
+            ),
+            q: (
+                U256::from_little_endian(&q.x.to_bytes()),
+                U256::from_little_endian(&q.y.to_bytes()),
+            ),
+            r: Some(r),
+        }
     }
 }
 
 impl EcAddOp {
-    /// Creates a new EcAdd op given the inputs and output.
-    pub fn new(p: G1Affine, q: G1Affine, r: G1Affine) -> Self {
-        assert_eq!(p.add(q), r.into());
-        Self { p, q, r }
-    }
-
     /// Creates a new EcAdd op given input and output bytes from a precompile call.
     ///
     /// Note: At the moment we are handling invalid/erroneous cases for precompiled contract calls
@@ -981,14 +985,30 @@ impl EcAddOp {
         assert_eq!(output.len(), 64);
 
         let mut buf = [0u8; 32];
-        let point_p = g1_from_slice(&mut buf, &input[0x00..0x40]).unwrap();
-        let point_q = g1_from_slice(&mut buf, &input[0x40..0x80]).unwrap();
-        let point_r_got = g1_from_slice(&mut buf, &output[0x00..0x40]).unwrap();
-        assert_eq!(G1Affine::from(point_p.add(&point_q)), point_r_got);
+        let opt_point_p = g1_from_slice(&mut buf, &input[0x00..0x40]);
+        let opt_point_q = g1_from_slice(&mut buf, &input[0x40..0x80]);
+        let point_r_evm = g1_from_slice(&mut buf, &output[0x00..0x40]).unwrap();
+        let point_r_cal = opt_point_p.and_then(|point_p| {
+            opt_point_q.and_then(|point_q| {
+                let point_r: G1Affine = point_p.add(&point_q).into();
+                debug_assert_eq!(
+                    point_r_evm, point_r,
+                    "point_r_evm={point_r_evm:?}, point_r_cal={point_r:?}",
+                );
+                CtOption::new(point_r, 1u8.into())
+            })
+        });
+
         Self {
-            p: point_p,
-            q: point_q,
-            r: point_r_got,
+            p: (
+                U256::from_big_endian(&input[0x00..0x20]),
+                U256::from_big_endian(&input[0x20..0x40]),
+            ),
+            q: (
+                U256::from_big_endian(&input[0x40..0x60]),
+                U256::from_big_endian(&input[0x60..0x80]),
+            ),
+            r: point_r_cal.into(),
         }
     }
 

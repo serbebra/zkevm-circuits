@@ -6,7 +6,7 @@ use std::{
 use bus_mapping::circuit_input_builder::{
     EcAddOp, EcMulOp, EcPairingOp, EcPairingPair, PrecompileEcParams,
 };
-use eth_types::Field;
+use eth_types::{Field, U256};
 use halo2_proofs::{
     arithmetic::Field as ArithmeticField,
     dev::MockProver,
@@ -60,7 +60,17 @@ impl GenRand for EcAddOp {
         } else {
             p.add(&q).into()
         };
-        Self { p, q, r }
+        Self {
+            p: (
+                U256::from_little_endian(&p.x.to_bytes()),
+                U256::from_little_endian(&p.y.to_bytes()),
+            ),
+            q: (
+                U256::from_little_endian(&q.x.to_bytes()),
+                U256::from_little_endian(&q.y.to_bytes()),
+            ),
+            r: Some(r),
+        }
     }
 }
 
@@ -130,6 +140,70 @@ fn gen<T: GenRand, R: RngCore + CryptoRng>(mut r: &mut R, max_len: usize, is_neg
 }
 
 #[test]
+fn test_ecc_circuit_valid_invalid() {
+    use crate::ecc_circuit::util::LOG_TOTAL_NUM_ROWS;
+    use eth_types::word;
+    use halo2_proofs::halo2curves::bn256::Fr;
+    use snark_verifier::util::arithmetic::PrimeCurveAffine;
+
+    let mut rng = rand::thread_rng();
+
+    lazy_static::lazy_static! {
+        static ref EC_ADD_OPS: Vec<EcAddOp> = {
+            vec![
+                // 1. valid: P == Q == G1::generator
+                {
+                    let p = G1Affine::generator();
+                    EcAddOp {
+                        p: (U256::from(1), U256::from(2)),
+                        q: (U256::from(1), U256::from(2)),
+                        r: Some(p.add(&p).into()),
+                    }
+                },
+                // 2. invalid: P not on curve
+                EcAddOp {
+                    p: (U256::from(2), U256::from(3)),
+                    q: (U256::from(1), U256::from(2)),
+                    r: None,
+                },
+                // 3. valid: all zeroes
+                EcAddOp {
+                    p: (U256::zero(), U256::zero()),
+                    q: (U256::zero(), U256::zero()),
+                    r: Some(G1Affine::identity()),
+                },
+                // 4. invalid: Px and Py > Fq::MODULUS
+                EcAddOp {
+                    p: (
+                        word!("0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD48"), // p + 1
+                        word!("0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD49"), // p + 2
+                    ),
+                    q: (U256::from(1), U256::from(2)),
+                    r: None,
+                },
+                // 5. valid: P == -Q
+                EcAddOp {
+                    p: (U256::from(1), U256::from(2)),
+                    q: (
+                        U256::from(1),
+                        word!("0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45"),
+                    ),
+                    r: Some(G1Affine::identity()),
+                },
+            ]
+        };
+    }
+
+    run::<Fr, false>(
+        LOG_TOTAL_NUM_ROWS,
+        PrecompileEcParams::default(),
+        EC_ADD_OPS.clone(),
+        gen(&mut rng, 10, false),
+        gen(&mut rng, 2, false),
+    );
+}
+
+#[test]
 fn test_ecc_circuit_positive() {
     use crate::ecc_circuit::util::LOG_TOTAL_NUM_ROWS;
     use halo2_proofs::halo2curves::bn256::Fr;
@@ -142,7 +216,7 @@ fn test_ecc_circuit_positive() {
         gen(&mut rng, 9, false),
         gen(&mut rng, 9, false),
         gen(&mut rng, 1, false),
-    )
+    );
 }
 
 #[test]
@@ -158,7 +232,7 @@ fn test_ecc_circuit_negative() {
         gen(&mut rng, 9, true),
         gen(&mut rng, 9, true),
         gen(&mut rng, 1, true),
-    )
+    );
 }
 
 #[test]

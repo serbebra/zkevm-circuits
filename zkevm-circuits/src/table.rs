@@ -30,15 +30,13 @@ use gadgets::{
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Layouter, Region, Value},
-    halo2curves::bn256::Fq,
+    halo2curves::bn256::{Fq, G1Affine},
     plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
+use snark_verifier::util::arithmetic::PrimeCurveAffine;
 
 use std::iter::repeat;
-
-#[cfg(test)]
-use halo2_proofs::plonk::FirstPhase;
 
 #[cfg(feature = "onephase")]
 use halo2_proofs::plonk::FirstPhase as SecondPhase;
@@ -2467,6 +2465,9 @@ impl EccTable {
         challenges: &Challenges<Value<F>>,
     ) -> Result<(), Error> {
         let mut assignments = Vec::with_capacity(params.ec_add + params.ec_mul + params.ec_pairing);
+        let u256_to_value = |u256: U256, randomness: Value<F>| -> Value<F> {
+            randomness.map(|r| rlc::value(u256.to_le_bytes().iter(), r))
+        };
         let fq_to_value = |fq: Fq, randomness: Value<F>| -> Value<F> {
             randomness.map(|r| rlc::value(fq.to_bytes().iter(), r))
         };
@@ -2483,13 +2484,13 @@ impl EccTable {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
                 Value::known(F::one()),
-                fq_to_value(add_op.p.x, keccak_rand),
-                fq_to_value(add_op.p.y, keccak_rand),
-                fq_to_value(add_op.q.x, keccak_rand),
-                fq_to_value(add_op.q.y, keccak_rand),
+                u256_to_value(add_op.p.0, keccak_rand),
+                u256_to_value(add_op.p.1, keccak_rand),
+                u256_to_value(add_op.q.0, keccak_rand),
+                u256_to_value(add_op.q.1, keccak_rand),
                 Value::known(F::zero()),
-                fq_to_value(add_op.r.x, keccak_rand),
-                fq_to_value(add_op.r.y, keccak_rand),
+                fq_to_value(add_op.r.unwrap_or(G1Affine::identity()).x, keccak_rand),
+                fq_to_value(add_op.r.unwrap_or(G1Affine::identity()).y, keccak_rand),
             ]);
         }
 
