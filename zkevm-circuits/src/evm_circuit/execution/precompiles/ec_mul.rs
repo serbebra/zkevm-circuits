@@ -1,6 +1,6 @@
 use bus_mapping::precompile::{PrecompileAuxData, PrecompileCalls};
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256};
-use gadgets::util::{and, not, or, Expr};
+use gadgets::util::{and, not, or, select, Expr};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -71,6 +71,7 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
             cb.query_cell_phase2(),
         );
         let gas_cost = cb.query_cell();
+        // TODO: all gas sent to this call will be consumed if `is_success == false`.
         cb.require_equal(
             "ecMul: gas cost",
             gas_cost.expr(),
@@ -154,6 +155,10 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
                 );
             },
         );
+        cb.condition(not::expr(is_success.expr()), |cb| {
+            cb.require_zero("R_x == 0", point_r_x_rlc.expr());
+            cb.require_zero("R_y == 0", point_r_y_rlc.expr());
+        });
 
         cb.precompile_info_lookup(
             cb.execution_state().as_u64().expr(),
@@ -166,8 +171,8 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
             is_success.expr(),
             gas_cost.expr(),
             0.expr(),
-            0x00.expr(), // ReturnDataOffset
-            0x40.expr(), // ReturnDataLength
+            0x00.expr(),                                               // ReturnDataOffset
+            select::expr(is_success.expr(), 0x40.expr(), 0x00.expr()), // ReturnDataLength
             0.expr(),
             0.expr(),
         );
