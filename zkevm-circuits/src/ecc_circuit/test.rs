@@ -38,10 +38,12 @@ fn run<F: Field, const MUST_FAIL: bool>(
         Err(e) => panic!("{e:#?}"),
     };
 
+    let result = prover.verify();
+    log::info!("result = {:?}", result);
     if MUST_FAIL {
-        assert!(prover.verify().is_err())
+        assert!(result.is_err())
     } else {
-        assert!(prover.verify().is_ok())
+        assert!(result.is_ok())
     }
 }
 

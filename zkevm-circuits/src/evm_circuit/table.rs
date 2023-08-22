@@ -319,6 +319,7 @@ pub(crate) enum Lookup<F> {
     },
     EccTable {
         op_type: Expression<F>,
+        is_valid: Expression<F>,
         arg1_rlc: Expression<F>,
         arg2_rlc: Expression<F>,
         arg3_rlc: Expression<F>,
@@ -512,6 +513,7 @@ impl<F: Field> Lookup<F> {
             ],
             Self::EccTable {
                 op_type,
+                is_valid,
                 arg1_rlc,
                 arg2_rlc,
                 arg3_rlc,
@@ -521,6 +523,7 @@ impl<F: Field> Lookup<F> {
                 output2_rlc,
             } => vec![
                 op_type.expr(),
+                is_valid.expr(),
                 arg1_rlc.expr(),
                 arg2_rlc.expr(),
                 arg3_rlc.expr(),

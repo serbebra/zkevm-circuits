@@ -117,11 +117,24 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
             scalar_s_raw.expr(),
         );
 
+        let [is_success, callee_address, caller_id, call_data_offset, call_data_length, return_data_offset, return_data_length] =
+            [
+                CallContextFieldTag::IsSuccess,
+                CallContextFieldTag::CalleeAddress,
+                CallContextFieldTag::CallerId,
+                CallContextFieldTag::CallDataOffset,
+                CallContextFieldTag::CallDataLength,
+                CallContextFieldTag::ReturnDataOffset,
+                CallContextFieldTag::ReturnDataLength,
+            ]
+            .map(|tag| cb.call_context(None, tag));
+
         cb.condition(
             not::expr(or::expr([p_is_zero.expr(), s_is_zero.expr()])),
             |cb| {
                 cb.ecc_table_lookup(
                     u64::from(PrecompileCalls::Bn128Mul).expr(),
+                    is_success.expr(),
                     point_p_x_rlc.expr(),
                     point_p_y_rlc.expr(),
                     // we know that `scalar_s` fits in the scalar field. So we don't compute an RLC
@@ -141,18 +154,6 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
                 );
             },
         );
-
-        let [is_success, callee_address, caller_id, call_data_offset, call_data_length, return_data_offset, return_data_length] =
-            [
-                CallContextFieldTag::IsSuccess,
-                CallContextFieldTag::CalleeAddress,
-                CallContextFieldTag::CallerId,
-                CallContextFieldTag::CallDataOffset,
-                CallContextFieldTag::CallDataLength,
-                CallContextFieldTag::ReturnDataOffset,
-                CallContextFieldTag::ReturnDataLength,
-            ]
-            .map(|tag| cb.call_context(None, tag));
 
         cb.precompile_info_lookup(
             cb.execution_state().as_u64().expr(),

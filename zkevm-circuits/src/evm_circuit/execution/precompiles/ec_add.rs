@@ -84,18 +84,17 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
             cb.execution_state().precompile_base_gas_cost().expr(),
         );
 
-        cb.condition(is_success.expr(), |cb| {
-            cb.ecc_table_lookup(
-                u64::from(PrecompileCalls::Bn128Add).expr(),
-                point_p_x_rlc.expr(),
-                point_p_y_rlc.expr(),
-                point_q_x_rlc.expr(),
-                point_q_y_rlc.expr(),
-                0.expr(), // input_rlc
-                point_r_x_rlc.expr(),
-                point_r_y_rlc.expr(),
-            );
-        });
+        cb.ecc_table_lookup(
+            u64::from(PrecompileCalls::Bn128Add).expr(),
+            is_success.expr(),
+            point_p_x_rlc.expr(),
+            point_p_y_rlc.expr(),
+            point_q_x_rlc.expr(),
+            point_q_y_rlc.expr(),
+            0.expr(), // input_rlc
+            point_r_x_rlc.expr(),
+            point_r_y_rlc.expr(),
+        );
 
         let restore_context = RestoreContextGadget::construct2(
             cb,

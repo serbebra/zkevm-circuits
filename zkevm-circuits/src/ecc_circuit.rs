@@ -1,22 +1,22 @@
 //! The ECC circuit is responsible for verifying ECC-related operations from precompiled contract
 //! calls, namely, EcAdd, EcMul and EcPairing.
 
-use std::{iter, marker::PhantomData};
+use std::{iter, marker::PhantomData, ops::Add};
 
 use bus_mapping::{
     circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp, N_BYTES_PER_PAIR, N_PAIRING_PER_OP},
     precompile::PrecompileCalls,
 };
-use eth_types::{Field, ToScalar};
+use eth_types::{word, Field, ToLittleEndian, ToScalar, U256};
 use halo2_base::{
     gates::{GateInstructions, RangeInstructions},
-    utils::modulus,
-    Context, QuantumCell, SKIP_FIRST_PASS,
+    utils::{decompose_bigint_option, modulus},
+    AssignedValue, Context, QuantumCell, SKIP_FIRST_PASS,
 };
 use halo2_ecc::{
-    bigint::CRTInteger,
+    bigint::{CRTInteger, OverflowInteger},
     bn254::pairing::PairingChip,
-    ecc::EccChip,
+    ecc::{EcPoint, EccChip},
     fields::{
         fp::{FpConfig, FpStrategy},
         fp12::Fp12Chip,
@@ -26,11 +26,15 @@ use halo2_ecc::{
 use halo2_proofs::{
     arithmetic::Field as Halo2Field,
     circuit::{Layouter, Value},
-    halo2curves::bn256::{Fq, Fq12, Fr, G1Affine, G2Affine},
+    halo2curves::{
+        bn256::{Fq, Fq12, Fr, G1Affine, G2Affine},
+        CurveAffine,
+    },
     plonk::{ConstraintSystem, Error, Expression},
 };
 use itertools::Itertools;
 use log::error;
+use snark_verifier::util::arithmetic::PrimeCurveAffine;
 
 use crate::{
     evm_circuit::{param::N_BYTES_WORD, EvmCircuit},
@@ -205,87 +209,182 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
 
         let mut first_pass = SKIP_FIRST_PASS;
 
-        let assigned_ec_ops = layouter.assign_region(
-            || "ecc circuit",
-            |region| {
-                if first_pass {
-                    first_pass = false;
-                    return Ok(EcOpsAssigned::default());
-                }
+        let assigned_ec_ops =
+            layouter.assign_region(
+                || "ecc circuit",
+                |region| {
+                    if first_pass {
+                        first_pass = false;
+                        return Ok(EcOpsAssigned::default());
+                    }
 
-                let mut ctx = config.fp_config.new_context(region);
+                    let mut ctx = config.fp_config.new_context(region);
 
-                macro_rules! decompose_ec_op {
-                    ($op_type:ident, $ops:expr, $n_ops:expr, $decompose_fn:ident) => {
-                        $ops.iter()
-                            .filter(|op| !op.skip_by_ecc_circuit())
-                            .chain(std::iter::repeat(&$op_type::default()))
-                            .take($n_ops)
-                            .map(|op| {
-                                self.$decompose_fn(
-                                    &mut ctx,
-                                    &ecc_chip,
-                                    &fr_chip,
-                                    &pairing_chip,
-                                    &fp12_chip,
-                                    &powers_of_256,
-                                    &op,
-                                )
-                            })
-                            .collect_vec()
+                    macro_rules! decompose_ec_op {
+                        ($op_type:ident, $ops:expr, $n_ops:expr, $decompose_fn:ident) => {
+                            $ops.iter()
+                                .filter(|op| !op.skip_by_ecc_circuit())
+                                .chain(std::iter::repeat(&$op_type::default()))
+                                .take($n_ops)
+                                .map(|op| {
+                                    self.$decompose_fn(
+                                        &mut ctx,
+                                        &ecc_chip,
+                                        &fr_chip,
+                                        &pairing_chip,
+                                        &fp12_chip,
+                                        &powers_of_256,
+                                        &op,
+                                    )
+                                })
+                                .collect_vec()
+                        };
+                    }
+
+                    macro_rules! assign_ec_op {
+                        ($decomposed_ops:expr, $assign_fn:ident) => {
+                            $decomposed_ops
+                                .iter()
+                                .map(|decomposed_op| {
+                                    self.$assign_fn(
+                                        &mut ctx,
+                                        decomposed_op,
+                                        &ecc_chip,
+                                        &keccak_powers,
+                                    )
+                                })
+                                .collect_vec()
+                        };
+                    }
+
+                    // P + Q == R
+                    /*
+                    let ec_adds_decomposed =
+                        decompose_ec_op!(EcAddOp, self.add_ops, self.max_add_ops, decompose_ec_add_op);
+                    */
+                    let argss = [
+                        [U256::from(1), U256::from(2), U256::from(1), U256::from(2)], // valid case
+                        [U256::from(2), U256::from(2), U256::from(1), U256::from(2)], // not on curve: invalid
+                        [
+                            // p + 1: invalid
+                            word!("0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD48"),
+                            U256::from(2),
+                            U256::from(1),
+                            U256::from(2),
+                        ],
+                    ];
+                    let gtimes2 = {
+                        let p = G1Affine::generator();
+                        p.add(&p).into()
                     };
-                }
+                    let ress = [Some(gtimes2), None, None];
+                    let ec_adds_precheck = argss
+                        .iter()
+                        .zip(ress.iter())
+                        .map(|(&args, &res)| {
+                            self.handle_ec_add(
+                                &mut ctx,
+                                &ecc_chip,
+                                &powers_of_256,
+                                &keccak_powers,
+                                args,
+                                res,
+                            )
+                        })
+                        .collect_vec();
+                    log::info!("precheck is_valid[0] = {:?}", ec_adds_precheck[0].0.value);
+                    log::info!("precheck px_rlc  [0] = {:?}", ec_adds_precheck[0].1.value);
+                    log::info!("precheck py rlc  [0] = {:?}", ec_adds_precheck[0].2.value);
+                    log::info!("precheck qx rlc  [0] = {:?}", ec_adds_precheck[0].3.value);
+                    log::info!("precheck qy rlc  [0] = {:?}", ec_adds_precheck[0].4.value);
+                    log::info!("precheck rx rlc  [0] = {:?}", ec_adds_precheck[0].5.value);
+                    log::info!(
+                        "precheck ry rlc  [0] = {:?}\n\n",
+                        ec_adds_precheck[0].6.value
+                    );
 
-                macro_rules! assign_ec_op {
-                    ($decomposed_ops:expr, $assign_fn:ident) => {
-                        $decomposed_ops
-                            .iter()
-                            .map(|decomposed_op| {
-                                self.$assign_fn(&mut ctx, decomposed_op, &ecc_chip, &keccak_powers)
-                            })
-                            .collect_vec()
-                    };
-                }
+                    log::info!("precheck is_valid[1] = {:?}", ec_adds_precheck[1].0.value);
+                    log::info!("precheck px_rlc  [1] = {:?}", ec_adds_precheck[1].1.value);
+                    log::info!("precheck py rlc  [1] = {:?}", ec_adds_precheck[1].2.value);
+                    log::info!("precheck qx rlc  [1] = {:?}", ec_adds_precheck[1].3.value);
+                    log::info!("precheck qy rlc  [1] = {:?}", ec_adds_precheck[1].4.value);
+                    log::info!("precheck rx rlc  [1] = {:?}", ec_adds_precheck[1].5.value);
+                    log::info!(
+                        "precheck ry rlc  [1] = {:?}\n\n",
+                        ec_adds_precheck[1].6.value
+                    );
 
-                // P + Q == R
-                let ec_adds_decomposed =
-                    decompose_ec_op!(EcAddOp, self.add_ops, self.max_add_ops, decompose_ec_add_op);
+                    log::info!("precheck is_valid[2] = {:?}", ec_adds_precheck[2].0.value);
+                    log::info!("precheck px_rlc  [2] = {:?}", ec_adds_precheck[2].1.value);
+                    log::info!("precheck py rlc  [2] = {:?}", ec_adds_precheck[2].2.value);
+                    log::info!("precheck qx rlc  [2] = {:?}", ec_adds_precheck[2].3.value);
+                    log::info!("precheck qy rlc  [2] = {:?}", ec_adds_precheck[2].4.value);
+                    log::info!("precheck rx rlc  [2] = {:?}", ec_adds_precheck[2].5.value);
+                    log::info!(
+                        "precheck ry rlc  [2] = {:?}\n\n",
+                        ec_adds_precheck[2].6.value
+                    );
+                    // s.P = R
+                    let ec_muls_decomposed = decompose_ec_op!(
+                        EcMulOp,
+                        self.mul_ops,
+                        self.max_mul_ops,
+                        decompose_ec_mul_op
+                    );
 
-                // s.P = R
-                let ec_muls_decomposed =
-                    decompose_ec_op!(EcMulOp, self.mul_ops, self.max_mul_ops, decompose_ec_mul_op);
+                    // e(G1 . G2) * ... * e(G1 . G2) -> Gt
+                    let ec_pairings_decomposed = decompose_ec_op!(
+                        EcPairingOp,
+                        self.pairing_ops,
+                        self.max_pairing_ops,
+                        decompose_ec_pairing_op
+                    );
 
-                // e(G1 . G2) * ... * e(G1 . G2) -> Gt
-                let ec_pairings_decomposed = decompose_ec_op!(
-                    EcPairingOp,
-                    self.pairing_ops,
-                    self.max_pairing_ops,
-                    decompose_ec_pairing_op
-                );
+                    #[cfg(not(feature = "onephase"))]
+                    {
+                        // finalize after first phase.
+                        config.fp_config.finalize(&mut ctx);
+                        log::info!("finalized after first phase");
+                        ctx.next_phase();
+                    }
 
-                #[cfg(not(feature = "onephase"))]
-                {
-                    // finalize after first phase.
-                    config.fp_config.finalize(&mut ctx);
-                    ctx.next_phase();
-                }
+                    /*
+                    let ec_adds_assigned = assign_ec_op!(ec_adds_decomposed, assign_ec_add);
+                    */
+                    let ec_adds_assigned = ec_adds_precheck
+                        .iter()
+                        .map(|precheck| EcAddAssigned {
+                            is_valid: precheck.0,
+                            point_p: G1Assigned {
+                                x_rlc: precheck.1,
+                                y_rlc: precheck.2,
+                            },
+                            point_q: G1Assigned {
+                                x_rlc: precheck.3,
+                                y_rlc: precheck.4,
+                            },
+                            point_r: G1Assigned {
+                                x_rlc: precheck.5,
+                                y_rlc: precheck.6,
+                            },
+                        })
+                        .collect_vec();
+                    let ec_muls_assigned = assign_ec_op!(ec_muls_decomposed, assign_ec_mul);
+                    let ec_pairings_assigned =
+                        assign_ec_op!(ec_pairings_decomposed, assign_ec_pairing);
 
-                let ec_adds_assigned = assign_ec_op!(ec_adds_decomposed, assign_ec_add);
-                let ec_muls_assigned = assign_ec_op!(ec_muls_decomposed, assign_ec_mul);
-                let ec_pairings_assigned = assign_ec_op!(ec_pairings_decomposed, assign_ec_pairing);
+                    // Finalize the Fp config always at the end of assignment.
+                    let lookup_cells = config.fp_config.finalize(&mut ctx);
+                    log::info!("total number of lookup cells: {}", lookup_cells);
+                    ctx.print_stats(&["EccCircuit: FpConfig context"]);
 
-                // Finalize the Fp config always at the end of assignment.
-                let lookup_cells = config.fp_config.finalize(&mut ctx);
-                log::info!("total number of lookup cells: {}", lookup_cells);
-                ctx.print_stats(&["EccCircuit: FpConfig context"]);
-
-                Ok(EcOpsAssigned {
-                    ec_adds_assigned,
-                    ec_muls_assigned,
-                    ec_pairings_assigned,
-                })
-            },
-        )?;
+                    Ok(EcOpsAssigned {
+                        ec_adds_assigned,
+                        ec_muls_assigned,
+                        ec_pairings_assigned,
+                    })
+                },
+            )?;
 
         layouter.assign_region(
             || "expose ecc table",
@@ -298,6 +397,11 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                         idx,
                         || Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
                     )?;
+                    ec_add_assigned.is_valid.copy_advice(
+                        &mut region,
+                        config.ecc_table.is_valid,
+                        idx,
+                    );
                     // P_x
                     ec_add_assigned.point_p.x_rlc.copy_advice(
                         &mut region,
@@ -352,6 +456,12 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                         idx,
                         || Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
                     )?;
+                    region.assign_advice(
+                        || "assign ecc_table is_valid",
+                        config.ecc_table.is_valid,
+                        idx,
+                        || Value::known(F::one()),
+                    )?;
                     // P_x
                     ec_mul_assigned.point_p.x_rlc.copy_advice(
                         &mut region,
@@ -403,6 +513,12 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                         idx,
                         || Value::known(F::from(u64::from(PrecompileCalls::Bn128Pairing))),
                     )?;
+                    region.assign_advice(
+                        || "assign ecc_table is_valid",
+                        config.ecc_table.is_valid,
+                        idx,
+                        || Value::known(F::one()),
+                    )?;
                     // RLC(input_bytes)
                     ec_pairing_assigned.input_rlc.copy_advice(
                         &mut region,
@@ -440,6 +556,7 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         Ok(())
     }
 
+    /*
     /// Decomposes an EcAdd operation to return each G1 element as cells representing its byte
     /// form.
     #[allow(clippy::too_many_arguments)]
@@ -521,6 +638,244 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             point_q,
             point_r,
         }
+    }
+    */
+
+    #[allow(clippy::type_complexity)]
+    fn handle_ec_add(
+        &self,
+        ctx: &mut Context<F>,
+        ecc_chip: &EccChip<F, FpConfig<F, Fq>>,
+        powers_of_256: &[QuantumCell<F>],
+        keccak_powers: &[QuantumCell<F>],
+        args: [U256; 4], // px, py, qx, py
+        res: Option<G1Affine>,
+    ) -> (
+        AssignedValue<F>,
+        AssignedValue<F>,
+        AssignedValue<F>,
+        AssignedValue<F>,
+        AssignedValue<F>,
+        AssignedValue<F>,
+        AssignedValue<F>,
+    ) {
+        let (px, px_cells, px_valid, px_is_zero) =
+            self.precheck_fq(ctx, ecc_chip, args[0], powers_of_256);
+        let (py, py_cells, py_valid, py_is_zero) =
+            self.precheck_fq(ctx, ecc_chip, args[1], powers_of_256);
+        let p_is_on_curve_or_infinity =
+            self.is_on_curve_or_infinity(ctx, ecc_chip, &px, px_is_zero, &py, py_is_zero);
+        let (qx, qx_cells, qx_valid, qx_is_zero) =
+            self.precheck_fq(ctx, ecc_chip, args[2], powers_of_256);
+        let (qy, qy_cells, qy_valid, qy_is_zero) =
+            self.precheck_fq(ctx, ecc_chip, args[3], powers_of_256);
+        let q_is_on_curve_or_infinity =
+            self.is_on_curve_or_infinity(ctx, ecc_chip, &qx, qx_is_zero, &qy, qy_is_zero);
+        log::info!("done with precheck");
+        log::info!(
+            "px_valid = {:?}, px_is_zero = {:?}",
+            px_valid.value,
+            px_is_zero.value
+        );
+        log::info!(
+            "py_valid = {:?}, py_is_zero = {:?}",
+            py_valid.value,
+            py_is_zero.value
+        );
+        log::info!(
+            "p is on curve or infinity = {:?}\n\n",
+            p_is_on_curve_or_infinity.value,
+        );
+        log::info!(
+            "qx_valid = {:?}, qx_is_zero = {:?}",
+            qx_valid.value,
+            qx_is_zero.value
+        );
+        log::info!(
+            "qy_valid = {:?}, qy_is_zero = {:?}",
+            qy_valid.value,
+            qy_is_zero.value
+        );
+        log::info!(
+            "q is on curve or infinity = {:?}\n\n",
+            q_is_on_curve_or_infinity.value,
+        );
+
+        // construct EcPoint.
+        let point_p = EcPoint::construct(px, py);
+        // whether Px and Py both are valid.
+        let p_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(px_valid),
+            QuantumCell::Existing(py_valid),
+        );
+        let p_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(p_valid),
+            QuantumCell::Existing(p_is_on_curve_or_infinity),
+        );
+        let p_invalid = ecc_chip
+            .field_chip()
+            .range()
+            .gate()
+            .not(ctx, QuantumCell::Existing(p_valid));
+        log::info!("p is valid = {:?}", p_valid.value);
+        log::info!("p  invalid = {:?}", p_invalid.value);
+        log::info!("managed P");
+
+        let point_q = EcPoint::construct(qx, qy);
+        let q_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(qx_valid),
+            QuantumCell::Existing(qy_valid),
+        );
+        let q_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(q_valid),
+            QuantumCell::Existing(q_is_on_curve_or_infinity),
+        );
+        let q_invalid = ecc_chip
+            .field_chip()
+            .range()
+            .gate()
+            .not(ctx, QuantumCell::Existing(q_valid));
+        log::info!("q is valid = {:?}", q_valid.value);
+        log::info!("q  invalid = {:?}", q_invalid.value);
+        log::info!("managed Q");
+
+        let inputs_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(p_valid),
+            QuantumCell::Existing(q_valid),
+        );
+        let inputs_invalid = ecc_chip
+            .field_chip()
+            .range()
+            .gate()
+            .not(ctx, QuantumCell::Existing(inputs_valid));
+        log::info!("p and q are valid = {:?}", inputs_valid.value);
+        log::info!("p and q   invalid = {:?}", inputs_invalid.value);
+        log::info!("is valid done");
+
+        // We follow the approach mentioned below to handle many edge cases for the points P, Q and
+        // R so that we can maintain the same fixed and permutation columns and reduce the overall
+        // validation process from the EVM Circuit.
+        //
+        // To check the validity of P + Q == R, we check:
+        // r + P + Q - R == r
+        // where r is a random point on the curve.
+        //
+        // We cover cases such as:
+        // - P == (0, 0) and/or Q == (0, 0)
+        // - P == -Q, i.e. P + Q == R == (0, 0)
+        let res = res.unwrap_or(G1Affine::identity());
+        let point_r = self.assign_g1(ctx, ecc_chip, res, powers_of_256);
+        let rx_is_zero = ecc_chip.field_chip.is_zero(ctx, &point_r.ec_point.x);
+        let ry_is_zero = ecc_chip.field_chip.is_zero(ctx, &point_r.ec_point.y);
+        log::info!("manage R");
+
+        let rand_point = ecc_chip.load_random_point::<G1Affine>(ctx);
+        let point_p_is_zero = ecc_chip.field_chip.range().gate().or_and(
+            ctx,
+            QuantumCell::Existing(inputs_invalid),
+            QuantumCell::Existing(px_is_zero),
+            QuantumCell::Existing(py_is_zero),
+        );
+        let point_q_is_zero = ecc_chip.field_chip.range().gate().or_and(
+            ctx,
+            QuantumCell::Existing(inputs_invalid),
+            QuantumCell::Existing(qx_is_zero),
+            QuantumCell::Existing(qy_is_zero),
+        );
+        let point_r_is_zero = ecc_chip.field_chip.range().gate().or_and(
+            ctx,
+            QuantumCell::Existing(inputs_invalid),
+            QuantumCell::Existing(rx_is_zero),
+            QuantumCell::Existing(ry_is_zero),
+        );
+        log::info!("P is zero = {:?}", point_p_is_zero.value);
+        log::info!("Q is zero = {:?}", point_q_is_zero.value);
+        log::info!("R is zero = {:?}", point_r_is_zero.value);
+        log::info!("is zero?");
+
+        // sum1 = if P == (0, 0) then r else r + P
+        let sum1 = ecc_chip.add_unequal(ctx, &rand_point, &point_p, true);
+        let sum1 = ecc_chip.select(ctx, &rand_point, &sum1, &point_p_is_zero);
+        log::info!("sum1 OK");
+
+        // sum2 = if Q == (0, 0) then sum1 else sum1 + Q
+        let sum2 = ecc_chip.add_unequal(ctx, &sum1, &point_q, true);
+        let sum2 = ecc_chip.select(ctx, &sum1, &sum2, &point_q_is_zero);
+        log::info!("sum2 OK");
+
+        // sum3 = if R == (0, 0) then sum2 else sum2 - R
+        let sum3 = ecc_chip.sub_unequal(ctx, &sum2, &point_r.ec_point, true);
+        let sum3 = ecc_chip.select(ctx, &sum2, &sum3, &point_r_is_zero);
+        log::info!("sum3 OK");
+
+        ecc_chip.assert_equal(ctx, &rand_point, &sum3);
+
+        (
+            inputs_valid,
+            ecc_chip.field_chip().range().gate().inner_product(
+                ctx,
+                px_cells,
+                keccak_powers.iter().cloned(),
+            ),
+            ecc_chip.field_chip().range().gate().inner_product(
+                ctx,
+                py_cells,
+                keccak_powers.iter().cloned(),
+            ),
+            ecc_chip.field_chip().range().gate().inner_product(
+                ctx,
+                qx_cells,
+                keccak_powers.iter().cloned(),
+            ),
+            ecc_chip.field_chip().range().gate().inner_product(
+                ctx,
+                qy_cells,
+                keccak_powers.iter().cloned(),
+            ),
+            ecc_chip.field_chip().range().gate().inner_product(
+                ctx,
+                point_r.x_cells,
+                keccak_powers.iter().cloned(),
+            ),
+            ecc_chip.field_chip().range().gate().inner_product(
+                ctx,
+                point_r.y_cells,
+                keccak_powers.iter().cloned(),
+            ),
+        )
+    }
+
+    fn is_on_curve_or_infinity(
+        &self,
+        ctx: &mut Context<F>,
+        ecc_chip: &EccChip<F, FpConfig<F, Fq>>,
+        x: &CRTInteger<F>,
+        x_is_zero: AssignedValue<F>,
+        y: &CRTInteger<F>,
+        y_is_zero: AssignedValue<F>,
+    ) -> AssignedValue<F> {
+        let lhs = ecc_chip.field_chip().mul_no_carry(ctx, y, y);
+        let mut rhs = ecc_chip.field_chip().mul(ctx, x, x);
+        rhs = ecc_chip.field_chip().mul_no_carry(ctx, &rhs, x);
+
+        let b = FpConfig::<F, Fq>::fe_to_constant(G1Affine::b());
+        rhs = ecc_chip.field_chip().add_constant_no_carry(ctx, &rhs, b);
+        let mut diff = ecc_chip.field_chip().sub_no_carry(ctx, &lhs, &rhs);
+        diff = ecc_chip.field_chip().carry_mod(ctx, &diff);
+
+        let is_on_curve = ecc_chip.field_chip().is_zero(ctx, &diff);
+
+        ecc_chip.field_chip().range().gate().or_and(
+            ctx,
+            QuantumCell::Existing(is_on_curve),
+            QuantumCell::Existing(x_is_zero),
+            QuantumCell::Existing(y_is_zero),
+        )
     }
 
     /// Decomposes an EcMul operation to return each G1 element as cells representing its byte
@@ -713,6 +1068,7 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         keccak_powers: &[QuantumCell<F>],
     ) -> EcAddAssigned<F> {
         EcAddAssigned {
+            is_valid: todo!(),
             point_p: G1Assigned {
                 x_rlc: ecc_chip.field_chip().range().gate().inner_product(
                     ctx,
@@ -825,6 +1181,49 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             x_cells,
             y_cells,
         }
+    }
+
+    // add some pre-checks to elements that ought to be in Fq.
+    fn precheck_fq(
+        &self,
+        ctx: &mut Context<F>,
+        ecc_chip: &EccChip<F, FpConfig<F, Fq>>,
+        word_val: U256,
+        powers_of_256: &[QuantumCell<F>],
+    ) -> (
+        CRTInteger<F>,       // CRT representation.
+        Vec<QuantumCell<F>>, // Bytes as witness.
+        AssignedValue<F>,    // value < Fq::MODULUS
+        AssignedValue<F>,    // value == 0
+    ) {
+        let value = Value::known(num_bigint::BigInt::from(
+            num_bigint::BigUint::from_bytes_le(&word_val.to_le_bytes()),
+        ));
+        let vecval = decompose_bigint_option::<F>(
+            value.as_ref(),
+            ecc_chip.field_chip.num_limbs,
+            ecc_chip.field_chip.limb_bits,
+        );
+        let limbs = ecc_chip
+            .field_chip()
+            .range()
+            .gate()
+            .assign_witnesses(ctx, vecval);
+        let nativeval = OverflowInteger::evaluate(
+            ecc_chip.field_chip().range().gate(),
+            ctx,
+            &limbs,
+            ecc_chip.field_chip.limb_bases.iter().cloned(),
+        );
+        let overflowval = OverflowInteger::construct(limbs, ecc_chip.field_chip.limb_bits);
+        let crtint = CRTInteger::construct(overflowval, nativeval, value);
+        let cells = word_val
+            .to_le_bytes()
+            .map(|b| QuantumCell::Witness(Value::known(F::from(b as u64))));
+        self.assert_crt_repr(ctx, ecc_chip, &crtint, &cells, powers_of_256);
+        let is_lt_mod = ecc_chip.field_chip().is_less_than_p(ctx, &crtint);
+        let is_zero = ecc_chip.field_chip().is_zero(ctx, &crtint);
+        (crtint, cells.to_vec(), is_lt_mod, is_zero)
     }
 
     /// Assert that a CRT integer's bytes representation is correct.

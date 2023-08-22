@@ -196,22 +196,24 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
             );
         });
 
+        // Covers the following cases:
+        // 1. successful pairing check (where input_rlc == 0).
+        // 2. successful pairing check (where input_rlc != 0).
+        // 3. unsuccessful pairing check.
+        cb.ecc_table_lookup(
+            u64::from(PrecompileCalls::Bn128Pairing).expr(),
+            is_success.expr(),
+            0.expr(),
+            0.expr(),
+            0.expr(),
+            0.expr(),
+            ecc_circuit_input_rlc.expr(),
+            output.expr(),
+            0.expr(),
+        );
+
         // validate successful call to the precompile ecPairing.
         cb.condition(is_success.expr(), |cb| {
-            // Covers the following cases:
-            // 1. successful pairing check (where input_rlc == 0).
-            // 2. successful pairing check (where input_rlc != 0).
-            // 3. unsuccessful pairing check.
-            cb.ecc_table_lookup(
-                u64::from(PrecompileCalls::Bn128Pairing).expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                ecc_circuit_input_rlc.expr(),
-                output.expr(),
-                0.expr(),
-            );
             cb.require_equal(
                 "ecPairing: n_pairs * N_BYTES_PER_PAIR == call_data_length",
                 n_pairs.expr() * N_BYTES_PER_PAIR.expr(),

@@ -1401,6 +1401,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     pub(crate) fn ecc_table_lookup(
         &mut self,
         op_type: Expression<F>,
+        is_valid: Expression<F>,
         arg1_rlc: Expression<F>,
         arg2_rlc: Expression<F>,
         arg3_rlc: Expression<F>,
@@ -1413,6 +1414,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             "ecc table",
             Lookup::EccTable {
                 op_type,
+                is_valid,
                 arg1_rlc,
                 arg2_rlc,
                 arg3_rlc,

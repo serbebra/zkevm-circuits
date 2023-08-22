@@ -60,6 +60,7 @@ pub(super) struct EcAddDecomposed<F: Field> {
 
 /// State of EcAdd operation post second phase.
 pub(super) struct EcAddAssigned<F: Field> {
+    pub is_valid: AssignedValue<F>,
     pub point_p: G1Assigned<F>,
     pub point_q: G1Assigned<F>,
     pub point_r: G1Assigned<F>,
