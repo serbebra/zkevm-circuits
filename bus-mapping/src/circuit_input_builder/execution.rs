@@ -1016,17 +1016,35 @@ impl EcAddOp {
     pub fn skip_by_ecc_circuit(&self) -> bool {
         false
     }
+
+    /// Whether the EVM inputs are valid or not, i.e. does the precompile succeed or fail.
+    pub fn is_valid(&self) -> bool {
+        let fq_from_u256 = |buf: &mut [u8; 32], u256: U256| -> CtOption<Fq> {
+            u256.to_little_endian(buf);
+            Fq::from_bytes(buf)
+        };
+        let g1_from_u256s = |buf: &mut [u8; 32], p: (U256, U256)| -> CtOption<G1Affine> {
+            fq_from_u256(buf, p.0)
+                .and_then(|x| fq_from_u256(buf, p.1).and_then(|y| G1Affine::from_xy(x, y)))
+        };
+
+        let mut buf = [0u8; 32];
+        let opt_point_p: Option<G1Affine> = g1_from_u256s(&mut buf, self.p).into();
+        let opt_point_q: Option<G1Affine> = g1_from_u256s(&mut buf, self.q).into();
+
+        opt_point_p.is_some() && opt_point_q.is_some()
+    }
 }
 
 /// EcMul operation: s.P = R
 #[derive(Clone, Debug)]
 pub struct EcMulOp {
-    /// EC point.
-    pub p: G1Affine,
+    /// The EVM inputs to the G1 point.
+    pub p: (U256, U256),
     /// Scalar.
     pub s: Fr,
-    /// Result for s.P = R.
-    pub r: G1Affine,
+    /// Result for s.P = R, that is `None` in the case of an erroneous input.
+    pub r: Option<G1Affine>,
 }
 
 impl Default for EcMulOp {
@@ -1034,22 +1052,27 @@ impl Default for EcMulOp {
         let p = G1Affine::generator();
         let s = Fr::one();
         let r = p.mul(s).into();
-        Self { p, s, r }
+        Self {
+            p: (U256::from(1), U256::from(2)),
+            s,
+            r: Some(r),
+        }
     }
 }
 
 impl EcMulOp {
-    /// Creates a new EcMul op given the inputs and output.
-    pub fn new(p: G1Affine, s: Fr, r: G1Affine) -> Self {
-        assert_eq!(p.mul(s), r.into());
-        Self { p, s, r }
-    }
-
     /// Creates a new EcMul op given input and output bytes from a precompile call.    
     pub fn new_from_bytes(input: &[u8], output: &[u8]) -> Self {
-        let copy_bytes = |buf: &mut [u8; 32], bytes: &[u8]| {
+        let fq_from_slice = |buf: &mut [u8; 32], bytes: &[u8]| -> CtOption<Fq> {
             buf.copy_from_slice(bytes);
             buf.reverse();
+            Fq::from_bytes(buf)
+        };
+
+        let g1_from_slice = |buf: &mut [u8; 32], bytes: &[u8]| -> CtOption<G1Affine> {
+            fq_from_slice(buf, &bytes[0x00..0x20]).and_then(|x| {
+                fq_from_slice(buf, &bytes[0x20..0x40]).and_then(|y| G1Affine::from_xy(x, y))
+            })
         };
 
         assert_eq!(input.len(), 96);
@@ -1057,38 +1080,48 @@ impl EcMulOp {
 
         let mut buf = [0u8; 32];
 
-        let p: G1Affine = {
-            copy_bytes(&mut buf, &input[0x00..0x20]);
-            Fq::from_bytes(&buf).and_then(|x| {
-                copy_bytes(&mut buf, &input[0x20..0x40]);
-                Fq::from_bytes(&buf).and_then(|y| G1Affine::from_xy(x, y))
-            })
-        }
-        .unwrap();
-
+        let opt_point_p = g1_from_slice(&mut buf, &input[0x00..0x40]);
         let s = Fr::from_raw(Word::from_big_endian(&input[0x40..0x60]).0);
-
-        let r_specified: G1Affine = {
-            copy_bytes(&mut buf, &output[0x00..0x20]);
-            Fq::from_bytes(&buf).and_then(|x| {
-                copy_bytes(&mut buf, &output[0x20..0x40]);
-                Fq::from_bytes(&buf).and_then(|y| G1Affine::from_xy(x, y))
-            })
-        }
-        .unwrap();
-
-        assert_eq!(G1Affine::from(p.mul(s)), r_specified);
+        let point_r_evm = g1_from_slice(&mut buf, &output[0x00..0x40]).unwrap();
+        let point_r_cal = opt_point_p.and_then(|point_p| {
+            let point_r: G1Affine = point_p.mul(s).into();
+            debug_assert_eq!(
+                point_r_evm, point_r,
+                "point_r_evm={point_r_evm:?}, point_r_cal={point_r:?}",
+            );
+            CtOption::new(point_r, 1u8.into())
+        });
 
         Self {
-            p,
+            p: (
+                U256::from_big_endian(&input[0x00..0x20]),
+                U256::from_big_endian(&input[0x20..0x40]),
+            ),
             s,
-            r: r_specified,
+            r: point_r_cal.into(),
         }
     }
 
     /// A check on the op to tell the ECC Circuit whether or not to skip the op.
     pub fn skip_by_ecc_circuit(&self) -> bool {
-        self.p.is_identity().into() || self.s.is_zero().into()
+        (self.p.0.is_zero() && self.p.1.is_zero()) || self.s.is_zero().into()
+    }
+
+    /// Whether the EVM inputs are valid or not, i.e. does the precompile succeed or fail.
+    pub fn is_valid(&self) -> bool {
+        let fq_from_u256 = |buf: &mut [u8; 32], u256: U256| -> CtOption<Fq> {
+            u256.to_little_endian(buf);
+            Fq::from_bytes(buf)
+        };
+        let g1_from_u256s = |buf: &mut [u8; 32], p: (U256, U256)| -> CtOption<G1Affine> {
+            fq_from_u256(buf, p.0)
+                .and_then(|x| fq_from_u256(buf, p.1).and_then(|y| G1Affine::from_xy(x, y)))
+        };
+
+        let mut buf = [0u8; 32];
+        let opt_point_p: Option<G1Affine> = g1_from_u256s(&mut buf, self.p).into();
+
+        opt_point_p.is_some()
     }
 }
 

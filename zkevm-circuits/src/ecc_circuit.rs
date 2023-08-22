@@ -362,12 +362,12 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                         idx,
                         || Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
                     )?;
-                    region.assign_advice(
-                        || "assign ecc_table is_valid",
+                    // Is valid
+                    ec_mul_assigned.is_valid.copy_advice(
+                        &mut region,
                         config.ecc_table.is_valid,
                         idx,
-                        || Value::known(F::one()),
-                    )?;
+                    );
                     // P_x
                     ec_mul_assigned.point_p.x_rlc.copy_advice(
                         &mut region,
@@ -659,27 +659,61 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         log::trace!("[ECC] ==> EcMul Assignmnet START:");
         log_context_cursor!(ctx);
 
-        let point_p = self.assign_g1(ctx, ecc_chip, op.p, powers_of_256);
+        let (px, px_cells, px_valid, px_is_zero) =
+            self.precheck_fq(ctx, ecc_chip, op.p.0, powers_of_256);
+        let (py, py_cells, py_valid, py_is_zero) =
+            self.precheck_fq(ctx, ecc_chip, op.p.1, powers_of_256);
+        let p_is_on_curve_or_infinity =
+            self.is_on_curve_or_infinity(ctx, ecc_chip, &px, px_is_zero, &py, py_is_zero);
+
+        let point_p = EcPoint::construct(px, py);
+        let is_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(px_valid),
+            QuantumCell::Existing(py_valid),
+        );
+        let is_valid = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(is_valid),
+            QuantumCell::Existing(p_is_on_curve_or_infinity),
+        );
+
         let scalar_s = self.assign_fr(ctx, fr_chip, op.s);
-        let point_r = self.assign_g1(ctx, ecc_chip, op.r, powers_of_256);
+
+        let res = op.r.unwrap_or(G1Affine::identity());
+        let point_r = self.assign_g1(ctx, ecc_chip, res, powers_of_256);
 
         log::trace!("[ECC] EcMul Inputs Assigned:");
         log_context_cursor!(ctx);
 
         let point_r_got = ecc_chip.scalar_mult(
             ctx,
-            &point_p.ec_point,
+            &point_p,
             &scalar_s.scalar.limbs().to_vec(),
             fr_chip.limb_bits,
             4,
         );
+        let infinity = EcPoint::construct(
+            ecc_chip
+                .field_chip()
+                .load_private(ctx, Value::known(0.into())),
+            ecc_chip
+                .field_chip()
+                .load_private(ctx, Value::known(0.into())),
+        );
+        let point_r_got = ecc_chip.select(ctx, &point_r_got, &infinity, &is_valid);
         ecc_chip.assert_equal(ctx, &point_r.ec_point, &point_r_got);
 
         log::trace!("[ECC] EcMul Assignmnet END:");
         log_context_cursor!(ctx);
 
         EcMulDecomposed {
-            point_p,
+            is_valid,
+            point_p: G1Decomposed {
+                ec_point: point_p,
+                x_cells: px_cells,
+                y_cells: py_cells,
+            },
             scalar_s,
             point_r,
         }
@@ -883,6 +917,7 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         keccak_powers: &[QuantumCell<F>],
     ) -> EcMulAssigned<F> {
         EcMulAssigned {
+            is_valid: ec_mul_decomposed.is_valid,
             point_p: G1Assigned {
                 x_rlc: ecc_chip.field_chip().range().gate().inner_product(
                     ctx,

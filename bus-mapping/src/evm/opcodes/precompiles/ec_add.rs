@@ -17,25 +17,10 @@ pub(crate) fn opt_data(
     });
 
     let aux_data = EcAddAuxData::new(&input_bytes, &output_bytes);
-    log::info!("aux data OK");
     let ec_add_op = EcAddOp::new_from_bytes(&input_bytes, &output_bytes);
-    log::info!("op  data OK");
 
     (
         Some(PrecompileEvent::EcAdd(ec_add_op)),
         Some(PrecompileAuxData::EcAdd(aux_data)),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_opt_data() {
-        let bytes: Vec<u8> = hex::decode("30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD4830644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD49").unwrap();
-        let (a, b) = opt_data(Some(bytes), None);
-        dbg!(a);
-        dbg!(b);
-    }
 }

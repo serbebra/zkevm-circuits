@@ -2483,7 +2483,7 @@ impl EccTable {
         {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Add))),
-                Value::known(F::one()),
+                Value::known(F::from(add_op.is_valid() as u64)),
                 u256_to_value(add_op.p.0, keccak_rand),
                 u256_to_value(add_op.p.1, keccak_rand),
                 u256_to_value(add_op.q.0, keccak_rand),
@@ -2503,15 +2503,15 @@ impl EccTable {
         {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Mul))),
-                Value::known(F::one()),
-                fq_to_value(mul_op.p.x, keccak_rand),
-                fq_to_value(mul_op.p.y, keccak_rand),
+                Value::known(F::from(mul_op.is_valid() as u64)),
+                u256_to_value(mul_op.p.0, keccak_rand),
+                u256_to_value(mul_op.p.1, keccak_rand),
                 // no need to RLC the scalar s, since it will fit within the scalar field.
                 Value::known(mul_op.s.into()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),
-                fq_to_value(mul_op.r.x, keccak_rand),
-                fq_to_value(mul_op.r.y, keccak_rand),
+                fq_to_value(mul_op.r.unwrap_or(G1Affine::identity()).x, keccak_rand),
+                fq_to_value(mul_op.r.unwrap_or(G1Affine::identity()).y, keccak_rand),
             ]);
         }
 
@@ -2524,7 +2524,7 @@ impl EccTable {
         {
             assignments.push([
                 Value::known(F::from(u64::from(PrecompileCalls::Bn128Pairing))),
-                Value::known(F::one()),
+                Value::known(F::one()), // is valid
                 Value::known(F::zero()),
                 Value::known(F::zero()),
                 Value::known(F::zero()),

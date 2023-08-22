@@ -83,7 +83,14 @@ impl GenRand for EcMulOp {
         } else {
             p.mul(&s).into()
         };
-        Self { p, s, r }
+        Self {
+            p: (
+                U256::from_little_endian(&p.x.to_bytes()),
+                U256::from_little_endian(&p.y.to_bytes()),
+            ),
+            s,
+            r: Some(r),
+        }
     }
 }
 

@@ -69,6 +69,7 @@ pub(super) struct EcAddAssigned<F: Field> {
 
 /// State of EcMul operation post first phase.
 pub(super) struct EcMulDecomposed<F: Field> {
+    pub is_valid: AssignedValue<F>,
     pub point_p: G1Decomposed<F>,
     pub scalar_s: ScalarAssigned<F>,
     pub point_r: G1Decomposed<F>,
@@ -76,6 +77,7 @@ pub(super) struct EcMulDecomposed<F: Field> {
 
 /// State of EcMul operation post second phase.
 pub(super) struct EcMulAssigned<F: Field> {
+    pub is_valid: AssignedValue<F>,
     pub point_p: G1Assigned<F>,
     pub scalar_s: ScalarAssigned<F>,
     pub point_r: G1Assigned<F>,
