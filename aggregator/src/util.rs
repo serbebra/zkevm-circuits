@@ -35,7 +35,9 @@ pub(crate) fn get_max_keccak_updates(max_snarks: usize) -> usize {
 }
 pub(crate) fn get_data_hash_keccak_updates(max_snarks: usize) -> usize {
     let data_hash_rounds = (32 * max_snarks) / INPUT_LEN_PER_ROUND;
-    let padding_round = if data_hash_rounds * INPUT_LEN_PER_ROUND < 32 * max_snarks {
+    // when `32 * max_snarks` happens to match a multiple of 136, a padding round will still be
+    // added
+    let padding_round = if data_hash_rounds * INPUT_LEN_PER_ROUND <= 32 * max_snarks {
         1
     } else {
         0
@@ -163,18 +165,20 @@ pub(crate) fn assert_exist<F: Field>(
     b1: &AssignedCell<F, F>,
     b2: &AssignedCell<F, F>,
     b3: &AssignedCell<F, F>,
+    b4: &AssignedCell<F, F>,
 ) {
     let _ = a
         .value()
         .zip(b1.value())
         .zip(b2.value())
         .zip(b3.value())
-        .error_if_known_and(|(((&a, &b1), &b2), &b3)| {
+        .zip(b4.value())
+        .error_if_known_and(|((((&a, &b1), &b2), &b3), &b4)| {
             assert!(
-                a == b1 || a == b2 || a == b3,
-                "a: {a:?}\nb1: {b1:?}\nb2: {b2:?}\nb3: {b3:?}\n",
+                a == b1 || a == b2 || a == b3 || a == b4,
+                "a: {a:?}\nb1: {b1:?}\nb2: {b2:?}\nb3: {b3:?}\nb4: {b3:?}\n",
             );
-            !(a == b1 || a == b2 || a == b3)
+            !(a == b1 || a == b2 || a == b3 || a == b4)
         });
 }
 
@@ -288,4 +292,14 @@ pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
     }
 
     acc
+}
+
+#[test]
+fn test_keccak_hash_num_of_rounds() {
+    let num_of_rounds = [
+        1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6,
+    ];
+    for i in 1..=25 {
+        assert_eq!(get_data_hash_keccak_updates(i), num_of_rounds[i - 1])
+    }
 }

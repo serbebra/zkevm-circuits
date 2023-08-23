@@ -6,7 +6,11 @@ use halo2_proofs::{
 };
 use zkevm_circuits::util::Challenges;
 
-use crate::{constants::LOG_DEGREE, util::assert_equal};
+use crate::{
+    constants::LOG_DEGREE,
+    util::{assert_equal, get_data_hash_keccak_updates},
+    MAX_AGG_SNARKS,
+};
 
 use super::RlcConfig;
 
@@ -16,21 +20,39 @@ impl RlcConfig {
         region.assign_fixed(|| "const zero", self.fixed, 0, || Value::known(Fr::zero()))?;
         region.assign_fixed(|| "const one", self.fixed, 1, || Value::known(Fr::one()))?;
         region.assign_fixed(|| "const two", self.fixed, 2, || Value::known(Fr::from(2)))?;
-        region.assign_fixed(|| "const five", self.fixed, 3, || Value::known(Fr::from(5)))?;
-        region.assign_fixed(|| "const nine", self.fixed, 4, || Value::known(Fr::from(9)))?;
-        region.assign_fixed(|| "const 32", self.fixed, 5, || Value::known(Fr::from(32)))?;
+        region.assign_fixed(|| "const 32", self.fixed, 3, || Value::known(Fr::from(32)))?;
         region.assign_fixed(
             || "const 136",
             self.fixed,
-            6,
+            4,
             || Value::known(Fr::from(136)),
         )?;
         region.assign_fixed(
             || "const 2^32",
             self.fixed,
-            7,
+            5,
             || Value::known(Fr::from(1 << 32)),
         )?;
+
+        let num_keccak_round_constants = get_data_hash_keccak_updates(MAX_AGG_SNARKS);
+        log::info!(
+            "number of keccak round constants {}",
+            num_keccak_round_constants
+        );
+
+        for i in 0..num_keccak_round_constants {
+            let value = i * 4 + 5;
+            let index = i + 6;
+            let des = format!("const {value}");
+
+            region.assign_fixed(
+                || des.to_string(),
+                self.fixed,
+                index,
+                || Value::known(Fr::from(value as u64)),
+            )?;
+        }
+
         Ok(())
     }
 
@@ -62,16 +84,15 @@ impl RlcConfig {
     }
 
     #[inline]
-    pub(crate) fn five_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 3,
             column: self.fixed.into(),
         }
     }
-
     #[inline]
-    pub(crate) fn nine_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn one_hundred_and_thirty_six_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 4,
@@ -80,15 +101,16 @@ impl RlcConfig {
     }
 
     #[inline]
-    pub(crate) fn thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn two_to_thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 5,
             column: self.fixed.into(),
         }
     }
+
     #[inline]
-    pub(crate) fn one_hundred_and_thirty_six_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn five_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 6,
@@ -97,12 +119,60 @@ impl RlcConfig {
     }
 
     #[inline]
-    pub(crate) fn two_to_thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn nine_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 7,
             column: self.fixed.into(),
         }
+    }
+
+    #[inline]
+    pub(crate) fn thirteen_cell(&self, region_index: RegionIndex) -> Cell {
+        Cell {
+            region_index,
+            row_offset: 8,
+            column: self.fixed.into(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn seventeen_cell(&self, region_index: RegionIndex) -> Cell {
+        Cell {
+            region_index,
+            row_offset: 9,
+            column: self.fixed.into(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn twenty_one_cell(&self, region_index: RegionIndex) -> Cell {
+        Cell {
+            region_index,
+            row_offset: 10,
+            column: self.fixed.into(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn twenty_five_cell(&self, region_index: RegionIndex) -> Cell {
+        Cell {
+            region_index,
+            row_offset: 11,
+            column: self.fixed.into(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn keccak_constant_cells(&self, region_index: RegionIndex) -> Vec<Cell> {
+        vec![
+            self.five_cell(region_index),
+            self.nine_cell(region_index),
+            self.thirteen_cell(region_index),
+            self.seventeen_cell(region_index),
+            self.twenty_one_cell(region_index),
+            self.twenty_five_cell(region_index),
+        ]
     }
 
     pub(crate) fn load_private(

@@ -47,5 +47,4 @@ pub(crate) const BITS: usize = 88;
 /// Max number of snarks to be aggregated in a chunk.
 /// If the input size is less than this, dummy snarks
 /// will be padded.
-// TODO: update me(?)
-pub const MAX_AGG_SNARKS: usize = 10;
+pub const MAX_AGG_SNARKS: usize = 27;
