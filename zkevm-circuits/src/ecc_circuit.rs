@@ -14,7 +14,7 @@ use halo2_base::{
     AssignedValue, Context, QuantumCell, SKIP_FIRST_PASS,
 };
 use halo2_ecc::{
-    bigint::{CRTInteger, OverflowInteger},
+    bigint::{big_is_zero, CRTInteger, OverflowInteger},
     bn254::pairing::PairingChip,
     ecc::{EcPoint, EccChip},
     fields::{
@@ -977,7 +977,16 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             .map(|b| QuantumCell::Witness(Value::known(F::from(b as u64))));
         self.assert_crt_repr(ctx, ecc_chip, &crt_int, &cells, powers_of_256);
         let is_lt_mod = ecc_chip.field_chip().is_less_than_p(ctx, &crt_int);
-        let is_zero = ecc_chip.field_chip().is_zero(ctx, &crt_int);
+        let is_zero = big_is_zero::positive(
+            ecc_chip.field_chip().range().gate(),
+            ctx,
+            &crt_int.truncation,
+        );
+        let is_zero = ecc_chip.field_chip().range().gate().and(
+            ctx,
+            QuantumCell::Existing(is_lt_mod),
+            QuantumCell::Existing(is_zero),
+        );
         (crt_int, cells.to_vec(), is_lt_mod, is_zero)
     }
 
