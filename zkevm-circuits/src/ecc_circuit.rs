@@ -472,6 +472,9 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         powers_of_256: &[QuantumCell<F>],
         op: &EcAddOp,
     ) -> EcAddDecomposed<F> {
+        log::trace!("[ECC] ==> EcAdd Assignmnet START:");
+        log_context_cursor!(ctx);
+
         let (px, px_cells, px_valid, px_is_zero) =
             self.precheck_fq(ctx, ecc_chip, op.p.0, powers_of_256);
         let (py, py_cells, py_valid, py_is_zero) =
@@ -519,6 +522,9 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             .range()
             .gate()
             .not(ctx, QuantumCell::Existing(inputs_valid));
+
+        log::trace!("[ECC] EcAdd Inputs Assigned:");
+        log_context_cursor!(ctx);
 
         // We follow the approach mentioned below to handle many edge cases for the points P, Q and
         // R so that we can maintain the same fixed and permutation columns and reduce the overall
@@ -569,6 +575,9 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         let sum3 = ecc_chip.select(ctx, &sum2, &sum3, &point_r_is_zero);
 
         ecc_chip.assert_equal(ctx, &rand_point, &sum3);
+
+        log::trace!("[ECC] EcAdd Assignmnet END:");
+        log_context_cursor!(ctx);
 
         EcAddDecomposed {
             is_valid: inputs_valid,
@@ -947,7 +956,7 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
         powers_of_256: &[QuantumCell<F>],
     ) -> (
         CRTInteger<F>,       // CRT representation.
-        Vec<QuantumCell<F>>, // Bytes as witness.
+        Vec<QuantumCell<F>>, // LE bytes as witness.
         AssignedValue<F>,    // value < Fq::MODULUS
         AssignedValue<F>,    // value == 0
     ) {
