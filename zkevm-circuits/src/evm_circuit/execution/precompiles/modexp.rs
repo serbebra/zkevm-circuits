@@ -811,7 +811,6 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             0.expr(),
             0.expr(),
         );
-
         Self {
             is_success,
             callee_address,
@@ -900,6 +899,11 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             )?;
             self.gas_cost
                 .assign(region, offset, Value::known(F::from(gas_cost)))?;
+
+            println!(
+                "modexp step.gas cost {}, gas_cost {}, gas_left {}",
+                step.gas_cost, gas_cost, step.gas_left
+            );
         } else {
             log::error!("unexpected aux_data {:?} for modexp", step.aux_data);
             return Err(Error::Synthesis);
@@ -947,16 +951,16 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::test_util::CircuitTestBuilder;
     use bus_mapping::{
         evm::{OpcodeId, PrecompileCallArgs},
         precompile::PrecompileCalls,
     };
     use eth_types::{bytecode, word, ToWord};
     use itertools::Itertools;
-    use mock::TestContext;
-
-    use crate::test_util::CircuitTestBuilder;
-
+    use mock::{
+        eth, gwei, test_ctx::helpers::account_0_code_account_1_no_code, TestContext, MOCK_ACCOUNTS,
+    };
     #[test]
     fn test_limbs() {
         use crate::table::ModExpTable;
@@ -1177,6 +1181,66 @@ mod test {
             ]
         };
 
+        static ref TEST_VECTOR_OOG: Vec<PrecompileCallArgs> = {
+            vec![
+                PrecompileCallArgs {
+                    name: "modexp success",
+                    setup_code: bytecode! {
+                        // Base size
+                        PUSH1(0x1)
+                        PUSH1(0x00)
+                        MSTORE
+                        // Esize
+                        PUSH1(0x1)
+                        PUSH1(0x20)
+                        MSTORE
+                        // Msize
+                        PUSH1(0x1)
+                        PUSH1(0x40)
+                        MSTORE
+                        // B, E and M
+                        PUSH32(word!("0x08090A0000000000000000000000000000000000000000000000000000000000"))
+                        PUSH1(0x60)
+                        MSTORE
+                    },
+                    call_data_offset: 0x0.into(),
+                    call_data_length: 0x63.into(),
+                    ret_offset: 0x9f.into(),
+                    ret_size: 0x01.into(),
+                    address: PrecompileCalls::Modexp.address().to_word(),
+                    ..Default::default()
+                },
+                // PrecompileCallArgs {
+                //     name: "modexp success",
+                //     setup_code: bytecode! {
+                //         // Base size
+                //         PUSH1(0x1)
+                //         PUSH1(0x00)
+                //         MSTORE
+                //         // Esize
+                //         PUSH1(0x3)
+                //         PUSH1(0x20)
+                //         MSTORE
+                //         // Msize
+                //         PUSH1(0x2)
+                //         PUSH1(0x40)
+                //         MSTORE
+                //         // B, E and M
+                //         PUSH32(word!("0x0800000901000000000000000000000000000000000000000000000000000000"))
+                //         PUSH1(0x60)
+                //         MSTORE
+                //     },
+                //     call_data_offset: 0x0.into(),
+                //     call_data_length: 0x66.into(),
+                //     ret_offset: 0x9f.into(),
+                //     ret_size: 0x01.into(),
+                //     address: PrecompileCalls::Modexp.address().to_word(),
+                //     ..Default::default()
+                // },
+
+            ]
+        };
+
         static ref TEST_U256_VECTOR: Vec<PrecompileCallArgs> = {
             vec![
                 PrecompileCallArgs {
@@ -1328,6 +1392,41 @@ mod test {
                 TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
             )
             .run();
+        }
+    }
+
+    #[test]
+    fn precompile_modexp_test_oog() {
+        let call_kinds = vec![
+            OpcodeId::CALL,
+            //OpcodeId::STATICCALL,
+            //OpcodeId::DELEGATECALL,
+            //OpcodeId::CALLCODE,
+        ];
+
+        for (test_vector, &call_kind) in TEST_VECTOR_OOG.iter().cartesian_product(&call_kinds) {
+            let bytecode = test_vector.with_call_op(call_kind);
+            // set tx gas to reproduce oog cases
+            let ctx = TestContext::<2, 1>::new(
+                None,
+                account_0_code_account_1_no_code(bytecode),
+                |mut txs, _accs| {
+                    txs[0]
+                        .to(MOCK_ACCOUNTS[0])
+                        .from(MOCK_ACCOUNTS[1])
+                        .gas(21250.into());
+                    //.input(tx.input.clone())
+                    //.value(tx.value);
+                },
+                |block, _tx| block.number(0xcafeu64),
+            )
+            .unwrap();
+
+            CircuitTestBuilder::new_from_test_ctx(ctx).run();
+            //     CircuitTestBuilder::new_from_test_ctx(
+            //         TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
+            //     )
+            //     .run();
         }
     }
 
