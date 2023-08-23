@@ -274,6 +274,23 @@ impl CircuitInputBuilder {
         })
     }
 
+    /// Create a new CircuitInputBuilder from the given `eth_block` and
+    /// `StateDB`, `CodeDB`, `ZktrieState`
+    pub fn new_with_trie_state(
+        sdb: StateDB,
+        code_db: CodeDB,
+        mpt_init_state: ZktrieState,
+        block: &Block,
+    ) -> Self {
+        Self {
+            sdb,
+            code_db,
+            block: block.clone(),
+            block_ctx: BlockContext::new(),
+            mpt_init_state,
+        }
+    }
+
     /// Create a new CircuitInputBuilder from the given `l2_trace` and `circuits_params`
     pub fn new_from_l2_trace(
         circuits_params: CircuitsParams,
@@ -360,8 +377,7 @@ impl CircuitInputBuilder {
             .update_storage_from_proofs(
                 Self::collect_storage_proofs(&l2_trace.storage_trace),
                 |storage_key, value| {
-                    self.sdb
-                        .set_storage(&storage_key.0, &storage_key.1, value.as_ref());
+                    *self.sdb.get_storage_mut(&storage_key.0, &storage_key.1).1 = *value.as_ref();
                     Ok(())
                 },
             )
