@@ -127,6 +127,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCallGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        println!("enter oog call gadget ");
         let opcode = step.opcode.unwrap();
         let is_call = opcode == OpcodeId::CALL;
         let is_callcode = opcode == OpcodeId::CALLCODE;

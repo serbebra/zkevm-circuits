@@ -116,6 +116,7 @@ impl From<&ExecError> for ExecutionState {
                 OogError::SloadSstore => ExecutionState::ErrorOutOfGasSloadSstore,
                 OogError::Create => ExecutionState::ErrorOutOfGasCREATE,
                 OogError::SelfDestruct => ExecutionState::ErrorOutOfGasSELFDESTRUCT,
+                OogError::PrecompileModexp => ExecutionState::PrecompileBigModExp,
             },
         }
     }

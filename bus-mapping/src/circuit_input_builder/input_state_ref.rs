@@ -10,7 +10,7 @@ use crate::util::KECCAK_CODE_HASH_ZERO;
 use crate::{
     circuit_input_builder::execution::{CopyEventPrevBytes, CopyEventSteps, CopyEventStepsBuilder},
     error::{
-        get_step_reported_error, ContractAddressCollisionError, DepthError, ExecError,
+        get_step_reported_error, ContractAddressCollisionError, DepthError, ExecError, OogError,
         InsufficientBalanceError, NonceUintOverflowError,
     },
     exec_trace::OperationRef,
@@ -19,7 +19,7 @@ use crate::{
         StackOp, Target, TxAccessListAccountOp, TxLogField, TxLogOp, TxReceiptField, TxReceiptOp,
         RW,
     },
-    precompile::is_precompiled,
+    precompile::{is_precompiled, PrecompileCalls},
     state_db::{CodeDB, StateDB},
     Error,
 };
@@ -34,6 +34,7 @@ use eth_types::{
 };
 use ethers_core::utils::{get_contract_address, get_create2_address, keccak256};
 use log::trace;
+use revm_precompile::PrecompileAddress;
 use std::{cmp::max, iter::repeat};
 
 /// Reference to the internal state of the CircuitInputBuilder in a particular
@@ -1425,6 +1426,7 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         if let Some(error) = &step.error {
+            println!("hit error {}", error);
             return Ok(Some(get_step_reported_error(&step.op, error)));
         }
 
@@ -1630,11 +1632,16 @@ impl<'a> CircuitInputStateRef<'a> {
                 if is_precompiled(&code_address) {
                     // Log the precompile address and gas left. Since this failure is mainly caused
                     // by out of gas.
-                    log::trace!(
-                        "Precompile failed: code_address = {}, step.gas = {}",
-                        code_address,
-                        step.gas.0,
+                    println!(
+                        "Precompile failed: code_address = {:?}, step.gas = {}",
+                        code_address, step.gas.0,
                     );
+                    // todo: carefully check whether if oog precompile error or other error
+                    
+                    println!("Precompile gas_cost >= gas_left {}", step.gas_cost.0 > step.gas.0);
+                    if code_address == Address::from(PrecompileCalls::Modexp) {
+                        return Ok(Some(ExecError::OutOfGas(OogError::PrecompileModexp)));
+                    }
                     return Ok(Some(ExecError::PrecompileFailed));
                 }
             }

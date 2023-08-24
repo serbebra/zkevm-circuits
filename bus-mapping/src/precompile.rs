@@ -36,7 +36,9 @@ pub(crate) fn execute_precompiled(address: &Address, input: &[u8], gas: u64) -> 
                 _ => (return_value, gas_cost),
             }
         }
-        Err(_) => (vec![], gas),
+        Err(err) => {
+             println!("err occured in execute_precompiled: {:?}", err);
+             (vec![], gas) },
     }
 }
 

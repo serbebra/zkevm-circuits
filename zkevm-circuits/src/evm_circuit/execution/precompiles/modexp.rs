@@ -1414,7 +1414,7 @@ mod test {
                     txs[0]
                         .to(MOCK_ACCOUNTS[0])
                         .from(MOCK_ACCOUNTS[1])
-                        .gas(21250.into());
+                        .gas(21300.into());
                     //.input(tx.input.clone())
                     //.value(tx.value);
                 },
@@ -1423,10 +1423,6 @@ mod test {
             .unwrap();
 
             CircuitTestBuilder::new_from_test_ctx(ctx).run();
-            //     CircuitTestBuilder::new_from_test_ctx(
-            //         TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode).unwrap(),
-            //     )
-            //     .run();
         }
     }
 
