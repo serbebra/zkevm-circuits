@@ -537,6 +537,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                 self.annotate_circuit(&mut region);
 
                 let mut offset = 0;
+                let timer = std::time::Instant::now();
                 for bytecode in witness.iter() {
                     self.assign_bytecode(
                         &mut region,
@@ -550,8 +551,10 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                         fail_fast,
                     )?;
                 }
+                log::info!("bytecode with assign_bytecode: {:?}", timer.elapsed());
 
                 // Padding
+                let timer = std::time::Instant::now();
                 for idx in offset..=last_row_offset {
                     self.set_padding_row(
                         &mut region,
@@ -562,8 +565,11 @@ impl<F: Field> BytecodeCircuitConfig<F> {
                         last_row_offset,
                     )?;
                 }
+                log::info!("bytecode set_padding_row: {:?}", timer.elapsed());
 
+                let timer = std::time::Instant::now();
                 self.assign_overwrite(&mut region, overwrite, challenges)?;
+                log::info!("bytecode assign_overwrite: {:?}", timer.elapsed());
                 Ok(())
             },
         )
@@ -979,14 +985,21 @@ impl<F: Field> SubCircuit<F> for BytecodeCircuit<F> {
         challenges: &Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
+        // add timer then print the time for each step
+        let timer = std::time::Instant::now();
         config.load_aux_tables(layouter)?;
-        config.assign_internal(
+        log::info!("load_aux_tables: {:?}", timer.elapsed());
+
+        let timer = std::time::Instant::now();
+        let x = config.assign_internal(
             layouter,
             self.size,
             &self.bytecodes,
             &self.overwrite,
             challenges,
             true,
-        )
+        );
+        log::info!("assign_internal: {:?}", timer.elapsed());
+        x
     }
 }

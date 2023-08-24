@@ -170,13 +170,18 @@ impl<F: Field> SubCircuit<F> for PoseidonCircuit<F> {
         _challenges: &Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
+        let timer = std::time::Instant::now();
         let chip = PoseidonHashChip::<_, HASH_BLOCK_STEP_SIZE>::construct(
             config.0.clone(),
             &self.0,
             self.1,
         );
+        log::info!("PoseidonHashChip::construct: {:?}", timer.elapsed());
 
-        chip.load(layouter)
+        let timer = std::time::Instant::now();
+        let x = chip.load(layouter);
+        log::info!("PoseidonHashChip::chip.load: {:?}", timer.elapsed());
+        x
     }
 
     /// powers of randomness for instance columns

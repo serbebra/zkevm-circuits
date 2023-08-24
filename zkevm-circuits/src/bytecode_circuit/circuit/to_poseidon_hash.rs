@@ -441,7 +441,9 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
             |mut region| {
                 let mut offset = 0;
                 let mut row_input = F::zero();
+                let mut cnt = 0;
                 for bytecode in witness.iter() {
+                    let timer = std::time::Instant::now();
                     let bytecode_offset_begin = offset;
                     base_conf.assign_bytecode(
                         &mut region,
@@ -454,7 +456,9 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
                         last_row_offset,
                         fail_fast,
                     )?;
+                    log::info!("bytecode with poseidon assign_bytecode[{}]: {:?}", cnt, timer.elapsed());
 
+                    let timer = std::time::Instant::now();
                     for (idx, row) in bytecode.rows.iter().enumerate() {
                         // if the base_conf's assignment not fail fast,
                         // we also avoid the failure of "NotEnoughRowsAvailable"
@@ -470,9 +474,11 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
                             )?;
                         }
                     }
+                    log::info!("bytecode with poseidon assign_extended_row [{}]: {:?}", cnt, timer.elapsed());
                 }
 
                 // Padding
+                let timer = std::time::Instant::now();
                 for idx in offset..=last_row_offset {
                     base_conf.set_padding_row(
                         &mut region,
@@ -484,8 +490,11 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
                     )?;
                     self.set_header_row(&mut region, 0, idx)?;
                 }
+                log::info!("bytecode with poseidon set_padding_row: {:?}", timer.elapsed());
 
+                let timer = std::time::Instant::now();
                 base_conf.assign_overwrite(&mut region, overwrite, challenges)?;
+                log::info!("bytecode with poseidon assign_overwrite: {:?}", timer.elapsed());
 
                 Ok(())
             },

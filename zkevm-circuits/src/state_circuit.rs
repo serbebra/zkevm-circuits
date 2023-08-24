@@ -566,12 +566,15 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
                     )?;
                     return Ok(());
                 }
+
+                let timer = std::time::Instant::now();
                 config.rw_table.load_with_region(
                     &mut region,
                     &self.rows,
                     self.n_rows,
                     randomness,
                 )?;
+                log::info!("state circuit config.rw_table.load_with_region: {:?}", timer.elapsed());
 
                 let exports = config.assign_with_region(
                     &mut region,
@@ -583,9 +586,11 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
                 if self.exports.borrow().is_none() {
                     self.exports.borrow_mut().replace(exports);
                 }
+                log::info!("state circuit config.update_state_root: {:?}", timer.elapsed());
 
                 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
                 {
+                    let timer = std::time::Instant::now();
                     let padding_length = RwMap::padding_len(self.rows.len(), self.n_rows);
                     for ((column, row_offset), &f) in &self.overrides {
                         let advice_column = column.value(config);
@@ -599,6 +604,7 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
                             || Value::known(f),
                         )?;
                     }
+                    log::info!("state circuit overrides: {:?}", timer.elapsed());
                 }
 
                 Ok(())
