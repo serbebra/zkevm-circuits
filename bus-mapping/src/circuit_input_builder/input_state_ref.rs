@@ -1150,7 +1150,7 @@ impl<'a> CircuitInputStateRef<'a> {
                 | OpcodeId::CALLCODE
                 | OpcodeId::DELEGATECALL
                 | OpcodeId::STATICCALL
-        ) || step.error.is_some()
+        ) || exec_step.error.is_some()
         {
             if let Ok(caller) = self.caller_ctx_mut() {
                 caller.return_data.clear();
