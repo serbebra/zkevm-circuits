@@ -629,47 +629,80 @@ impl<
         challenges: &crate::util::Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        // add timer then print the time for each circuit
+        let mut timer = std::time::Instant::now();
         self.keccak_circuit
             .synthesize_sub(&config.keccak_circuit, challenges, layouter)?;
+        log::info!("keccak_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.poseidon_circuit
             .synthesize_sub(&config.poseidon_circuit, challenges, layouter)?;
+        log::info!("poseidon_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.bytecode_circuit
             .synthesize_sub(&config.bytecode_circuit, challenges, layouter)?;
+        log::info!("bytecode_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.tx_circuit
             .synthesize_sub(&config.tx_circuit, challenges, layouter)?;
+        log::info!("tx_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.sig_circuit
             .synthesize_sub(&config.sig_circuit, challenges, layouter)?;
+        log::info!("sig_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.ecc_circuit
             .synthesize_sub(&config.ecc_circuit, challenges, layouter)?;
+        log::info!("ecc_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.modexp_circuit
             .synthesize_sub(&config.modexp_circuit, challenges, layouter)?;
+        log::info!("modexp_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.state_circuit
             .synthesize_sub(&config.state_circuit, challenges, layouter)?;
+        log::info!("state_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.copy_circuit
             .synthesize_sub(&config.copy_circuit, challenges, layouter)?;
+        log::info!("copy_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.exp_circuit
             .synthesize_sub(&config.exp_circuit, challenges, layouter)?;
+        log::info!("exp_circuit synthesize_sub: {:?}", timer.elapsed());
+        timer = std::time::Instant::now();
         self.evm_circuit
             .synthesize_sub(&config.evm_circuit, challenges, layouter)?;
+        log::info!("evm_circuit synthesize_sub: {:?}", timer.elapsed());
 
+        timer = std::time::Instant::now();
         self.pi_circuit
             .import_tx_values(self.tx_circuit.value_cells.borrow().clone().unwrap());
 
         self.pi_circuit
             .synthesize_sub(&config.pi_circuit, challenges, layouter)?;
+        log::info!("pi_circuit synthesize_sub: {:?}", timer.elapsed());
 
+        timer = std::time::Instant::now();
         self.pi_circuit.connect_export(
             layouter,
             self.state_circuit.exports.borrow().as_ref(),
             self.evm_circuit.exports.borrow().as_ref(),
         )?;
+        log::info!("pi_circuit connect_export: {:?}", timer.elapsed());
 
+        timer = std::time::Instant::now();
         self.rlp_circuit
             .synthesize_sub(&config.rlp_circuit, challenges, layouter)?;
+        log::info!("rlp_circuit synthesize_sub: {:?}", timer.elapsed());
+
         // load both poseidon table and zktrie table
-        #[cfg(feature = "zktrie")]
-        self.mpt_circuit
+        #[cfg(feature = "zktrie")] {
+            let timer = std::time::Instant::now();
+            self.mpt_circuit
             .synthesize_sub(&config.mpt_circuit, challenges, layouter)?;
+            log::info!("mpt_circuit synthesize_sub: {:?}", timer.elapsed());
+        }
 
         Ok(())
     }
