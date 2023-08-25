@@ -21,6 +21,7 @@ log = "0.4"
 mock = { path = "../mock" }
 once_cell = "1.10"
 prettytable-rs = "0.10"
+prover = { path = "../prover" }
 rayon = "1.5"
 regex = "1"
 serde = { version = "1.0", features = ["derive"] }
@@ -38,7 +39,7 @@ urlencoding = "2.1.2"
 ctor = "0.1.22"
 
 [features]
-default = ["ignore-test-docker", "skip-self-destruct", "shanghai"]
+default = ["ignore-test-docker", "skip-self-destruct", "shanghai", "scroll"]
 onephase = ["zkevm-circuits/onephase"]
 ignore-test-docker = []
 skip-self-destruct = []

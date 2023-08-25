@@ -693,9 +693,9 @@ dependencies = [
 
 [[package]]
 name = "cmake"
-version = "0.1.50"
+version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
+checksum = "81fb25b677f8bf1eb325017cb6bb8452f87969db0fedb4f757b297bee78a7c62"
 dependencies = [
  "cc",
 ]
@@ -2290,7 +2290,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#01f0b5260445a9190299af7b06b766c1e925fdaf"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#19de67c07a9b9b567580466763f93ebfbc3bb799"
 dependencies = [
  "ark-std",
  "blake2b_simd",
@@ -4952,6 +4952,7 @@ dependencies = [
  "mock",
  "once_cell",
  "prettytable-rs",
+ "prover",
  "rand",
  "rand_chacha",
  "rayon",

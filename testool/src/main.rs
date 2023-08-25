@@ -111,6 +111,7 @@ fn run_single_test(test: StateTest, circuits_config: CircuitsConfig) -> Result<(
     log::info!("{}", &test);
     let circuits_config = CircuitsConfig {
         verbose: true,
+        chunk_prove: false,
         super_circuit: circuits_config.super_circuit,
     };
     //let trace = geth_trace(test.clone())?;
@@ -129,6 +130,7 @@ fn go() -> Result<()> {
     let args = Args::parse();
 
     let mut circuits_config = CircuitsConfig::default();
+    circuits_config.chunk_prove = args.chunk_prove;
     if args.circuits == Some(Circuits::sc) {
         circuits_config.super_circuit = true;
     }

@@ -15,6 +15,11 @@ use ethers_core::{
 use ethers_signers::LocalWallet;
 use external_tracer::{LoggerConfig, TraceConfig};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
+use prover::{
+    config::LayerId,
+    test_util::{gen_and_verify_normal_and_evm_proofs, PARAMS_DIR},
+    zkevm,
+};
 use std::{collections::HashMap, str::FromStr};
 use thiserror::Error;
 use zkevm_circuits::{
@@ -76,6 +81,7 @@ impl StateTestError {
 #[derive(Default, Debug, Clone)]
 pub struct CircuitsConfig {
     pub super_circuit: bool,
+    pub chunk_prove: bool,
     pub verbose: bool,
 }
 
@@ -505,6 +511,9 @@ pub fn run_test(
     suite: TestSuite,
     circuits_config: CircuitsConfig,
 ) -> Result<(), StateTestError> {
+    let test_id = st.id.clone();
+    log::info!("{test_id}: run-test BEGIN - {circuits_config:?}");
+
     // get the geth traces
 
     let (_, trace_config, post) = into_traceconfig(st.clone());
@@ -546,25 +555,18 @@ pub fn run_test(
 
     let (witness_block, mut builder) = match result {
         Some((witness_block, builder)) => (witness_block, builder),
-        None => return Ok(()),
+        None => {
+            log::info!("{}: return for no-witness-block", test_id);
+            return Ok(());
+        }
     };
 
-    if !circuits_config.super_circuit {
-        CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
+    match (circuits_config.chunk_prove, circuits_config.super_circuit) {
+        (false, false) => CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
             .copy_checks(None)
-            .run();
-    } else {
-        // TODO: do we need to automatically adjust this k?
-        let k = 20;
-        // TODO: remove this MOCK_RANDOMNESS?
-        let circuit =
-            SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>::new_from_block(
-                &witness_block,
-            );
-        let instance = circuit.instance();
-        // gupeng
-        let prover = MockProver::run(k, &circuit, instance).unwrap();
-        prover.assert_satisfied_par();
+            .run(),
+        (false, true) => mock_prove(witness_block),
+        (true, _) => chunk_prove(&test_id, witness_block),
     };
 
     //#[cfg(feature = "scroll")]
@@ -596,7 +598,43 @@ pub fn run_test(
             }
         }
     }
+
     check_post(&builder, &post)?;
 
+    log::info!("{test_id}: run-test END");
+
     Ok(())
+}
+
+fn mock_prove(witness_block: Block<Fr>) {
+    // TODO: do we need to automatically adjust this k?
+    let k = 20;
+    // TODO: remove this MOCK_RANDOMNESS?
+    let circuit =
+        SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>::new_from_block(
+            &witness_block,
+        );
+    let instance = circuit.instance();
+    let prover = MockProver::run(k, &circuit, instance).unwrap();
+    prover.assert_satisfied_par();
+}
+
+fn chunk_prove(test_id: &str, witness_block: Block<Fr>) {
+    let mut zkevm_prover = zkevm::Prover::from_params_dir(PARAMS_DIR);
+    log::info!("{test_id}: Constructed zkevm prover");
+
+    // Load or generate compression wide snark (layer-1).
+    let layer1_snark = zkevm_prover
+        .inner
+        .load_or_gen_last_chunk_snark("layer1", &witness_block, None)
+        .unwrap();
+    log::info!("{test_id}: Generated layer1 snark");
+
+    gen_and_verify_normal_and_evm_proofs(
+        &mut zkevm_prover.inner,
+        LayerId::Layer2,
+        layer1_snark,
+        None,
+    );
+    log::info!("{test_id}: Generated and verified chunk-proof");
 }
