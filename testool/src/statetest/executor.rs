@@ -315,10 +315,12 @@ pub fn run_test(
             max_calldata: 0, // dynamic
             max_bytecode: 5000,
             max_mpt_rows: 5000,
-            max_copy_rows: 55000,
-            max_evm_rows: 0, // dynamic
+            max_copy_rows: 0, // dynamic
+            max_evm_rows: 0,  // dynamic
             max_exp_steps: 5000,
             max_keccak_rows: 0, // dynamic?
+            max_poseidon_rows: 0,
+            max_vertical_circuit_rows: 0,
             max_inner_blocks: 64,
             max_rlp_rows: 6000,
             max_ec_ops: PrecompileEcParams {
@@ -355,6 +357,8 @@ pub fn run_test(
             max_bytecode: 512,
             max_evm_rows: 0,
             max_keccak_rows: 0,
+            max_poseidon_rows: 0,
+            max_vertical_circuit_rows: 0,
             max_inner_blocks: 64,
             max_rlp_rows: 512,
             max_ec_ops: PrecompileEcParams {
