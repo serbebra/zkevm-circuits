@@ -96,8 +96,9 @@ pub enum OogError {
     Create,
     /// Out of Gas for SELFDESTRUCT
     SelfDestruct,
-    /// Out of gas for PRECOMPILE, todo: handle other precompile later.
-    PrecompileModexp
+    /// Out of gas for PRECOMPILE, may specify which precompile, 
+    /// like modexp, eccadd etc.
+    Precompile
 }
 
 /// Contract address collision errors by opcode/state.

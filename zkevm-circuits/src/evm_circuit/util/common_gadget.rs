@@ -277,6 +277,9 @@ impl<F: Field> RestoreContextGadget<F> {
                     .map(|(field_tag, i)| {
                         let idx = step.rw_indices[i + rw_offset];
                         let rw = block.rws[idx];
+                        if rw.field_tag() != Some(field_tag as u64){
+                            println!("rw.field_tag {:?}, field_tag {:?}", rw.field_tag().unwrap(),field_tag)
+                        }
                         debug_assert_eq!(rw.field_tag(), Some(field_tag as u64));
                         rw.call_context_value()
                     })

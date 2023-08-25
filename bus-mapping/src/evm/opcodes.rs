@@ -331,10 +331,10 @@ fn fn_gen_error_state_associated_ops(
         ExecError::OutOfGas(OogError::AccountAccess) => {
             Some(ErrorOOGAccountAccess::gen_associated_ops)
         }
-        ExecError::OutOfGas(OogError::PrecompileModexp) => {
-            //TODO: precompile modex gadget here
-            Some(ErrorOOGAccountAccess::gen_associated_ops)
-        }
+        // ExecError::OutOfGas(OogError::PrecompileModexp) => {
+        //     // precompile modexp gadget here
+        //     Some(ErrorOOGAccountAccess::gen_associated_ops)
+        // }
         // ExecError::
         ExecError::StackOverflow => Some(StackOnlyOpcode::<0, 0, true>::gen_associated_ops),
         ExecError::StackUnderflow => Some(StackOnlyOpcode::<0, 0, true>::gen_associated_ops),
@@ -431,6 +431,12 @@ pub fn gen_associated_ops(
     } else {
         None
     };
+    // todo: remove debug info
+    let mut i = 0;
+    for _step  in geth_steps.into_iter() {
+        println!("_step {} : {:?}", i, _step.op);
+        i += 1;
+    }
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
         println!(
             "geth error {:?} occurred in  {:?} at pc {:?}, step {:?}, next_Step {:?}",

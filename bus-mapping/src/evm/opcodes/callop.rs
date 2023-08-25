@@ -4,6 +4,7 @@ use crate::{
         CallKind, CircuitInputStateRef, CodeSource, CopyBytes, CopyDataType, CopyEvent, ExecStep,
         NumberOrHash,
     },
+    error::{ExecError, OogError},
     evm::opcodes::precompiles::gen_associated_ops as precompile_associated_ops,
     operation::{AccountField, CallContextField, TxAccessListAccountOp},
     precompile::{execute_precompiled, is_precompiled, PrecompileCalls},
@@ -466,6 +467,13 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                 // Set gas left and gas cost for precompile step.
                 precompile_step.gas_left = Gas(callee_gas_left_with_stipend);
                 precompile_step.gas_cost = GasCost(precompile_call_gas_cost);
+                if precompile_step.gas_left.0 <= precompile_step.gas_cost.0 {
+                    precompile_step.error = Some(ExecError::OutOfGas(OogError::Precompile));
+                }
+                // todo: remove debug info
+                println!("precompile_step.gas_left {}, precompile_step.gas_cost {}", 
+                    precompile_step.gas_left.0, precompile_step.gas_cost.0);
+                
                 // Make the Precompile execution step to handle return logic and restore to caller
                 // context (similar as STOP and RETURN).
                 state.handle_return(&mut precompile_step, geth_steps, true)?;

@@ -9,7 +9,7 @@ use halo2_proofs::{
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BITS_U8, N_BYTES_U64, N_BYTES_WORD},
+        param::{N_BITS_U8, N_BYTES_U64, N_BYTES_WORD, N_BYTES_GAS},
         step::ExecutionState,
         util::{
             common_gadget::RestoreContextGadget,
@@ -709,6 +709,7 @@ pub struct ModExpGadget<F> {
     output_bytes_acc: Cell<F>,
     gas_cost: Cell<F>,
     gas_cost_gadget: ModExpGasCost<F>,
+    insufficient_gas_cost: LtGadget<F, N_BYTES_GAS>,
     garbage_bytes_holder: [Cell<F>; INPUT_LIMIT - 96],
 }
 
@@ -749,10 +750,15 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             None,
         );
 
+
+        let insufficient_gas_cost = LtGadget::construct(
+            cb,
+            cb.curr.state.gas_left.expr(),
+            gas_cost.expr(),
+        );
         let call_success = util::and::expr([
             input.is_valid(),
-            //TODO: replace this constants when gas gadget is ready
-            1.expr(),
+            not::expr(insufficient_gas_cost.expr()),
         ]);
 
         cb.require_equal(
@@ -804,7 +810,8 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
         let restore_context_gadget = RestoreContextGadget::construct2(
             cb,
             is_success.expr(),
-            gas_cost.expr(),
+            select::expr(is_success.expr(), gas_cost.expr(), 
+            cb.curr.state.gas_left.expr()),
             0.expr(),
             0.expr(),
             input.modulus_len(),
@@ -827,6 +834,7 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             output_bytes_acc,
             gas_cost,
             gas_cost_gadget,
+            insufficient_gas_cost,
             garbage_bytes_holder,
         }
     }
@@ -840,6 +848,7 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        
         if let Some(PrecompileAuxData::Modexp(data)) = &step.aux_data {
             self.input
                 .assign(region, offset, (data.valid, data.input_lens, data.inputs))?;
@@ -899,11 +908,16 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             )?;
             self.gas_cost
                 .assign(region, offset, Value::known(F::from(gas_cost)))?;
-
-            println!(
-                "modexp step.gas cost {}, gas_cost {}, gas_left {}",
-                step.gas_cost, gas_cost, step.gas_left
-            );
+            println!("enter modexp assign method, gas left {}, gas cost {},
+            real gas cost {}, offset {}",
+                step.gas_left, step.gas_cost, gas_cost, offset);
+    
+            self.insufficient_gas_cost.assign_value(
+                region,
+                offset,
+                Value::known(F::from(step.gas_left)),
+                Value::known(F::from(gas_cost)),
+            )?;
         } else {
             log::error!("unexpected aux_data {:?} for modexp", step.aux_data);
             return Err(Error::Synthesis);
