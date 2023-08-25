@@ -177,17 +177,21 @@ impl ZktrieState {
         account_proofs: impl Iterator<Item = (&'d Address, BYTES1)> + Clone,
         storage_proofs: impl Iterator<Item = (&'d Address, &'d Word, BYTES2)> + Clone,
         additional_proofs: impl Iterator<Item = &'d [u8]>,
+        light_mode: bool,
     ) -> Result<Self, Error>
     where
         BYTES1: IntoIterator<Item = &'d [u8]>,
         BYTES2: IntoIterator<Item = &'d [u8]>,
     {
         let mut state = ZktrieState::construct(state_root);
-        state.update_nodes_from_proofs(
-            account_proofs.clone(),
-            storage_proofs.clone(),
-            additional_proofs,
-        );
+        if !light_mode {
+            // a lot of poseidon computation
+            state.update_nodes_from_proofs(
+                account_proofs.clone(),
+                storage_proofs.clone(),
+                additional_proofs,
+            );
+        }
         state.update_account_from_proofs(account_proofs, |_, _| Ok(()))?;
         state.update_storage_from_proofs(storage_proofs, |_, _| Ok(()))?;
 

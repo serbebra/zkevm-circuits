@@ -43,6 +43,7 @@ fn build_state_from_sample(sample_file: &str) -> (ZktrieState, Hash) {
                     .map(move |(sk, bts)| (k, sk, bts.iter().map(Bytes::as_ref)))
             }),
             std::iter::empty(),
+            false,
         )
         .unwrap(),
         trace.root_after,

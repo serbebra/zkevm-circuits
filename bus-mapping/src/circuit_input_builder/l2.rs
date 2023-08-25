@@ -296,6 +296,7 @@ impl CircuitInputBuilder {
         circuits_params: CircuitsParams,
         l2_trace: &BlockTrace,
         more: bool,
+        light_mode: bool,
     ) -> Result<Self, Error> {
         let chain_id = l2_trace.chain_id;
 
@@ -315,6 +316,7 @@ impl CircuitInputBuilder {
                 .deletion_proofs
                 .iter()
                 .map(Bytes::as_ref),
+            light_mode,
         )
         .unwrap();
 
@@ -351,17 +353,24 @@ impl CircuitInputBuilder {
     }
 
     /// ...
-    pub fn add_more_l2_trace(&mut self, l2_trace: &BlockTrace, more: bool) -> Result<(), Error> {
+    pub fn add_more_l2_trace(
+        &mut self,
+        l2_trace: &BlockTrace,
+        more: bool,
+        light_mode: bool,
+    ) -> Result<(), Error> {
         // update sdb for new data from storage
-        self.mpt_init_state.update_nodes_from_proofs(
-            Self::collect_account_proofs(&l2_trace.storage_trace),
-            Self::collect_storage_proofs(&l2_trace.storage_trace),
-            l2_trace
-                .storage_trace
-                .deletion_proofs
-                .iter()
-                .map(Bytes::as_ref),
-        );
+        if !light_mode {
+            self.mpt_init_state.update_nodes_from_proofs(
+                Self::collect_account_proofs(&l2_trace.storage_trace),
+                Self::collect_storage_proofs(&l2_trace.storage_trace),
+                l2_trace
+                    .storage_trace
+                    .deletion_proofs
+                    .iter()
+                    .map(Bytes::as_ref),
+            );
+        }
 
         self.mpt_init_state
             .update_account_from_proofs(
