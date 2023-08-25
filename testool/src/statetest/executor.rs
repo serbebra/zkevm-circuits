@@ -519,11 +519,12 @@ pub fn run_test(
         get_params_for_sub_circuit_test()
     } else {
         // params for super circuit
-        if cfg!(feature = "scroll") {
-            get_params_for_super_circuit_test_l2()
-        } else {
-            get_params_for_super_circuit_test()
-        }
+        #[cfg(feature = "scroll")]
+        let circuits_params = get_params_for_super_circuit_test_l2();
+        #[cfg(not(feature = "scroll"))]
+        let circuits_params = get_params_for_super_circuit_test();
+
+        circuits_params
     };
 
     #[cfg(feature = "scroll")]
@@ -561,6 +562,7 @@ pub fn run_test(
                 &witness_block,
             );
         let instance = circuit.instance();
+        // gupeng
         let prover = MockProver::run(k, &circuit, instance).unwrap();
         prover.assert_satisfied_par();
     };
