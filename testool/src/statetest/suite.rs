@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use anyhow::{Context, Result};
-use rayon::prelude::*;
+// use rayon::prelude::*;
 use std::{
     panic::AssertUnwindSafe,
     sync::{Arc, RwLock},
@@ -30,7 +30,7 @@ pub fn load_statetests_suite(
                 .iter()
                 .any(|e| f.as_path().to_string_lossy().contains(*e))
         })
-        .par_bridge()
+        // .par_bridge()
         .filter_map(|file| {
             file.extension().and_then(|ext| {
                 let ext = &*ext.to_string_lossy();
@@ -90,7 +90,8 @@ pub fn run_statetests_suite(
 
     // for each test
     let test_count = tcs.len();
-    tcs.into_par_iter().for_each(|ref tc| {
+    // tcs.into_par_iter().for_each(|ref tc| {
+    tcs.into_iter().for_each(|ref tc| {
         let (test_id, path) = (tc.id.clone(), tc.path.clone());
         if !suite.allowed(&test_id) {
             results
