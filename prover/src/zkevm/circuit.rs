@@ -1,28 +1,36 @@
 use eth_types::l2_types::BlockTrace;
 use halo2_proofs::halo2curves::bn256::Fr;
-use once_cell::sync::Lazy;
 use snark_verifier_sdk::CircuitExt;
 use zkevm_circuits::witness;
 
+#[cfg(feature = "scroll")]
 mod builder;
+#[cfg(not(feature = "scroll"))]
+mod fake_builder;
+#[cfg(not(feature = "scroll"))]
+use fake_builder as builder;
 mod super_circuit;
-pub use super_circuit::SuperCircuit;
-
-use crate::utils::read_env_var;
-
 pub use self::builder::{
     block_traces_to_witness_block, block_traces_to_witness_block_with_updated_state,
     calculate_row_usage_of_trace, calculate_row_usage_of_witness_block, check_batch_capacity,
-    get_super_circuit_params, normalize_withdraw_proof, WitnessBlock,
+    get_super_circuit_params, normalize_withdraw_proof,
 };
-pub use builder::{
-    MAX_BYTECODE, MAX_CALLDATA, MAX_EXP_STEPS, MAX_INNER_BLOCKS, MAX_KECCAK_ROWS, MAX_MPT_ROWS,
-    MAX_POSEIDON_ROWS, MAX_PRECOMPILE_EC_ADD, MAX_PRECOMPILE_EC_MUL, MAX_PRECOMPILE_EC_PAIRING,
-    MAX_RWS, MAX_TXS, MAX_VERTICLE_ROWS,
-};
+pub use super_circuit::SuperCircuit;
 
-static CHAIN_ID: Lazy<u64> = Lazy::new(|| read_env_var("CHAIN_ID", 53077));
-static AUTO_TRUNCATE: Lazy<bool> = Lazy::new(|| read_env_var("AUTO_TRUNCATE", false));
+////// params for Super Circuit of degree = 20 ////////////
+pub const MAX_TXS: usize = 100;
+pub const MAX_INNER_BLOCKS: usize = 100;
+pub const MAX_EXP_STEPS: usize = 10_000;
+pub const MAX_CALLDATA: usize = 600_000;
+pub const MAX_BYTECODE: usize = 600_000;
+pub const MAX_MPT_ROWS: usize = 1_000_000;
+pub const MAX_KECCAK_ROWS: usize = 1_000_000;
+pub const MAX_POSEIDON_ROWS: usize = 1_000_000;
+pub const MAX_VERTICLE_ROWS: usize = 1_000_000;
+pub const MAX_RWS: usize = 1_000_000;
+pub const MAX_PRECOMPILE_EC_ADD: usize = 50;
+pub const MAX_PRECOMPILE_EC_MUL: usize = 50;
+pub const MAX_PRECOMPILE_EC_PAIRING: usize = 2;
 
 /// A target circuit trait is a wrapper of inner circuit, with convenient APIs for building
 /// circuits from traces.

@@ -1,5 +1,9 @@
-use super::{TargetCircuit, AUTO_TRUNCATE, CHAIN_ID};
-use crate::{config::INNER_DEGREE, types::eth::StorageTrace};
+use super::{
+    TargetCircuit, MAX_BYTECODE, MAX_CALLDATA, MAX_EXP_STEPS, MAX_INNER_BLOCKS, MAX_KECCAK_ROWS,
+    MAX_MPT_ROWS, MAX_POSEIDON_ROWS, MAX_PRECOMPILE_EC_ADD, MAX_PRECOMPILE_EC_MUL,
+    MAX_PRECOMPILE_EC_PAIRING, MAX_RWS, MAX_TXS, MAX_VERTICLE_ROWS,
+};
+use crate::{config::INNER_DEGREE, types::eth::StorageTrace, utils::read_env_var};
 use anyhow::{bail, Result};
 use bus_mapping::{
     circuit_input_builder::{self, CircuitInputBuilder, CircuitsParams, PrecompileEcParams},
@@ -9,6 +13,7 @@ use eth_types::{l2_types::BlockTrace, ToBigEndian, ToWord, H256};
 use halo2_proofs::halo2curves::bn256::Fr;
 use itertools::Itertools;
 use mpt_zktrie::state::ZktrieState;
+use once_cell::sync::Lazy;
 use std::{collections::HashMap, time::Instant};
 use zkevm_circuits::{
     evm_circuit::witness::{block_apply_mpt_state, block_convert_with_l1_queue_index, Block},
@@ -16,22 +21,8 @@ use zkevm_circuits::{
     witness::WithdrawProof,
 };
 
-pub type WitnessBlock = Block<Fr>;
-
-////// params for degree = 20 ////////////
-pub const MAX_TXS: usize = 100;
-pub const MAX_INNER_BLOCKS: usize = 100;
-pub const MAX_EXP_STEPS: usize = 10_000;
-pub const MAX_CALLDATA: usize = 600_000;
-pub const MAX_BYTECODE: usize = 600_000;
-pub const MAX_MPT_ROWS: usize = 1_000_000;
-pub const MAX_KECCAK_ROWS: usize = 1_000_000;
-pub const MAX_POSEIDON_ROWS: usize = 1_000_000;
-pub const MAX_VERTICLE_ROWS: usize = 1_000_000;
-pub const MAX_RWS: usize = 1_000_000;
-pub const MAX_PRECOMPILE_EC_ADD: usize = 50;
-pub const MAX_PRECOMPILE_EC_MUL: usize = 50;
-pub const MAX_PRECOMPILE_EC_PAIRING: usize = 2;
+static CHAIN_ID: Lazy<u64> = Lazy::new(|| read_env_var("CHAIN_ID", 53077));
+static AUTO_TRUNCATE: Lazy<bool> = Lazy::new(|| read_env_var("AUTO_TRUNCATE", false));
 
 /// default params for super circuit
 pub fn get_super_circuit_params() -> CircuitsParams {
