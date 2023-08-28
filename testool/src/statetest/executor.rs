@@ -15,8 +15,7 @@ use ethers_core::{
 use ethers_signers::LocalWallet;
 use external_tracer::{LoggerConfig, TraceConfig};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
-use prover::{config::LayerId, test_util::gen_and_verify_normal_and_evm_proofs, zkevm};
-use std::{cell::OnceCell, collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 use thiserror::Error;
 use zkevm_circuits::{
     super_circuit::SuperCircuit, test_util::CircuitTestBuilder, util::SubCircuit, witness::Block,
@@ -25,7 +24,14 @@ use zkevm_circuits::{
 //const MAX_TXS: usize = 1;
 //const MAX_CALLDATA: usize = 32;
 
-pub static mut CHUNK_PROVER: OnceCell<zkevm::Prover> = OnceCell::new();
+#[cfg(feature = "chunk-prove")]
+static mut CHUNK_PROVER: once_cell::sync::Lazy<prover::zkevm::Prover> = Lazy::new(|| {
+    std::env::set_var("SCROLL_PROVER_ASSETS_DIR", "../prover/configs");
+    let chunk_prover = prover::zkevm::Prover::from_params_dir(prover::test_util::PARAMS_DIR);
+    log::info!("Constructed chunk-prover");
+
+    chunk_prover
+});
 
 #[derive(PartialEq, Eq, Error, Debug)]
 pub enum StateTestError {
@@ -79,7 +85,6 @@ impl StateTestError {
 #[derive(Default, Debug, Clone)]
 pub struct CircuitsConfig {
     pub super_circuit: bool,
-    pub chunk_prove: bool,
     pub verbose: bool,
 }
 
@@ -458,6 +463,7 @@ fn get_params_for_super_circuit_test_l2() -> CircuitsParams {
     }
 }
 
+#[cfg(not(feature = "scroll"))]
 fn get_params_for_super_circuit_test() -> CircuitsParams {
     CircuitsParams {
         max_txs: MAX_TXS,
@@ -559,13 +565,16 @@ pub fn run_test(
         }
     };
 
-    match (circuits_config.chunk_prove, circuits_config.super_circuit) {
-        (false, false) => CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
+    if circuits_config.super_circuit {
+        #[cfg(feature = "chunk-prove")]
+        chunk_prove(&test_id, witness_block);
+        #[cfg(not(feature = "chunk-prove"))]
+        mock_prove(witness_block);
+    } else {
+        CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
             .copy_checks(None)
-            .run(),
-        (false, true) => mock_prove(witness_block),
-        (true, _) => chunk_prove(&test_id, witness_block),
-    };
+            .run();
+    }
 
     //#[cfg(feature = "scroll")]
     {
@@ -617,8 +626,11 @@ fn mock_prove(witness_block: Block<Fr>) {
     prover.assert_satisfied_par();
 }
 
+#[cfg(feature = "chunk-prove")]
 fn chunk_prove(test_id: &str, witness_block: Block<Fr>) {
-    let prover = unsafe { CHUNK_PROVER.get_mut() }.unwrap();
+    use prover::{config::LayerId, test_util::gen_and_verify_normal_and_evm_proofs};
+
+    let prover = unsafe { &mut CHUNK_PROVER };
 
     // Load or generate compression wide snark (layer-1).
     let layer1_snark = prover

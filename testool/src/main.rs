@@ -1,5 +1,3 @@
-#![feature(once_cell)]
-
 /// Execute the bytecode from an empty state and run the EVM and State circuits
 mod abi;
 mod compiler;
@@ -13,14 +11,11 @@ use clap::Parser;
 use compiler::Compiler;
 use config::Config;
 use log::info;
-use prover::{test_util::PARAMS_DIR, zkevm};
 use statetest::{
     load_statetests_suite, run_statetests_suite, run_test, CircuitsConfig, Results, StateTest,
-    CHUNK_PROVER,
 };
 use std::{
     collections::HashSet,
-    env,
     fs::File,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
@@ -86,10 +81,6 @@ struct Args {
     #[clap(long)]
     test_ids: Option<String>,
 
-    /// Run chunk-prove to replace mock-prove
-    #[clap(long)]
-    chunk_prove: bool,
-
     /// Verbose
     #[clap(short, long)]
     v: bool,
@@ -116,7 +107,6 @@ fn run_single_test(test: StateTest, circuits_config: CircuitsConfig) -> Result<(
     log::info!("{}", &test);
     let circuits_config = CircuitsConfig {
         verbose: true,
-        chunk_prove: false,
         super_circuit: circuits_config.super_circuit,
     };
     //let trace = geth_trace(test.clone())?;
@@ -134,16 +124,7 @@ fn go() -> Result<()> {
 
     let args = Args::parse();
 
-    // Init chunk-prover if arg `chunk_prove = true`.
-    if args.chunk_prove {
-        env::set_var("SCROLL_PROVER_ASSETS_DIR", "../prover/configs");
-        let chunk_prover = zkevm::Prover::from_params_dir(PARAMS_DIR);
-        log::info!("Constructed chunk-prover");
-        unsafe { CHUNK_PROVER.set(chunk_prover) }.unwrap();
-    }
-
     let mut circuits_config = CircuitsConfig::default();
-    circuits_config.chunk_prove = args.chunk_prove;
     if args.circuits == Some(Circuits::sc) {
         circuits_config.super_circuit = true;
     }
