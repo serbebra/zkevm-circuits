@@ -4,11 +4,13 @@ use snark_verifier_sdk::CircuitExt;
 use zkevm_circuits::witness;
 
 #[cfg(feature = "scroll")]
-mod builder;
+mod l2_builder;
+#[cfg(feature = "scroll")]
+use l2_builder as builder;
 #[cfg(not(feature = "scroll"))]
-mod fake_builder;
+mod l1_builder;
 #[cfg(not(feature = "scroll"))]
-use fake_builder as builder;
+use l1_builder as builder;
 mod super_circuit;
 pub use self::builder::{
     block_traces_to_witness_block, block_traces_to_witness_block_with_updated_state,

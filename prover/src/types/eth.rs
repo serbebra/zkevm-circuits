@@ -12,24 +12,6 @@ pub struct BlockTraceJsonRpcResult {
     pub result: BlockTrace,
 }
 
-/* gupeng
-impl From<BlockTrace> for EthBlock {
-    fn from(mut b: BlockTrace) -> Self {
-        let mut txs = Vec::new();
-        for (idx, tx_data) in b.transactions.iter_mut().enumerate() {
-            let tx_idx = Some(U64::from(idx));
-            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx);
-            txs.push(tx)
-        }
-        EthBlock {
-            transactions: txs,
-            difficulty: 0.into(),
-            ..b.header
-        }
-    }
-}
-*/
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TransactionTrace {
     // FIXME after traces upgraded
