@@ -15,12 +15,8 @@ use ethers_core::{
 use ethers_signers::LocalWallet;
 use external_tracer::{LoggerConfig, TraceConfig};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
-use prover::{
-    config::LayerId,
-    test_util::{gen_and_verify_normal_and_evm_proofs, PARAMS_DIR},
-    zkevm,
-};
-use std::{collections::HashMap, str::FromStr};
+use prover::{config::LayerId, test_util::gen_and_verify_normal_and_evm_proofs, zkevm};
+use std::{cell::OnceCell, collections::HashMap, str::FromStr};
 use thiserror::Error;
 use zkevm_circuits::{
     super_circuit::SuperCircuit, test_util::CircuitTestBuilder, util::SubCircuit, witness::Block,
@@ -28,6 +24,8 @@ use zkevm_circuits::{
 
 //const MAX_TXS: usize = 1;
 //const MAX_CALLDATA: usize = 32;
+
+pub static mut CHUNK_PROVER: OnceCell<zkevm::Prover> = OnceCell::new();
 
 #[derive(PartialEq, Eq, Error, Debug)]
 pub enum StateTestError {
@@ -620,21 +618,15 @@ fn mock_prove(witness_block: Block<Fr>) {
 }
 
 fn chunk_prove(test_id: &str, witness_block: Block<Fr>) {
-    let mut zkevm_prover = zkevm::Prover::from_params_dir(PARAMS_DIR);
-    log::info!("{test_id}: Constructed zkevm prover");
+    let prover = unsafe { CHUNK_PROVER.get_mut() }.unwrap();
 
     // Load or generate compression wide snark (layer-1).
-    let layer1_snark = zkevm_prover
+    let layer1_snark = prover
         .inner
         .load_or_gen_last_chunk_snark("layer1", &witness_block, None)
         .unwrap();
     log::info!("{test_id}: Generated layer1 snark");
 
-    gen_and_verify_normal_and_evm_proofs(
-        &mut zkevm_prover.inner,
-        LayerId::Layer2,
-        layer1_snark,
-        None,
-    );
+    gen_and_verify_normal_and_evm_proofs(&mut prover.inner, LayerId::Layer2, layer1_snark, None);
     log::info!("{test_id}: Generated and verified chunk-proof");
 }
