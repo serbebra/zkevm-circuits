@@ -190,6 +190,11 @@ fn go() -> Result<()> {
 
     if let Some(test_ids_path) = args.test_ids {
         let test_ids = read_test_ids(&test_ids_path)?;
+        log::info!(
+            "test_ids_len = {}, test_ids = {:?}",
+            test_ids.len(),
+            test_ids
+        );
         state_tests.retain(|test| test_ids.contains(&test.id));
     }
 
@@ -304,6 +309,15 @@ fn go() -> Result<()> {
         if !success {
             std::process::exit(1);
         }
+    }
+
+    log::info!("Generating finish file...");
+    if args.report {
+        std::fs::create_dir_all(REPORT_FOLDER)?;
+
+        let finish_file_path = format!("{REPORT_FOLDER}/finish.txt");
+        let mut fd = File::create(finish_file_path)?;
+        fd.write_all("1".as_bytes())?;
     }
 
     Ok(())
