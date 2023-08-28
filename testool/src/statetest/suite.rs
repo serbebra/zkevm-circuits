@@ -8,7 +8,8 @@ use crate::{
     },
 };
 use anyhow::{Context, Result};
-// use rayon::prelude::*;
+#[cfg(not(feature = "chunk-prove"))]
+use rayon::prelude::*;
 use std::{
     panic::AssertUnwindSafe,
     sync::{Arc, RwLock},
@@ -29,8 +30,12 @@ pub fn load_statetests_suite(
             !skip_paths
                 .iter()
                 .any(|e| f.as_path().to_string_lossy().contains(*e))
-        })
-        // .par_bridge()
+        });
+
+    #[cfg(not(feature = "chunk-prove"))]
+    let tcs = tcs.par_bridge();
+
+    let tcs = tcs
         .filter_map(|file| {
             file.extension().and_then(|ext| {
                 let ext = &*ext.to_string_lossy();
@@ -90,8 +95,13 @@ pub fn run_statetests_suite(
 
     // for each test
     let test_count = tcs.len();
-    // tcs.into_par_iter().for_each(|ref tc| {
-    tcs.into_iter().for_each(|ref tc| {
+
+    #[cfg(feature = "chunk-prove")]
+    let tcs = tcs.into_iter();
+    #[cfg(not(feature = "chunk-prove"))]
+    let tcs = tcs.into_par_iter();
+
+    tcs.for_each(|ref tc| {
         let (test_id, path) = (tc.id.clone(), tc.path.clone());
         if !suite.allowed(&test_id) {
             results

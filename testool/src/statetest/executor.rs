@@ -14,24 +14,23 @@ use ethers_core::{
 };
 use ethers_signers::LocalWallet;
 use external_tracer::{LoggerConfig, TraceConfig};
-use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
+use halo2_proofs::halo2curves::bn256::Fr;
 use std::{collections::HashMap, str::FromStr};
 use thiserror::Error;
-use zkevm_circuits::{
-    super_circuit::SuperCircuit, test_util::CircuitTestBuilder, util::SubCircuit, witness::Block,
-};
+use zkevm_circuits::{test_util::CircuitTestBuilder, witness::Block};
 
 //const MAX_TXS: usize = 1;
 //const MAX_CALLDATA: usize = 32;
 
 #[cfg(feature = "chunk-prove")]
-static mut CHUNK_PROVER: once_cell::sync::Lazy<prover::zkevm::Prover> = Lazy::new(|| {
-    std::env::set_var("SCROLL_PROVER_ASSETS_DIR", "../prover/configs");
-    let chunk_prover = prover::zkevm::Prover::from_params_dir(prover::test_util::PARAMS_DIR);
-    log::info!("Constructed chunk-prover");
+static mut CHUNK_PROVER: once_cell::sync::Lazy<prover::zkevm::Prover> =
+    once_cell::sync::Lazy::new(|| {
+        std::env::set_var("SCROLL_PROVER_ASSETS_DIR", "../prover/configs");
+        let chunk_prover = prover::zkevm::Prover::from_params_dir(prover::test_util::PARAMS_DIR);
+        log::info!("Constructed chunk-prover");
 
-    chunk_prover
-});
+        chunk_prover
+    });
 
 #[derive(PartialEq, Eq, Error, Debug)]
 pub enum StateTestError {
@@ -613,16 +612,22 @@ pub fn run_test(
     Ok(())
 }
 
+#[cfg(not(feature = "chunk-prove"))]
 fn mock_prove(witness_block: Block<Fr>) {
+    use zkevm_circuits::util::SubCircuit;
+
     // TODO: do we need to automatically adjust this k?
     let k = 20;
     // TODO: remove this MOCK_RANDOMNESS?
-    let circuit =
-        SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>::new_from_block(
-            &witness_block,
-        );
+    let circuit = zkevm_circuits::super_circuit::SuperCircuit::<
+        Fr,
+        MAX_TXS,
+        MAX_CALLDATA,
+        MAX_INNER_BLOCKS,
+        0x100,
+    >::new_from_block(&witness_block);
     let instance = circuit.instance();
-    let prover = MockProver::run(k, &circuit, instance).unwrap();
+    let prover = halo2_proofs::dev::MockProver::run(k, &circuit, instance).unwrap();
     prover.assert_satisfied_par();
 }
 

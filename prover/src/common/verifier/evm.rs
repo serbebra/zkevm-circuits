@@ -19,7 +19,7 @@ impl<C: CircuitExt<Fr>> Verifier<C> {
             &self.params,
             &self.vk,
             evm_proof.num_instance.clone(),
-            yul_file_path.as_ref().map(|path| path.as_path()),
+            yul_file_path.as_deref(),
         );
 
         if let Some(dir) = output_dir {

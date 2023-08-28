@@ -16,6 +16,7 @@ use statetest::{
 };
 use std::{
     collections::HashSet,
+    env,
     fs::File,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
@@ -93,7 +94,21 @@ fn read_test_ids(file_path: &str) -> Result<Vec<String>> {
         test_ids.push(line?.trim().to_string());
     }
 
-    Ok(test_ids)
+    let total = test_ids.len();
+    let start = env::var("TESTOOL_IDS_START")
+        .ok()
+        .and_then(|val| val.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(total);
+    let len = env::var("TESTOOL_IDS_LEN")
+        .ok()
+        .and_then(|val| val.parse::<usize>().ok())
+        .unwrap_or(total);
+    log::info!("ENV TESTOOL_IDS_START = {start}, TESTOOL_IDS_LEN = {len}");
+
+    let end = total.min(start + len);
+
+    Ok(test_ids[start..end].to_vec())
 }
 
 fn write_test_ids(test_ids: &[String]) -> Result<()> {
