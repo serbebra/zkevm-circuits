@@ -593,19 +593,17 @@ pub fn run_test(
         chunk_prove(&test_id, witness_block);
         #[cfg(not(feature = "chunk-prove"))]
         mock_prove(witness_block);
+    } else if (*CIRCUIT).is_empty() {
+        CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
+            .copy_checks(None)
+            .run();
     } else {
-        if (*CIRCUIT).is_empty() {
-            CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
-                .copy_checks(None)
-                .run();
-        } else {
-            let prover = match (*CIRCUIT).as_str() {
-                "modexp" => test_with::<ModExpCircuit<Fr>>(&witness_block),
-                "bytecode" => test_with::<BytecodeCircuit<Fr>>(&witness_block),
-                _ => unimplemented!(),
-            };
-            prover.assert_satisfied_par();
-        }
+        let prover = match (*CIRCUIT).as_str() {
+            "modexp" => test_with::<ModExpCircuit<Fr>>(&witness_block),
+            "bytecode" => test_with::<BytecodeCircuit<Fr>>(&witness_block),
+            _ => unimplemented!(),
+        };
+        prover.assert_satisfied_par();
     }
 
     //#[cfg(feature = "scroll")]
