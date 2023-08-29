@@ -579,6 +579,7 @@ pub fn run_test(
         // fill these "untouched" storage slots
         // It is better to fill these info after (instead of before) bus-mapping re-exec.
         // To prevent these data being used unexpectedly.
+        // TODO: another method will be to skip empty account inside check_post?
         for account in trace_config.accounts.values() {
             builder.code_db.insert(account.code.to_vec());
             let (exist, acc_in_local_sdb) = builder.sdb.get_account_mut(&account.address);
