@@ -22,29 +22,34 @@ pub(crate) fn execute_precompiled(
         .get(address.as_fixed_bytes())  else {
         panic!("calling non-exist precompiled contract address")
     };
-
-    match precompile_fn(input, gas) {
+    log::trace!(
+        "calling precompile with gas {gas}, len {}, data {}",
+        input.len(),
+        hex::encode(input)
+    );
+    let (return_data, gas_cost, is_oog, is_ok) = match precompile_fn(input, gas) {
         Ok((gas_cost, return_value)) => {
-            match PrecompileCalls::from(address.0[19]) {
-                // FIXME: override the behavior of invalid input
-                PrecompileCalls::Modexp => {
-                    let (input_valid, [_, _, modulus_len]) = ModExpAuxData::check_input(input);
-                    if input_valid {
-                        // detect some edge cases like modulus = 0
-                        assert_eq!(modulus_len.as_usize(), return_value.len());
-                        (return_value, gas_cost, false) // no oog error
-                    } else {
-                        (vec![], gas, false)
-                    }
+            if PrecompileCalls::from(address.0[19]) == PrecompileCalls::Modexp {
+                let (input_valid, [_base_len, _exp_len, modulus_len]) =
+                    ModExpAuxData::check_input(input);
+                if input_valid {
+                    // detect some edge cases like modulus = 0
+                    assert_eq!(modulus_len.as_usize(), return_value.len());
+                } else {
+                    // TODO: change it to err type so testool can ignore?
+                    // panic!("modexp input invalid: base_len {base_len} exp_len {exp_len}
+                    // modulus_len {modulus_len}");
                 }
-                _ => (return_value, gas_cost, false),
             }
+            (return_value, gas_cost, false, true)
         }
         Err(err) => match err {
-            PrecompileError::OutOfGas => (vec![], gas, true),
-            _ => (vec![], gas, false),
+            PrecompileError::OutOfGas => (vec![], gas, true, false),
+            _ => (vec![], gas, false, false),
         },
-    }
+    };
+    log::trace!("called precompile with is_ok {is_ok} is_oog {is_oog}, gas_cost {gas_cost}, return_data len {}, return_data {}", return_data.len(), hex::encode(&return_data));
+    (return_data, gas_cost, is_oog)
 }
 
 /// Addresses of the precompiled contracts.
