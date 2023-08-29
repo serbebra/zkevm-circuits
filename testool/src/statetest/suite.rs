@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use anyhow::{Context, Result};
-#[cfg(not(feature = "chunk-prove"))]
+#[cfg(not(feature = "no-par"))]
 use rayon::prelude::*;
 use std::{
     panic::AssertUnwindSafe,
@@ -32,7 +32,7 @@ pub fn load_statetests_suite(
                 .any(|e| f.as_path().to_string_lossy().contains(*e))
         });
 
-    #[cfg(not(feature = "chunk-prove"))]
+    #[cfg(not(feature = "no-par"))]
     let tcs = tcs.par_bridge();
 
     let tcs = tcs
@@ -96,9 +96,9 @@ pub fn run_statetests_suite(
     // for each test
     let test_count = tcs.len();
 
-    #[cfg(feature = "chunk-prove")]
+    #[cfg(feature = "no-par")]
     let tcs = tcs.into_iter();
-    #[cfg(not(feature = "chunk-prove"))]
+    #[cfg(not(feature = "no-par"))]
     let tcs = tcs.into_par_iter();
 
     tcs.for_each(|ref tc| {
