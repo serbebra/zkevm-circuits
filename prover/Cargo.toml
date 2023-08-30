@@ -46,4 +46,4 @@ procfs = "0.13.0"
 [features]
 default = ["shanghai"]
 shanghai = ["bus-mapping/shanghai", "eth-types/shanghai", "mock/shanghai", "zkevm-circuits/shanghai"]
-scroll = ["bus-mapping/scroll", "eth-types/scroll", "mock/scroll", "zkevm-circuits/scroll", "zkevm-circuits/scroll-trace"]
+scroll = ["bus-mapping/scroll", "eth-types/scroll", "mock/scroll", "zkevm-circuits/scroll"]
