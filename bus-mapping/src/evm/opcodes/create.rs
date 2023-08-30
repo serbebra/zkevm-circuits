@@ -197,7 +197,7 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
             address,
             AccountField::CodeHash,
             code_hash_previous.to_word(),
-            )?;
+        )?;
 
         if is_precheck_ok && !is_address_collision {
             state.transfer(

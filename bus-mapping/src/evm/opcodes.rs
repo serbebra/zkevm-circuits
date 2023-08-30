@@ -671,7 +671,7 @@ pub fn gen_begin_tx_ops(
             call.address,
             AccountField::CodeHash,
             account_code_hash,
-    )?;
+        )?;
     }
 
     // Transfer with fee
