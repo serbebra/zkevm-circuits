@@ -428,7 +428,7 @@ impl<'a> CircuitInputBuilder {
                 call_id,
                 CallContextField::TxId,
                 Word::from(dummy_tx_id as u64),
-            );
+            )?;
         }
 
         // increase the total rwc by 1
@@ -443,7 +443,7 @@ impl<'a> CircuitInputBuilder {
                 dummy_tx_id,
                 withdraw_root_before,
             ),
-        );
+        )?;
 
         let mut push_op = |step: &mut ExecStep, rwc: RWCounter, rw: RW, op: StartOp| {
             let op_ref = state.block.container.insert(Operation::new(rwc, rw, op));

@@ -84,7 +84,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             ]);
         }
         for (field, value) in field_values {
-            state.call_context_read(&mut exec_step, caller_call.call_id, field, value);
+            state.call_context_read(&mut exec_step, caller_call.call_id, field, value)?;
         }
 
         for i in 0..N_ARGS {
@@ -117,7 +117,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             callee_address,
             AccountField::CodeHash,
             callee_code_hash_word,
-        );
+        )?;
 
         let is_warm = state.sdb.check_account_in_access_list(&callee_address);
         state.push_op_reversible(
@@ -140,7 +140,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                 (callee_call.is_persistent as u64).into(),
             ),
         ] {
-            state.call_context_write(&mut exec_step, callee_call.call_id, field, value);
+            state.call_context_write(&mut exec_step, callee_call.call_id, field, value)?;
         }
 
         let (found, sender_account) = state.sdb.get_account(&callee_call.caller_address);
@@ -163,7 +163,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             callee_call.caller_address,
             AccountField::Balance,
             caller_balance,
-        );
+        )?;
 
         let code_address = callee_call.code_address();
         let is_precompile = code_address
@@ -315,7 +315,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         callee_call.return_data_length.into(),
                     ),
                 ] {
-                    state.call_context_write(&mut exec_step, callee_call.call_id, field, value);
+                    state.call_context_write(&mut exec_step, callee_call.call_id, field, value)?;
                 }
 
                 // return while restoring some of caller's context.
@@ -344,7 +344,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         result.len().into(),
                     ),
                 ] {
-                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value);
+                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value)?;
                 }
 
                 // insert a copy event (input) for this step and generate word memory read & write
@@ -486,7 +486,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                     (CallContextField::LastCalleeReturnDataOffset, 0.into()),
                     (CallContextField::LastCalleeReturnDataLength, 0.into()),
                 ] {
-                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value);
+                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value)?;
                 }
                 state.caller_ctx_mut()?.return_data.clear();
                 state.handle_return(&mut exec_step, geth_steps, false)?;
@@ -514,7 +514,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         (exec_step.reversible_write_counter + 1).into(),
                     ),
                 ] {
-                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value);
+                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value)?;
                 }
 
                 for (field, value) in [
@@ -569,7 +569,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                     (CallContextField::IsCreate, 0.into()),
                     (CallContextField::CodeHash, callee_call.code_hash.to_word()),
                 ] {
-                    state.call_context_write(&mut exec_step, callee_call.call_id, field, value);
+                    state.call_context_write(&mut exec_step, callee_call.call_id, field, value)?;
                 }
 
                 Ok(vec![exec_step])
@@ -581,7 +581,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                     (CallContextField::LastCalleeReturnDataOffset, 0.into()),
                     (CallContextField::LastCalleeReturnDataLength, 0.into()),
                 ] {
-                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value);
+                    state.call_context_write(&mut exec_step, caller_call.call_id, field, value)?;
                 }
                 state.caller_ctx_mut()?.return_data.clear();
                 state.handle_return(&mut exec_step, geth_steps, false)?;
