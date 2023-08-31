@@ -374,7 +374,7 @@ fn copy_constraints(
                             &chunk_pi_hash_preimages[0][i + PREV_STATE_ROOT_INDEX].value(),
                         )
                         .as_str(),
-                    );
+                    )?;
                     region.constrain_equal(
                         batch_pi_hash_preimage[i + PREV_STATE_ROOT_INDEX].cell(),
                         chunk_pi_hash_preimages[0][i + PREV_STATE_ROOT_INDEX].cell(),
@@ -391,7 +391,7 @@ fn copy_constraints(
                                 .value(),
                         )
                         .as_str(),
-                    );
+                    )?;
                     region.constrain_equal(
                         batch_pi_hash_preimage[i + POST_STATE_ROOT_INDEX].cell(),
                         chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + POST_STATE_ROOT_INDEX]
@@ -408,7 +408,7 @@ fn copy_constraints(
                                 .value(),
                         )
                         .as_str(),
-                    );
+                    )?;
                     region.constrain_equal(
                         batch_pi_hash_preimage[i + WITHDRAW_ROOT_INDEX].cell(),
                         chunk_pi_hash_preimages[MAX_AGG_SNARKS - 1][i + WITHDRAW_ROOT_INDEX].cell(),
@@ -432,7 +432,7 @@ fn copy_constraints(
                                 &rhs.value(),
                             )
                             .as_str(),
-                        );
+                        )?;
                         region.constrain_equal(lhs.cell(), rhs.cell())?;
                     }
                 }
@@ -645,7 +645,7 @@ pub(crate) fn conditional_constraints(
                                 &chunk_is_valid_cells[i].value()
                             )
                             .as_str(),
-                        );
+                        )?;
                         rlc_config.conditional_enforce_equal(
                             &mut region,
                             &chunk_pi_hash_preimages[i][j + CHUNK_DATA_HASH_INDEX],
@@ -671,7 +671,7 @@ pub(crate) fn conditional_constraints(
                                 &chunk_is_valid_cells[i + 1].value(),
                             )
                             .as_str(),
-                        );
+                        )?;
                         rlc_config.conditional_enforce_equal(
                             &mut region,
                             &chunk_pi_hash_preimages[i + 1][PREV_STATE_ROOT_INDEX + j],
@@ -738,7 +738,6 @@ pub(crate) fn conditional_constraints(
                     rlc_config.mul(&mut region, &num_valid_snarks, &const32, &mut offset)?;
 
                 // sanity check
-
                 let candidates = (0..get_data_hash_keccak_updates(MAX_AGG_SNARKS))
                     .map(|k| hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + k].clone())
                     .collect::<Vec<_>>();
@@ -756,6 +755,12 @@ pub(crate) fn conditional_constraints(
                     &mut offset,
                 )?;
                 for (i, flag) in flags.iter().enumerate().skip(1) {
+                    println!(
+                        "{} {:?} {:?}",
+                        i,
+                        hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + i].value(),
+                        flag.value()
+                    );
                     data_hash_inputs_len_rec = rlc_config.mul_add(
                         &mut region,
                         &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + i],
@@ -775,7 +780,7 @@ pub(crate) fn conditional_constraints(
                         &data_hash_inputs_len_rec.value(),
                     )
                     .as_str(),
-                );
+                )?;
                 region.constrain_equal(
                     data_hash_inputs_len.cell(),
                     data_hash_inputs_len_rec.cell(),

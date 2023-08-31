@@ -118,12 +118,13 @@ pub(crate) fn assert_equal<F: Field>(
     a: &AssignedCell<F, F>,
     b: &AssignedCell<F, F>,
     description: &str,
-) {
-    let mut t1 = F::default();
-    let mut t2 = F::default();
-    a.value().map(|f| t1 = *f);
-    b.value().map(|f| t2 = *f);
-    assert_eq!(t1, t2, "{description}",)
+) -> Result<(), Error> {
+    a.value().zip(b.value()).error_if_known_and(|(&a, &b)| {
+        if a != b {
+            log::error!("{description}");
+        }
+        a != b
+    })
 }
 
 #[inline]
@@ -134,16 +135,15 @@ pub(crate) fn assert_conditional_equal<F: Field>(
     b: &AssignedCell<F, F>,
     cond: &AssignedCell<F, F>,
     description: &str,
-) {
-    let mut t1 = F::default();
-    let mut t2 = F::default();
-    let mut c = F::default();
-    a.value().map(|f| t1 = *f);
-    b.value().map(|f| t2 = *f);
-    cond.value().map(|f| c = *f);
-    if c == F::one() {
-        assert_eq!(t1, t2, "{description}",)
-    }
+) -> Result<(), Error> {
+    a.value()
+        .zip(b.value().zip(cond.value()))
+        .error_if_known_and(|(&a, (&b, &cond))| {
+            if !(cond == F::one() && a != b) {
+                log::error!("{description}");
+            }
+            cond == F::one() && a != b
+        })
 }
 
 #[inline]
