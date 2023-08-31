@@ -1,18 +1,7 @@
-use crate::{
-    aggregation::RlcConfig,
-    constants::{DIGEST_LEN, INPUT_LEN_PER_ROUND, MAX_AGG_SNARKS},
-};
+use crate::constants::{DIGEST_LEN, INPUT_LEN_PER_ROUND, MAX_AGG_SNARKS};
 use eth_types::Field;
-use halo2_proofs::{
-    circuit::{AssignedCell, Region},
-    halo2curves::bn256::Fr,
-    plonk::Error,
-};
+use halo2_proofs::{circuit::AssignedCell, halo2curves::bn256::Fr, plonk::Error};
 use itertools::Itertools;
-use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
-    gates::{flex_gate::FlexGateConfig, GateInstructions},
-    AssignedValue, Context,
-};
 use zkevm_circuits::keccak_circuit::keccak_packed_multi::{
     get_num_rows_per_round, get_num_rows_per_update,
 };
@@ -158,63 +147,33 @@ pub(crate) fn assert_conditional_equal<F: Field>(
 }
 
 #[inline]
-// assert a \in (b1, b2, b3)
-// TODO: return Error::Synthesis?
+// assert a \in [b1, b2, b3...] if both a and bi are known
+// (NOT constraining equality in circuit)
 pub(crate) fn assert_exist<F: Field>(
     a: &AssignedCell<F, F>,
-    b1: &AssignedCell<F, F>,
-    b2: &AssignedCell<F, F>,
-    b3: &AssignedCell<F, F>,
-    b4: &AssignedCell<F, F>,
-) {
-    let _ = a
-        .value()
-        .zip(b1.value())
-        .zip(b2.value())
-        .zip(b3.value())
-        .zip(b4.value())
-        .error_if_known_and(|((((&a, &b1), &b2), &b3), &b4)| {
-            assert!(
-                a == b1 || a == b2 || a == b3 || a == b4,
-                "a: {a:?}\nb1: {b1:?}\nb2: {b2:?}\nb3: {b3:?}\nb4: {b3:?}\n",
-            );
-            !(a == b1 || a == b2 || a == b3 || a == b4)
-        });
+    bi_s: &[AssignedCell<F, F>],
+) -> Result<(), Error> {
+    let mut res = false;
+
+    let a_value = a.value();
+    let bi_values = bi_s.iter().map(|x| x.value()).collect::<Vec<_>>();
+
+    for bi_value in bi_values {
+        a_value.zip(bi_value).assert_if_known(|(a, bi)| {
+            res = res || (a == bi);
+            true
+        })
+    }
+    if !res {
+        return Err(Error::Synthesis);
+    }
+    Ok(())
 }
 
 #[inline]
 // assert that the slice is ascending
 fn is_ascending(a: &[usize]) -> bool {
     a.windows(2).all(|w| w[0] <= w[1])
-}
-
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn assigned_cell_to_value(
-    gate: &FlexGateConfig<Fr>,
-    ctx: &mut Context<Fr>,
-    assigned_cell: &AssignedCell<Fr, Fr>,
-) -> Result<AssignedValue<Fr>, Error> {
-    let value = assigned_cell.value().copied();
-    let assigned_value = gate.load_witness(ctx, value);
-    ctx.region
-        .constrain_equal(assigned_cell.cell(), assigned_value.cell)?;
-    Ok(assigned_value)
-}
-
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn assigned_value_to_cell(
-    config: &RlcConfig,
-    region: &mut Region<Fr>,
-    assigned_value: &AssignedValue<Fr>,
-    offset: &mut usize,
-) -> Result<AssignedCell<Fr, Fr>, Error> {
-    let mut value = Fr::default();
-    assigned_value.value().map(|&x| value = x);
-    let assigned_cell = config.load_private(region, &value, offset)?;
-    region.constrain_equal(assigned_cell.cell(), assigned_value.cell())?;
-    Ok(assigned_cell)
 }
 
 #[inline]
@@ -269,7 +228,6 @@ pub(crate) fn parse_hash_digest_cells(
 }
 
 #[inline]
-#[allow(clippy::type_complexity)]
 pub(crate) fn parse_pi_hash_rlc_cells(
     data_rlc_cells: &[AssignedCell<Fr, Fr>],
 ) -> Vec<&AssignedCell<Fr, Fr>> {
@@ -283,7 +241,7 @@ pub(crate) fn parse_pi_hash_rlc_cells(
         .collect()
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
     assert!(!inputs.is_empty());
     let mut acc = inputs[0];
@@ -297,7 +255,12 @@ pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
 #[test]
 fn test_keccak_hash_num_of_rounds() {
     let num_of_rounds = [
-        1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6,
+        1, 1, 1, 1, //    1 round:  32  ... 128 in [0,   136)
+        2, 2, 2, 2, //    2 rounds: 160 ... 256 in [136, 272)
+        3, 3, 3, 3, //    3 rounds: 288 ... 384 in [272, 408)
+        4, 4, 4, 4, //    4 rounds: 416 ... 512 in [408, 544)
+        5, 5, 5, 5, 5, // 5 rounds: 544 ... 672 in [544, 680)
+        6, 6, 6, 6, //    6 rounds: 704 ... 800 in [680, 816)
     ];
     for i in 1..=25 {
         assert_eq!(get_data_hash_keccak_updates(i), num_of_rounds[i - 1])

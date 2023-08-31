@@ -526,7 +526,7 @@ pub(crate) fn conditional_constraints(
                 // ...           | ...                 | ...
 
                 let flags =
-                    extract_the_flags(&rlc_config, &mut region, &num_valid_snarks, &mut offset)?;
+                    extract_the_flags(rlc_config, &mut region, &num_valid_snarks, &mut offset)?;
 
                 for (i, f) in flags.iter().enumerate() {
                     log::trace!("flag {}: {:?}", i, f.value());
@@ -579,13 +579,16 @@ pub(crate) fn conditional_constraints(
                 for i in 0..4 {
                     for j in 0..8 {
                         // sanity check
-                        // assert_exist(
-                        //     &batch_pi_hash_preimage[i * 8 + j + CHUNK_DATA_HASH_INDEX],
-                        //     &potential_batch_data_hash_digest[(3 - i) * 8 + j],
-                        //     &potential_batch_data_hash_digest[(3 - i) * 8 + j + 32],
-                        //     &potential_batch_data_hash_digest[(3 - i) * 8 + j + 64],
-                        //     &potential_batch_data_hash_digest[(3 - i) * 8 + j + 96],
-                        // );
+                        let candidates = (0..get_data_hash_keccak_updates(MAX_AGG_SNARKS))
+                            .map(|k| {
+                                potential_batch_data_hash_digest[(3 - i) * 8 + j + 32 * k].clone()
+                            })
+                            .collect::<Vec<_>>();
+                        assert_exist(
+                            &batch_pi_hash_preimage[i * 8 + j + CHUNK_DATA_HASH_INDEX],
+                            &candidates,
+                        )?;
+
                         // assert
                         // batch_pi_hash_preimage[i * 8 + j + CHUNK_DATA_HASH_INDEX]
                         // = flag1 * potential_batch_data_hash_digest[(3 - i) * 8 + j]
@@ -603,7 +606,7 @@ pub(crate) fn conditional_constraints(
                         for (k, flag) in flags.iter().enumerate().skip(1) {
                             rhs = rlc_config.mul_add(
                                 &mut region,
-                                &flag,
+                                flag,
                                 &potential_batch_data_hash_digest[(3 - i) * 8 + j + 32 * k],
                                 &rhs,
                                 &mut offset,
@@ -735,31 +738,16 @@ pub(crate) fn conditional_constraints(
                     rlc_config.mul(&mut region, &num_valid_snarks, &const32, &mut offset)?;
 
                 // sanity check
-                // assert_exist(
-                //     &data_hash_inputs_len,
-                //     &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3],
-                //     &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 4],
-                //     &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 5],
-                //     &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 6],
-                // );
+
+                let candidates = (0..get_data_hash_keccak_updates(MAX_AGG_SNARKS))
+                    .map(|k| hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + k].clone())
+                    .collect::<Vec<_>>();
+                assert_exist(&data_hash_inputs_len, &candidates)?;
 
                 log::trace!("data_hash_inputs: {:?}", data_hash_inputs_len.value());
-                log::trace!(
-                    "candidate 1: {:?}",
-                    hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3].value()
-                );
-                log::trace!(
-                    "candidate 2: {:?}",
-                    hash_input_len_cells[MAX_AGG_SNARKS * 2 + 4].value()
-                );
-                log::trace!(
-                    "candidate 3: {:?}",
-                    hash_input_len_cells[MAX_AGG_SNARKS * 2 + 5].value()
-                );
-                log::trace!(
-                    "candidate 4: {:?}",
-                    hash_input_len_cells[MAX_AGG_SNARKS * 2 + 6].value()
-                );
+                for (k, candidate) in candidates.iter().enumerate() {
+                    log::trace!("candidate {}: {:?}", k, candidate.value());
+                }
 
                 let mut data_hash_inputs_len_rec = rlc_config.mul(
                     &mut region,
@@ -771,7 +759,7 @@ pub(crate) fn conditional_constraints(
                     data_hash_inputs_len_rec = rlc_config.mul_add(
                         &mut region,
                         &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + i],
-                        &flag,
+                        flag,
                         &data_hash_inputs_len_rec,
                         &mut offset,
                     )?;
@@ -947,6 +935,15 @@ fn num_valid_snarks(
     Ok(res)
 }
 
+/// extract the flag. the flag is defined as follows.
+/// the following flag is build to indicate which row the final data_rlc exists
+///
+/// #valid snarks | offset of data hash | flags
+/// 1,2,3,4       | 0                   | 1, 0, 0, 0
+/// 5,6,7,8       | 32                  | 0, 1, 0, 0
+/// 9,10,11,12    | 64                  | 0, 0, 1, 0
+/// 13,14,15,16   | 96                  | 0, 0, 0, 1
+/// ...           | ...                 | ...
 fn extract_the_flags(
     rlc_config: &RlcConfig,
     region: &mut Region<Fr>,
@@ -970,13 +967,13 @@ fn extract_the_flags(
     let smaller_or_eq_x = constants_assigned
         .iter()
         .map(|constant_assigned| {
-            rlc_config.is_smaller_than(region, &num_valid_snarks, &constant_assigned, offset)
+            rlc_config.is_smaller_than(region, num_valid_snarks, constant_assigned, offset)
         })
         .collect::<Result<Vec<_>, halo2_proofs::plonk::Error>>()?;
 
     let greater_than_x = smaller_or_eq_x
         .iter()
-        .map(|assigned| rlc_config.not(region, &assigned, offset))
+        .map(|assigned| rlc_config.not(region, assigned, offset))
         .collect::<Result<Vec<_>, halo2_proofs::plonk::Error>>()?;
 
     let mut res = vec![smaller_or_eq_x[0].clone()];
@@ -986,7 +983,7 @@ fn extract_the_flags(
         .skip(1)
         .take(num_keccak_round_constants - 2)
     {
-        res.push(rlc_config.mul(region, &greater_than, &smaller_or_eq, offset)?)
+        res.push(rlc_config.mul(region, greater_than, smaller_or_eq, offset)?)
     }
     res.push(greater_than_x.last().unwrap().clone());
 
