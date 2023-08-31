@@ -158,16 +158,13 @@ pub(crate) fn assert_exist<F: Field>(
     let a_value = a.value();
     let bi_values = bi_s.iter().map(|x| x.value()).collect::<Vec<_>>();
 
-    for bi_value in bi_values {
+    for &bi_value in bi_values.iter() {
         a_value.zip(bi_value).assert_if_known(|(a, bi)| {
             res = res || (a == bi);
             true
         })
     }
-    if !res {
-        return Err(Error::Synthesis);
-    }
-    Ok(())
+    a_value.zip(bi_values[0]).error_if_known_and(|_| !res)
 }
 
 #[inline]
