@@ -603,11 +603,11 @@ pub(crate) fn conditional_constraints(
                             &mut offset,
                         )?;
 
-                        for (k, flag) in flags.iter().enumerate().skip(1) {
+                        for (flag, candidate) in flags.iter().zip(candidates.iter()).skip(1) {
                             rhs = rlc_config.mul_add(
                                 &mut region,
                                 flag,
-                                &potential_batch_data_hash_digest[(3 - i) * 8 + j + 32 * k],
+                                candidate,
                                 &rhs,
                                 &mut offset,
                             )?;
@@ -744,26 +744,21 @@ pub(crate) fn conditional_constraints(
                 assert_exist(&data_hash_inputs_len, &candidates)?;
 
                 log::trace!("data_hash_inputs: {:?}", data_hash_inputs_len.value());
-                for (k, candidate) in candidates.iter().enumerate() {
-                    log::trace!("candidate {}: {:?}", k, candidate.value());
-                }
-
-                let mut data_hash_inputs_len_rec = rlc_config.mul(
-                    &mut region,
-                    &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3],
-                    &flags[0],
-                    &mut offset,
-                )?;
-                for (i, flag) in flags.iter().enumerate().skip(1) {
-                    println!(
-                        "{} {:?} {:?}",
-                        i,
-                        hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + i].value(),
+                for (k, (candidate, flag)) in candidates.iter().zip(flags.iter()).enumerate() {
+                    log::trace!(
+                        "candidate {}: {:?} {:?}",
+                        k,
+                        candidate.value(),
                         flag.value()
                     );
+                }
+
+                let mut data_hash_inputs_len_rec =
+                    rlc_config.mul(&mut region, &candidates[0], &flags[0], &mut offset)?;
+                for (flag, candidate) in flags.iter().zip(candidates.iter()).skip(1) {
                     data_hash_inputs_len_rec = rlc_config.mul_add(
                         &mut region,
-                        &hash_input_len_cells[MAX_AGG_SNARKS * 2 + 3 + i],
+                        candidate,
                         flag,
                         &data_hash_inputs_len_rec,
                         &mut offset,
@@ -805,26 +800,15 @@ pub(crate) fn conditional_constraints(
                     &mut offset,
                 )?;
 
-                // assert_exist(
-                //     &rlc_cell,
-                //     &data_rlc_cells[MAX_AGG_SNARKS * 2 + 3],
-                //     &data_rlc_cells[MAX_AGG_SNARKS * 2 + 4],
-                //     &data_rlc_cells[MAX_AGG_SNARKS * 2 + 5],
-                //     &data_rlc_cells[MAX_AGG_SNARKS * 2 + 6],
-                // );
+                let candidates = (0..get_data_hash_keccak_updates(MAX_AGG_SNARKS))
+                    .map(|k| data_rlc_cells[MAX_AGG_SNARKS * 2 + 3 + k].clone())
+                    .collect::<Vec<_>>();
+                assert_exist(&rlc_cell, &candidates)?;
+
                 log::trace!("rlc from chip {:?}", rlc_cell.value());
-                log::trace!(
-                    "rlc from table {:?}",
-                    data_rlc_cells[MAX_AGG_SNARKS * 2 + 3].value()
-                );
-                log::trace!(
-                    "rlc from table {:?}",
-                    data_rlc_cells[MAX_AGG_SNARKS * 2 + 4].value()
-                );
-                log::trace!(
-                    "rlc from table {:?}",
-                    data_rlc_cells[MAX_AGG_SNARKS * 2 + 5].value()
-                );
+                for (i, candidate) in candidates.iter().enumerate() {
+                    log::trace!("{}-th rlc from table {:?}", i, candidate.value());
+                }
 
                 // assertion
                 let mut prod = rlc_config.sub(
@@ -834,15 +818,11 @@ pub(crate) fn conditional_constraints(
                     &mut offset,
                 )?;
 
-                for i in 1..get_data_hash_keccak_updates(MAX_AGG_SNARKS) {
-                    let diff = rlc_config.sub(
-                        &mut region,
-                        &rlc_cell,
-                        &data_rlc_cells[MAX_AGG_SNARKS * 2 + 3 + i],
-                        &mut offset,
-                    )?;
+                for candidate in candidates.iter().skip(1) {
+                    let diff = rlc_config.sub(&mut region, &rlc_cell, candidate, &mut offset)?;
                     prod = rlc_config.mul(&mut region, &diff, &prod, &mut offset)?;
                 }
+
                 rlc_config.enforce_zero(&mut region, &prod)?;
 
                 // 9. is_final_cells are set correctly
