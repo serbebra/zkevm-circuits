@@ -81,6 +81,7 @@ use crate::{
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
     witness::{block_convert, Block, Transaction},
 };
+use std::time::Instant;
 
 #[cfg(feature = "zktrie")]
 use crate::mpt_circuit::{MptCircuit, MptCircuitConfig, MptCircuitConfigArgs};
@@ -534,6 +535,17 @@ impl<
     }
 }
 
+macro_rules! measure_time {
+    ($circuit:expr, $s:stmt) => {
+        {
+            let timer = Instant::now();
+            let circ_name = String::from(stringify!($circuit));
+            $s
+            log::info!("{} circuit synthesis took {:?}", circ_name, timer.elapsed());
+        }
+    }
+}
+
 // Eventhough the SuperCircuit is not a subcircuit we implement the SubCircuit
 // trait for it in order to get the `new_from_block` and `instance` methods that
 // allow us to generalize integration tests.
@@ -629,34 +641,70 @@ impl<
         challenges: &crate::util::Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        self.keccak_circuit
-            .synthesize_sub(&config.keccak_circuit, challenges, layouter)?;
-        self.poseidon_circuit
-            .synthesize_sub(&config.poseidon_circuit, challenges, layouter)?;
-        self.bytecode_circuit
-            .synthesize_sub(&config.bytecode_circuit, challenges, layouter)?;
-        self.tx_circuit
-            .synthesize_sub(&config.tx_circuit, challenges, layouter)?;
-        self.sig_circuit
-            .synthesize_sub(&config.sig_circuit, challenges, layouter)?;
-        self.ecc_circuit
-            .synthesize_sub(&config.ecc_circuit, challenges, layouter)?;
-        self.modexp_circuit
-            .synthesize_sub(&config.modexp_circuit, challenges, layouter)?;
-        self.state_circuit
-            .synthesize_sub(&config.state_circuit, challenges, layouter)?;
-        self.copy_circuit
-            .synthesize_sub(&config.copy_circuit, challenges, layouter)?;
-        self.exp_circuit
-            .synthesize_sub(&config.exp_circuit, challenges, layouter)?;
-        self.evm_circuit
-            .synthesize_sub(&config.evm_circuit, challenges, layouter)?;
+        measure_time!(
+            keccak,
+            self.keccak_circuit
+                .synthesize_sub(&config.keccak_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            poseidon,
+            self.poseidon_circuit
+                .synthesize_sub(&config.poseidon_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            bytecode,
+            self.bytecode_circuit
+                .synthesize_sub(&config.bytecode_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            tx,
+            self.tx_circuit
+                .synthesize_sub(&config.tx_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            sig,
+            self.sig_circuit
+                .synthesize_sub(&config.sig_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            ecc,
+            self.ecc_circuit
+                .synthesize_sub(&config.ecc_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            modexp,
+            self.modexp_circuit
+                .synthesize_sub(&config.modexp_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            state,
+            self.state_circuit
+                .synthesize_sub(&config.state_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            copy,
+            self.copy_circuit
+                .synthesize_sub(&config.copy_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            exp,
+            self.exp_circuit
+                .synthesize_sub(&config.exp_circuit, challenges, layouter)?
+        );
+        measure_time!(
+            evm,
+            self.evm_circuit
+                .synthesize_sub(&config.evm_circuit, challenges, layouter)?
+        );
 
         self.pi_circuit
             .import_tx_values(self.tx_circuit.value_cells.borrow().clone().unwrap());
 
-        self.pi_circuit
-            .synthesize_sub(&config.pi_circuit, challenges, layouter)?;
+        measure_time!(
+            pi,
+            self.pi_circuit
+                .synthesize_sub(&config.pi_circuit, challenges, layouter)?
+        );
 
         self.pi_circuit.connect_export(
             layouter,
@@ -664,12 +712,18 @@ impl<
             self.evm_circuit.exports.borrow().as_ref(),
         )?;
 
-        self.rlp_circuit
-            .synthesize_sub(&config.rlp_circuit, challenges, layouter)?;
+        measure_time!(
+            rlp,
+            self.rlp_circuit
+                .synthesize_sub(&config.rlp_circuit, challenges, layouter)?
+        );
         // load both poseidon table and zktrie table
         #[cfg(feature = "zktrie")]
-        self.mpt_circuit
-            .synthesize_sub(&config.mpt_circuit, challenges, layouter)?;
+        measure_time!(
+            mpt,
+            self.mpt_circuit
+                .synthesize_sub(&config.mpt_circuit, challenges, layouter)?
+        );
 
         Ok(())
     }
