@@ -964,9 +964,8 @@ fn extract_the_flags(
     let mut res = vec![smaller_or_eq_x[0].clone()];
     for (smaller_or_eq, greater_than) in smaller_or_eq_x
         .iter()
-        .zip(greater_than_x.iter())
         .skip(1)
-        .take(num_keccak_round_constants - 2)
+        .zip(greater_than_x.iter().take(num_keccak_round_constants - 1))
     {
         res.push(rlc_config.mul(region, greater_than, smaller_or_eq, offset)?)
     }
