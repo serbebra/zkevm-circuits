@@ -15,6 +15,19 @@ pub(crate) const INPUT_LEN_PER_ROUND: usize = 136;
 #[allow(dead_code)]
 pub(crate) const LOG_DEGREE: u32 = 19;
 
+/// A list of constants that indicates how many multiples of 32 bytes
+/// a given round can host
+///
+/// This can be generated via
+///   [ceil((x*32+1)/136) for x in range(1,30)]
+// 1 round:  32  ... 128 in [0,   136), can store up to 4 rounds
+// 2 rounds: 160 ... 256 in [136, 272), can store up to 8 rounds
+// 3 rounds: 288 ... 384 in [272, 408), can store up to 12 rounds
+// 4 rounds: 416 ... 512 in [408, 544), can store up to 16 rounds
+// 5 rounds: 544 ... 672 in [544, 680), can store up to 21 rounds
+// 6 rounds: 704 ... 800 in [680, 816), can store up to 25 rounds
+pub(crate) const KECCAK_ROUND_CONSTANTS: [u8; 6] = [4, 8, 12, 16, 21, 25];
+
 // ================================
 // indices for hash table
 // ================================

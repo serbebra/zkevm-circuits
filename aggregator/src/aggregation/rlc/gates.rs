@@ -7,9 +7,8 @@ use halo2_proofs::{
 use zkevm_circuits::util::Challenges;
 
 use crate::{
-    constants::LOG_DEGREE,
-    util::{assert_equal, get_data_hash_keccak_updates},
-    MAX_AGG_SNARKS,
+    constants::{KECCAK_ROUND_CONSTANTS, LOG_DEGREE},
+    util::assert_equal,
 };
 
 use super::RlcConfig;
@@ -34,21 +33,13 @@ impl RlcConfig {
             || Value::known(Fr::from(1 << 32)),
         )?;
 
-        let num_keccak_round_constants = get_data_hash_keccak_updates(MAX_AGG_SNARKS);
-        log::info!(
-            "number of keccak round constants {}",
-            num_keccak_round_constants
-        );
-
-        for i in 0..num_keccak_round_constants {
-            let value = i * 4 + 5;
-            let index = i + 6;
+        for (i, c) in KECCAK_ROUND_CONSTANTS.iter().enumerate() {
+            let value = *c + 1;
             let des = format!("const {value}");
-
             region.assign_fixed(
                 || des.to_string(),
                 self.fixed,
-                index,
+                i + 6,
                 || Value::known(Fr::from(value as u64)),
             )?;
         }
@@ -146,7 +137,7 @@ impl RlcConfig {
     }
 
     #[inline]
-    pub(crate) fn twenty_one_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn twenty_two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 10,
@@ -155,7 +146,7 @@ impl RlcConfig {
     }
 
     #[inline]
-    pub(crate) fn twenty_five_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn twenty_six_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 11,
@@ -170,8 +161,8 @@ impl RlcConfig {
             self.nine_cell(region_index),
             self.thirteen_cell(region_index),
             self.seventeen_cell(region_index),
-            self.twenty_one_cell(region_index),
-            self.twenty_five_cell(region_index),
+            self.twenty_two_cell(region_index),
+            self.twenty_six_cell(region_index),
         ]
     }
 
