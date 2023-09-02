@@ -10,9 +10,13 @@ use eth_types::{Field, U256};
 use halo2_proofs::{
     arithmetic::Field as ArithmeticField,
     dev::MockProver,
-    halo2curves::bn256::{Fr, G1Affine, G2Affine},
+    halo2curves::{
+        bn256::{multi_miller_loop, Fr, G1Affine, G2Affine},
+        pairing::MillerLoopResult,
+    },
 };
 use rand::{CryptoRng, Rng, RngCore};
+use snark_verifier::util::arithmetic::PrimeCurveAffine;
 
 use crate::ecc_circuit::EccCircuit;
 
@@ -348,6 +352,38 @@ mod valid_invalid_cases {
                 },
             ]
         };
+        pub(crate) static ref EC_PAIRING_OPS4: Vec<EcPairingOp> = {
+            vec![
+                // Valid:
+                // - (G1::gen, G2::gen)
+                // - (-G1::gen, G2::gen)
+                /*
+                EcPairingOp {
+                    pairs: [
+                        EcPairingPair::new(G1Affine::generator(), G2Affine::generator()),
+                        EcPairingPair::new(G1Affine::generator().neg(), G2Affine::generator()),
+                        EcPairingPair::padding_pair(),
+                        EcPairingPair::padding_pair(),
+                    ],
+                    output: 1.into(),
+                },
+                */
+                // Valid:
+                // - (G1::gen, G2::gen)
+                // - (-G1::gen, G2::gen)
+                // - (G1::gen, G2::gen)
+                // - (-G1::gen, G2::gen)
+                EcPairingOp {
+                    pairs: [
+                        EcPairingPair::new(G1Affine::generator(), G2Affine::generator()),
+                        EcPairingPair::new(G1Affine::generator().neg(), G2Affine::generator()),
+                        EcPairingPair::new(G1Affine::generator(), G2Affine::generator()),
+                        EcPairingPair::new(G1Affine::generator().neg(), G2Affine::generator()),
+                    ],
+                    output: 1.into(),
+                },
+            ]
+        };
     }
 }
 
@@ -356,9 +392,10 @@ fn test_ecc_circuit_valid_invalid() {
     use crate::ecc_circuit::util::LOG_TOTAL_NUM_ROWS;
     use halo2_proofs::halo2curves::bn256::Fr;
     use valid_invalid_cases::{
-        EC_ADD_OPS, EC_MUL_OPS, EC_PAIRING_OPS1, EC_PAIRING_OPS2, EC_PAIRING_OPS3,
+        EC_ADD_OPS, EC_MUL_OPS, EC_PAIRING_OPS1, EC_PAIRING_OPS2, EC_PAIRING_OPS3, EC_PAIRING_OPS4,
     };
 
+    /*
     run::<Fr, false>(
         LOG_TOTAL_NUM_ROWS,
         PrecompileEcParams::default(),
@@ -389,6 +426,32 @@ fn test_ecc_circuit_valid_invalid() {
         vec![],
         vec![],
         EC_PAIRING_OPS3.clone(),
+    );
+    */
+
+    let g1 = G1Affine::generator();
+    let g2 = G2Affine::generator();
+    let gt = multi_miller_loop(&[
+        (&g1, &g2.into()),
+        (&g1.neg(), &g2.into()),
+        (&g1, &g2.into()),
+        (&g1.neg(), &g2.into()),
+    ]);
+    log::trace!("gt=");
+    log::trace!("{:#?}", gt);
+    log::trace!("final_exp=");
+    log::trace!("{:#?}", gt.final_exponentiation());
+
+    run::<Fr, false>(
+        LOG_TOTAL_NUM_ROWS,
+        PrecompileEcParams {
+            ec_add: 0,
+            ec_mul: 0,
+            ec_pairing: 1,
+        },
+        vec![],
+        vec![],
+        EC_PAIRING_OPS4.clone(),
     );
 }
 

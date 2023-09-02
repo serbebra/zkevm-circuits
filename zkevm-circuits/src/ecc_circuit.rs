@@ -7,7 +7,7 @@ use bus_mapping::{
     circuit_input_builder::{EcAddOp, EcMulOp, EcPairingOp, N_BYTES_PER_PAIR, N_PAIRING_PER_OP},
     precompile::PrecompileCalls,
 };
-use eth_types::{Field, ToLittleEndian, ToScalar, U256};
+use eth_types::{word, Field, ToLittleEndian, ToScalar, U256};
 use halo2_base::{
     gates::{GateInstructions, RangeInstructions},
     utils::{decompose_bigint_option, modulus},
@@ -28,7 +28,7 @@ use halo2_proofs::{
     arithmetic::Field as Halo2Field,
     circuit::{Layouter, Value},
     halo2curves::{
-        bn256::{Fq, Fq12, Fq2, Fr, G1Affine, G2Affine},
+        bn256::{Fq, Fq12, Fq2, Fq6, Fr, G1Affine, G2Affine},
         CurveAffine,
     },
     plonk::{ConstraintSystem, Error, Expression},
@@ -59,6 +59,67 @@ macro_rules! log_context_cursor {
     ($ctx: ident) => {{
         log::trace!("Ctx cell pos: {:?}", $ctx.advice_alloc);
     }};
+}
+
+lazy_static::lazy_static! {
+    static ref G1_G2_0_GEN_GT: Fq12 = {
+        const C0_C0: &str = "0x1edeae50d0d3b896ee36f3396700449b85b2b6c88eb86fbc9c09138da4c48b4f";
+        const C0_C1: &str = "0x0ee9d3bd98517aabd533f9820aef659f9316394b12822194d74fe1e4beb7f64f";
+        const C1_C0: &str = "0x2a6472d9b8e6dc605dc96ac3791aeb98af2e888b547aea1a578732b27c7bd920";
+        const C1_C1: &str = "0x1bf7c7fbc24ae60a4c449041d503b3f9da1990b5650a932a3705b72328704e50";
+        const C2_C0: &str = "0x25eb188b7b28ccac9a5e7fc7ac05f041d1b3a7aa7bae28b8fd4feaca36da9f65";
+        const C2_C1: &str = "0x2de98ff1625f2f1fb44a21b24ad7264d6ce986e1f86534f499adf967328aaea2";
+        Fq12 {
+            c0: Fq6 {
+                c0: Fq2 {
+                    c0: Fq::from_bytes(&word!(C0_C0).to_le_bytes()).unwrap(),
+                    c1: Fq::from_bytes(&word!(C0_C1).to_le_bytes()).unwrap(),
+                },
+                c1: Fq2 {
+                    c0: Fq::from_bytes(&word!(C1_C0).to_le_bytes()).unwrap(),
+                    c1: Fq::from_bytes(&word!(C1_C1).to_le_bytes()).unwrap(),
+                },
+                c2: Fq2 {
+                    c0: Fq::from_bytes(&word!(C2_C0).to_le_bytes()).unwrap(),
+                    c1: Fq::from_bytes(&word!(C2_C1).to_le_bytes()).unwrap(),
+                },
+            },
+            c1: Fq6 {
+                c0: Fq2::zero(),
+                c1: Fq2::zero(),
+                c2: Fq2::zero(),
+            },
+        }
+    };
+    static ref G1_G2_1_GEN_GT: Fq12 = {
+        const C0_C0: &str = "0x14f88d01944f5448143adce5df869210398c6796c5e860a17b4b42f13bd9ef97";
+        const C0_C1: &str = "0x086894536322b8d6b350ccd2acba242035a1c745095ad695fd47a0c8e258b4b7";
+        const C1_C0: &str = "0x2920c97eb8cd7e8f6578fe8c7b80f8fc1036e2c96b50cf1d3306fd10ab59ed37";
+        const C1_C1: &str = "0x093d95b8ea880dfdde9f4e6d33ac383a77b1faa4a57905fec44ce59bb134912f";
+        const C2_C0: &str = "0x180d4da103bbcdb8aed1e33fe3e54996c70dffe17eba80f849d4816f5659f1e6";
+        const C2_C1: &str = "0x02637bdea4c2f92d5b9d6bd89b298dee09130c2018094aaa6bbfd5f9c4633f3f";
+        Fq12 {
+            c0: Fq6 {
+                c0: Fq2 {
+                    c0: Fq::from_bytes(&word!(C0_C0).to_le_bytes()).unwrap(),
+                    c1: Fq::from_bytes(&word!(C0_C1).to_le_bytes()).unwrap(),
+                },
+                c1: Fq2 {
+                    c0: Fq::from_bytes(&word!(C1_C0).to_le_bytes()).unwrap(),
+                    c1: Fq::from_bytes(&word!(C1_C1).to_le_bytes()).unwrap(),
+                },
+                c2: Fq2 {
+                    c0: Fq::from_bytes(&word!(C2_C0).to_le_bytes()).unwrap(),
+                    c1: Fq::from_bytes(&word!(C2_C1).to_le_bytes()).unwrap(),
+                },
+            },
+            c1: Fq6 {
+                c0: Fq2::zero(),
+                c1: Fq2::zero(),
+                c2: Fq2::zero(),
+            },
+        }
+    };
 }
 
 /// Arguments accepted to configure the EccCircuitConfig.
@@ -850,10 +911,12 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                 .map(|(is_zero_pair, _, _, _)| QuantumCell::Existing(*is_zero_pair))
                 .collect_vec(),
         );
+        log::trace!("are all pairs zero? = {:?}", all_pairs_zero.value);
 
         // dummy G1, G2 points and G1::identity, G2::generator.
         let dummy_g1 = ecc_chip.load_random_point::<G1Affine>(ctx);
         let dummy_g2 = ecc2_chip.load_random_point::<G2Affine>(ctx);
+        // TODO: replace with load_constant (since this is a constant pairing satisfying pair.
         let identity_g1 = ecc_chip.load_private(ctx, {
             let identity_g1 = G1Affine::identity();
             (Value::known(identity_g1.x), Value::known(identity_g1.y))
@@ -863,6 +926,7 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
             (Value::known(generator_g2.x), Value::known(generator_g2.y))
         });
         // A pairing op satisfying the pairing check.
+        // TODO: replace with load_constant (since this is a constant pairing satisfying pair.
         let dummy_pair_check_ok = EcPairingOp::dummy_pairing_check_ok();
         let dummy_pair_check_ok_g1s = [
             ecc_chip.load_private(ctx, dummy_pair_check_ok.pairs[0].to_g1_affine_tuple()),
@@ -938,11 +1002,46 @@ impl<F: Field, const XI_0: i64> EccCircuit<F, XI_0> {
                 .map(|&(_, is_pair_valid, _, _)| QuantumCell::Existing(is_pair_valid))
                 .collect_vec(),
         );
+        log::trace!("is valid = {:?}", is_valid.value);
 
         // multi-miller loop and final exponentiation to do pairing check.
         let success = {
+            // Gt: (G1::gen, G2::gen), (-G1::gen, G2::gen)
+            let g1_g2_0_gen_gt = fp12_chip.load_constant(ctx, *G1_G2_0_GEN_GT);
+            // Gt: [(G1::gen, G2::gen), (-G1::gen, G2::gen)] * 2
+            let g1_g2_1_gen_gt = fp12_chip.load_constant(ctx, *G1_G2_1_GEN_GT);
             let gt = {
+                log::trace!("\n\n\n\n\n\n\n");
+                log::trace!("pairs");
+                pairs.iter().for_each(|pair| {
+                    log::trace!("{:?}", pair.0.x.value);
+                    log::trace!("{:?}", pair.0.y.value);
+                    log::trace!("{:?}", pair.1.x.coeffs[0].value);
+                    log::trace!("{:?}", pair.1.x.coeffs[1].value);
+                    log::trace!("{:?}", pair.1.y.coeffs[0].value);
+                    log::trace!("{:?}", pair.1.y.coeffs[1].value);
+                    log::trace!("\n\n");
+                });
+                log::trace!("\n\n\n\n\n\n\n");
                 let gt = pairing_chip.multi_miller_loop(ctx, pairs);
+                for i in 0..12 {
+                    log::trace!("gt={:?}", gt.coeffs[i].native.value);
+                    log::trace!("g0={:?}", g1_g2_0_gen_gt.coeffs[i].native.value);
+                    log::trace!("g1={:?}", g1_g2_1_gen_gt.coeffs[i].native.value);
+                    log::trace!("");
+                    log::trace!("");
+                    log::trace!("");
+                }
+                let gt_eq_special_cases = {
+                    let gt_eq_0 = fp12_chip.is_equal(ctx, &gt, &g1_g2_0_gen_gt);
+                    let gt_eq_1 = fp12_chip.is_equal(ctx, &gt, &g1_g2_1_gen_gt);
+                    ecc_chip.field_chip().range().gate().or(
+                        ctx,
+                        QuantumCell::Existing(gt_eq_0),
+                        QuantumCell::Existing(gt_eq_1),
+                    )
+                };
+                log::trace!("gt is special case = {:?}", gt_eq_special_cases.value);
                 pairing_chip.final_exp(ctx, &gt)
             };
             // whether pairing check was successful.
