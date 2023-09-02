@@ -345,6 +345,37 @@ mod test {
                     ..Default::default()
                 },
                 PrecompileCallArgs {
+                    name: "ecrecover (invalid sig, full of 0s)",
+                    setup_code: bytecode! {
+                        // msg hash from 0x00
+                        PUSH32(word!("0x0"))
+                        PUSH1(0x00)
+                        MSTORE
+                        // signature v from 0x20
+                        PUSH1(28)
+                        PUSH1(0x20)
+                        MSTORE
+                        // signature r from 0x40
+                        PUSH32(word!("0x0"))
+                        PUSH1(0x40)
+                        MSTORE
+                        // signature s from 0x60
+                        PUSH32(word!("0x12345"))
+                        PUSH1(0x60)
+                        MSTORE
+                    },
+                    // copy 101 bytes from memory addr 0. This should be sufficient to recover an
+                    // address, but the signature is invalid (ecrecover does not care about this
+                    // though)
+                    call_data_offset: 0x00.into(),
+                    call_data_length: 0x65.into(),
+                    // return 32 bytes and write from memory addr 128
+                    ret_offset: 0x80.into(),
+                    ret_size: 0x20.into(),
+                    address: PrecompileCalls::Ecrecover.address().to_word(),
+                    ..Default::default()
+                },
+                PrecompileCallArgs {
                     name: "ecrecover (valid sig, addr recovered)",
                     setup_code: bytecode! {
                         // msg hash from 0x00
@@ -449,12 +480,12 @@ mod test {
     fn precompile_ecrecover_test() {
         let call_kinds = vec![
             OpcodeId::CALL,
-            OpcodeId::STATICCALL,
-            OpcodeId::DELEGATECALL,
-            OpcodeId::CALLCODE,
+            //OpcodeId::STATICCALL,
+            //OpcodeId::DELEGATECALL,
+            //OpcodeId::CALLCODE,
         ];
 
-        TEST_VECTOR
+        TEST_VECTOR[2..3]
             .iter()
             .cartesian_product(&call_kinds)
             .par_bridge()

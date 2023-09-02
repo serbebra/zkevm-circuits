@@ -126,8 +126,6 @@ type TraceConfig struct {
 	ChainConfig   *params.ChainConfig        `json:"chain_config"`
 }
 
-func newUint64(val uint64) *uint64 { return &val }
-
 func toBigInt(value *hexutil.Big) *big.Int {
 	if value != nil {
 		return value.ToInt()
@@ -241,7 +239,7 @@ func Trace(config TraceConfig) ([]*ExecutionResult, error) {
 
 		result, err := core.ApplyMessage(evm, &message, new(core.GasPool).AddGas(message.GasLimit))
 		if err != nil {
-			return nil, fmt.Errorf("Failed to apply config.Transactions[%d]: %w", i, err)
+			return nil, fmt.Errorf("failed to apply config.Transactions[%d]: %w", i, err)
 		}
 		stateDB.Finalise(true)
 

@@ -65,8 +65,6 @@ type TraceConfig struct {
 	ChainConfig   *params.ChainConfig        `json:"chain_config"`
 }
 
-func newUint64(val uint64) *uint64 { return &val }
-
 func toBigInt(value *hexutil.Big) *big.Int {
 	if value != nil {
 		return value.ToInt()
