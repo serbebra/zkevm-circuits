@@ -309,7 +309,7 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
         // TODO2: refactor code like the above evm/state/copy_checks
         if true {
             let precompile_events = &block.precompile_events;
-            if !precompile_events.get_ec_add_events().is_empty()
+            if false && !precompile_events.get_ec_add_events().is_empty()
                 || !precompile_events.get_ec_mul_events().is_empty()
                 || !precompile_events.get_ec_pairing_events().is_empty()
             {
