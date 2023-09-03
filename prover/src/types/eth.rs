@@ -1,7 +1,7 @@
 use eth_types::{
     evm_types::{Gas, GasCost, OpcodeId, ProgramCounter, Stack, Storage},
     l2_types::BlockTrace,
-    Block, GethExecStep, GethExecTrace, Hash, Transaction, Word, H256,
+    Block, GethExecStep, Hash, Transaction, Word, H256,
 };
 use ethers_core::types::{Address, Bytes, U256, U64};
 use serde::{Deserialize, Serialize};
@@ -106,23 +106,6 @@ pub struct ExecutionResult {
     pub byte_code: Option<String>,
     #[serde(rename = "structLogs")]
     pub exec_steps: Vec<ExecStep>,
-}
-
-impl From<&ExecutionResult> for GethExecTrace {
-    fn from(e: &ExecutionResult) -> Self {
-        let mut struct_logs = Vec::new();
-        for exec_step in &e.exec_steps {
-            let step = exec_step.into();
-            struct_logs.push(step)
-        }
-        GethExecTrace {
-            l1_fee: e.l1_fee.as_u64(),
-            gas: Gas(e.gas),
-            failed: e.failed,
-            return_value: e.return_value.clone(),
-            struct_logs,
-        }
-    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
