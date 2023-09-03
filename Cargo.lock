@@ -3053,6 +3053,7 @@ dependencies = [
  "external-tracer",
  "itertools",
  "lazy_static",
+ "log",
  "rand",
  "rand_chacha",
 ]
