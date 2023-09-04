@@ -1,0 +1,17 @@
+FROM scrolltech/go-rust-builder:go-1.19-rust-nightly-2022-12-10 as builder
+
+WORKDIR /src
+ADD . /src
+RUN cargo run --features "scroll"  --release
+Run cd ./target/release && find -name libzktrie.so | xargs -I {} cp {} ./
+
+FROM ubuntu:20.04
+
+ENV RUST_BACKTRACE 1
+ENV RUST_LOG trace
+WORKDIR /
+RUN mkdir -p /report
+COPY --from=builder /target/release/testool /usr/local/bin/
+COPY --from=builder /src/target/release/libzktrie.so /usr/local/lib
+
+ENTRYPOINT ["testool --suite nightly --circuits sc --test-ids test_ids.txt --report > /report/run_test_ids.log 2>&1"]
