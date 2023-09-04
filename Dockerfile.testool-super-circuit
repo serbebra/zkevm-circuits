@@ -13,6 +13,6 @@ WORKDIR /
 RUN mkdir -p /report
 COPY --from=builder /src/target/release/testool /usr/local/bin/
 COPY --from=builder /src/target/release/libzktrie.so /usr/local/lib
-COPY --from=builder /src/tests /
+COPY --from=builder /src/testool/tests /
 
 ENTRYPOINT ["testool --suite nightly --circuits sc --test-ids test_ids.txt --report > /report/run_test_ids.log 2>&1"]
