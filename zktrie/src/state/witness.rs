@@ -132,15 +132,15 @@ impl ActiveZktrieState {
         let trie = self.storages.get_mut(&address).unwrap();
 
         let store_before = {
-            let mut word_buf = [0u8; 32];
-            old_value.to_big_endian(word_buf.as_mut_slice());
+            let mut old_value_in_mpt_update = [0u8; 32];
+            old_value.to_big_endian(old_value_in_mpt_update.as_mut_slice());
             // sanity check
-            let old_value_in_statedb = trie.get_store(key.as_ref()).unwrap_or_default();
-            if word_buf != old_value_in_statedb {
+            let old_value_in_zktrie_state = trie.get_store(key.as_ref()).unwrap_or_default();
+            if old_value_in_mpt_update != old_value_in_zktrie_state {
                 log::error!(
-                    "old value in proof {:?} != old value in partial db {:?}",
-                    hex::encode(word_buf),
-                    hex::encode(old_value_in_statedb)
+                    "old_value_in_mpt_update {:?} != old_value_in_zktrie_state {:?}",
+                    hex::encode(old_value_in_mpt_update),
+                    hex::encode(old_value_in_zktrie_state)
                 );
                 log::error!(
                     "address {:?} key {:?} new_value {:?} old_value {:?}",
@@ -150,10 +150,10 @@ impl ActiveZktrieState {
                     old_value
                 );
             }
-            assert_eq!(word_buf, old_value_in_statedb);
+            assert_eq!(old_value_in_mpt_update, old_value_in_zktrie_state);
             StateData {
                 key,
-                value: HexBytes(word_buf),
+                value: HexBytes(old_value_in_mpt_update),
             }
         };
         let store_after = {

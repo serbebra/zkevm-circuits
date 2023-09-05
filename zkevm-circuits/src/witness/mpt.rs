@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::{util::rlc, witness::Rw},
     table::AccountFieldTag,
 };
-use eth_types::{Address, Field, ToBigEndian, ToLittleEndian, ToScalar, Word, H256, U256};
+use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word, H256, U256};
 use halo2_proofs::circuit::Value;
 use itertools::Itertools;
 use mpt_zktrie::{
@@ -101,37 +101,6 @@ impl MptUpdates {
         })
     }
 
-    #[deprecated]
-    pub(crate) fn mock_fill_state_roots(&mut self) {
-        // initialize a mock witness generator that is consistent with the old values of
-        // self.updates
-        let mut state = ZktrieState::construct(self.old_root.to_be_bytes().into());
-        for (key, update) in &mut self.updates {
-            let key = key.set_non_exists(Word::zero(), update.old_value);
-            self.old_root = U256::from_little_endian(
-                state
-                    .handle_new_state(
-                        update.proof_type(),
-                        match key {
-                            Key::Account { address, .. } | Key::AccountStorage { address, .. } => {
-                                address
-                            }
-                        },
-                        update.old_value,
-                        Word::zero(),
-                        match key {
-                            Key::Account { .. } => None,
-                            Key::AccountStorage { storage_key, .. } => Some(storage_key),
-                        },
-                    )
-                    .account_path[1]
-                    .root
-                    .as_ref(),
-            );
-        }
-        self.fill_state_roots_from_generator(&mut state);
-    }
-
     pub(crate) fn fill_state_roots(&mut self, zktrie_state: &mut ZktrieState) {
         let root_pair = (self.old_root, self.new_root);
         // TODO: what is this..?
@@ -140,7 +109,7 @@ impl MptUpdates {
             "fill_state_roots init {:?}",
             H256::from(zktrie_state.cur_root())
         );
-        self.fill_state_roots_from_generator(zktrie_state);
+        self.fill_state_roots_from_zktrie_state(zktrie_state);
 
         let root_pair2 = (self.old_root, self.new_root);
         if root_pair2 != root_pair {
@@ -171,7 +140,7 @@ impl MptUpdates {
         self.withdraw_proof = withdraw_proof;
     }
 
-    fn fill_state_roots_from_generator(&mut self, zktrie_state: &mut ZktrieState) {
+    fn fill_state_roots_from_zktrie_state(&mut self, zktrie_state: &mut ZktrieState) {
         self.smt_traces = Vec::new();
         self.proof_types = Vec::new();
 
@@ -527,7 +496,7 @@ mod test {
 
         updates.insert(nonce_update(Address::repeat_byte(45)));
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
 
         let mut updates = MptUpdates::default();
         let mut update = nonce_update(Address::repeat_byte(45));
@@ -535,7 +504,7 @@ mod test {
         update.new_value = Word::from(213);
         updates.insert(update);
 
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -653,7 +622,7 @@ mod test {
 
         updates.insert(balance_update(Address::repeat_byte(45)));
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
 
         let mut updates = MptUpdates::default();
         let mut update = balance_update(Address::repeat_byte(45));
@@ -661,7 +630,7 @@ mod test {
         update.new_value = Word::from(u64::MAX - (1 << 50));
         updates.insert(update);
 
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -732,7 +701,7 @@ mod test {
         updates.insert(nonce_update(address));
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
 
         let mut updates = MptUpdates::default();
         let update = MptUpdate {
@@ -748,7 +717,7 @@ mod test {
         };
         updates.insert(update);
 
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -771,7 +740,7 @@ mod test {
         updates.insert(nonce_update(address));
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
 
         let mut updates = MptUpdates::default();
         let update = MptUpdate {
@@ -787,7 +756,7 @@ mod test {
         };
         updates.insert(update);
 
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -810,7 +779,7 @@ mod test {
         updates.insert(nonce_update(address));
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
 
         let mut updates = MptUpdates::default();
         let update = MptUpdate {
@@ -826,7 +795,7 @@ mod test {
         };
         updates.insert(update);
 
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -891,7 +860,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -966,7 +935,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1037,7 +1006,7 @@ mod test {
         updates.insert(update);
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1073,7 +1042,7 @@ mod test {
         updates.insert(update);
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1121,7 +1090,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1169,7 +1138,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1217,7 +1186,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1278,7 +1247,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1328,7 +1297,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1363,7 +1332,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1411,7 +1380,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1461,7 +1430,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1509,7 +1478,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
@@ -1557,7 +1526,7 @@ mod test {
         });
 
         let mut zktrie_state = ZktrieState::default();
-        updates.fill_state_roots_from_generator(&mut zktrie_state);
+        updates.fill_state_roots_from_zktrie_state(&mut zktrie_state);
         println!(
             "{}",
             serde_json::to_string_pretty(&updates.smt_traces.last().unwrap()).unwrap()
