@@ -81,13 +81,20 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
                 CallContextFieldTag::ReturnDataLength,
             ]
             .map(|tag| cb.call_context(None, tag));
-        cb.require_equal("return_data_length must be 32 for ecc pairing", return_data_length.expr(), 32.expr());
 
         cb.precompile_info_lookup(
             cb.execution_state().as_u64().expr(),
             callee_address.expr(),
             cb.execution_state().precompile_base_gas_cost().expr(),
         );
+
+        cb.condition(is_success.expr(), |cb| {
+            cb.require_equal(
+                "return_data_length must be 32 for ecc pairing sucessful case",
+                return_data_length.expr(),
+                32.expr(),
+            );
+        });
 
         // all gas sent to this call will be consumed if `is_success == false`.
         let gas_cost = select::expr(
@@ -128,7 +135,7 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
                     input_div_192.expr() * 192.expr() + input_mod_192.expr(),
                     call_data_length.expr(),
                 );
-                
+
                 let input_mod_192_is_zero = IsZeroGadget::construct(cb, input_mod_192.expr());
                 (
                     input_mod_192,
@@ -153,7 +160,7 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
                 cb.require_zero("pairing check == 0", output.expr());
             },
         );
-        cb.condition(input_is_zero.expr(), |cb|{
+        cb.condition(input_is_zero.expr(), |cb| {
             cb.require_true("pairing check == 1", output.expr());
         });
 
@@ -237,8 +244,8 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
                     n_pairs.expr() * N_BYTES_PER_PAIR.expr(),
                     call_data_length.expr(),
                 );
-                 // input_div_192 = n_pairs
-                 cb.require_equal(
+                // input_div_192 = n_pairs
+                cb.require_equal(
                     "input_div_192 = n_pairs",
                     input_div_192.expr(),
                     //n_pairs.expr(),
@@ -429,7 +436,6 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
             offset,
             Value::known(F::from(call.return_data_offset)),
         )?;
-        println!("return_data_length {}", call.return_data_length);
         self.return_data_length.assign(
             region,
             offset,
