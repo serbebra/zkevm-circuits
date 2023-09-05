@@ -23,8 +23,8 @@ use std::{collections::HashMap, str::FromStr};
 use thiserror::Error;
 use zkevm_circuits::{
     bytecode_circuit::circuit::BytecodeCircuit, ecc_circuit::EccCircuit,
-    modexp_circuit::ModExpCircuit, super_circuit::SuperCircuit, test_util::CircuitTestBuilder,
-    util::SubCircuit, witness::Block,
+    modexp_circuit::ModExpCircuit, sig_circuit::SigCircuit, super_circuit::SuperCircuit,
+    test_util::CircuitTestBuilder, util::SubCircuit, witness::Block,
 };
 
 /// Read env var with default value
@@ -428,7 +428,8 @@ fn trace_config_to_witness_block_l1(
 pub const MAX_TXS: usize = 100;
 pub const MAX_INNER_BLOCKS: usize = 100;
 pub const MAX_EXP_STEPS: usize = 10_000;
-pub const MAX_CALLDATA: usize = 600_000;
+pub const MAX_CALLDATA: usize = 350_000;
+pub const MAX_RLP_ROWS: usize = 800_000;
 pub const MAX_BYTECODE: usize = 600_000;
 pub const MAX_MPT_ROWS: usize = 1_000_000;
 pub const MAX_KECCAK_ROWS: usize = 1_000_000;
@@ -448,7 +449,7 @@ fn get_sub_circuit_limit_l2() -> Vec<usize> {
         MAX_RWS,           // copy
         MAX_KECCAK_ROWS,   // keccak
         MAX_RWS,           // tx
-        MAX_CALLDATA,      // rlp
+        MAX_RLP_ROWS,      // rlp
         8 * MAX_EXP_STEPS, // exp
         MAX_KECCAK_ROWS,   // modexp
         MAX_RWS,           // pi
@@ -473,7 +474,7 @@ fn get_params_for_super_circuit_test_l2() -> CircuitsParams {
         max_vertical_circuit_rows: MAX_VERTICLE_ROWS,
         max_exp_steps: MAX_EXP_STEPS,
         max_mpt_rows: MAX_MPT_ROWS,
-        max_rlp_rows: MAX_CALLDATA,
+        max_rlp_rows: MAX_RLP_ROWS,
         max_ec_ops: PrecompileEcParams {
             ec_add: MAX_PRECOMPILE_EC_ADD,
             ec_mul: MAX_PRECOMPILE_EC_MUL,
@@ -557,7 +558,7 @@ pub fn run_test(
             return Err(StateTestError::SkipTestBalanceOverflow);
         }
     }
-
+    log::debug!("trace_config generated");
     let circuits_params = if !circuits_config.super_circuit {
         get_params_for_sub_circuit_test()
     } else {
@@ -599,11 +600,23 @@ pub fn run_test(
             CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
                 .copy_checks(None)
                 .run();
-        } else if (*CIRCUIT) == "ccc" {
+        } else {
+            let prover = match (*CIRCUIT).as_str() {
+                "modexp" => test_with::<ModExpCircuit<Fr>>(&witness_block),
+                "bytecode" => test_with::<BytecodeCircuit<Fr>>(&witness_block),
+                "ecc" => test_with::<EccCircuit<Fr, 9>>(&witness_block),
+                "sig" => test_with::<SigCircuit<Fr>>(&witness_block),
+                _ => unimplemented!(),
+            };
+            prover.assert_satisfied_par();
+        }
+    } else {
+        log::debug!("test super circuit {}", *CIRCUIT);
+        if (*CIRCUIT) == "ccc" {
             let row_usage = ScrollSuperCircuit::min_num_rows_block_subcircuits(&witness_block);
             let mut overflow = false;
             for (num, limit) in row_usage.iter().zip_eq(get_sub_circuit_limit_l2().iter()) {
-                if num.row_num_real >= *limit {
+                if num.row_num_real > *limit {
                     log::warn!(
                         "ccc detail: suite.id {}, st.id {}, circuit {}, num {}, limit {}",
                         suite.id,
@@ -615,28 +628,32 @@ pub fn run_test(
                     overflow = true;
                 }
             }
+            let max_row_usage = row_usage.iter().max_by_key(|r| r.row_num_real).unwrap();
             if overflow {
-                log::warn!("ccc overflow: suite.id {}, st.id {}", suite.id, st.id);
+                log::warn!(
+                    "ccc overflow: st.id {}, detail {} {}",
+                    st.id,
+                    max_row_usage.name,
+                    max_row_usage.row_num_real
+                );
+                panic!("{} {}", max_row_usage.name, max_row_usage.row_num_real);
             } else {
-                log::info!("ccc ok: suite.id {}, st.id {}", suite.id, st.id);
+                log::info!(
+                    "ccc ok: st.id {}, detail {} {}",
+                    st.id,
+                    max_row_usage.name,
+                    max_row_usage.row_num_real
+                );
             }
         } else {
-            let prover = match (*CIRCUIT).as_str() {
-                "modexp" => test_with::<ModExpCircuit<Fr>>(&witness_block),
-                "bytecode" => test_with::<BytecodeCircuit<Fr>>(&witness_block),
-                "ecc" => test_with::<EccCircuit<Fr, 9>>(&witness_block),
-                _ => unimplemented!(),
-            };
+            // TODO: do we need to automatically adjust this k?
+            let k = 20;
+            // TODO: remove this MOCK_RANDOMNESS?
+            let circuit = ScrollSuperCircuit::new_from_block(&witness_block);
+            let instance = circuit.instance();
+            let prover = MockProver::run(k, &circuit, instance).unwrap();
             prover.assert_satisfied_par();
         }
-    } else {
-        // TODO: do we need to automatically adjust this k?
-        let k = 20;
-        // TODO: remove this MOCK_RANDOMNESS?
-        let circuit = ScrollSuperCircuit::new_from_block(&witness_block);
-        let instance = circuit.instance();
-        let prover = MockProver::run(k, &circuit, instance).unwrap();
-        prover.assert_satisfied_par();
     };
     //#[cfg(feature = "scroll")]
     {
