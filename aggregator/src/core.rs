@@ -33,7 +33,10 @@ use zkevm_circuits::{
 };
 
 use crate::{
-    constants::{CHAIN_ID_LEN, DIGEST_LEN, INPUT_LEN_PER_ROUND, LOG_DEGREE, MAX_AGG_SNARKS},
+    constants::{
+        CHAIN_ID_LEN, DIGEST_LEN, INPUT_LEN_PER_ROUND, KECCAK_ROUND_CONSTANTS, LOG_DEGREE,
+        MAX_AGG_SNARKS,
+    },
     util::{
         assert_conditional_equal, assert_equal, assert_exist, get_data_hash_keccak_updates,
         get_indices, get_max_keccak_updates, parse_hash_digest_cells, parse_hash_preimage_cells,
@@ -979,8 +982,9 @@ fn extract_the_flags(
     let num_keccak_round_constants = get_data_hash_keccak_updates(MAX_AGG_SNARKS);
 
     // constants
-    let constants_assigned = (0..num_keccak_round_constants - 1)
-        .map(|i| rlc_config.load_private(region, &Fr::from(i as u64 * 4 + 5), offset))
+    let constants_assigned = KECCAK_ROUND_CONSTANTS
+        .iter()
+        .map(|c| rlc_config.load_private(region, &Fr::from(*c as u64 + 1), offset))
         .collect::<Result<Vec<_>, halo2_proofs::plonk::Error>>()?;
 
     let keccak_round_constants =
