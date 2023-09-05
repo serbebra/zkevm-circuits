@@ -1,10 +1,9 @@
 //! witness generator
 use super::{
     builder::{extend_address_to_h256, AccountData, BytesArray, CanRead, TrieProof},
-    MPTProofType, ZktrieState,
+    CommitZktrieState, MPTProofType,
 };
-// use bus_mapping::{state_db::CodeDB, util::KECCAK_CODE_HASH_ZERO};
-use eth_types::{Address, Hash, Word, H256, U256};
+use eth_types::{Address, Word, H256, U256};
 use halo2_proofs::halo2curves::group::ff::PrimeField;
 use mpt_circuits::serde::{
     AccountData as SMTAccount, Hash as SMTHash, HexBytes, SMTNode, SMTPath, SMTTrace, StateData,
@@ -35,14 +34,14 @@ impl From<AccountData> for SMTAccount {
 }
 
 /// witness generator for producing SMTTrace
-pub struct WitnessGenerator {
+pub struct ActiveZktrieState {
     trie: ZkTrie,
     accounts: HashMap<Address, AccountData>,
     storages: HashMap<Address, ZkTrie>,
 }
 
-impl From<&ZktrieState> for WitnessGenerator {
-    fn from(state: &ZktrieState) -> Self {
+impl From<&CommitZktrieState> for ActiveZktrieState {
+    fn from(state: &CommitZktrieState) -> Self {
         let trie = state.zk_db.borrow_mut().new_trie(&state.trie_root).unwrap();
         let accounts: HashMap<_, _> = state
             .accounts
@@ -76,7 +75,7 @@ impl From<&ZktrieState> for WitnessGenerator {
     }
 }
 
-impl WitnessGenerator {
+impl ActiveZktrieState {
     /// dump inner data for debugging
     pub fn dump(&self) {
         log::info!("account data {:#?}", self.accounts);
@@ -93,7 +92,7 @@ impl WitnessGenerator {
             (hash_zktrie_key(&word_buf), HexBytes(word_buf))
         };
         // TODO: use or_else to optimize
-        let default_trie = &ZktrieState::default()
+        let default_trie = &CommitZktrieState::default()
             .zk_db
             .borrow_mut()
             .new_trie(&ZkTrieHash::default())
@@ -123,7 +122,7 @@ impl WitnessGenerator {
         }
 
         self.storages.entry(address).or_insert_with(|| {
-            ZktrieState::default()
+            CommitZktrieState::default()
                 .zk_db
                 .borrow_mut()
                 .new_trie(&ZkTrieHash::default())
@@ -297,8 +296,8 @@ impl WitnessGenerator {
     }
 
     /// check current root
-    pub fn root(&self) -> Hash {
-        H256::from(self.trie.root())
+    pub fn root(&self) -> ZkTrieHash {
+        self.trie.root()
     }
 
     /// use one entry in mpt table to build the corresponding mpt operation (via

@@ -1,51 +1,105 @@
 //! Represent the storage state under zktrie as implement
-use eth_types::{Address, Hash, Word};
-use mpt_circuits::MPTProofType;
+use eth_types::{Address, Hash, Word, H160, H256, U256};
+use mpt_circuits::{serde::SMTTrace, MPTProofType};
 
 use std::{collections::HashMap, io::Error};
 pub use zktrie::{Hash as ZkTrieHash, ZkMemoryDb, ZkTrie, ZkTrieNode};
 
 pub mod builder;
 pub mod witness;
+use crate::state::witness::ActiveZktrieState;
 pub use builder::{AccountData, StorageData};
 
 use std::{cell::RefCell, fmt, rc::Rc};
 
 /// represent a storage state being applied in specified block
 #[derive(Clone, Default)]
-pub struct ZktrieState {
+struct CommitZktrieState {
     accounts: HashMap<Address, AccountData>,
     account_storages: HashMap<(Address, Word), StorageData>,
     zk_db: Rc<RefCell<ZkMemoryDb>>,
     trie_root: ZkTrieHash,
 }
 
-unsafe impl Send for ZktrieState {}
+/// ..
+pub struct ZktrieState {
+    /// ..
+    init_state: CommitZktrieState,
+    /// ..
+    live_state: ActiveZktrieState,
+}
+
+unsafe impl Send for CommitZktrieState {}
 
 impl fmt::Debug for ZktrieState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "ZktrieState: {{accounts: {:?}, storage: {:?}, trie: {:x?}}}",
-            self.accounts, self.account_storages, self.trie_root,
+            self.init_state.accounts, self.init_state.account_storages, self.init_state.trie_root,
         )
+    }
+}
+
+impl Default for ZktrieState {
+    fn default() -> Self {
+        Self::construct(H256::zero())
     }
 }
 
 impl ZktrieState {
     /// help to query account data
-    pub fn root(&self) -> &ZkTrieHash {
-        &self.trie_root
+    pub fn init_root(&self) -> ZkTrieHash {
+        self.init_state.trie_root
+    }
+
+    /// help to query account data
+    pub fn cur_root(&self) -> ZkTrieHash {
+        self.live_state.root()
+    }
+
+    /// dump inner data for debugging
+    pub fn dump(&self) {
+        self.live_state.dump()
+    }
+
+    /// get account proof
+    pub fn account_proof(&self, address: Address) -> Vec<Vec<u8>> {
+        self.live_state.account_proof(address)
+    }
+
+    /// get storage proof
+    pub fn storage_proof(&self, address: Address, key: Word) -> Vec<Vec<u8>> {
+        self.live_state.storage_proof(address, key)
     }
 
     /// help to query account data
     pub fn state(&self) -> &HashMap<Address, AccountData> {
-        &self.accounts
+        &self.init_state.accounts
     }
 
     /// help to query storage data
     pub fn storage(&self) -> &HashMap<(Address, Word), StorageData> {
-        &self.account_storages
+        &self.init_state.account_storages
+    }
+
+    /// ..
+    pub fn get_storage(&self, k: &(H160, U256)) -> Option<StorageData> {
+        self.init_state.account_storages.get(k).cloned()
+    }
+
+    /// use one entry in mpt table to build the corresponding mpt operation (via
+    /// SMTTrace)
+    pub fn handle_new_state(
+        &mut self,
+        proof_type: MPTProofType,
+        address: Address,
+        new_val: Word,
+        old_val: Word,
+        key: Option<Word>,
+    ) -> SMTTrace {
+        self.live_state
+            .handle_new_state(proof_type, address, new_val, old_val, key)
     }
 
     /// construct from external data
@@ -61,10 +115,14 @@ impl ZktrieState {
         );
 
         let zk_db = ZkMemoryDb::default();
-        Self {
+        let init_state = CommitZktrieState {
             zk_db: Rc::new(RefCell::new(zk_db)),
             trie_root: state_root.0,
             ..Default::default()
+        };
+        Self {
+            live_state: ActiveZktrieState::from(&init_state),
+            init_state,
         }
     }
 
@@ -86,7 +144,7 @@ impl ZktrieState {
                 &builder::extend_address_to_h256(addr),
             );
             let acc_data = acc_proof.data;
-            let acc = self.accounts.get(addr);
+            let acc = self.init_state.accounts.get(addr);
             if acc.is_some() {
                 log::trace!(
                     "skip trace account into sdb: addr {:?}, new {:?}, keep old: {:?}",
@@ -99,10 +157,10 @@ impl ZktrieState {
             if acc_proof.key.is_some() {
                 log::trace!("trace account into sdb: {:?} => {:?}", addr, acc_data);
                 on_account(addr, &acc_data)?;
-                self.accounts.insert(*addr, acc_data);
+                self.init_state.accounts.insert(*addr, acc_data);
             } else {
                 on_account(addr, &Default::default())?;
-                self.accounts.insert(*addr, Default::default());
+                self.init_state.accounts.insert(*addr, Default::default());
             }
         }
 
@@ -123,7 +181,7 @@ impl ZktrieState {
 
         for (&addr, &key, bytes) in storage_proofs {
             let storage_key: (Address, Word) = (addr, key);
-            let old_value = self.account_storages.get(&storage_key);
+            let old_value = self.init_state.account_storages.get(&storage_key);
             if old_value.is_some() {
                 continue;
             }
@@ -140,10 +198,13 @@ impl ZktrieState {
                 );
 
                 on_storage(&storage_key, &store_proof.data)?;
-                self.account_storages.insert(storage_key, store_proof.data);
+                self.init_state
+                    .account_storages
+                    .insert(storage_key, store_proof.data);
             } else {
                 log::trace!("insert storage key {:?} for zero", storage_key);
-                self.account_storages
+                self.init_state
+                    .account_storages
                     .insert(storage_key, Default::default());
             }
         }
@@ -165,7 +226,7 @@ impl ZktrieState {
             .flat_map(|(_, bytes)| bytes)
             .chain(storage_proofs.flat_map(|(_, _, bytes)| bytes))
             .chain(additional_proofs);
-        let mut zk_db = self.zk_db.borrow_mut();
+        let mut zk_db = self.init_state.zk_db.borrow_mut();
         for bytes in proofs {
             zk_db.add_node_bytes(bytes).unwrap();
         }

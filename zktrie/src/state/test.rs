@@ -205,16 +205,14 @@ fn deserialize_example2() {
 
 #[test]
 fn witgen_init_writer() {
-    use witness::WitnessGenerator;
     init();
     if TEST_SAMPLE_STR.is_empty() {
         warn!("skip test for path of sample file not specified");
         return;
     }
     let (state, _) = build_state_from_sample(TEST_SAMPLE_STR.as_str());
-    let w = WitnessGenerator::from(&state);
 
-    let root_init = w.root();
+    let root_init = state.init_root();
 
     info!("root: {root_init:?}");
 
@@ -233,25 +231,23 @@ fn smt_bytes_to_hash(bt: &[u8]) -> [u8; 32] {
 #[test]
 fn witgen_update_one() {
     use eth_types::U256;
-    use witness::WitnessGenerator;
     init();
     if TEST_SAMPLE_STR.is_empty() {
         warn!("skip test for path of sample file not specified");
         return;
     }
-    let (state, _) = build_state_from_sample(TEST_SAMPLE_STR.as_str());
-    let mut w = WitnessGenerator::from(&state);
-
+    let (mut state, _) = build_state_from_sample(TEST_SAMPLE_STR.as_str());
     let target_addr = Address::from_slice(
         hex::decode("b4d98243a206feab61d19413f60c06154137e2c2")
             .unwrap()
             .as_slice(),
     );
-    let start_state = state.state().get(&target_addr);
+    let start_state = state.state().get(&target_addr).cloned();
+
     assert!(start_state.is_some(), "we picked an existed account");
     let start_state = start_state.unwrap();
 
-    let trace = w.handle_new_state(
+    let trace = state.handle_new_state(
         MPTProofType::BalanceChanged,
         target_addr,
         start_state.balance + U256::from(1_u64),
@@ -259,29 +255,29 @@ fn witgen_update_one() {
         None,
     );
 
-    let new_root = w.root();
+    let new_root = state.cur_root();
 
     let new_acc_root = smt_bytes_to_hash(trace.account_path[1].root.as_ref());
-    assert_eq!(new_root.0, new_acc_root);
+    assert_eq!(new_root, new_acc_root);
 
     info!("ret {:?}", trace);
-
-    let trace = w.handle_new_state(
+    let old_value = if let Some(v) = state.get_storage(&(target_addr, U256::zero())) {
+        *v.as_ref()
+    } else {
+        U256::default()
+    };
+    let trace = state.handle_new_state(
         MPTProofType::StorageChanged,
         target_addr,
         U256::from(1u32),
-        if let Some(v) = state.storage().get(&(target_addr, U256::zero())) {
-            *v.as_ref()
-        } else {
-            U256::default()
-        },
+        old_value,
         Some(U256::zero()),
     );
 
-    let new_root = w.root();
+    let new_root = state.cur_root();
 
     let new_acc_root = smt_bytes_to_hash(trace.account_path[1].root.as_ref());
-    assert_eq!(new_root.0, new_acc_root);
+    assert_eq!(new_root, new_acc_root);
 
     info!("ret {:?}", trace);
 }

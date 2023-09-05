@@ -337,7 +337,7 @@ impl CircuitInputBuilder {
 
         log::debug!(
             "building partial statedb done, root {}",
-            hex::encode(mpt_init_state.root())
+            hex::encode(mpt_init_state.cur_root())
         );
 
         let sdb = StateDB::from(&mpt_init_state);
@@ -355,7 +355,7 @@ impl CircuitInputBuilder {
 
         let mut builder_block = circuit_input_builder::Block::from_headers(&[], circuits_params);
         builder_block.chain_id = chain_id;
-        builder_block.prev_state_root = U256::from(mpt_init_state.root());
+        builder_block.prev_state_root = U256::from(mpt_init_state.cur_root());
         builder_block.start_l1_queue_index = l2_trace.start_l1_queue_index;
         let mut builder = Self {
             sdb,
