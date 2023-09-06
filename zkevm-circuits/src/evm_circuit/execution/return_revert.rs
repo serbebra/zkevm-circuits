@@ -469,7 +469,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         if !call.is_root {
             let mut rw_counter_offset = 3; // stack read, stack read, call_context_read is_success
             if is_contract_deployment {
-                rw_counter_offset += 6 + copy_rwc_inc; // 4 call_context_read + 2 codehash rw
+                rw_counter_offset += 7 + copy_rwc_inc; // 4 call_context_read + 2 codehash rw
                 #[cfg(feature = "scroll")]
                 {
                     rw_counter_offset += 3; // keccak code hash rw, code size
