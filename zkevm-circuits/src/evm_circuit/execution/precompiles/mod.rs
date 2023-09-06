@@ -105,7 +105,6 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("offset in precompile base {}", offset);
         self.gas_cost
             .assign(region, offset, Value::known(F::from(step.gas_cost)))?;
         self.is_success.assign(
