@@ -170,7 +170,7 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
             offset,
             Value::known(call.code_address.unwrap().to_scalar().unwrap()),
         )?;
-        
+
         self.call_data_offset.assign(
             region,
             offset,
