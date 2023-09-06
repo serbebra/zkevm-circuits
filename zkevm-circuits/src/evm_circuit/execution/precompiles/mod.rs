@@ -36,7 +36,6 @@ pub use identity::IdentityGadget;
 pub struct BasePrecompileGadget<F, const S: ExecutionState> {
     is_success: Cell<F>,
     callee_address: Cell<F>,
-    caller_id: Cell<F>,
     call_data_offset: Cell<F>,
     call_data_length: Cell<F>,
     return_data_offset: Cell<F>,
@@ -52,11 +51,10 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let gas_cost = cb.query_cell();
-        let [is_success, callee_address, caller_id, call_data_offset, call_data_length, return_data_offset, return_data_length] =
+        let [is_success, callee_address, call_data_offset, call_data_length, return_data_offset, return_data_length] =
             [
                 CallContextFieldTag::IsSuccess,
                 CallContextFieldTag::CalleeAddress,
-                CallContextFieldTag::CallerId,
                 CallContextFieldTag::CallDataOffset,
                 CallContextFieldTag::CallDataLength,
                 CallContextFieldTag::ReturnDataOffset,
@@ -89,7 +87,6 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
         Self {
             is_success,
             callee_address,
-            caller_id,
             call_data_offset,
             call_data_length,
             return_data_offset,
@@ -108,6 +105,7 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        println!("offset in precompile base {}", offset);
         self.gas_cost
             .assign(region, offset, Value::known(F::from(step.gas_cost)))?;
         self.is_success.assign(
@@ -120,8 +118,6 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
             offset,
             Value::known(call.code_address.unwrap().to_scalar().unwrap()),
         )?;
-        self.caller_id
-            .assign(region, offset, Value::known(F::from(call.caller_id as u64)))?;
         self.call_data_offset.assign(
             region,
             offset,
@@ -144,6 +140,6 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
         )?;
 
         self.restore_context
-            .assign(region, offset, block, call, step, 7)
+            .assign(region, offset, block, call, step, 6)
     }
 }
