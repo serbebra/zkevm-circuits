@@ -203,6 +203,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             cb.require_equal("range == code size", range.length(), code_size.expr());
             #[cfg(feature = "scroll")]
             cb.account_write(
+                tx_id.expr(),
                 address.expr(),
                 AccountFieldTag::CodeSize,
                 code_size.expr(),
