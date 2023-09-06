@@ -95,6 +95,7 @@ impl Opcode for ReturnRevert {
             state.push_op_reversible(
                 &mut exec_step,
                 AccountOp {
+                    tx_id: state.tx_ctx.id(),
                     address: call.address,
                     field: AccountField::CodeHash,
                     value: code_info.hash.to_word(),
@@ -118,6 +119,7 @@ impl Opcode for ReturnRevert {
                 state.push_op_reversible(
                     &mut exec_step,
                     AccountOp {
+                        tx_id: state.tx_ctx.id(),
                         address: call.address,
                         field: AccountField::KeccakCodeHash,
                         value: code_info.keccak_hash.to_word(),
@@ -128,6 +130,7 @@ impl Opcode for ReturnRevert {
                 state.push_op_reversible(
                     &mut exec_step,
                     AccountOp {
+                        tx_id: state.tx_ctx.id(),
                         address: call.address,
                         field: AccountField::CodeSize,
                         value: code_info.size.to_word(),

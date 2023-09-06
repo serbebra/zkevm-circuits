@@ -84,7 +84,8 @@ mod selfbalance_tests {
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
 
-        let step = builder.block.txs()[0]
+        let tx_id = 1;
+        let step = builder.block.txs()[tx_id - 1]
             .steps()
             .iter()
             .find(|step| step.exec_state == ExecState::Op(OpcodeId::SELFBALANCE))
@@ -118,6 +119,7 @@ mod selfbalance_tests {
             (
                 RW::READ,
                 &AccountOp {
+                    tx_id,
                     address: callee_address,
                     field: AccountField::Balance,
                     value: self_balance,
