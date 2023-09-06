@@ -527,11 +527,12 @@ impl Rw {
             | Self::TxAccessListAccountStorage { tx_id, .. }
             | Self::TxRefund { tx_id, .. }
             | Self::TxLog { tx_id, .. }
-            | Self::TxReceipt { tx_id, .. } => Some(*tx_id),
+            | Self::TxReceipt { tx_id, .. }
+            | Self::Account { tx_id, .. } => Some(*tx_id),
             Self::CallContext { call_id, .. }
             | Self::Stack { call_id, .. }
             | Self::Memory { call_id, .. } => Some(*call_id),
-            Self::Start { .. } | Self::Account { .. } => None,
+            Self::Start { .. } => None,
         }
     }
 
