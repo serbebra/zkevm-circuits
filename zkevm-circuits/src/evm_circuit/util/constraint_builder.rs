@@ -988,6 +988,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     pub(crate) fn account_read(
         &mut self,
+        tx_id: Expression<F>,
         account_address: Expression<F>,
         field_tag: AccountFieldTag,
         value: Expression<F>,
@@ -997,7 +998,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             false.expr(),
             RwTableTag::Account,
             RwValues::new(
-                0.expr(),
+                tx_id,
                 account_address,
                 field_tag.expr(),
                 0.expr(),
@@ -1011,6 +1012,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     pub(crate) fn account_write(
         &mut self,
+        tx_id: Expression<F>,
         account_address: Expression<F>,
         field_tag: AccountFieldTag,
         value: Expression<F>,
@@ -1021,7 +1023,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             "Account write",
             RwTableTag::Account,
             RwValues::new(
-                0.expr(),
+                tx_id,
                 account_address,
                 field_tag.expr(),
                 0.expr(),

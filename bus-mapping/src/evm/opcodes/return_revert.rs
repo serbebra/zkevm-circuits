@@ -66,6 +66,7 @@ impl Opcode for ReturnRevert {
             )?;
 
             for (field, value) in [
+                (CallContextField::TxId, state.tx_ctx.id().to_word()),
                 (CallContextField::CallerId, call.caller_id.to_word()),
                 (CallContextField::CalleeAddress, call.address.to_word()),
                 (

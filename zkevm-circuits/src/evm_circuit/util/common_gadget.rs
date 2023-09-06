@@ -324,6 +324,7 @@ impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
 {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         address: Expression<F>,
         updates: Vec<Word<F>>,
         reversion_info: Option<&mut ReversionInfo<F>>,
@@ -350,6 +351,7 @@ impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
         );
 
         cb.account_write(
+            tx_id,
             address,
             AccountFieldTag::Balance,
             value,
@@ -437,6 +439,7 @@ pub(crate) trait TransferGadgetInfo<F: Field> {
 impl<F: Field> TransferFromGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         sender_address: Expression<F>,
         value: Word<F>,
         reversion_info: &mut ReversionInfo<F>,
@@ -446,6 +449,7 @@ impl<F: Field> TransferFromGadget<F> {
         });
         Self::construct_with_is_zero(
             cb,
+            tx_id,
             sender_address,
             value,
             Either::Left(value_is_zero),
@@ -453,8 +457,9 @@ impl<F: Field> TransferFromGadget<F> {
         )
     }
 
-    pub(crate) fn construct_with_is_zero(
+    fn construct_with_is_zero(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         sender_address: Expression<F>,
         value: Word<F>,
         value_is_zero: Either<IsZeroGadget<F>, Expression<F>>,
@@ -466,6 +471,7 @@ impl<F: Field> TransferFromGadget<F> {
         let sender_sub_value = cb.condition(not::expr(value_is_zero_expr), |cb| {
             UpdateBalanceGadget::construct(
                 cb,
+                tx_id,
                 sender_address,
                 vec![value.clone()],
                 Some(reversion_info),
@@ -522,6 +528,7 @@ impl<F: Field> TransferFromAssign<F> for TransferFromGadget<F> {
 impl<F: Field> TransferFromWithGasFeeGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         sender_address: Expression<F>,
         value: Word<F>,
         gas_fee: Word<F>,
@@ -530,6 +537,7 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
         let value_is_zero = IsZeroGadget::construct(cb, value.expr());
         Self::construct_with_is_zero(
             cb,
+            tx_id,
             sender_address,
             value,
             gas_fee,
@@ -538,8 +546,9 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
         )
     }
 
-    pub(crate) fn construct_with_is_zero(
+    fn construct_with_is_zero(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         sender_address: Expression<F>,
         value: Word<F>,
         gas_fee: Word<F>,
@@ -549,11 +558,17 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
         let value_is_zero_expr = value_is_zero
             .as_ref()
             .either(|gadget| gadget.expr(), |expr| expr.clone());
-        let sender_sub_fee =
-            UpdateBalanceGadget::construct(cb, sender_address.expr(), vec![gas_fee], None);
+        let sender_sub_fee = UpdateBalanceGadget::construct(
+            cb,
+            tx_id.clone(),
+            sender_address.expr(),
+            vec![gas_fee],
+            None,
+        );
         let sender_sub_value = cb.condition(not::expr(value_is_zero_expr), |cb| {
             UpdateBalanceGadget::construct(
                 cb,
+                tx_id,
                 sender_address,
                 vec![value.clone()],
                 Some(reversion_info),
@@ -667,6 +682,7 @@ impl<F: Field> TransferToGadget<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         receiver_address: Expression<F>,
         receiver_exists: Expression<F>,
         must_create: Expression<F>,
@@ -680,6 +696,7 @@ impl<F: Field> TransferToGadget<F> {
         });
         Self::construct_with_is_zero(
             cb,
+            tx_id,
             receiver_address,
             receiver_exists,
             must_create,
@@ -693,8 +710,9 @@ impl<F: Field> TransferToGadget<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn construct_with_is_zero(
+    fn construct_with_is_zero(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         receiver_address: Expression<F>,
         receiver_exists: Expression<F>,
         must_create: Expression<F>,
@@ -715,11 +733,13 @@ impl<F: Field> TransferToGadget<F> {
             ]),
             |cb| {
                 cb.account_read(
+                    tx_id.clone(),
                     receiver_address.clone(),
                     AccountFieldTag::CodeHash,
                     prev_code_hash.expr(),
                 );
                 cb.account_write(
+                    tx_id.clone(),
                     receiver_address.clone(),
                     AccountFieldTag::CodeHash,
                     cb.empty_code_hash_rlc(),
@@ -729,12 +749,14 @@ impl<F: Field> TransferToGadget<F> {
                 #[cfg(feature = "scroll")]
                 {
                     cb.account_read(
+                        tx_id.clone(),
                         receiver_address.clone(),
                         AccountFieldTag::KeccakCodeHash,
                         prev_keccak_code_hash.expr(),
                     );
 
                     cb.account_write(
+                        tx_id.clone(),
                         receiver_address.clone(),
                         AccountFieldTag::KeccakCodeHash,
                         cb.empty_keccak_hash_rlc(),
@@ -745,7 +767,7 @@ impl<F: Field> TransferToGadget<F> {
             },
         );
         let receiver = cb.condition(not::expr(value_is_zero_expr), |cb| {
-            UpdateBalanceGadget::construct(cb, receiver_address, vec![value], reversion_info)
+            UpdateBalanceGadget::construct(cb, tx_id, receiver_address, vec![value], reversion_info)
         });
         Self {
             value_is_zero,
@@ -870,6 +892,7 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         sender_address: Expression<F>,
         receiver_address: Expression<F>,
         receiver_exists: Expression<F>,
@@ -883,6 +906,7 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
         let value_is_zero = IsZeroGadget::construct(cb, value.expr());
         let from = TransferFromWithGasFeeGadget::construct_with_is_zero(
             cb,
+            tx_id.clone(),
             sender_address,
             value.clone(),
             gas_fee,
@@ -891,6 +915,7 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
         );
         let to = TransferToGadget::construct_with_is_zero(
             cb,
+            tx_id,
             receiver_address,
             receiver_exists,
             must_create,
@@ -913,6 +938,7 @@ impl<F: Field> TransferGadget<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         sender_address: Expression<F>,
         receiver_address: Expression<F>,
         receiver_exists: Expression<F>,
@@ -927,6 +953,7 @@ impl<F: Field> TransferGadget<F> {
         });
         let from = TransferFromGadget::construct_with_is_zero(
             cb,
+            tx_id.clone(),
             sender_address.expr(),
             value.clone(),
             Either::Right(value_is_zero.expr()),
@@ -934,6 +961,7 @@ impl<F: Field> TransferGadget<F> {
         );
         let to = TransferToGadget::construct_with_is_zero(
             cb,
+            tx_id,
             receiver_address,
             receiver_exists,
             must_create,
@@ -1042,6 +1070,7 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
 {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
+        tx_id: Expression<F>,
         is_call: Expression<F>,
         is_callcode: Expression<F>,
         is_delegatecall: Expression<F>,
@@ -1104,6 +1133,7 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
 
         let phase2_callee_code_hash = cb.query_cell_with_type(CellType::StoragePhase2);
         cb.account_read(
+            tx_id,
             from_bytes::expr(&callee_address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]),
             AccountFieldTag::CodeHash,
             phase2_callee_code_hash.expr(),

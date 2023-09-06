@@ -54,6 +54,7 @@ pub(crate) struct ReturnRevertGadget<F> {
     prev_keccak_code_hash: Cell<F>,
     code_size: Cell<F>,
 
+    tx_id: Cell<F>,
     caller_id: Cell<F>,
     address: Cell<F>,
     reversion_info: ReversionInfo<F>,
@@ -116,6 +117,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             * GasCost::CODE_DEPOSIT_BYTE_COST.expr()
             * range.length();
         let (
+            tx_id,
             caller_id,
             address,
             reversion_info,
@@ -147,7 +149,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 copy_rw_increase.expr(),
             );
 
-            let [caller_id, address] = [
+            let [tx_id, caller_id, address] = [
+                CallContextFieldTag::TxId,
                 CallContextFieldTag::CallerId,
                 CallContextFieldTag::CalleeAddress,
             ]
@@ -159,11 +162,13 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             // So we should optimize it later.
             let prev_code_hash = cb.query_cell_phase2();
             cb.account_read(
+                tx_id.expr(),
                 address.expr(),
                 AccountFieldTag::CodeHash,
                 prev_code_hash.expr(),
             );
             cb.account_write(
+                tx_id.expr(),
                 address.expr(),
                 AccountFieldTag::CodeHash,
                 code_hash.expr(),
@@ -177,12 +182,14 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             #[cfg(feature = "scroll")]
             {
                 cb.account_read(
+                    tx_id.expr(),
                     address.expr(),
                     AccountFieldTag::KeccakCodeHash,
                     prev_keccak_code_hash.expr(),
                 );
 
                 cb.account_write(
+                    tx_id.expr(),
                     address.expr(),
                     AccountFieldTag::KeccakCodeHash,
                     keccak_code_hash.expr(),
@@ -204,6 +211,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             );
 
             (
+                tx_id,
                 caller_id,
                 address,
                 reversion_info,
@@ -339,6 +347,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             keccak_code_hash,
             prev_keccak_code_hash,
             code_size,
+            tx_id,
             address,
             caller_id,
             reversion_info,
@@ -350,7 +359,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         block: &Block<F>,
-        _tx: &Transaction,
+        tx: &Transaction,
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
@@ -480,6 +489,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             offset,
             Value::known(call.caller_id.to_scalar().unwrap()),
         )?;
+
+        self.tx_id
+            .assign(region, offset, Value::known(tx.id.to_scalar().unwrap()))?;
 
         self.address.assign(
             region,
