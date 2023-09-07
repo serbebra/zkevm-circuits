@@ -1,13 +1,5 @@
 use std::ops::{Add, Sub};
 
-use bus_mapping::precompile::{PrecompileAuxData, PrecompileCalls};
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256};
-use gadgets::util::{and, not, or, select, split_u256, sum, Expr};
-use halo2_proofs::{
-    circuit::Value,
-    plonk::{Error, Expression},
-};
-
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
@@ -22,19 +14,29 @@ use crate::{
     table::CallContextFieldTag,
     witness::{Block, Call, ExecStep, Transaction},
 };
+use bus_mapping::precompile::{PrecompileAuxData, PrecompileCalls};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256};
+use gadgets::util::{and, not, or, select, split_u256, sum, Expr};
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{Error, Expression},
+};
+use once_cell::sync::Lazy;
 
-lazy_static::lazy_static! {
-    // r = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
-    static ref FR_MODULUS: U256 = {
-        U256::from_dec_str("21888242871839275222246405745257275088548364400416034343698204186575808495617")
-            .expect("Fr::MODULUS")
-    };
-    // q = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47
-    static ref FQ_MODULUS: U256 = {
-        U256::from_dec_str("21888242871839275222246405745257275088696311157297823662689037894645226208583")
-            .expect("Fq::MODULUS")
-    };
-}
+// r = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
+static FR_MODULUS: Lazy<U256> = Lazy::new(|| {
+    U256::from_dec_str(
+        "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+    )
+    .expect("Fr::MODULUS")
+});
+// q = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47
+static FQ_MODULUS: Lazy<U256> = Lazy::new(|| {
+    U256::from_dec_str(
+        "21888242871839275222246405745257275088696311157297823662689037894645226208583",
+    )
+    .expect("Fq::MODULUS")
+});
 
 #[derive(Clone, Debug)]
 pub struct EcMulGadget<F> {
@@ -406,13 +408,13 @@ mod test {
     use eth_types::{bytecode, word, ToWord};
     use itertools::Itertools;
     use mock::TestContext;
+    use once_cell::sync::Lazy;
     use rayon::iter::{ParallelBridge, ParallelIterator};
 
     use crate::test_util::CircuitTestBuilder;
 
-    lazy_static::lazy_static! {
-        static ref TEST_VECTOR: Vec<PrecompileCallArgs> = {
-            vec![
+    static TEST_VECTOR: Lazy<Vec<PrecompileCallArgs>> = Lazy::new(|| {
+        vec![
                 PrecompileCallArgs {
                     name: "ecMul (valid input)",
                     // P = (2, 16059845205665218889595687631975406613746683471807856151558479858750240882195)
@@ -673,41 +675,38 @@ mod test {
                     ..Default::default()
                 },
             ]
-        };
+    });
 
-        static ref OOG_TEST_VECTOR: Vec<PrecompileCallArgs> = {
-            vec![
-                PrecompileCallArgs {
-                    name: "ecMul (valid: scalar larger than base field order)",
-                    // P = (2, 16059845205665218889595687631975406613746683471807856151558479858750240882195)
-                    // s = 2^256 - 1
-                    setup_code: bytecode! {
-                        // p_x
-                        PUSH1(0x02)
-                        PUSH1(0x00)
-                        MSTORE
+    static OOG_TEST_VECTOR: Lazy<Vec<PrecompileCallArgs>> = Lazy::new(|| {
+        vec![PrecompileCallArgs {
+            name: "ecMul (valid: scalar larger than base field order)",
+            // P = (2, 16059845205665218889595687631975406613746683471807856151558479858750240882195)
+            // s = 2^256 - 1
+            setup_code: bytecode! {
+                // p_x
+                PUSH1(0x02)
+                PUSH1(0x00)
+                MSTORE
 
-                        // p_y
-                        PUSH32(word!("0x23818CDE28CF4EA953FE59B1C377FAFD461039C17251FF4377313DA64AD07E13"))
-                        PUSH1(0x20)
-                        MSTORE
+                // p_y
+                PUSH32(word!("0x23818CDE28CF4EA953FE59B1C377FAFD461039C17251FF4377313DA64AD07E13"))
+                PUSH1(0x20)
+                MSTORE
 
-                        // s
-                        PUSH32(word!("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))
-                        PUSH1(0x40)
-                        MSTORE
-                    },
-                    call_data_offset: 0x00.into(),
-                    call_data_length: 0x60.into(),
-                    ret_offset: 0x60.into(),
-                    ret_size: 0x40.into(),
-                    address: PrecompileCalls::Bn128Mul.address().to_word(),
-                    gas: (PrecompileCalls::Bn128Mul.base_gas_cost().as_u64() - 1).to_word(),
-                    ..Default::default()
-                }
-            ]
-        };
-    }
+                // s
+                PUSH32(word!("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))
+                PUSH1(0x40)
+                MSTORE
+            },
+            call_data_offset: 0x00.into(),
+            call_data_length: 0x60.into(),
+            ret_offset: 0x60.into(),
+            ret_size: 0x40.into(),
+            address: PrecompileCalls::Bn128Mul.address().to_word(),
+            gas: (PrecompileCalls::Bn128Mul.base_gas_cost().as_u64() - 1).to_word(),
+            ..Default::default()
+        }]
+    });
 
     #[test]
     fn precompile_ec_mul_test() {

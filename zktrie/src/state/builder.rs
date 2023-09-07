@@ -11,16 +11,13 @@ use halo2_proofs::{
     halo2curves::{bn256::Fr, group::ff::PrimeField},
 };
 use hash_circuit::hash::Hashable;
+use once_cell::sync::Lazy;
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    /// Use this boolean to initialize the hash scheme.
-    pub static ref HASH_SCHEME_DONE: bool = {
-        zktrie::init_hash_scheme(hash_scheme);
-        true
-    };
-}
+/// Use this boolean to initialize the hash scheme.
+pub static HASH_SCHEME_DONE: Lazy<bool> = Lazy::new(|| {
+    zktrie::init_hash_scheme(hash_scheme);
+    true
+});
 
 static FILED_ERROR_READ: &str = "invalid input field";
 static FILED_ERROR_OUT: &str = "output field fail";

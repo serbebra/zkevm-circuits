@@ -21,8 +21,8 @@ use halo2_proofs::{
         Coordinates,
     },
 };
-use lazy_static::lazy_static;
 use num_bigint::BigUint;
+use once_cell::sync::Lazy;
 use subtle::CtOption;
 
 /// Do a secp256k1 signature with a given randomness value.
@@ -110,27 +110,28 @@ impl SignData {
     }
 }
 
-lazy_static! {
-    /// This is the sign data of default padding tx
-    static ref SIGN_DATA_DEFAULT: SignData = {
-        let (tx_req, sig) = get_dummy_tx();
-        let tx = Transaction {
-            tx_type: TxType::PreEip155,
-            rlp_unsigned_bytes: tx_req.rlp_unsigned().to_vec(),
-            rlp_bytes: tx_req.rlp_signed(&sig).to_vec(),
-            v: sig.v,
-            r: sig.r,
-            s: sig.s,
-            // other fields are irrelevant to get the sign_data()
-            ..Default::default()
-        };
-
-        let sign_data = tx.sign_data().unwrap();
-        assert_eq!(sign_data.get_addr(), address!("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"));
-
-        sign_data
+/// This is the sign data of default padding tx
+static SIGN_DATA_DEFAULT: Lazy<SignData> = Lazy::new(|| {
+    let (tx_req, sig) = get_dummy_tx();
+    let tx = Transaction {
+        tx_type: TxType::PreEip155,
+        rlp_unsigned_bytes: tx_req.rlp_unsigned().to_vec(),
+        rlp_bytes: tx_req.rlp_signed(&sig).to_vec(),
+        v: sig.v,
+        r: sig.r,
+        s: sig.s,
+        // other fields are irrelevant to get the sign_data()
+        ..Default::default()
     };
-}
+
+    let sign_data = tx.sign_data().unwrap();
+    assert_eq!(
+        sign_data.get_addr(),
+        address!("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf")
+    );
+
+    sign_data
+});
 
 impl Default for SignData {
     // Hardcoded valid signature corresponding to a hardcoded private key and
@@ -181,11 +182,11 @@ pub fn recover_pk(
     )
 }
 
-lazy_static! {
-    /// Secp256k1 Curve Scalar.  Referece: Section 2.4.1 (parameter `n`) in "SEC 2: Recommended
-    /// Elliptic Curve Domain Parameters" document at http://www.secg.org/sec2-v2.pdf
-    pub static ref SECP256K1_Q: BigUint = BigUint::from_bytes_le(&(secp256k1::Fq::zero() - secp256k1::Fq::one()).to_repr()) + 1u64;
-}
+/// Secp256k1 Curve Scalar.  Referece: Section 2.4.1 (parameter `n`) in "SEC 2: Recommended
+/// Elliptic Curve Domain Parameters" document at http://www.secg.org/sec2-v2.pdf
+pub static SECP256K1_Q: Lazy<BigUint> = Lazy::new(|| {
+    BigUint::from_bytes_le(&(secp256k1::Fq::zero() - secp256k1::Fq::one()).to_repr()) + 1u64
+});
 
 /// Helper function to convert a `CtOption` into an `Result`.  Similar to
 /// `Option::ok_or`.

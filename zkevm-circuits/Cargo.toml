@@ -24,7 +24,7 @@ strum_macros = "0.24"
 rand_xorshift = "0.3"
 rand = "0.8"
 itertools = "0.10.3"
-lazy_static = "1.4"
+once_cell = "1.18"
 mpt-zktrie = { path = "../zktrie" }
 keccak256 = { path = "../keccak256"}
 log = "0.4"
@@ -48,7 +48,6 @@ snark-verifier = { git = "https://github.com/scroll-tech/snark-verifier", tag = 
 snark-verifier-sdk = { git = "https://github.com/scroll-tech/snark-verifier", tag = "v0.1.4", default-features=false, features = ["loader_halo2", "loader_evm", "halo2-pse"] }
 hex = "0.4.3"
 rayon = "1.5"
-once_cell = "1.17.0"
 
 [dev-dependencies]
 bus-mapping = { path = "../bus-mapping", features = ["test"] }

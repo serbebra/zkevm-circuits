@@ -22,22 +22,17 @@ use halo2_proofs::{
         Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer,
     },
 };
-use lazy_static::lazy_static;
 use mock::TestContext;
+use once_cell::sync::Lazy;
 use rand_chacha::rand_core::SeedableRng;
 use rand_core::RngCore;
 use rand_xorshift::XorShiftRng;
 use std::{collections::HashMap, marker::PhantomData, sync::Mutex};
 use tokio::sync::Mutex as TokioMutex;
 use zkevm_circuits::{
-    bytecode_circuit::TestBytecodeCircuit,
-    copy_circuit::TestCopyCircuit,
     evm_circuit::TestEvmCircuit,
     exp_circuit::TestExpCircuit,
-    keccak_circuit::TestKeccakCircuit,
-    state_circuit::TestStateCircuit,
     super_circuit::SuperCircuit,
-    tx_circuit::TestTxCircuit,
     util::SubCircuit,
     witness::{block_convert, Block},
 };
@@ -106,52 +101,54 @@ const KECCAK_CIRCUIT_DEGREE: u32 = 16;
 const SUPER_CIRCUIT_DEGREE: u32 = 20;
 const EXP_CIRCUIT_DEGREE: u32 = 16;
 
-lazy_static! {
-    /// Data generation.
-    static ref GEN_DATA: GenDataOutput = GenDataOutput::load();
-    static ref RNG: XorShiftRng = XorShiftRng::from_seed([
+/// Data generation.
+static GEN_DATA: Lazy<GenDataOutput> = Lazy::new(GenDataOutput::load);
+static RNG: Lazy<XorShiftRng> = Lazy::new(|| {
+    XorShiftRng::from_seed([
         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
         0xe5,
-    ]);
-}
+    ])
+});
 
-lazy_static! {
-    static ref GEN_PARAMS: Mutex<HashMap<u32, ParamsKZG<Bn256>>> = Mutex::new(HashMap::new());
-}
+static GEN_PARAMS: Lazy<Mutex<HashMap<u32, ParamsKZG<Bn256>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
-lazy_static! {
-    /// Integration test for EVM circuit
-    pub static ref EVM_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>> =
-    TokioMutex::new(IntegrationTest::new("EVM", EVM_CIRCUIT_DEGREE));
+/// Integration test for EVM circuit
+pub static EVM_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("EVM", EVM_CIRCUIT_DEGREE)));
 
-    /// Integration test for State circuit
-    pub static ref STATE_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestStateCircuit<Fr>>> =
-    TokioMutex::new(IntegrationTest::new("State", STATE_CIRCUIT_DEGREE));
+/// Integration test for State circuit
+pub static STATE_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("State", STATE_CIRCUIT_DEGREE)));
 
-    /// Integration test for State circuit
-    pub static ref TX_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestTxCircuit<Fr>>> =
-    TokioMutex::new(IntegrationTest::new("Tx", TX_CIRCUIT_DEGREE));
+/// Integration test for State circuit
+pub static TX_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("Tx", TX_CIRCUIT_DEGREE)));
 
-    /// Integration test for Bytecode circuit
-    pub static ref BYTECODE_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestBytecodeCircuit<Fr>>> =
-    TokioMutex::new(IntegrationTest::new("Bytecode", BYTECODE_CIRCUIT_DEGREE));
+/// Integration test for Bytecode circuit
+pub static BYTECODE_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("Bytecode", BYTECODE_CIRCUIT_DEGREE)));
 
-    /// Integration test for Copy circuit
-    pub static ref COPY_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestCopyCircuit<Fr>>> =
-    TokioMutex::new(IntegrationTest::new("Copy", COPY_CIRCUIT_DEGREE));
+/// Integration test for Copy circuit
+pub static COPY_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("Copy", COPY_CIRCUIT_DEGREE)));
 
-    /// Integration test for Keccak circuit
-    pub static ref KECCAK_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestKeccakCircuit<Fr>>> =
-    TokioMutex::new(IntegrationTest::new("Keccak", KECCAK_CIRCUIT_DEGREE));
+/// Integration test for Keccak circuit
+pub static KECCAK_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestEvmCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("Keccak", KECCAK_CIRCUIT_DEGREE)));
 
-    /// Integration test for Copy circuit
-    pub static ref SUPER_CIRCUIT_TEST: TokioMutex<IntegrationTest<SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>>> =
-    TokioMutex::new(IntegrationTest::new("Super", SUPER_CIRCUIT_DEGREE));
+/// Integration test for Copy circuit
+pub static SUPER_CIRCUIT_TEST: Lazy<
+    TokioMutex<
+        IntegrationTest<
+            SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>,
+        >,
+    >,
+> = Lazy::new(|| TokioMutex::new(IntegrationTest::new("Super", SUPER_CIRCUIT_DEGREE)));
 
-     /// Integration test for Exp circuit
-     pub static ref EXP_CIRCUIT_TEST: TokioMutex<IntegrationTest<TestExpCircuit::<Fr>>> =
-     TokioMutex::new(IntegrationTest::new("Exp", EXP_CIRCUIT_DEGREE));
-}
+/// Integration test for Exp circuit
+pub static EXP_CIRCUIT_TEST: Lazy<TokioMutex<IntegrationTest<TestExpCircuit<Fr>>>> =
+    Lazy::new(|| TokioMutex::new(IntegrationTest::new("Exp", EXP_CIRCUIT_DEGREE)));
 
 /// Generic implementation for integration tests
 pub struct IntegrationTest<C: SubCircuit<Fr> + Circuit<Fr>> {

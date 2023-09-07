@@ -1,6 +1,7 @@
 use super::*;
 use eth_types::{Bytes, Word};
 use log::{info, warn};
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -50,12 +51,8 @@ fn build_state_from_sample(sample_file: &str) -> (ZktrieState, Hash) {
     )
 }
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    pub(crate) static ref TEST_SAMPLE_STR: String =
-        std::env::var("ZKTRIE_TEST_SAMPLE").unwrap_or_default();
-}
+pub(crate) static TEST_SAMPLE_STR: Lazy<String> =
+    Lazy::new(|| std::env::var("ZKTRIE_TEST_SAMPLE").unwrap_or_default());
 
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();

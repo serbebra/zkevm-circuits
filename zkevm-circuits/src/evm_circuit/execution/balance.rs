@@ -148,12 +148,11 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 mod test {
     use crate::{evm_circuit::test::rand_bytes, test_util::CircuitTestBuilder};
     use eth_types::{address, bytecode, geth_types::Account, Address, Bytecode, Word, U256};
-    use lazy_static::lazy_static;
     use mock::{generate_mock_call_bytecode, test_ctx::TestContext, MockCallBytecodeParams};
+    use once_cell::sync::Lazy;
 
-    lazy_static! {
-        static ref TEST_ADDRESS: Address = address!("0xaabbccddee000000000000000000000000000000");
-    }
+    static TEST_ADDRESS: Lazy<Address> =
+        Lazy::new(|| address!("0xaabbccddee000000000000000000000000000000"));
 
     #[test]
     fn balance_gadget_non_existing_account() {

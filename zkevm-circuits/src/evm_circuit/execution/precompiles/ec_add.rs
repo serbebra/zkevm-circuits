@@ -210,13 +210,13 @@ mod test {
     use eth_types::{bytecode, word, ToWord};
     use itertools::Itertools;
     use mock::TestContext;
+    use once_cell::sync::Lazy;
     use rayon::iter::{ParallelBridge, ParallelIterator};
 
     use crate::test_util::CircuitTestBuilder;
 
-    lazy_static::lazy_static! {
-        static ref TEST_VECTOR: Vec<PrecompileCallArgs> = {
-            vec![
+    static TEST_VECTOR: Lazy<Vec<PrecompileCallArgs>> = Lazy::new(|| {
+        vec![
                 PrecompileCallArgs {
                     name: "ecAdd (valid inputs)",
                     // P = (1, 2)
@@ -488,43 +488,40 @@ mod test {
                 },
 
             ]
-        };
+    });
 
-        static ref OOG_TEST_VECTOR: Vec<PrecompileCallArgs> = {
-            vec![
-                PrecompileCallArgs {
-                    name: "ecAdd OOG (valid inputs: P == -Q), return size == 0",
-                    // P = (1, 2)
-                    // Q = -P
-                    setup_code: bytecode! {
-                        // p_x
-                        PUSH1(0x01)
-                        PUSH1(0x00)
-                        MSTORE
-                        // p_y
-                        PUSH1(0x02)
-                        PUSH1(0x20)
-                        MSTORE
-                        // q_x = 1
-                        PUSH1(0x01)
-                        PUSH1(0x40)
-                        MSTORE
-                        // q_y = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45
-                        PUSH32(word!("0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45"))
-                        PUSH1(0x60)
-                        MSTORE
-                    },
-                    call_data_offset: 0x00.into(),
-                    call_data_length: 0x80.into(),
-                    ret_offset: 0x80.into(),
-                    ret_size: 0x00.into(),
-                    address: PrecompileCalls::Bn128Add.address().to_word(),
-                    gas: 149.into(),
-                    ..Default::default()
-                },
-            ]
-        };
-    }
+    static OOG_TEST_VECTOR: Lazy<Vec<PrecompileCallArgs>> = Lazy::new(|| {
+        vec![PrecompileCallArgs {
+            name: "ecAdd OOG (valid inputs: P == -Q), return size == 0",
+            // P = (1, 2)
+            // Q = -P
+            setup_code: bytecode! {
+                // p_x
+                PUSH1(0x01)
+                PUSH1(0x00)
+                MSTORE
+                // p_y
+                PUSH1(0x02)
+                PUSH1(0x20)
+                MSTORE
+                // q_x = 1
+                PUSH1(0x01)
+                PUSH1(0x40)
+                MSTORE
+                // q_y = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45
+                PUSH32(word!("0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45"))
+                PUSH1(0x60)
+                MSTORE
+            },
+            call_data_offset: 0x00.into(),
+            call_data_length: 0x80.into(),
+            ret_offset: 0x80.into(),
+            ret_size: 0x00.into(),
+            address: PrecompileCalls::Bn128Add.address().to_word(),
+            gas: 149.into(),
+            ..Default::default()
+        }]
+    });
 
     #[test]
     fn precompile_ec_add_test() {

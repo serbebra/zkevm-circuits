@@ -12,7 +12,7 @@ mpt-circuits = { package = "halo2-mpt-circuits", git = "https://github.com/scrol
 zktrie = { git = "https://github.com/scroll-tech/zktrie.git", branch = "v0.6" }
 hash-circuit = { package = "poseidon-circuit", git = "https://github.com/scroll-tech/poseidon-circuit.git", branch = "scroll-dev-0901"}
 eth-types = { path = "../eth-types" }
-lazy_static = "1.4"
+once_cell = "1.18"
 num-bigint = { version = "0.4" }
 log = "0.4"
 hex = "0.4"

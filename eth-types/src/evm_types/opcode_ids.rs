@@ -1,11 +1,14 @@
 //! Doc this
 use crate::{error::Error, evm_types::GasCost};
 use core::fmt::Debug;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{de, Deserialize, Serialize};
 use std::{fmt, matches, str::FromStr};
 use strum_macros::EnumIter;
+
+static INVALID_OPCODE_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new("opcode 0x([[:xdigit:]]{1,2}) not defined").expect("invalid regex"));
 
 /// Opcode enum. One-to-one corresponding to an `u8` value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Hash, EnumIter, PartialOrd, Ord)]
@@ -1243,11 +1246,7 @@ impl FromStr for OpcodeId {
             "TSTORE" => OpcodeId::INVALID(0xb4),
             _ => {
                 // Parse an invalid opcode value as reported by geth
-                lazy_static! {
-                    static ref RE: Regex = Regex::new("opcode 0x([[:xdigit:]]{1,2}) not defined")
-                        .expect("invalid regex");
-                }
-                if let Some(cap) = RE.captures(s) {
+                if let Some(cap) = INVALID_OPCODE_REGEX.captures(s) {
                     if let Some(byte_hex) = cap.get(1).map(|m| m.as_str()) {
                         return Ok(OpcodeId::INVALID(
                             u8::from_str_radix(byte_hex, 16).expect("invalid hex byte from regex"),

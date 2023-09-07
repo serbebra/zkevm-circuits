@@ -132,13 +132,11 @@ mod test {
     use eth_types::{
         address, bytecode, geth_types::Account, Address, Bytecode, Bytes, ToWord, Word, U256,
     };
-    use lazy_static::lazy_static;
     use mock::TestContext;
+    use once_cell::sync::Lazy;
 
-    lazy_static! {
-        static ref EXTERNAL_ADDRESS: Address =
-            address!("0xaabbccddee000000000000000000000000000000");
-    }
+    static EXTERNAL_ADDRESS: Lazy<Address> =
+        Lazy::new(|| address!("0xaabbccddee000000000000000000000000000000"));
 
     fn test_ok(external_account: Option<Account>, is_warm: bool) {
         let external_address = external_account

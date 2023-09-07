@@ -831,13 +831,12 @@ mod test {
         address, bytecode, evm_types::OpcodeId, geth_types::Account, word, Address, Bytecode, Word,
     };
     use itertools::Itertools;
-    use lazy_static::lazy_static;
     use mock::{eth, TestContext};
+    use once_cell::sync::Lazy;
 
     const CALLEE_ADDRESS: Address = Address::repeat_byte(0xff);
-    lazy_static! {
-        static ref CALLER_ADDRESS: Address = address!("0x00bbccddee000000000000000000000000002400");
-    }
+    static CALLER_ADDRESS: Lazy<Address> =
+        Lazy::new(|| address!("0x00bbccddee000000000000000000000000002400"));
 
     fn run_test_circuits<const NACC: usize, const NTX: usize>(ctx: TestContext<NACC, NTX>) {
         CircuitTestBuilder::new_from_test_ctx(ctx)
