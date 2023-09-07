@@ -340,6 +340,20 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::WRITE, StackOp::new(call_id, address, value))?;
+
+        let stack = &mut self.call_ctx_mut()?.stack;
+        // either (A) write to an existed stack ptr or (B) stack push
+        debug_assert!(stack.stack_pointer().0 <= address.0 + 1);
+        debug_assert!(address.0 < 1024);
+        if address < stack.stack_pointer() {
+            // stack push
+            debug_assert_eq!(stack.stack_pointer().0 - 1, address.0);
+            stack.0.push(value);
+        } else {
+            // write directly
+            stack.0[1023 - address.0] = value;
+        }
+
         Ok(())
     }
 
@@ -357,6 +371,10 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call_id = self.call()?.call_id;
         self.push_op(step, RW::READ, StackOp::new(call_id, address, value))?;
+
+        let stack = &self.call_ctx()?.stack;
+        assert_eq!(stack.0[1023 - address.0], value);
+
         Ok(())
     }
 
