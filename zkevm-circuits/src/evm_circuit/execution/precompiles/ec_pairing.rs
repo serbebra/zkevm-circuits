@@ -88,12 +88,8 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
             cb.execution_state().precompile_base_gas_cost().expr(),
         );
 
-        cb.condition(is_success.expr(), |cb| {
-            cb.require_equal(
-                "return_data_length must be 32 for ecc pairing sucessful case",
-                return_data_length.expr(),
-                32.expr(),
-            );
+        cb.condition(not::expr(is_success.expr()), |cb| {
+            cb.require_zero("output zero in fail case", output.expr());
         });
 
         // all gas sent to this call will be consumed if `is_success == false`.
@@ -551,7 +547,7 @@ mod test {
                     call_data_offset: 0x00.into(),
                     call_data_length: 0x180.into(),
                     ret_offset: 0x180.into(),
-                    ret_size: 0x20.into(),
+                    ret_size: 0x21.into(),// can be not 32
                     address: PrecompileCalls::Bn128Pairing.address().to_word(),
                     ..Default::default()
                 },
