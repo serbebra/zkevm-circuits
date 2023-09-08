@@ -732,11 +732,6 @@ impl<
         );
 
         log::debug!("assigning pi_circuit");
-        measure_time!(
-            pi,
-            self.pi_circuit
-                .synthesize_sub(&config.pi_circuit, challenges, layouter)?
-        );
         self.pi_circuit
             .import_tx_values(self.tx_circuit.value_cells.borrow().clone().unwrap());
         self.pi_circuit.connect_export(
@@ -744,6 +739,11 @@ impl<
             self.state_circuit.exports.borrow().as_ref(),
             self.evm_circuit.exports.borrow().as_ref(),
         )?;
+        measure_time!(
+            pi,
+            self.pi_circuit
+                .synthesize_sub(&config.pi_circuit, challenges, layouter)?
+        );
 
         log::debug!("assigning rlp_circuit");
         measure_time!(
