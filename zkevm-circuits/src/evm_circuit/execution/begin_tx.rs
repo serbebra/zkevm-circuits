@@ -209,10 +209,14 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let mul_gas_fee_by_gas =
             MulWordByU64Gadget::construct(cb, tx_gas_price.clone(), tx_gas.expr());
         let tx_fee = cb.query_word_rlc();
-
+        let l2_fee = select::expr(
+            tx_l1_msg.is_l1_msg(),
+            0.expr(),
+            from_bytes::expr(&mul_gas_fee_by_gas.product().cells[..16]),
+        );
         cb.require_equal(
             "tx_fee == l1_fee + l2_fee",
-            l1_fee_cost + from_bytes::expr(&mul_gas_fee_by_gas.product().cells[..16]),
+            l1_fee_cost + l2_fee,
             from_bytes::expr(&tx_fee.cells[..16]),
         );
 
@@ -535,6 +539,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                             * transfer_with_gas_fee.reversible_w_delta(),
                 ),
                 call_id: To(call_id.expr()),
+                // FIXME
+                end_tx: To(1.expr()),
                 ..StepStateTransition::any()
             });
         });
@@ -580,6 +586,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                             + PRECOMPILE_COUNT.expr(),
                     ),
                     call_id: To(call_id.expr()),
+                    end_tx: To(1.expr()),
                     ..StepStateTransition::any()
                 });
             },
@@ -1013,13 +1020,15 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         self.is_coinbase_warm
             .assign(region, offset, Value::known(F::from(is_coinbase_warm)))?;
 
-        let tx_l1_fee = if tx.tx_type.is_l1_msg() {
+        let (tx_l1_fee, tx_l2_fee) = if tx.tx_type.is_l1_msg() {
             log::trace!("tx is l1msg and l1 fee is 0");
-            0
+            (U256::zero(), U256::zero())
         } else {
-            tx.l1_fee.tx_l1_fee(tx.tx_data_gas_cost).0
+            (
+                tx.l1_fee.tx_l1_fee(tx.tx_data_gas_cost).0.into(),
+                tx.gas_price * tx.gas,
+            )
         };
-        let tx_l2_fee = tx.gas_price * tx.gas;
         if tx_fee != tx_l2_fee + tx_l1_fee {
             log::error!(
                 "begin_tx assign: tx_fee ({}) != tx_l1_fee ({}) + tx_l2_fee ({})",
