@@ -1460,6 +1460,8 @@ dependencies = [
  "num",
  "num-bigint",
  "poseidon-circuit",
+ "rand",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

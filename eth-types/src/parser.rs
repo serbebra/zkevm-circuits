@@ -17,7 +17,10 @@ pub struct InvalidHex;
 #[macro_export]
 macro_rules! h64 {
     ($s:expr) => {
-        $crate::parser::try_parse_h160(&$s).expect("invalid H64 hex string")
+        match $crate::parser::try_parse_h64(&$s) {
+            Ok(v) => v,
+            Err(_) => panic!("invalid H64 hex string"),
+        }
     };
 }
 
@@ -25,7 +28,10 @@ macro_rules! h64 {
 #[macro_export]
 macro_rules! h160 {
     ($s:expr) => {
-        $crate::parser::try_parse_h160(&$s).expect("invalid H160 hex string")
+        match $crate::parser::try_parse_h160(&$s) {
+            Ok(v) => v,
+            Err(_) => panic!("invalid H160 hex string"),
+        }
     };
 }
 
@@ -33,7 +39,10 @@ macro_rules! h160 {
 #[macro_export]
 macro_rules! h256 {
     ($s:expr) => {
-        $crate::parser::try_parse_h256(&$s).expect("invalid H256 hex string")
+        match $crate::parser::try_parse_h256(&$s) {
+            Ok(v) => v,
+            Err(_) => panic!("invalid H256 hex string"),
+        }
     };
 }
 
@@ -41,7 +50,10 @@ macro_rules! h256 {
 #[macro_export]
 macro_rules! u256 {
     ($s:expr) => {
-        $crate::parser::try_parse_u256(&$s).expect("invalid U256 hex string")
+        match $crate::parser::try_parse_u256(&$s) {
+            Ok(v) => v,
+            Err(_) => panic!("invalid U256 hex string"),
+        }
     };
 }
 
@@ -209,7 +221,6 @@ const SHL4_TABLE: &[u8; 256] = &{
     }
 };
 
-// 000000000000000000000000000000000000cafe
 const fn try_parse_hex_ascii<const N_BYTES: usize>(s: &[u8]) -> Result<[u8; N_BYTES], ()> {
     if s.len() != N_BYTES * 2 {
         return Err(());
@@ -242,6 +253,8 @@ const fn try_parse_hex_ascii<const N_BYTES: usize>(s: &[u8]) -> Result<[u8; N_BY
 #[cfg(test)]
 mod test {
     use super::*;
+    use rand::{distributions::Standard, prelude::*};
+    use rayon::prelude::*;
     use std::str::FromStr;
 
     #[test]
@@ -304,5 +317,107 @@ mod test {
             U256::from_str("0x456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3")
                 .unwrap()
         )
+    }
+
+    #[test]
+    fn test_const() {
+        const _: H64 = h64!("1234567890abcdef");
+        const _: H64 = h64!("0x1234567890abcdef");
+        const _: H160 = h160!("1234567890abcdef1234567890abcdef12345678");
+        const _: H160 = h160!("0x1234567890abcdef1234567890abcdef12345678");
+        const _: H256 = h256!("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+        const _: H256 = h256!("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+        const _: U256 = u256!("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+        const _: U256 = u256!("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+    }
+
+    const HEX_ALPHABET: [u8; 22] = *b"0123456789abcdefABCDEF";
+
+    #[ignore]
+    #[test]
+    fn fuzzy_test_valid() {
+        // generate word hex string
+        (0..1000000).into_par_iter().for_each(|_| {
+            let mut rng = thread_rng();
+            // h64 test
+            let h64_hex = (0..16)
+                .map(|_| HEX_ALPHABET[rng.gen_range(0..22)] as char)
+                .collect::<String>();
+            assert_eq!(
+                H64::from_str(&h64_hex).unwrap(),
+                try_parse_h64(&h64_hex).unwrap()
+            );
+            let prefixed = format!("0x{}", h64_hex);
+            assert_eq!(
+                H64::from_str(&prefixed).unwrap(),
+                try_parse_h64(&prefixed).unwrap()
+            );
+
+            // h160 test
+            let h160_hex = (0..40)
+                .map(|_| HEX_ALPHABET[rng.gen_range(0..22)] as char)
+                .collect::<String>();
+            assert_eq!(
+                H160::from_str(&h160_hex).unwrap(),
+                try_parse_h160(&h160_hex).unwrap()
+            );
+            let prefixed = format!("0x{}", h160_hex);
+            assert_eq!(
+                H160::from_str(&prefixed).unwrap(),
+                try_parse_h160(&prefixed).unwrap()
+            );
+
+            // h256 test
+            let h256_hex = (0..64)
+                .map(|_| HEX_ALPHABET[rng.gen_range(0..22)] as char)
+                .collect::<String>();
+            assert_eq!(
+                H256::from_str(&h256_hex).unwrap(),
+                try_parse_h256(&h256_hex).unwrap()
+            );
+            let prefixed = format!("0x{}", h256_hex);
+            assert_eq!(
+                H256::from_str(&prefixed).unwrap(),
+                try_parse_h256(&prefixed).unwrap()
+            );
+
+            // word test
+            // may generate empty string
+            let length = rng.gen_range(0..65);
+            let mut word_hex = String::with_capacity(length);
+            for _ in 0..length {
+                word_hex.push(HEX_ALPHABET[rng.gen_range(0..22)] as char);
+            }
+            assert_eq!(
+                U256::from_str(&word_hex).unwrap(),
+                try_parse_u256(&word_hex).unwrap()
+            );
+            let prefixed = format!("0x{}", word_hex);
+            assert_eq!(
+                U256::from_str(&prefixed).unwrap(),
+                try_parse_u256(&prefixed).unwrap()
+            );
+        })
+    }
+
+    #[ignore]
+    #[test]
+    fn fuzzy_test_word_invalid() {
+        (0..100000).into_par_iter().for_each(|_| {
+            let mut rng = thread_rng();
+            let length = rng.gen_range(1..128);
+            let word_hex = rng
+                .sample_iter::<char, _>(Standard)
+                .take(length)
+                .collect::<String>();
+            match U256::from_str(&word_hex) {
+                Ok(v) => {
+                    assert_eq!(try_parse_u256(&word_hex).unwrap(), v);
+                }
+                Err(_) => {
+                    assert!(try_parse_u256(&word_hex).is_err());
+                }
+            }
+        })
     }
 }
