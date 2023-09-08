@@ -81,7 +81,7 @@ use crate::{
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
     witness::{block_convert, Block, Transaction},
 };
-use std::time::Instant;
+use std::{cell::RefCell, collections::BTreeSet, time::Instant};
 
 #[cfg(feature = "zktrie")]
 use crate::mpt_circuit::{MptCircuit, MptCircuitConfig, MptCircuitConfigArgs};
@@ -158,7 +158,23 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             challenges,
         }: Self::ConfigArgs,
     ) -> Self {
+        let advice_queries_before = RefCell::new(BTreeSet::new());
         let log_circuit_info = |meta: &ConstraintSystem<Fr>, tag: &str| {
+            let advice_queries_after = meta
+                .advice_queries
+                .iter()
+                .map(|(c, q)| (c.index, q.0))
+                .collect::<BTreeSet<_>>();
+            let prev_rotation_diffs = advice_queries_after
+                .difference(&advice_queries_before.borrow())
+                .filter_map(|(_, q)| if *q < 0 { Some(*q) } else { None })
+                .collect_vec();
+            advice_queries_before.replace(advice_queries_after);
+            log::debug!(
+                "previous rotations circuit {} have: {:?}",
+                tag,
+                prev_rotation_diffs
+            );
             log::debug!("circuit info after {}: {:#?}", tag, circuit_stats(meta));
         };
         let challenges_expr = challenges.exprs(meta);
