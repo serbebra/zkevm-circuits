@@ -17,7 +17,7 @@ use halo2_proofs::circuit::Value;
 
 use super::{
     mpt::ZktrieState as MptState, step::step_convert, tx::tx_convert, Bytecode, ExecStep,
-    MptUpdates, RwMap, Transaction,
+    MptUpdates, RwMap, Transaction, Rw,
 };
 use crate::util::{Challenges, DEFAULT_RAND};
 
@@ -92,6 +92,10 @@ impl<F: Field> Block<F> {
             }
         }
     }
+    /// Get a read-write record
+   pub(crate) fn get_rws(&self, step: &ExecStep, index: usize) -> Rw {
+    self.rws[step.rw_indices[index]]
+   }
 
     /// Get signature (witness) from the block for tx signatures and ecRecover calls.
     pub(crate) fn get_sign_data(&self, padding: bool) -> Vec<SignData> {

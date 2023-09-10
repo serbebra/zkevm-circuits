@@ -11,7 +11,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     util::{
-        word::{Word, WordExpr},
+        word::{Word},
         Expr,
     },
 };

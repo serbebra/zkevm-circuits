@@ -63,6 +63,10 @@ impl ExecStep {
         assert_eq!(self.memory_size % N_BYTES_WORD as u64, 0);
         self.memory_size / N_BYTES_WORD as u64
     }
+    /// The opcode corresponds to the step
+    pub fn opcode(&self) -> Option<OpcodeId> {
+        self.opcode
+    }
 }
 
 impl From<&ExecError> for ExecutionState {

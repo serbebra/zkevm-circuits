@@ -32,7 +32,7 @@ pub(crate) type Word4<T> = WordLimbs<T, 4>;
 
 pub(crate) type Word32<T> = WordLimbs<T, 32>;
 
-pub(crate) type WordCell<F> = Word<Cell<F>>;
+//pub(crate) type WordCell<F> = Word<Cell<F>>;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Word32Cell<F> {
@@ -65,6 +65,13 @@ impl<F: FieldExt> Word32Cell<F> {
                 })
                 .collect()
         })
+    }
+}
+
+/////////// "monkey patch" methods, refactor later ////////////////
+impl<F: FieldExt> WordExpr<F> for Word32Cell<F> {
+    fn to_word(&self) -> Expression<F> {
+        self.expression.clone()
     }
 }
 
@@ -114,9 +121,9 @@ impl<T: Default, const N: usize> Default for WordLimbs<T, N> {
 /// Get the word expression
 pub trait WordExpr<F> {
     /// Get the word expression
-    fn to_word(&self) -> Word<Expression<F>>;
+    fn to_word(&self) -> Expression<F>;
 }
-
+/* 
 impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
     /// assign bytes to wordlimbs first half/second half respectively
     // N_LO, N_HI are number of bytes to assign to first half and second half of size N limbs,
@@ -403,6 +410,16 @@ impl<F: Field> Word<Expression<F>> {
         Self(WordLimbs::<Expression<F>, 2>::new([1.expr(), 0.expr()]))
     }
 
+    /////////// "monkey patch" methods, refactor later ////////////////
+    /// ..
+    pub fn select(
+        selector: Expression<F>,
+        when_true: Expression<F>,
+        when_false: Expression<F>,
+    ) -> Expression<F> {
+        selector.clone() * when_true + (1.expr() - selector) * when_false
+    }
+    /* 
     /// select based on selector. Here assume selector is 1/0 therefore no overflow check
     pub fn select<T: Expr<F> + Clone>(
         selector: T,
@@ -417,6 +434,7 @@ impl<F: Field> Word<Expression<F>> {
             selector.expr() * true_hi.expr() + (1.expr() - selector.expr()) * false_hi.expr(),
         ])
     }
+    */
 
     /// Assume selector is 1/0 therefore no overflow check
     pub fn mul_selector(&self, selector: Expression<F>) -> Self {
@@ -490,3 +508,4 @@ pub fn empty_code_hash_word_value<F: Field>() -> Word<Value<F>> {
 }
 
 // TODO unittest
+*/
