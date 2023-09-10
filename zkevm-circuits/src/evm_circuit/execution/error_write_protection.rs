@@ -6,7 +6,7 @@ use crate::{
             common_gadget::CommonErrorGadget,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             math_gadget::IsZeroGadget,
-            CachedRegion, Cell, Word as RLCWord,
+            CachedRegion, Cell, Word32Cell as RLCWord,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -35,9 +35,9 @@ impl<F: Field> ExecutionGadget<F> for ErrorWriteProtectionGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
         let is_call = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::CALL.expr());
-        let gas_word = cb.query_word_rlc();
-        let code_address_word = cb.query_word_rlc();
-        let value = cb.query_word_rlc();
+        let gas_word = cb.query_word32();
+        let code_address_word = cb.query_word32();
+        let value = cb.query_word32();
         let is_value_zero = IsZeroGadget::construct(cb, value.expr());
 
         // require_in_set method will spilit into more low degree expressions if exceed

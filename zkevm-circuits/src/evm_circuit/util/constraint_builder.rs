@@ -3,7 +3,7 @@ use crate::{
         param::STACK_CAPACITY,
         step::{ExecutionState, Step},
         table::{FixedTableTag, Lookup, RwValues},
-        util::{Cell, RandomLinearCombination, Word},
+        util::{Cell, RandomLinearCombination, Word32Cell},
     },
     table::{
         AccountFieldTag, BytecodeFieldTag, CallContextFieldTag, RwTableTag, TxContextFieldTag,
@@ -438,6 +438,10 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.query_cell_with_type(CellType::LookupByte)
     }
 
+    pub(crate) fn query_word32(&mut self) -> Word32Cell<F> {
+        Word32Cell::new(self.query_bytes(), self.challenges.evm_word())
+    }
+
     pub(crate) fn query_word_rlc<const N: usize>(&mut self) -> RandomLinearCombination<F, N> {
         RandomLinearCombination::<F, N>::new(self.query_bytes(), self.challenges.evm_word())
     }
@@ -712,8 +716,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         id: Expression<F>,
         field_tag: TxContextFieldTag,
         index: Option<Expression<F>>,
-    ) -> Word<F> {
-        let word = self.query_word_rlc();
+    ) -> Word32Cell<F> {
+        let word = self.query_word32();
         self.tx_context_lookup(id, field_tag, index, word.expr());
         word
     }
@@ -1111,8 +1115,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         &mut self,
         call_id: Option<Expression<F>>,
         field_tag: CallContextFieldTag,
-    ) -> Word<F> {
-        let word = self.query_word_rlc();
+    ) -> Word32Cell<F> {
+        let word = self.query_word32();
         self.call_context_lookup(false.expr(), call_id, field_tag, word.expr());
         word
     }
@@ -1139,6 +1143,24 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                 0.expr(),
             ),
         );
+    }
+
+    pub(crate) fn call_context_lookup_read(
+        &mut self,
+        call_id: Option<Expression<F>>,
+        field_tag: CallContextFieldTag,
+        value: Expression<F>,
+    ) {
+        self.call_context_lookup(0.expr(), call_id, field_tag, value)
+    }
+
+    pub(crate) fn call_context_lookup_write(
+        &mut self,
+        call_id: Option<Expression<F>>,
+        field_tag: CallContextFieldTag,
+        value: Expression<F>,
+    ) {
+        self.call_context_lookup(1.expr(), call_id, field_tag, value)
     }
 
     fn reversion_info(

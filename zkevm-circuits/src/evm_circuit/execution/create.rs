@@ -24,7 +24,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
-    util::Expr,
+    util::{word::Word32Cell, Expr},
 };
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId, state_db::CodeDB};
 use eth_types::{
@@ -41,7 +41,7 @@ use std::iter::once;
 #[derive(Clone, Debug)]
 pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionState> {
     opcode: Cell<F>,
-    value: Word<F>,
+    value: Word32Cell<F>,
     tx_id: Cell<F>,
     reversion_info: ReversionInfo<F>,
     was_warm: Cell<F>,
@@ -59,7 +59,7 @@ pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionStat
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     gas_left: ConstantDivisionGadget<F, N_BYTES_GAS>,
     create: ContractCreateGadget<F, IS_CREATE2>,
-    caller_balance: Word<F>,
+    caller_balance: Word32Cell<F>,
     is_depth_in_range: LtGadget<F, N_BYTES_U64>,
     is_insufficient_balance: LtWordGadget<F>,
     is_nonce_in_range: LtGadget<F, N_BYTES_U64>,
@@ -112,7 +112,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         let is_static = cb.call_context(None, CallContextFieldTag::IsStatic);
         cb.require_zero("is_static is false", is_static.expr());
 
-        let value = cb.query_word_rlc();
+        let value = cb.query_word32();
 
         let init_code_memory_offset = cb.query_cell_phase2();
         let init_code_length = cb.query_word_rlc();
@@ -208,7 +208,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             create.caller_address(),
         );
 
-        let caller_balance = cb.query_word_rlc();
+        let caller_balance = cb.query_word32();
         cb.account_read(
             create.caller_address(),
             AccountFieldTag::Balance,

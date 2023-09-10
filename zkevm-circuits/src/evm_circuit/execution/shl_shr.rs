@@ -29,12 +29,12 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 #[derive(Clone, Debug)]
 pub(crate) struct ShlShrGadget<F> {
     same_context: SameContextGadget<F>,
-    quotient: util::Word<F>,
-    divisor: util::Word<F>,
-    remainder: util::Word<F>,
-    dividend: util::Word<F>,
+    quotient: util::Word32Cell<F>,
+    divisor: util::Word32Cell<F>,
+    remainder: util::Word32Cell<F>,
+    dividend: util::Word32Cell<F>,
     /// Shift word
-    shift: util::Word<F>,
+    shift: util::Word32Cell<F>,
     /// First byte of shift word
     shf0: Cell<F>,
     /// Gadget that verifies quotient * divisor + remainder = dividend
@@ -59,18 +59,18 @@ impl<F: Field> ExecutionGadget<F> for ShlShrGadget<F> {
         let is_shl = OpcodeId::SHR.expr() - opcode.expr();
         let is_shr = 1.expr() - is_shl.expr();
 
-        let quotient = cb.query_word_rlc();
-        let divisor = cb.query_word_rlc();
-        let remainder = cb.query_word_rlc();
-        let dividend = cb.query_word_rlc();
-        let shift = cb.query_word_rlc();
+        let quotient = cb.query_word32();
+        let divisor = cb.query_word32();
+        let remainder = cb.query_word32();
+        let dividend = cb.query_word32();
+        let shift = cb.query_word32();
         let shf0 = cb.query_cell();
 
         let mul_add_words =
             MulAddWordsGadget::construct(cb, [&quotient, &divisor, &remainder, &dividend]);
-        let shf_lt256 = IsZeroGadget::construct(cb, sum::expr(&shift.cells[1..32]));
-        let divisor_is_zero = IsZeroGadget::construct(cb, sum::expr(&divisor.cells));
-        let remainder_is_zero = IsZeroGadget::construct(cb, sum::expr(&remainder.cells));
+        let shf_lt256 = IsZeroGadget::construct(cb, sum::expr(&shift.limbs[1..32]));
+        let divisor_is_zero = IsZeroGadget::construct(cb, sum::expr(&divisor.limbs));
+        let remainder_is_zero = IsZeroGadget::construct(cb, sum::expr(&remainder.limbs));
         let remainder_lt_divisor = LtWordGadget::construct(cb, &remainder, &divisor);
 
         // Constrain stack pops and pushes as:
@@ -85,12 +85,12 @@ impl<F: Field> ExecutionGadget<F> for ShlShrGadget<F> {
 
         cb.require_zero(
             "shf0 == shift.cells[0]",
-            shf0.expr() - shift.cells[0].expr(),
+            shf0.expr() - shift.limbs[0].expr(),
         );
 
         cb.require_zero(
             "shift == shift.cells[0] when divisor != 0",
-            (1.expr() - divisor_is_zero.expr()) * (shift.expr() - shift.cells[0].expr()),
+            (1.expr() - divisor_is_zero.expr()) * (shift.expr() - shift.limbs[0].expr()),
         );
 
         cb.require_zero(
@@ -115,8 +115,8 @@ impl<F: Field> ExecutionGadget<F> for ShlShrGadget<F> {
 
         // Constrain divisor_lo == 2^shf0 when shf0 < 128, and
         // divisor_hi == 2^(128 - shf0) otherwise.
-        let divisor_lo = from_bytes::expr(&divisor.cells[..16]);
-        let divisor_hi = from_bytes::expr(&divisor.cells[16..]);
+        let divisor_lo = from_bytes::expr(&divisor.limbs[..16]);
+        let divisor_hi = from_bytes::expr(&divisor.limbs[16..]);
         cb.condition(1.expr() - divisor_is_zero.expr(), |cb| {
             cb.add_lookup(
                 "Pow2 lookup of shf0, divisor_lo and divisor_hi",

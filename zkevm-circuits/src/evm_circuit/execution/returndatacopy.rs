@@ -121,7 +121,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
                 cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
                 return_data_offset.expr()
-                    + from_bytes::expr(&check_overflow_gadget.data_offset().cells[..N_BYTES_U64]),
+                    + from_bytes::expr(&check_overflow_gadget.data_offset().limbs[..N_BYTES_U64]),
                 return_data_offset.expr() + return_data_size.expr(),
                 dst_memory_addr.offset(),
                 dst_memory_addr.length(),

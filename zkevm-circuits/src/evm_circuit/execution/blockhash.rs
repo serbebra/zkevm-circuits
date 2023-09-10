@@ -94,7 +94,7 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
                         .chain(
                             block_number
                                 .original_ref()
-                                .cells
+                                .limbs
                                 .iter()
                                 .take(N_BYTES_U64)
                                 .rev(),

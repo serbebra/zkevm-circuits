@@ -7,7 +7,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
-            CachedRegion, Word,
+            CachedRegion, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -19,9 +19,9 @@ use halo2_proofs::plonk::Error;
 #[derive(Clone, Debug)]
 pub(crate) struct BitwiseGadget<F> {
     same_context: SameContextGadget<F>,
-    a: Word<F>,
-    b: Word<F>,
-    c: Word<F>,
+    a: Word32Cell<F>,
+    b: Word32Cell<F>,
+    c: Word32Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for BitwiseGadget<F> {
@@ -32,9 +32,9 @@ impl<F: Field> ExecutionGadget<F> for BitwiseGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
-        let a = cb.query_word_rlc();
-        let b = cb.query_word_rlc();
-        let c = cb.query_word_rlc();
+        let a = cb.query_word32();
+        let b = cb.query_word32();
+        let c = cb.query_word32();
 
         cb.stack_pop(a.expr());
         cb.stack_pop(b.expr());
@@ -51,9 +51,9 @@ impl<F: Field> ExecutionGadget<F> for BitwiseGadget<F> {
                 Lookup::Fixed {
                     tag: tag.clone(),
                     values: [
-                        a.cells[idx].expr(),
-                        b.cells[idx].expr(),
-                        c.cells[idx].expr(),
+                        a.limbs[idx].expr(),
+                        b.limbs[idx].expr(),
+                        c.limbs[idx].expr(),
                     ],
                 },
             );

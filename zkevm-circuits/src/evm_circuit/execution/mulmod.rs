@@ -27,11 +27,11 @@ use halo2_proofs::plonk::Error;
 pub(crate) struct MulModGadget<F> {
     same_context: SameContextGadget<F>,
     // a, b, n, r
-    pub words: [util::Word<F>; 4],
-    k: util::Word<F>,
-    a_reduced: util::Word<F>,
-    d: util::Word<F>,
-    e: util::Word<F>,
+    pub words: [util::Word32Cell<F>; 4],
+    k: util::Word32Cell<F>,
+    a_reduced: util::Word32Cell<F>,
+    d: util::Word32Cell<F>,
+    e: util::Word32Cell<F>,
     modword: ModGadget<F, true>,
     mul512_left: MulAddWords512Gadget<F>,
     mul512_right: MulAddWords512Gadget<F>,
@@ -47,16 +47,16 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
-        let a = cb.query_word_rlc();
-        let b = cb.query_word_rlc();
-        let n = cb.query_word_rlc();
-        let r = cb.query_word_rlc();
+        let a = cb.query_word32();
+        let b = cb.query_word32();
+        let n = cb.query_word32();
+        let r = cb.query_word32();
 
-        let k = cb.query_word_rlc();
+        let k = cb.query_word32();
 
-        let a_reduced = cb.query_word_rlc();
-        let d = cb.query_word_rlc();
-        let e = cb.query_word_rlc();
+        let a_reduced = cb.query_word32();
+        let d = cb.query_word32();
+        let e = cb.query_word32();
 
         // 1.  k1 * n + a_reduced  == a
         let modword = ModGadget::construct(cb, [&a, &n, &a_reduced]);
@@ -68,7 +68,7 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
         let mul512_right = MulAddWords512Gadget::construct(cb, [&k, &n, &d, &e], Some(&r));
 
         // (r < n ) or n == 0
-        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.cells));
+        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.limbs));
         let lt = LtWordGadget::construct(cb, &r, &n);
         cb.add_constraint(
             " (1 - (r < n) - (n==0)) ",

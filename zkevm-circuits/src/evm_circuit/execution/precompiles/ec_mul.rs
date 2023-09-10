@@ -16,7 +16,7 @@ use crate::{
             common_gadget::RestoreContextGadget,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             math_gadget::{AddWordsGadget, IsEqualGadget, IsZeroGadget, ModGadget},
-            rlc, CachedRegion, Cell, Word,
+            rlc, CachedRegion, Cell, RandomLinearCombination, Word, Word32Cell,
         },
     },
     table::CallContextFieldTag,
@@ -106,7 +106,17 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
             256.expr(),
         );
         // k * n + scalar_s = s_raw
-        let modword = ModGadget::construct(cb, [&scalar_s_raw, &fr_modulus, &scalar_s]);
+        let evm_challenges = cb.challenges().evm_word();
+        let to_word =
+            |v: RandomLinearCombination<F, 32>| Word32Cell::new(v.cells, evm_challenges.clone());
+        let modword = ModGadget::construct(
+            cb,
+            [
+                &to_word(scalar_s_raw.clone()),
+                &to_word(fr_modulus.clone()),
+                &to_word(scalar_s.clone()),
+            ],
+        );
 
         // Conditions for dealing with infinity/empty points and zero/empty scalar
         let p_x_is_zero = cb.annotation("ecMul(P_x)", |cb| {
@@ -231,8 +241,11 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
                 );
                 AddWordsGadget::construct(
                     cb,
-                    [point_p_y_raw.clone(), point_r_y_raw.clone()],
-                    fq_modulus.clone(),
+                    [
+                        to_word(point_p_y_raw.clone()),
+                        to_word(point_r_y_raw.clone()),
+                    ],
+                    to_word(fq_modulus.clone()),
                 )
             },
         );

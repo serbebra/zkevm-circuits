@@ -12,7 +12,7 @@ use crate::evm_circuit::{
         },
         from_bytes,
         math_gadget::{ByteOrWord, ByteSizeGadget, IsEqualGadget, IsZeroGadget},
-        CachedRegion, Word,
+        CachedRegion, Word32Cell,
     },
     witness::{Block, Call, ExecStep, Transaction},
 };
@@ -24,11 +24,11 @@ pub(crate) struct ExponentiationGadget<F> {
     /// Gadget to check that we stay within the same context.
     same_context: SameContextGadget<F>,
     /// RLC-encoded integer base that will be exponentiated.
-    base: Word<F>,
+    base: Word32Cell<F>,
     /// RLC-encoded exponent for the exponentiation operation.
-    exponent: Word<F>,
+    exponent: Word32Cell<F>,
     /// RLC-encoded result of the exponentiation.
-    exponentiation: Word<F>,
+    exponentiation: Word32Cell<F>,
     /// Gadget to check if low 128-bit part of exponent is zero or not.
     exponent_lo_is_zero: IsZeroGadget<F>,
     /// Gadget to check if high 128-bit part of exponent is zero or not.
@@ -49,9 +49,9 @@ impl<F: Field> ExecutionGadget<F> for ExponentiationGadget<F> {
 
         // Query RLC-encoded values for base, exponent and exponentiation, where:
         // base^exponent == exponentiation (mod 2^256).
-        let base_rlc = cb.query_word_rlc();
-        let exponent_rlc = cb.query_word_rlc();
-        let exponentiation_rlc = cb.query_word_rlc();
+        let base_rlc = cb.query_word32();
+        let exponent_rlc = cb.query_word32();
+        let exponentiation_rlc = cb.query_word32();
 
         // Pop RLC-encoded base and exponent from the stack.
         cb.stack_pop(base_rlc.expr());
@@ -62,18 +62,18 @@ impl<F: Field> ExecutionGadget<F> for ExponentiationGadget<F> {
 
         // Extract low and high bytes of the base.
         let (base_lo, base_hi) = (
-            from_bytes::expr(&base_rlc.cells[0x00..0x10]),
-            from_bytes::expr(&base_rlc.cells[0x10..0x20]),
+            from_bytes::expr(&base_rlc.limbs[0x00..0x10]),
+            from_bytes::expr(&base_rlc.limbs[0x10..0x20]),
         );
         // Extract low and high bytes of the exponent.
         let (exponent_lo, exponent_hi) = (
-            from_bytes::expr(&exponent_rlc.cells[0x00..0x10]),
-            from_bytes::expr(&exponent_rlc.cells[0x10..0x20]),
+            from_bytes::expr(&exponent_rlc.limbs[0x00..0x10]),
+            from_bytes::expr(&exponent_rlc.limbs[0x10..0x20]),
         );
         // Extract low and high bytes of the exponentiation result.
         let (exponentiation_lo, exponentiation_hi) = (
-            from_bytes::expr(&exponentiation_rlc.cells[0x00..0x10]),
-            from_bytes::expr(&exponentiation_rlc.cells[0x10..0x20]),
+            from_bytes::expr(&exponentiation_rlc.limbs[0x00..0x10]),
+            from_bytes::expr(&exponentiation_rlc.limbs[0x10..0x20]),
         );
 
         // We simplify constraints depending on whether or not the exponent is 0 or 1.
@@ -124,10 +124,10 @@ impl<F: Field> ExecutionGadget<F> for ExponentiationGadget<F> {
             ]),
             |cb| {
                 let base_limbs = [
-                    from_bytes::expr(&base_rlc.cells[0x00..0x08]),
-                    from_bytes::expr(&base_rlc.cells[0x08..0x10]),
-                    from_bytes::expr(&base_rlc.cells[0x10..0x18]),
-                    from_bytes::expr(&base_rlc.cells[0x18..0x20]),
+                    from_bytes::expr(&base_rlc.limbs[0x00..0x08]),
+                    from_bytes::expr(&base_rlc.limbs[0x08..0x10]),
+                    from_bytes::expr(&base_rlc.limbs[0x10..0x18]),
+                    from_bytes::expr(&base_rlc.limbs[0x18..0x20]),
                 ];
                 // lookup (base, exponent, exponentiation)
                 cb.exp_table_lookup(
@@ -144,7 +144,7 @@ impl<F: Field> ExecutionGadget<F> for ExponentiationGadget<F> {
         let exponent_byte_size = ByteSizeGadget::construct(
             cb,
             exponent_rlc
-                .cells
+                .limbs
                 .iter()
                 .map(Expr::expr)
                 .collect::<Vec<_>>()

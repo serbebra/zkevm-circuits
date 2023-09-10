@@ -6,7 +6,7 @@ use crate::{
             common_gadget::SameContextGadget,
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
             math_gadget::{IsEqualGadget, IsZeroGadget},
-            sum, CachedRegion, Word,
+            sum, CachedRegion, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -20,8 +20,8 @@ use halo2_proofs::plonk::Error;
 #[derive(Clone, Debug)]
 pub(crate) struct ByteGadget<F> {
     same_context: SameContextGadget<F>,
-    index: Word<F>,
-    value: Word<F>,
+    index: Word32Cell<F>,
+    value: Word32Cell<F>,
     is_msb_sum_zero: IsZeroGadget<F>,
     is_byte_selected: [IsEqualGadget<F>; 32],
 }
@@ -32,14 +32,14 @@ impl<F: Field> ExecutionGadget<F> for ByteGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::BYTE;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let index = cb.query_word_rlc();
-        let value = cb.query_word_rlc();
+        let index = cb.query_word32();
+        let value = cb.query_word32();
 
         // If any of the non-LSB bytes of the index word are non-zero we never
         // need to copy any bytes. So just sum all the non-LSB byte
         // values here and then check if it's non-zero so we can use
         // that as an additional condition when to copy the byte value.
-        let is_msb_sum_zero = IsZeroGadget::construct(cb, sum::expr(&index.cells[1..32]));
+        let is_msb_sum_zero = IsZeroGadget::construct(cb, sum::expr(&index.limbs[1..32]));
 
         // Now we just need to check that `result[0]` is the sum of all copied
         // bytes. We go byte by byte and check if `idx == index[0]`.
@@ -50,11 +50,11 @@ impl<F: Field> ExecutionGadget<F> for ByteGadget<F> {
         let is_byte_selected = array_init(|idx| {
             // Check if this byte is selected looking only at the LSB of the
             // index word
-            IsEqualGadget::construct(cb, index.cells[0].expr(), (31 - idx).expr())
+            IsEqualGadget::construct(cb, index.limbs[0].expr(), (31 - idx).expr())
         });
 
         // Sum all possible selected bytes
-        let selected_byte = value.cells.iter().zip(is_byte_selected.iter()).fold(
+        let selected_byte = value.limbs.iter().zip(is_byte_selected.iter()).fold(
             0.expr(),
             |acc, (cell, is_selected)| {
                 acc + is_selected.expr() * is_msb_sum_zero.expr() * cell.expr()

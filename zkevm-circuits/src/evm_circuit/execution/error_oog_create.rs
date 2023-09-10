@@ -11,7 +11,7 @@ use crate::{
                 CommonMemoryAddressGadget, MemoryExpandedAddressGadget, MemoryExpansionGadget,
                 MemoryWordSizeGadget,
             },
-            or, select, CachedRegion, Cell, Word,
+            or, select, CachedRegion, Cell, Word32Cell,
         },
     },
     witness::{Block, Call, ExecStep, Transaction},
@@ -28,8 +28,8 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorOOGCreateGadget<F> {
     opcode: Cell<F>,
-    value: Word<F>,
-    salt: Word<F>,
+    value: Word32Cell<F>,
+    salt: Word32Cell<F>,
     is_create2: PairSelectGadget<F>,
     minimum_word_size: MemoryWordSizeGadget<F>,
     memory_address: MemoryExpandedAddressGadget<F>,
@@ -58,8 +58,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCreateGadget<F> {
             OpcodeId::CREATE.expr(),
         );
 
-        let value = cb.query_word_rlc();
-        let salt = cb.query_word_rlc();
+        let value = cb.query_word32();
+        let salt = cb.query_word32();
 
         let memory_address = MemoryExpandedAddressGadget::construct_self(cb);
 

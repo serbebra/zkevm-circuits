@@ -547,6 +547,7 @@ impl<F: FieldExt, const N: usize> Expr<F> for RandomLinearCombination<F, N> {
     }
 }
 
+pub(crate) use crate::util::word::Word32Cell;
 pub(crate) type Word<F> = RandomLinearCombination<F, 32>;
 pub(crate) type U64Word<F> = RandomLinearCombination<F, N_BYTES_U64>;
 pub(crate) type MemoryAddress<F> = RandomLinearCombination<F, N_BYTES_MEMORY_ADDRESS>;

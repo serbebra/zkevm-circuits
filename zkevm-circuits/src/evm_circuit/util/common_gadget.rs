@@ -16,7 +16,7 @@ use crate::{
                 Transition::{Delta, Same, To},
             },
             math_gadget::{AddWordsGadget, RangeCheckGadget},
-            not, or, Cell, CellType, StepRws, Word,
+            not, or, Cell, CellType, StepRws, Word32Cell,
         },
     },
     table::{AccountFieldTag, CallContextFieldTag},
@@ -326,13 +326,13 @@ impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         address: Expression<F>,
-        updates: Vec<Word<F>>,
+        updates: Vec<Word32Cell<F>>,
         reversion_info: Option<&mut ReversionInfo<F>>,
     ) -> Self {
         debug_assert!(updates.len() == N_ADDENDS - 1);
 
-        let balance_addend = cb.query_word_rlc();
-        let balance_sum = cb.query_word_rlc();
+        let balance_addend = cb.query_word32();
+        let balance_sum = cb.query_word32();
 
         let [value, value_prev] = if INCREASE {
             [balance_sum.expr(), balance_addend.expr()]
@@ -361,7 +361,7 @@ impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
         Self { add_words }
     }
 
-    pub(crate) fn balance(&self) -> &Word<F> {
+    pub(crate) fn balance(&self) -> &Word32Cell<F> {
         if INCREASE {
             self.add_words.sum()
         } else {
@@ -369,7 +369,7 @@ impl<F: Field, const N_ADDENDS: usize, const INCREASE: bool>
         }
     }
 
-    pub(crate) fn balance_prev(&self) -> &Word<F> {
+    pub(crate) fn balance_prev(&self) -> &Word32Cell<F> {
         if INCREASE {
             &self.add_words.addends()[0]
         } else {
@@ -439,7 +439,7 @@ impl<F: Field> TransferFromGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         sender_address: Expression<F>,
-        value: Word<F>,
+        value: Word32Cell<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
         let value_is_zero = cb.annotation("transfer from is zero value", |cb| {
@@ -457,7 +457,7 @@ impl<F: Field> TransferFromGadget<F> {
     pub(crate) fn construct_with_is_zero(
         cb: &mut EVMConstraintBuilder<F>,
         sender_address: Expression<F>,
-        value: Word<F>,
+        value: Word32Cell<F>,
         value_is_zero: Either<IsZeroGadget<F>, Expression<F>>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
@@ -524,8 +524,8 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         sender_address: Expression<F>,
-        value: Word<F>,
-        gas_fee: Word<F>,
+        value: Word32Cell<F>,
+        gas_fee: Word32Cell<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
         let value_is_zero = IsZeroGadget::construct(cb, value.expr());
@@ -542,8 +542,8 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
     pub(crate) fn construct_with_is_zero(
         cb: &mut EVMConstraintBuilder<F>,
         sender_address: Expression<F>,
-        value: Word<F>,
-        gas_fee: Word<F>,
+        value: Word32Cell<F>,
+        gas_fee: Word32Cell<F>,
         value_is_zero: Either<IsZeroGadget<F>, Expression<F>>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
@@ -673,7 +673,7 @@ impl<F: Field> TransferToGadget<F> {
         must_create: Expression<F>,
         prev_code_hash: Expression<F>,
         #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
-        value: Word<F>,
+        value: Word32Cell<F>,
         reversion_info: Option<&mut ReversionInfo<F>>,
     ) -> Self {
         let value_is_zero = cb.annotation("transfer to is zero value", |cb| {
@@ -701,7 +701,7 @@ impl<F: Field> TransferToGadget<F> {
         must_create: Expression<F>,
         prev_code_hash: Expression<F>,
         #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
-        value: Word<F>,
+        value: Word32Cell<F>,
         value_is_zero: Either<IsZeroGadget<F>, Expression<F>>,
         mut reversion_info: Option<&mut ReversionInfo<F>>,
     ) -> Self {
@@ -877,8 +877,8 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
         must_create: Expression<F>,
         prev_code_hash: Expression<F>,
         #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
-        value: Word<F>,
-        gas_fee: Word<F>,
+        value: Word32Cell<F>,
+        gas_fee: Word32Cell<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
         let value_is_zero = IsZeroGadget::construct(cb, value.expr());
@@ -920,7 +920,7 @@ impl<F: Field> TransferGadget<F> {
         must_create: Expression<F>,
         prev_code_hash: Expression<F>,
         #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
-        value: Word<F>,
+        value: Word32Cell<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {
         let value_is_zero = cb.annotation("transfer is zero value", |cb| {
@@ -1016,10 +1016,10 @@ impl<F: Field, G: TransferFromAssign<F> + TransferGadgetInfo<F>> TransferGadgetI
 pub(crate) struct CommonCallGadget<F, MemAddrGadget, const IS_SUCCESS_CALL: bool> {
     pub is_success: Cell<F>,
 
-    pub gas: Word<F>,
+    pub gas: Word32Cell<F>,
     pub gas_is_u64: IsZeroGadget<F>,
-    pub callee_address: Word<F>,
-    pub value: Word<F>,
+    pub callee_address: Word32Cell<F>,
+    pub value: Word32Cell<F>,
     pub cd_address: MemAddrGadget,
     pub rd_address: MemAddrGadget,
     pub memory_expansion: MemoryExpansionGadget<F, 2, N_BYTES_MEMORY_WORD_SIZE>,
@@ -1055,9 +1055,9 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
             1.expr(),
         );
 
-        let gas_word = cb.query_word_rlc();
-        let callee_address_word = cb.query_word_rlc();
-        let value = cb.query_word_rlc();
+        let gas_word = cb.query_word32();
+        let callee_address_word = cb.query_word32();
+        let value = cb.query_word32();
         let is_success = cb.query_bool();
 
         let cd_address = MemAddrGadget::construct_self(cb);
@@ -1089,14 +1089,14 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         });
 
         // Recomposition of random linear combination to integer
-        let gas_is_u64 = IsZeroGadget::construct(cb, sum::expr(&gas_word.cells[N_BYTES_GAS..]));
+        let gas_is_u64 = IsZeroGadget::construct(cb, sum::expr(&gas_word.limbs[N_BYTES_GAS..]));
         let memory_expansion = MemoryExpansionGadget::construct(
             cb,
             [cd_address.end_offset(), rd_address.end_offset()],
         );
 
         // construct common gadget
-        let value_is_zero = IsZeroGadget::construct(cb, sum::expr(&value.cells));
+        let value_is_zero = IsZeroGadget::construct(cb, sum::expr(&value.limbs));
         let has_value = select::expr(
             is_delegatecall.expr() + is_staticcall.expr(),
             0.expr(),
@@ -1105,7 +1105,7 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
 
         let phase2_callee_code_hash = cb.query_cell_with_type(CellType::StoragePhase2);
         cb.account_read(
-            from_bytes::expr(&callee_address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]),
+            from_bytes::expr(&callee_address_word.limbs[..N_BYTES_ACCOUNT_ADDRESS]),
             AccountFieldTag::CodeHash,
             phase2_callee_code_hash.expr(),
         );
@@ -1135,11 +1135,11 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
     }
 
     pub fn callee_address_expr(&self) -> Expression<F> {
-        from_bytes::expr(&self.callee_address.cells[..N_BYTES_ACCOUNT_ADDRESS])
+        from_bytes::expr(&self.callee_address.limbs[..N_BYTES_ACCOUNT_ADDRESS])
     }
 
     pub fn gas_expr(&self) -> Expression<F> {
-        from_bytes::expr(&self.gas.cells[..N_BYTES_GAS])
+        from_bytes::expr(&self.gas.limbs[..N_BYTES_GAS])
     }
 
     pub fn gas_cost_expr(
@@ -1558,7 +1558,7 @@ impl<F: Field, const VALID_BYTES: usize> WordByteCapGadget<F, VALID_BYTES> {
         self.lt_cap.expr()
     }
 
-    pub(crate) fn original_ref(&self) -> &Word<F> {
+    pub(crate) fn original_ref(&self) -> &Word32Cell<F> {
         self.word.original_ref()
     }
 
@@ -1582,7 +1582,7 @@ impl<F: Field, const VALID_BYTES: usize> WordByteCapGadget<F, VALID_BYTES> {
 /// Check if the passed in word is within the specified byte range (not overflow).
 #[derive(Clone, Debug)]
 pub(crate) struct WordByteRangeGadget<F, const VALID_BYTES: usize> {
-    original: Word<F>,
+    original: Word32Cell<F>,
     not_overflow: IsZeroGadget<F>,
 }
 
@@ -1590,8 +1590,8 @@ impl<F: Field, const VALID_BYTES: usize> WordByteRangeGadget<F, VALID_BYTES> {
     pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>) -> Self {
         debug_assert!(VALID_BYTES < 32);
 
-        let original = cb.query_word_rlc();
-        let not_overflow = IsZeroGadget::construct(cb, sum::expr(&original.cells[VALID_BYTES..]));
+        let original = cb.query_word32();
+        let not_overflow = IsZeroGadget::construct(cb, sum::expr(&original.limbs[VALID_BYTES..]));
 
         Self {
             original,
@@ -1618,7 +1618,7 @@ impl<F: Field, const VALID_BYTES: usize> WordByteRangeGadget<F, VALID_BYTES> {
         Ok(overflow_hi == 0)
     }
 
-    pub(crate) fn original_ref(&self) -> &Word<F> {
+    pub(crate) fn original_ref(&self) -> &Word32Cell<F> {
         &self.original
     }
 
@@ -1631,7 +1631,7 @@ impl<F: Field, const VALID_BYTES: usize> WordByteRangeGadget<F, VALID_BYTES> {
     }
 
     pub(crate) fn valid_value(&self) -> Expression<F> {
-        from_bytes::expr(&self.original.cells[..VALID_BYTES])
+        from_bytes::expr(&self.original.limbs[..VALID_BYTES])
     }
 
     pub(crate) fn not_overflow(&self) -> Expression<F> {
@@ -1657,12 +1657,12 @@ impl<F: Field> CommonReturnDataCopyGadget<F> {
         return_data_length: Expression<F>,
         is_overflow: Expression<F>,
     ) -> Self {
-        let data_offset = cb.query_word_rlc();
-        let size_word = cb.query_word_rlc();
-        let remainder_end = cb.query_word_rlc();
+        let data_offset = cb.query_word32();
+        let size_word = cb.query_word32();
+        let remainder_end = cb.query_word32();
 
         // Check if `data_offset` is Uint64 overflow.
-        let data_offset_larger_u64 = sum::expr(&data_offset.cells[N_BYTES_U64..]);
+        let data_offset_larger_u64 = sum::expr(&data_offset.limbs[N_BYTES_U64..]);
         let is_data_offset_within_u64 = IsZeroGadget::construct(cb, data_offset_larger_u64);
 
         let sum: AddWordsGadget<F, 2, false> =
@@ -1671,14 +1671,14 @@ impl<F: Field> CommonReturnDataCopyGadget<F> {
         // Need to check if `data_offset + size` is U256 overflow via `AddWordsGadget` carry. If
         // yes, it should be also an error of return data out of bound.
         let is_end_u256_overflow = sum.carry().as_ref().unwrap();
-        let remainder_end_larger_u64 = sum::expr(&remainder_end.cells[N_BYTES_U64..]);
+        let remainder_end_larger_u64 = sum::expr(&remainder_end.limbs[N_BYTES_U64..]);
         let is_remainder_end_within_u64 = IsZeroGadget::construct(cb, remainder_end_larger_u64);
 
         // check if `remainder_end` exceeds return data length.
         let is_remainder_end_exceed_len = LtGadget::construct(
             cb,
             return_data_length.expr(),
-            from_bytes::expr(&remainder_end.cells[..N_BYTES_U64]),
+            from_bytes::expr(&remainder_end.limbs[..N_BYTES_U64]),
         );
 
         // enusre it is expected overflow condition.
@@ -1706,12 +1706,12 @@ impl<F: Field> CommonReturnDataCopyGadget<F> {
     }
 
     /// the first addend is data_offset
-    pub(crate) fn data_offset(&self) -> &Word<F> {
+    pub(crate) fn data_offset(&self) -> &Word32Cell<F> {
         &self.sum.addends()[0]
     }
 
     /// the second added is size
-    pub(crate) fn size(&self) -> &Word<F> {
+    pub(crate) fn size(&self) -> &Word32Cell<F> {
         &self.sum.addends()[1]
     }
 

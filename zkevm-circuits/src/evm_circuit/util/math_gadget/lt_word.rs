@@ -16,18 +16,18 @@ pub struct LtWordGadget<F> {
 impl<F: Field> LtWordGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        lhs: &util::Word<F>,
-        rhs: &util::Word<F>,
+        lhs: &util::Word32Cell<F>,
+        rhs: &util::Word32Cell<F>,
     ) -> Self {
         let comparison_hi = ComparisonGadget::construct(
             cb,
-            from_bytes::expr(&lhs.cells[16..]),
-            from_bytes::expr(&rhs.cells[16..]),
+            from_bytes::expr(&lhs.limbs[16..]),
+            from_bytes::expr(&rhs.limbs[16..]),
         );
         let lt_lo = LtGadget::construct(
             cb,
-            from_bytes::expr(&lhs.cells[..16]),
-            from_bytes::expr(&rhs.cells[..16]),
+            from_bytes::expr(&lhs.limbs[..16]),
+            from_bytes::expr(&rhs.limbs[..16]),
         );
         Self {
             comparison_hi,
@@ -77,14 +77,14 @@ mod tests {
     /// LtWordTestContainer: require(a < b)
     struct LtWordTestContainer<F> {
         ltword_gadget: LtWordGadget<F>,
-        a: util::Word<F>,
-        b: util::Word<F>,
+        a: util::Word32Cell<F>,
+        b: util::Word32Cell<F>,
     }
 
     impl<F: Field> MathGadgetContainer<F> for LtWordTestContainer<F> {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
-            let a = cb.query_word_rlc();
-            let b = cb.query_word_rlc();
+            let a = cb.query_word32();
+            let b = cb.query_word32();
             let ltword_gadget = LtWordGadget::<F>::construct(cb, &a, &b);
             cb.require_equal("a < b", ltword_gadget.expr(), 1.expr());
             LtWordTestContainer {

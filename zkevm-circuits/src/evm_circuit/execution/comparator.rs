@@ -7,7 +7,7 @@ use crate::{
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
             from_bytes,
             math_gadget::{ComparisonGadget, IsEqualGadget},
-            select, CachedRegion, Cell, Word,
+            select, CachedRegion, Cell, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -19,8 +19,8 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 #[derive(Clone, Debug)]
 pub(crate) struct ComparatorGadget<F> {
     same_context: SameContextGadget<F>,
-    a: Word<F>,
-    b: Word<F>,
+    a: Word32Cell<F>,
+    b: Word32Cell<F>,
     result: Cell<F>,
     comparison_lo: ComparisonGadget<F, 16>,
     comparison_hi: ComparisonGadget<F, 16>,
@@ -36,8 +36,8 @@ impl<F: Field> ExecutionGadget<F> for ComparatorGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
-        let a = cb.query_word_rlc();
-        let b = cb.query_word_rlc();
+        let a = cb.query_word32();
+        let b = cb.query_word32();
 
         // Check if opcode is EQ
         let is_eq = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::EQ.expr());
@@ -48,16 +48,16 @@ impl<F: Field> ExecutionGadget<F> for ComparatorGadget<F> {
         // `a[0..16] <= b[0..16]`
         let comparison_lo = ComparisonGadget::construct(
             cb,
-            from_bytes::expr(&a.cells[0..16]),
-            from_bytes::expr(&b.cells[0..16]),
+            from_bytes::expr(&a.limbs[0..16]),
+            from_bytes::expr(&b.limbs[0..16]),
         );
         let (lt_lo, eq_lo) = comparison_lo.expr();
 
         // `a[16..32] <= b[16..32]`
         let comparison_hi = ComparisonGadget::construct(
             cb,
-            from_bytes::expr(&a.cells[16..32]),
-            from_bytes::expr(&b.cells[16..32]),
+            from_bytes::expr(&a.limbs[16..32]),
+            from_bytes::expr(&b.limbs[16..32]),
         );
         let (lt_hi, eq_hi) = comparison_hi.expr();
 

@@ -11,7 +11,7 @@ use crate::{
             },
             from_bytes,
             math_gadget::IsZeroGadget,
-            not, select, CachedRegion, Cell, Word,
+            not, select, CachedRegion, Cell, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -24,7 +24,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
     same_context: SameContextGadget<F>,
-    address_word: Word<F>,
+    address_word: Word32Cell<F>,
     reversion_info: ReversionInfo<F>,
     tx_id: Cell<F>,
     is_warm: Cell<F>,
@@ -39,8 +39,8 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::BALANCE;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let address_word = cb.query_word_rlc();
-        let address = from_bytes::expr(&address_word.cells[..N_BYTES_ACCOUNT_ADDRESS]);
+        let address_word = cb.query_word32();
+        let address = from_bytes::expr(&address_word.limbs[..N_BYTES_ACCOUNT_ADDRESS]);
         cb.stack_pop(address_word.expr());
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);

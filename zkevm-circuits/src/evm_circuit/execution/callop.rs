@@ -16,7 +16,7 @@ use crate::{
             memory_gadget::{CommonMemoryAddressGadget, MemoryAddressGadget},
             not, or,
             precompile_gadget::PrecompileGadget,
-            rlc, select, CachedRegion, Cell, StepRws, Word,
+            rlc, select, CachedRegion, Cell, StepRws, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -54,7 +54,7 @@ pub(crate) struct CallOpGadget<F> {
     is_static: Cell<F>,
     depth: Cell<F>,
     call: CommonCallGadget<F, MemoryAddressGadget<F>, true>,
-    current_value: Word<F>,
+    current_value: Word32Cell<F>,
     is_warm: Cell<F>,
     is_warm_prev: Cell<F>,
     callee_reversion_info: ReversionInfo<F>,
@@ -63,7 +63,7 @@ pub(crate) struct CallOpGadget<F> {
     #[cfg(feature = "scroll")]
     keccak_code_hash_previous: Cell<F>,
     // current handling Call* opcode's caller balance
-    caller_balance_word: Word<F>,
+    caller_balance_word: Word32Cell<F>,
     // check if insufficient balance case
     is_insufficient_balance: LtWordGadget<F>,
     is_depth_ok: LtGadget<F, N_BYTES_U64>,
@@ -187,7 +187,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             );
         });
 
-        let caller_balance_word = cb.query_word_rlc();
+        let caller_balance_word = cb.query_word32();
         cb.account_read(
             caller_address.expr(),
             AccountFieldTag::Balance,

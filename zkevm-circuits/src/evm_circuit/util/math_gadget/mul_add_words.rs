@@ -50,7 +50,10 @@ pub(crate) struct MulAddWordsGadget<F> {
 }
 
 impl<F: Field> MulAddWordsGadget<F> {
-    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&util::Word<F>; 4]) -> Self {
+    pub(crate) fn construct(
+        cb: &mut EVMConstraintBuilder<F>,
+        words: [&util::Word32Cell<F>; 4],
+    ) -> Self {
         let (a, b, c, d) = (words[0], words[1], words[2], words[3]);
         let carry_lo = cb.query_bytes();
         let carry_hi = cb.query_bytes();
@@ -61,13 +64,13 @@ impl<F: Field> MulAddWordsGadget<F> {
         let mut b_limbs = vec![];
         for trunk in 0..4 {
             let idx = (trunk * 8) as usize;
-            a_limbs.push(from_bytes::expr(&a.cells[idx..idx + 8]));
-            b_limbs.push(from_bytes::expr(&b.cells[idx..idx + 8]));
+            a_limbs.push(from_bytes::expr(&a.limbs[idx..idx + 8]));
+            b_limbs.push(from_bytes::expr(&b.limbs[idx..idx + 8]));
         }
-        let c_lo = from_bytes::expr(&c.cells[0..16]);
-        let c_hi = from_bytes::expr(&c.cells[16..32]);
-        let d_lo = from_bytes::expr(&d.cells[0..16]);
-        let d_hi = from_bytes::expr(&d.cells[16..32]);
+        let c_lo = from_bytes::expr(&c.limbs[0..16]);
+        let c_hi = from_bytes::expr(&c.limbs[16..32]);
+        let d_lo = from_bytes::expr(&d.limbs[0..16]);
+        let d_hi = from_bytes::expr(&d.limbs[16..32]);
 
         let t0 = a_limbs[0].clone() * b_limbs[0].clone();
         let t1 = a_limbs[0].clone() * b_limbs[1].clone() + a_limbs[1].clone() * b_limbs[0].clone();
@@ -158,19 +161,19 @@ mod tests {
     /// MulAddGadgetContainer: require(a*b + c == d + carry*(2**256))
     struct MulAddGadgetContainer<F> {
         muladd_words_gadget: MulAddWordsGadget<F>,
-        a: util::Word<F>,
-        b: util::Word<F>,
-        c: util::Word<F>,
-        d: util::Word<F>,
+        a: util::Word32Cell<F>,
+        b: util::Word32Cell<F>,
+        c: util::Word32Cell<F>,
+        d: util::Word32Cell<F>,
         carry: Cell<F>,
     }
 
     impl<F: Field> MathGadgetContainer<F> for MulAddGadgetContainer<F> {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
-            let a = cb.query_word_rlc();
-            let b = cb.query_word_rlc();
-            let c = cb.query_word_rlc();
-            let d = cb.query_word_rlc();
+            let a = cb.query_word32();
+            let b = cb.query_word32();
+            let c = cb.query_word32();
+            let d = cb.query_word32();
             let carry = cb.query_cell();
             let math_gadget = MulAddWordsGadget::<F>::construct(cb, [&a, &b, &c, &d]);
             cb.require_equal("carry is correct", math_gadget.overflow(), carry.expr());

@@ -193,18 +193,18 @@ mod tests {
     /// ByteSizeGadgetContainer: require(N = byte_size(a))
     struct ByteSizeGadgetContainerM<F, const N: u8, const TEST_MSB: bool = false> {
         bytesize_gadget: ByteSizeGadget<F>,
-        a: util::Word<F>,
+        a: util::Word32Cell<F>,
     }
 
     impl<F: Field, const N: u8, const TEST_MSB: bool> MathGadgetContainer<F>
         for ByteSizeGadgetContainerM<F, N, TEST_MSB>
     {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
-            let value_rlc = cb.query_word_rlc();
+            let value_rlc = cb.query_word32();
             let bytesize_gadget = ByteSizeGadget::<F>::construct(
                 cb,
                 value_rlc
-                    .cells
+                    .limbs
                     .iter()
                     .map(Expr::expr)
                     .collect::<Vec<_>>()

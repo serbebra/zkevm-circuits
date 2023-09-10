@@ -21,28 +21,23 @@ use halo2_proofs::plonk::Error;
 /// this equation assures that r<n or r=n=0.
 #[derive(Clone, Debug)]
 pub(crate) struct ModGadget<F, const IS_EVM: bool> {
-    k: util::Word<F>,
-    a_or_zero: util::Word<F>,
+    k: util::Word32Cell<F>,
+    a_or_zero: util::Word32Cell<F>,
     mul_add_words: MulAddWordsGadget<F>,
     n_is_zero: IsZeroGadget<F>,
     a_or_is_zero: IsZeroGadget<F>,
     lt: LtWordGadget<F>,
 }
 impl<F: Field, const IS_EVM: bool> ModGadget<F, IS_EVM> {
-    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&util::Word<F>; 3]) -> Self {
+    pub(crate) fn construct(
+        cb: &mut EVMConstraintBuilder<F>,
+        words: [&util::Word32Cell<F>; 3],
+    ) -> Self {
         let (a, n, r) = (words[0], words[1], words[2]);
-        let k = if IS_EVM {
-            cb.query_word_rlc()
-        } else {
-            cb.query_keccak_rlc()
-        };
-        let a_or_zero = if IS_EVM {
-            cb.query_word_rlc()
-        } else {
-            cb.query_keccak_rlc()
-        };
-        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.cells));
-        let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.cells));
+        let k = cb.query_word32();
+        let a_or_zero = cb.query_word32();
+        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.limbs));
+        let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.limbs));
         let mul_add_words = MulAddWordsGadget::construct(cb, [&k, n, r, &a_or_zero]);
         let lt = LtWordGadget::construct(cb, r, n);
         // Constrain the aux variable a_or_zero to be =a or =0 if n==0:
@@ -108,16 +103,16 @@ mod tests {
     /// ModGadgetTestContainer: require(a % n == r)
     struct ModGadgetTestContainer<F> {
         mod_gadget: ModGadget<F, true>,
-        a: util::Word<F>,
-        n: util::Word<F>,
-        r: util::Word<F>,
+        a: util::Word32Cell<F>,
+        n: util::Word32Cell<F>,
+        r: util::Word32Cell<F>,
     }
 
     impl<F: Field> MathGadgetContainer<F> for ModGadgetTestContainer<F> {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
-            let a = cb.query_word_rlc();
-            let n = cb.query_word_rlc();
-            let r = cb.query_word_rlc();
+            let a = cb.query_word32();
+            let n = cb.query_word32();
+            let r = cb.query_word32();
             let mod_gadget = ModGadget::construct(cb, [&a, &n, &r]);
             ModGadgetTestContainer {
                 mod_gadget,

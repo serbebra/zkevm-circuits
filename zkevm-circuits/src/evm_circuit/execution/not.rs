@@ -9,7 +9,7 @@ use crate::{
                 EVMConstraintBuilder, StepStateTransition,
                 Transition::{Delta, Same},
             },
-            CachedRegion, Word,
+            CachedRegion, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -21,8 +21,8 @@ use halo2_proofs::plonk::Error;
 #[derive(Clone, Debug)]
 pub(crate) struct NotGadget<F> {
     same_context: SameContextGadget<F>,
-    input: Word<F>,
-    output: Word<F>,
+    input: Word32Cell<F>,
+    output: Word32Cell<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for NotGadget<F> {
@@ -33,13 +33,13 @@ impl<F: Field> ExecutionGadget<F> for NotGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
-        let input = cb.query_word_rlc();
-        let output = cb.query_word_rlc();
+        let input = cb.query_word32();
+        let output = cb.query_word32();
 
         cb.stack_pop(input.expr());
         cb.stack_push(output.expr());
 
-        for (i, o) in input.cells.iter().zip(output.cells.iter()) {
+        for (i, o) in input.limbs.iter().zip(output.limbs.iter()) {
             cb.add_lookup(
                 "input XOR output is all 1's",
                 Lookup::Fixed {

@@ -12,7 +12,7 @@ use crate::{
                 AddWordsGadget, CmpWordsGadget, IsZeroGadget, MulAddWords512Gadget,
                 MulAddWordsGadget,
             },
-            not, CachedRegion, Word,
+            not, CachedRegion, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -27,19 +27,19 @@ use halo2_proofs::plonk::Error;
 pub(crate) struct AddModGadget<F> {
     same_context: SameContextGadget<F>,
 
-    a: Word<F>,
-    b: Word<F>,
-    r: Word<F>,
-    n: Word<F>,
+    a: Word32Cell<F>,
+    b: Word32Cell<F>,
+    r: Word32Cell<F>,
+    n: Word32Cell<F>,
 
-    k: Word<F>,
-    d: Word<F>,
-    a_reduced: Word<F>,
+    k: Word32Cell<F>,
+    d: Word32Cell<F>,
+    a_reduced: Word32Cell<F>,
 
     muladd_k_n_areduced: MulAddWordsGadget<F>,
 
     sum_areduced_b: AddWordsGadget<F, 2, false>,
-    sum_areduced_b_overflow: Word<F>,
+    sum_areduced_b_overflow: Word32Cell<F>,
     muladd_d_n_r: MulAddWords512Gadget<F>,
 
     n_is_zero: IsZeroGadget<F>,
@@ -56,15 +56,15 @@ impl<F: Field> ExecutionGadget<F> for AddModGadget<F> {
         let opcode = cb.query_cell();
 
         // values got from stack (original r is modified if n==0)
-        let a = cb.query_word_rlc();
-        let b = cb.query_word_rlc();
-        let n = cb.query_word_rlc();
-        let r = cb.query_word_rlc();
+        let a = cb.query_word32();
+        let b = cb.query_word32();
+        let n = cb.query_word32();
+        let r = cb.query_word32();
 
         // auxiliar witness
-        let k = cb.query_word_rlc();
-        let a_reduced = cb.query_word_rlc();
-        let d = cb.query_word_rlc();
+        let k = cb.query_word32();
+        let a_reduced = cb.query_word32();
+        let d = cb.query_word32();
 
         let n_is_zero = IsZeroGadget::construct(cb, n.clone().expr());
 
@@ -77,10 +77,10 @@ impl<F: Field> ExecutionGadget<F> for AddModGadget<F> {
 
         // 2. check d * N + r == a_reduced + b, only checking carry if n != 0
         let sum_areduced_b = {
-            let sum = cb.query_word_rlc();
+            let sum = cb.query_word32();
             AddWordsGadget::construct(cb, [a_reduced.clone(), b.clone()], sum)
         };
-        let sum_areduced_b_overflow = cb.query_word_rlc();
+        let sum_areduced_b_overflow = cb.query_word32();
         let muladd_d_n_r = MulAddWords512Gadget::construct(
             cb,
             [&d, &n, &sum_areduced_b_overflow, sum_areduced_b.sum()],

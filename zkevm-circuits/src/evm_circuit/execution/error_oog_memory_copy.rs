@@ -12,7 +12,7 @@ use crate::{
                 CommonMemoryAddressGadget, MemoryCopierGasGadget, MemoryExpandedAddressGadget,
                 MemoryExpansionGadget,
             },
-            or, select, CachedRegion, Cell, Word,
+            or, select, CachedRegion, Cell, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -35,9 +35,9 @@ pub(crate) struct ErrorOOGMemoryCopyGadget<F> {
     is_warm: Cell<F>,
     tx_id: Cell<F>,
     /// Extra stack pop for `EXTCODECOPY`
-    external_address: Word<F>,
+    external_address: Word32Cell<F>,
     /// Source offset
-    src_offset: Word<F>,
+    src_offset: Word32Cell<F>,
     /// Destination offset and size to copy
     dst_memory_addr: MemoryExpandedAddressGadget<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
@@ -65,8 +65,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGMemoryCopyGadget<F> {
             ],
         );
 
-        let src_offset = cb.query_word_rlc();
-        let external_address = cb.query_word_rlc();
+        let src_offset = cb.query_word32();
+        let external_address = cb.query_word32();
         let is_warm = cb.query_bool();
         let tx_id = cb.query_cell();
 
@@ -79,7 +79,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGMemoryCopyGadget<F> {
             // Check if EXTCODECOPY external address is warm.
             cb.account_access_list_read(
                 tx_id.expr(),
-                from_bytes::expr(&external_address.cells[..N_BYTES_ACCOUNT_ADDRESS]),
+                from_bytes::expr(&external_address.limbs[..N_BYTES_ACCOUNT_ADDRESS]),
                 is_warm.expr(),
             );
 

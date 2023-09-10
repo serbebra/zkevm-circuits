@@ -16,28 +16,28 @@ use halo2_proofs::{
 /// which disallows overflow.
 #[derive(Clone, Debug)]
 pub(crate) struct MulWordByU64Gadget<F> {
-    multiplicand: util::Word<F>,
-    product: util::Word<F>,
+    multiplicand: util::Word32Cell<F>,
+    product: util::Word32Cell<F>,
     carry_lo: [util::Cell<F>; 8],
 }
 
 impl<F: Field> MulWordByU64Gadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        multiplicand: util::Word<F>,
+        multiplicand: util::Word32Cell<F>,
         multiplier: Expression<F>,
     ) -> Self {
         let gadget = Self {
             multiplicand,
-            product: cb.query_word_rlc(),
+            product: cb.query_word32(),
             carry_lo: cb.query_bytes(),
         };
 
-        let multiplicand_lo = from_bytes::expr(&gadget.multiplicand.cells[..16]);
-        let multiplicand_hi = from_bytes::expr(&gadget.multiplicand.cells[16..]);
+        let multiplicand_lo = from_bytes::expr(&gadget.multiplicand.limbs[..16]);
+        let multiplicand_hi = from_bytes::expr(&gadget.multiplicand.limbs[16..]);
 
-        let product_lo = from_bytes::expr(&gadget.product.cells[..16]);
-        let product_hi = from_bytes::expr(&gadget.product.cells[16..]);
+        let product_lo = from_bytes::expr(&gadget.product.limbs[..16]);
+        let product_hi = from_bytes::expr(&gadget.product.limbs[16..]);
 
         let carry_lo = from_bytes::expr(&gadget.carry_lo[..8]);
 
@@ -85,7 +85,7 @@ impl<F: Field> MulWordByU64Gadget<F> {
         Ok(())
     }
 
-    pub(crate) fn product(&self) -> &util::Word<F> {
+    pub(crate) fn product(&self) -> &util::Word32Cell<F> {
         &self.product
     }
 }
@@ -101,16 +101,16 @@ mod tests {
     /// MulWordByU64TestContainer: require(product = a*(b as u64))
     struct MulWordByU64TestContainer<F> {
         mulwords_u64_gadget: MulWordByU64Gadget<F>,
-        a: util::Word<F>,
+        a: util::Word32Cell<F>,
         b: Cell<F>,
-        product: util::Word<F>,
+        product: util::Word32Cell<F>,
     }
 
     impl<F: Field> MathGadgetContainer<F> for MulWordByU64TestContainer<F> {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
-            let a = cb.query_word_rlc();
+            let a = cb.query_word32();
             let b = cb.query_cell();
-            let product = cb.query_word_rlc();
+            let product = cb.query_word32();
             let mulwords_u64_gadget = MulWordByU64Gadget::<F>::construct(cb, a.clone(), b.expr());
             MulWordByU64TestContainer {
                 mulwords_u64_gadget,

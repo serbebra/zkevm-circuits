@@ -29,7 +29,7 @@ use halo2_proofs::plonk::Error;
 pub(crate) struct MulDivModGadget<F> {
     same_context: SameContextGadget<F>,
     /// Words a, b, c, d
-    pub words: [util::Word<F>; 4],
+    pub words: [util::Word32Cell<F>; 4],
     /// Gadget that verifies a * b + c = d
     mul_add_words: MulAddWordsGadget<F>,
     /// Check if divisor is zero for DIV and MOD
@@ -55,13 +55,13 @@ impl<F: Field> ExecutionGadget<F> for MulDivModGadget<F> {
         let is_mod = (opcode.expr() - OpcodeId::MUL.expr())
             * (opcode.expr() - OpcodeId::DIV.expr())
             * F::from(8).invert().unwrap();
-        let a = cb.query_word_rlc();
-        let b = cb.query_word_rlc();
-        let c = cb.query_word_rlc();
-        let d = cb.query_word_rlc();
+        let a = cb.query_word32();
+        let b = cb.query_word32();
+        let c = cb.query_word32();
+        let d = cb.query_word32();
 
         let mul_add_words = MulAddWordsGadget::construct(cb, [&a, &b, &c, &d]);
-        let divisor_is_zero = IsZeroGadget::construct(cb, sum::expr(&b.cells));
+        let divisor_is_zero = IsZeroGadget::construct(cb, sum::expr(&b.limbs));
         let lt_word = LtWordGadget::construct(cb, &c, &b);
 
         // Pop a and b from the stack, push result on the stack
@@ -80,7 +80,7 @@ impl<F: Field> ExecutionGadget<F> for MulDivModGadget<F> {
         // Constraint for MUL case
         cb.add_constraint(
             "c == 0 for opcode MUL",
-            is_mul.clone() * sum::expr(&c.cells),
+            is_mul.clone() * sum::expr(&c.limbs),
         );
 
         // Constraints for DIV and MOD cases

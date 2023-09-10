@@ -11,7 +11,7 @@ use crate::{
                 Transition::Delta,
             },
             math_gadget::{IsZeroGadget, LtGadget},
-            not, or, select, sum, CachedRegion, Cell, Word,
+            not, or, select, sum, CachedRegion, Cell, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -25,7 +25,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 pub(crate) struct PushGadget<F> {
     same_context: SameContextGadget<F>,
     is_push0: IsZeroGadget<F>,
-    value: Word<F>,
+    value: Word32Cell<F>,
     is_pushed: [Cell<F>; 32],
     is_padding: [Cell<F>; 32],
     code_length: Cell<F>,
@@ -42,7 +42,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
 
         let is_push0 = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::PUSH0.expr());
 
-        let value = cb.query_word_rlc();
+        let value = cb.query_word32();
         cb.stack_push(value.expr());
 
         // Query selectors for each opcode_lookup whether byte in value needs to be pushed
@@ -80,7 +80,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
         for (idx, (is_pushed_cell, is_padding_cell)) in
             is_pushed.iter().zip(is_padding.iter()).enumerate()
         {
-            let byte = &value.cells[idx];
+            let byte = &value.limbs[idx];
             let index =
                 cb.curr.state.program_counter.expr() + num_bytes_needed.clone() - idx.expr();
 

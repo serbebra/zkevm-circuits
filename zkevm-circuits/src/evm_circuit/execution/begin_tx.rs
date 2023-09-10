@@ -17,7 +17,7 @@ use crate::{
                 ConstantDivisionGadget, ContractCreateGadget, IsEqualGadget, IsZeroGadget,
                 LtGadget, MulWordByU64Gadget, RangeCheckGadget,
             },
-            CachedRegion, Cell, StepRws, Word,
+            CachedRegion, Cell, StepRws, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -46,16 +46,16 @@ pub(crate) struct BeginTxGadget<F> {
     sender_nonce: Cell<F>,
     tx_nonce: Cell<F>,
     tx_gas: Cell<F>,
-    tx_gas_price: Word<F>,
+    tx_gas_price: Word32Cell<F>,
     mul_gas_fee_by_gas: MulWordByU64Gadget<F>,
-    tx_fee: Word<F>,
+    tx_fee: Word32Cell<F>,
     tx_caller_address: Cell<F>,
     tx_caller_address_is_zero: IsZeroGadget<F>,
     tx_callee_address: Cell<F>,
     tx_callee_address_is_zero: IsZeroGadget<F>,
     call_callee_address: Cell<F>,
     tx_is_create: Cell<F>,
-    tx_value: Word<F>,
+    tx_value: Word32Cell<F>,
     tx_call_data_length: Cell<F>,
     is_call_data_empty: IsZeroGadget<F>,
     tx_call_data_word_length: ConstantDivisionGadget<F, N_BYTES_U64>,
@@ -147,16 +147,14 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             l1_fee_cost.expr(),
         ); // rwc_delta += 1
 
-        cb.call_context_lookup(
-            1.expr(),
+        cb.call_context_lookup_write(
             Some(call_id.expr()),
             CallContextFieldTag::TxId,
             tx_id.expr(),
         ); // rwc_delta += 1
         let mut reversion_info = cb.reversion_info_write(None); // rwc_delta += 2
         let is_persistent = reversion_info.is_persistent();
-        cb.call_context_lookup(
-            1.expr(),
+        cb.call_context_lookup_write(
             Some(call_id.expr()),
             CallContextFieldTag::IsSuccess,
             is_persistent.expr(),
@@ -208,16 +206,16 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         // Calculate transaction gas fee
         let mul_gas_fee_by_gas =
             MulWordByU64Gadget::construct(cb, tx_gas_price.clone(), tx_gas.expr());
-        let tx_fee = cb.query_word_rlc();
+        let tx_fee = cb.query_word32();
         let l2_fee = select::expr(
             tx_l1_msg.is_l1_msg(),
             0.expr(),
-            from_bytes::expr(&mul_gas_fee_by_gas.product().cells[..16]),
+            from_bytes::expr(&mul_gas_fee_by_gas.product().limbs[..16]),
         );
         cb.require_equal(
             "tx_fee == l1_fee + l2_fee",
             l1_fee_cost + l2_fee,
-            from_bytes::expr(&tx_fee.cells[..16]),
+            from_bytes::expr(&tx_fee.limbs[..16]),
         );
 
         // a valid precompile address is: 1 <= addr <= 9 (addr != 0 && addr < 0xA)

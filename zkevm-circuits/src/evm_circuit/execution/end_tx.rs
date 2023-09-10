@@ -14,7 +14,7 @@ use crate::{
                 AddWordsGadget, ConstantDivisionGadget, IsEqualGadget, IsZeroGadget, MinMaxGadget,
                 MulWordByU64Gadget,
             },
-            CachedRegion, Cell, StepRws, Word,
+            CachedRegion, Cell, StepRws, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -39,7 +39,7 @@ pub(crate) struct EndTxGadget<F> {
     max_refund: ConstantDivisionGadget<F, N_BYTES_GAS>,
     refund: Cell<F>,
     effective_refund: MinMaxGadget<F, N_BYTES_GAS>,
-    effective_fee: Word<F>,
+    effective_fee: Word32Cell<F>,
     mul_gas_price_by_refund: MulWordByU64Gadget<F>,
     tx_caller_address: Cell<F>,
     tx_data_gas_cost: Cell<F>,
@@ -110,14 +110,14 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
 
         // Add gas_used * effective_tip to coinbase's balance
         let coinbase = cb.query_cell();
-        let base_fee = cb.query_word_rlc();
+        let base_fee = cb.query_word32();
         for (tag, value) in [
             (BlockContextFieldTag::Coinbase, coinbase.expr()),
             (BlockContextFieldTag::BaseFee, base_fee.expr()),
         ] {
             cb.block_lookup(tag.expr(), cb.curr.state.block_number.expr(), value);
         }
-        let effective_tip = cb.query_word_rlc();
+        let effective_tip = cb.query_word32();
         let sub_gas_price_by_base_fee =
             AddWordsGadget::construct(cb, [effective_tip.clone(), base_fee], tx_gas_price);
 
@@ -129,7 +129,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             )
         });
 
-        let effective_fee = cb.query_word_rlc();
+        let effective_fee = cb.query_word32();
 
         cb.condition(tx_is_l1msg.expr(), |cb| {
             cb.require_zero("l1fee is 0 for l1msg", tx_l1_fee.expr());
@@ -140,9 +140,9 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 + select::expr(
                     tx_is_l1msg.expr(),
                     0.expr(),
-                    from_bytes::expr(&mul_effective_tip_by_gas_used.product().cells[..16]),
+                    from_bytes::expr(&mul_effective_tip_by_gas_used.product().limbs[..16]),
                 ),
-            from_bytes::expr(&effective_fee.cells[..16]),
+            from_bytes::expr(&effective_fee.limbs[..16]),
         );
 
         cb.condition(tx_is_l1msg.expr(), |cb| {

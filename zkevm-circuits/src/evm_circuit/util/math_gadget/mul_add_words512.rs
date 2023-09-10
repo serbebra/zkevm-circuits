@@ -52,8 +52,8 @@ impl<F: Field> MulAddWords512Gadget<F> {
     /// Addend is the optional c.
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        words: [&util::Word<F>; 4],
-        addend: Option<&util::Word<F>>,
+        words: [&util::Word32Cell<F>; 4],
+        addend: Option<&util::Word32Cell<F>>,
     ) -> Self {
         let carry_0 = cb.query_bytes();
         let carry_1 = cb.query_bytes();
@@ -67,14 +67,14 @@ impl<F: Field> MulAddWords512Gadget<F> {
         let mut b_limbs = vec![];
         for trunk in 0..4 {
             let idx = (trunk * 8) as usize;
-            a_limbs.push(from_bytes::expr(&words[0].cells[idx..idx + 8]));
-            b_limbs.push(from_bytes::expr(&words[1].cells[idx..idx + 8]));
+            a_limbs.push(from_bytes::expr(&words[0].limbs[idx..idx + 8]));
+            b_limbs.push(from_bytes::expr(&words[1].limbs[idx..idx + 8]));
         }
 
-        let d_lo = from_bytes::expr(&words[2].cells[0..16]);
-        let d_hi = from_bytes::expr(&words[2].cells[16..32]);
-        let e_lo = from_bytes::expr(&words[3].cells[0..16]);
-        let e_hi = from_bytes::expr(&words[3].cells[16..32]);
+        let d_lo = from_bytes::expr(&words[2].limbs[0..16]);
+        let d_hi = from_bytes::expr(&words[2].limbs[16..32]);
+        let e_lo = from_bytes::expr(&words[3].limbs[0..16]);
+        let e_hi = from_bytes::expr(&words[3].limbs[16..32]);
 
         // Limb multiplication
         let t0 = a_limbs[0].clone() * b_limbs[0].clone();
@@ -93,8 +93,8 @@ impl<F: Field> MulAddWords512Gadget<F> {
         let t6 = a_limbs[3].clone() * b_limbs[3].clone();
 
         if let Some(c) = addend {
-            let c_lo = from_bytes::expr(&c.cells[0..16]);
-            let c_hi = from_bytes::expr(&c.cells[16..32]);
+            let c_lo = from_bytes::expr(&c.limbs[0..16]);
+            let c_hi = from_bytes::expr(&c.limbs[16..32]);
             cb.require_equal(
                 "(t0 + t1 ⋅ 2^64) + c_lo == e_lo + carry_0 ⋅ 2^128",
                 t0.expr() + t1.expr() * pow_of_two_expr(64) + c_lo,
@@ -203,20 +203,20 @@ mod tests {
     /// MulAddWords512GadgetContainer: require(a * b + c == d * 2**256 + e)
     struct MulAddWords512GadgetContainer<F> {
         math_gadget: MulAddWords512Gadget<F>,
-        a: util::Word<F>,
-        b: util::Word<F>,
-        d: util::Word<F>,
-        e: util::Word<F>,
-        addend: util::Word<F>,
+        a: util::Word32Cell<F>,
+        b: util::Word32Cell<F>,
+        d: util::Word32Cell<F>,
+        e: util::Word32Cell<F>,
+        addend: util::Word32Cell<F>,
     }
 
     impl<F: Field> MathGadgetContainer<F> for MulAddWords512GadgetContainer<F> {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
-            let a = cb.query_word_rlc();
-            let b = cb.query_word_rlc();
-            let d = cb.query_word_rlc();
-            let e = cb.query_word_rlc();
-            let addend = cb.query_word_rlc();
+            let a = cb.query_word32();
+            let b = cb.query_word32();
+            let d = cb.query_word32();
+            let e = cb.query_word32();
+            let addend = cb.query_word32();
             let math_gadget =
                 MulAddWords512Gadget::<F>::construct(cb, [&a, &b, &d, &e], Some(&addend));
             MulAddWords512GadgetContainer {

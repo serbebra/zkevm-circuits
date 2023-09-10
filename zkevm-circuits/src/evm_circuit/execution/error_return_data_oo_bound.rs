@@ -5,7 +5,7 @@ use crate::{
         util::{
             common_gadget::{CommonErrorGadget, CommonReturnDataCopyGadget},
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-            CachedRegion, Cell, Word,
+            CachedRegion, Cell, Word32Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -18,7 +18,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorReturnDataOutOfBoundGadget<F> {
     opcode: Cell<F>,
-    memory_offset: Word<F>,
+    memory_offset: Word32Cell<F>,
     // Hold the size of the last callee return data.
     return_data_length: Cell<F>,
     overflow_gadget: CommonReturnDataCopyGadget<F>,
@@ -32,7 +32,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorReturnDataOutOfBoundGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-        let memory_offset = cb.query_word_rlc();
+        let memory_offset = cb.query_word32();
         let return_data_length = cb.query_cell();
 
         cb.require_equal(

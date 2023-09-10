@@ -231,20 +231,20 @@ pub(crate) struct MemoryExpandedAddressGadget<F> {
 
 impl<F: Field> CommonMemoryAddressGadget<F> for MemoryExpandedAddressGadget<F> {
     fn construct_self(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let offset = cb.query_word_rlc();
-        let length = cb.query_word_rlc();
-        let sum = cb.query_word_rlc();
+        let offset = cb.query_word32();
+        let length = cb.query_word32();
+        let sum = cb.query_word32();
 
         let sum_lt_cap = LtGadget::construct(
             cb,
-            from_bytes::expr(&sum.cells[..N_BYTES_U64]),
+            from_bytes::expr(&sum.limbs[..N_BYTES_U64]),
             (MAX_EXPANDED_MEMORY_ADDRESS + 1).expr(),
         );
 
-        let sum_overflow_hi = sum::expr(&sum.cells[N_BYTES_U64..]);
+        let sum_overflow_hi = sum::expr(&sum.limbs[N_BYTES_U64..]);
         let sum_within_u64 = IsZeroGadget::construct(cb, sum_overflow_hi);
 
-        let length_is_zero = IsZeroGadget::construct(cb, sum::expr(&length.cells));
+        let length_is_zero = IsZeroGadget::construct(cb, sum::expr(&length.limbs));
         let offset_length_sum = AddWordsGadget::construct(cb, [offset, length], sum);
 
         Self {
@@ -313,7 +313,7 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryExpandedAddressGadget<F> {
         let addends = self.offset_length_sum.addends();
         select::expr(
             self.within_range(),
-            from_bytes::expr(&addends[1].cells[..N_BYTES_U64]),
+            from_bytes::expr(&addends[1].limbs[..N_BYTES_U64]),
             0.expr(),
         )
     }
@@ -325,7 +325,7 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryExpandedAddressGadget<F> {
             0.expr(),
             select::expr(
                 self.within_range(),
-                from_bytes::expr(&self.offset_length_sum.sum().cells[..N_BYTES_U64]),
+                from_bytes::expr(&self.offset_length_sum.sum().limbs[..N_BYTES_U64]),
                 0.expr(),
             ),
         )
