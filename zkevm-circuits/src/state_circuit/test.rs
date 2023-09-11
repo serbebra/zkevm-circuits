@@ -1031,6 +1031,53 @@ fn variadic_size_check() {
 }
 
 #[test]
+fn variadic_size_check_with_default_padding() {
+    let rows = vec![
+        Rw::Stack {
+            rw_counter: 24,
+            is_write: true,
+            call_id: 1,
+            stack_pointer: 1022,
+            value: U256::from(394500u64),
+        },
+        Rw::Stack {
+            rw_counter: 25,
+            is_write: false,
+            call_id: 1,
+            stack_pointer: 1022,
+            value: U256::from(394500u64),
+        },
+    ];
+
+    let updates = MptUpdates::mock_from(&rows);
+    let circuit = StateCircuit::<Fr> {
+        rows: rows,
+        updates,
+        overrides: HashMap::default(),
+        n_rows: 2,
+        exports: Default::default(),
+        _marker: std::marker::PhantomData::default(),
+    };
+    let power_of_randomness = circuit.instance();
+    let prover1 = MockProver::<Fr>::run(17, &circuit, power_of_randomness).unwrap();
+
+    let updates = MptUpdates::mock_from(&vec![]);
+    let circuit = StateCircuit::<Fr> {
+        rows: vec![],
+        updates,
+        overrides: HashMap::default(),
+        n_rows: 2,
+        exports: Default::default(),
+        _marker: std::marker::PhantomData::default(),
+    };
+    let power_of_randomness = circuit.instance();
+    let prover2 = MockProver::<Fr>::run(17, &circuit, power_of_randomness).unwrap();
+
+    assert_eq!(prover1.fixed(), prover2.fixed());
+    assert_eq!(prover1.permutation(), prover2.permutation());
+}
+
+#[test]
 #[ignore = "TxReceipt constraints not yet implemented"]
 fn bad_initial_tx_receipt_value() {
     let rows = vec![Rw::TxReceipt {
