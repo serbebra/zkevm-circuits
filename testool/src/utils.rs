@@ -161,7 +161,7 @@ pub fn current_git_commit() -> Result<String> {
         .output()
         .unwrap();
     let git_hash = String::from_utf8(output.stdout).unwrap();
-    let git_hash = git_hash[..7].to_string();
+    let git_hash = git_hash[..7.min(git_hash.len())].to_string();
     Ok(git_hash)
 }
 
@@ -177,7 +177,7 @@ pub fn current_submodule_git_commit() -> Result<String> {
         .next()
     {
         Some(git_hash) => Ok(git_hash.to_string()),
-        None => bail!("unknown submodule hash"),
+        None => Ok("".to_string()),
     }
 }
 

@@ -18,15 +18,16 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fs::File,
-    io::{BufRead, BufReader, Write},
-    path::PathBuf,
+    io::{BufRead, BufReader, Read, Write},
+    path::{Path, PathBuf},
     time::SystemTime,
 };
 use strum::EnumString;
 
-const REPORT_FOLDER: &str = "report";
+const REPORT_FOLDER: &str = "./report";
 const CODEHASH_FILE: &str = "./codehash.txt";
 const TEST_IDS_FILE: &str = "./test_ids.txt";
+const EXPORT_INDEX_FILE: &str = "/opt/export";
 
 #[macro_use]
 extern crate prettytable;
@@ -91,7 +92,20 @@ struct Args {
     v: bool,
 }
 
-fn read_test_ids(file_path: &str) -> Result<Vec<String>> {
+fn read_export_index() -> usize {
+    log::info!("read_export_index from {}", EXPORT_INDEX_FILE);
+
+    let mut buf = String::new();
+    let mut fd = std::fs::File::open(EXPORT_INDEX_FILE).unwrap();
+    fd.read_to_string(&mut buf).unwrap();
+
+    let index = buf.split('=').last().unwrap().trim().parse().unwrap();
+    log::info!("read_export_index index = {}", index);
+
+    index
+}
+
+fn read_test_ids(file_path: &str) -> Result<(Vec<String>, String)> {
     log::info!("read_test_ids from {}", file_path);
     let mut test_ids = vec![];
     let file = File::open(file_path)?;
@@ -100,22 +114,46 @@ fn read_test_ids(file_path: &str) -> Result<Vec<String>> {
     }
 
     let total = test_ids.len();
-    let start = env::var("TESTOOL_IDS_START")
-        .ok()
-        .and_then(|val| val.parse::<usize>().ok())
-        .unwrap_or(0)
-        .min(total);
     let len = env::var("TESTOOL_IDS_LEN")
         .ok()
         .and_then(|val| val.parse::<usize>().ok())
         .unwrap_or(total);
-    log::info!("ENV TESTOOL_IDS_START = {start}, TESTOOL_IDS_LEN = {len}");
+
+    let mut start = 0;
+    let mut index = if Path::new(EXPORT_INDEX_FILE).exists() {
+        let offset = env::var("TESTOOL_IDS_EXPORT_OFFSET")
+            .ok()
+            .and_then(|val| val.parse::<usize>().ok())
+            .unwrap_or_default();
+        let index = read_export_index() + offset;
+        start = (index - 1) * len;
+
+        Some(index)
+    } else {
+        None
+    };
+
+    if let Some(start_from_env) = env::var("TESTOOL_IDS_START")
+        .ok()
+        .and_then(|val| val.parse::<usize>().ok())
+    {
+        start = start_from_env;
+        index = None;
+    }
+
+    log::info!("TESTOOL_IDS_START = {start}, TESTOOL_IDS_LEN = {len}");
 
     let end = total.min(start + len);
 
     let result = test_ids[start..end].to_vec();
     log::info!("read_test_ids total size {}", result.len());
-    Ok(result)
+    Ok((
+        result,
+        index.map_or_else(
+            || format!("start-{start}"),
+            |index| format!("index-{index}"),
+        ),
+    ))
 }
 
 fn write_test_ids(test_ids: &[String]) -> Result<()> {
@@ -198,11 +236,14 @@ fn go() -> Result<()> {
     // It is better to sue deterministic testing order.
     // If there is a list, follow list.
     // If not, order by test id.
+    let mut report_id = "default".to_string();
     if let Some(test_ids_path) = args.test_ids {
         if args.exclude_test_ids.is_some() {
             log::warn!("--exclude-test-ids is ignored");
         }
-        let test_ids = read_test_ids(&test_ids_path)?;
+        let res = read_test_ids(&test_ids_path)?;
+        let test_ids = res.0;
+        report_id = res.1;
         let id_to_test: HashMap<_, _> = state_tests
             .iter()
             .map(|t| (t.id.clone(), t.clone()))
@@ -232,21 +273,22 @@ fn go() -> Result<()> {
             .unwrap()
             .as_secs();
 
-        std::fs::create_dir_all(REPORT_FOLDER)?;
+        let report_dir = format!("{REPORT_FOLDER}/{report_id}");
+        std::fs::create_dir_all(&report_dir)?;
         let csv_filename = format!(
             "{}/{}.{}.{}.csv",
-            REPORT_FOLDER, args.suite, timestamp, git_hash
+            &report_dir, args.suite, timestamp, git_hash
         );
         let html_filename = format!(
             "{}/{}.{}.{}.html",
-            REPORT_FOLDER, args.suite, timestamp, git_hash
+            report_dir, args.suite, timestamp, git_hash
         );
 
         let cache_file_name = if !args.use_cache {
             None
         } else {
             let mut history_reports =
-                glob::glob(format!("{REPORT_FOLDER}/{}.*.*.csv", args.suite).as_str())?
+                glob::glob(format!("{report_dir}/{}.*.*.csv", args.suite).as_str())?
                     .collect::<Result<Vec<PathBuf>, glob::GlobError>>()?
                     .into_iter()
                     .map(|path| {
@@ -293,7 +335,7 @@ fn go() -> Result<()> {
         run_statetests_suite(state_tests, &circuits_config, &suite, &mut previous_results)?;
 
         // filter non-csv files and files from the same commit
-        let mut files: Vec<_> = std::fs::read_dir(REPORT_FOLDER)
+        let mut files: Vec<_> = std::fs::read_dir(&report_dir)
             .unwrap()
             .filter_map(|f| {
                 let filename = f.unwrap().file_name().to_str().unwrap().to_string();
@@ -307,7 +349,7 @@ fn go() -> Result<()> {
         files.sort_by(|f, s| s.cmp(f));
         let previous = if !files.is_empty() {
             let file = files.remove(0);
-            let path = format!("{REPORT_FOLDER}/{file}");
+            let path = format!("{}/{}", &report_dir, file);
             info!("Comparing with previous results in {path}");
             Some((file, Results::from_file(PathBuf::from(path))?))
         } else {

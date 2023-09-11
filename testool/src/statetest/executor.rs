@@ -729,6 +729,7 @@ pub fn run_test(
         }
         check_post(&builder, &post)?;
     }
+
     log::info!("{test_id}: run-test END");
     Ok(())
 }

@@ -1,0 +1,13 @@
+version: '3'
+services:
+  prover:
+    image: asongala1/testool-inner-prove:v0.2
+    runtime: nvidia
+    container_name: testool-inner-prove
+    environment:
+      - TESTOOL_IDS_LEN=${TESTOOL_IDS_LEN}
+    volumes:
+      - /home/scroll/go-prover-docker/volume/params:/opt/test_params
+      - /opt/export:/opt/export
+      - /srv/testool_inner_prove:/opt/report
+    command: ./run_testool.sh
