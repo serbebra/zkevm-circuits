@@ -1047,6 +1047,20 @@ fn variadic_size_check_with_default_padding() {
             stack_pointer: 1022,
             value: U256::from(394500u64),
         },
+        Rw::Stack {
+            rw_counter: 26,
+            is_write: true,
+            call_id: 1,
+            stack_pointer: 1022,
+            value: U256::from(394511u64),
+        },
+        Rw::Stack {
+            rw_counter: 27,
+            is_write: false,
+            call_id: 1,
+            stack_pointer: 1022,
+            value: U256::from(394511u64),
+        },
     ];
 
     let updates = MptUpdates::mock_from(&rows);
@@ -1054,27 +1068,14 @@ fn variadic_size_check_with_default_padding() {
         rows: rows,
         updates,
         overrides: HashMap::default(),
-        n_rows: 2,
+        n_rows: 4,
         exports: Default::default(),
         _marker: std::marker::PhantomData::default(),
     };
     let power_of_randomness = circuit.instance();
     let prover1 = MockProver::<Fr>::run(17, &circuit, power_of_randomness).unwrap();
 
-    // let updates = MptUpdates::mock_from(&vec![]);
-    // let circuit = StateCircuit::<Fr> {
-    //     rows: vec![],
-    //     updates,
-    //     overrides: HashMap::default(),
-    //     n_rows: 2,
-    //     exports: Default::default(),
-    //     _marker: std::marker::PhantomData::default(),
-    // };
-    // let power_of_randomness = circuit.instance();
-    // let prover2 = MockProver::<Fr>::run(17, &circuit, power_of_randomness).unwrap();
-
-    // assert_eq!(prover1.fixed(), prover2.fixed());
-    // assert_eq!(prover1.permutation(), prover2.permutation());
+    prover1.assert_satisfied_par();
 }
 
 #[test]
