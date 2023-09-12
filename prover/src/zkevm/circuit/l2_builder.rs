@@ -1,15 +1,14 @@
-use super::{
-    TargetCircuit, MAX_BYTECODE, MAX_CALLDATA, MAX_EXP_STEPS, MAX_INNER_BLOCKS, MAX_KECCAK_ROWS,
-    MAX_MPT_ROWS, MAX_POSEIDON_ROWS, MAX_PRECOMPILE_EC_ADD, MAX_PRECOMPILE_EC_MUL,
-    MAX_PRECOMPILE_EC_PAIRING, MAX_RWS, MAX_TXS, MAX_VERTICLE_ROWS,
-};
-use crate::{config::INNER_DEGREE, types::eth::StorageTrace, utils::read_env_var};
+use super::TargetCircuit;
+use crate::{config::INNER_DEGREE, utils::read_env_var};
 use anyhow::{bail, Result};
 use bus_mapping::{
     circuit_input_builder::{self, CircuitInputBuilder, CircuitsParams, PrecompileEcParams},
     state_db::{CodeDB, StateDB},
 };
-use eth_types::{l2_types::BlockTrace, ToBigEndian, ToWord, H256};
+use eth_types::{
+    l2_types::{BlockTrace, StorageTrace},
+    ToBigEndian, ToWord, H256,
+};
 use halo2_proofs::halo2curves::bn256::Fr;
 use itertools::Itertools;
 use mpt_zktrie::state::ZktrieState;
@@ -23,6 +22,22 @@ use zkevm_circuits::{
 
 static CHAIN_ID: Lazy<u64> = Lazy::new(|| read_env_var("CHAIN_ID", 53077));
 static AUTO_TRUNCATE: Lazy<bool> = Lazy::new(|| read_env_var("AUTO_TRUNCATE", false));
+
+////// params for degree = 20 ////////////
+pub const MAX_TXS: usize = 100;
+pub const MAX_INNER_BLOCKS: usize = 100;
+pub const MAX_EXP_STEPS: usize = 10_000;
+pub const MAX_CALLDATA: usize = 350_000;
+pub const MAX_RLP_ROWS: usize = 800_000;
+pub const MAX_BYTECODE: usize = 600_000;
+pub const MAX_MPT_ROWS: usize = 1_000_000;
+pub const MAX_KECCAK_ROWS: usize = 1_000_000;
+pub const MAX_POSEIDON_ROWS: usize = 1_000_000;
+pub const MAX_VERTICLE_ROWS: usize = 1_000_000;
+pub const MAX_RWS: usize = 1_000_000;
+pub const MAX_PRECOMPILE_EC_ADD: usize = 50;
+pub const MAX_PRECOMPILE_EC_MUL: usize = 50;
+pub const MAX_PRECOMPILE_EC_PAIRING: usize = 2;
 
 /// default params for super circuit
 pub fn get_super_circuit_params() -> CircuitsParams {
@@ -39,7 +54,7 @@ pub fn get_super_circuit_params() -> CircuitsParams {
         max_vertical_circuit_rows: MAX_VERTICLE_ROWS,
         max_exp_steps: MAX_EXP_STEPS,
         max_mpt_rows: MAX_MPT_ROWS,
-        max_rlp_rows: MAX_CALLDATA,
+        max_rlp_rows: MAX_RLP_ROWS,
         max_ec_ops: PrecompileEcParams {
             ec_add: MAX_PRECOMPILE_EC_ADD,
             ec_mul: MAX_PRECOMPILE_EC_MUL,
@@ -62,11 +77,17 @@ pub fn calculate_row_usage_of_witness_block(
     let mut rows = <super::SuperCircuit as TargetCircuit>::Inner::min_num_rows_block_subcircuits(
         witness_block,
     );
-
     assert_eq!(rows[10].name, "poseidon");
     assert_eq!(rows[13].name, "mpt");
     // empirical estimation is each row in mpt cost 1.5 hash (aka 12 rows)
-    rows[10].row_num_real += rows[13].row_num_real * 12;
+    let mpt_poseidon_rows = rows[13].row_num_real * 12;
+    if witness_block.mpt_updates.smt_traces.is_empty() {
+        rows[10].row_num_real += mpt_poseidon_rows;
+        log::debug!("calculate_row_usage_of_witness_block light mode, adding {mpt_poseidon_rows} poseidon rows");
+    } else {
+        //rows[10].row_num_real += mpt_poseidon_rows;
+        log::debug!("calculate_row_usage_of_witness_block normal mode, skip adding {mpt_poseidon_rows} poseidon rows");
+    }
 
     log::debug!(
         "row usage of block {:?}, tx num {:?}, tx calldata len sum {}, rows needed {:?}",
@@ -196,6 +217,22 @@ fn prepare_default_builder(
     }
 }
 
+// check if block traces match preset parameters
+fn validite_block_traces(block_traces: &[BlockTrace]) -> Result<()> {
+    let chain_id = block_traces
+        .iter()
+        .map(|block_trace| block_trace.chain_id)
+        .next()
+        .unwrap_or(*CHAIN_ID);
+    if *CHAIN_ID != chain_id {
+        bail!(
+            "CHAIN_ID env var is wrong. chain id in trace {chain_id}, CHAIN_ID {}",
+            *CHAIN_ID
+        );
+    }
+    Ok(())
+}
+
 pub fn block_traces_to_witness_block(block_traces: &[BlockTrace]) -> Result<Block<Fr>> {
     let block_num = block_traces.len();
     let total_tx_num = block_traces
@@ -244,6 +281,8 @@ pub fn block_traces_to_witness_block_with_updated_state(
     builder: &mut CircuitInputBuilder,
     light_mode: bool,
 ) -> Result<Block<Fr>> {
+    validite_block_traces(block_traces)?;
+
     let metric = |builder: &CircuitInputBuilder, idx: usize| -> Result<(), bus_mapping::Error> {
         let t = Instant::now();
         let block = block_convert_with_l1_queue_index::<Fr>(
@@ -283,7 +322,11 @@ pub fn block_traces_to_witness_block_with_updated_state(
 
     for (idx, block_trace) in block_traces.iter().enumerate() {
         let is_last = idx == block_traces.len() - 1;
-        builder.add_more_l2_trace(block_trace, !is_last, light_mode)?;
+        log::debug!(
+            "add_more_l2_trace idx {idx}, block num {:?}",
+            block_trace.header.number
+        );
+        builder.add_more_l2_trace(block_trace, !is_last, false)?;
         if per_block_metric {
             metric(builder, idx + initial_blk_index)?;
         }
@@ -300,7 +343,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
         witness_block.circuits_params
     );
 
-    if !light_mode && builder.mpt_init_state.root() != &[0u8; 32] {
+    if !light_mode && *builder.mpt_init_state.root() != [0u8; 32] {
         log::debug!("block_apply_mpt_state");
         block_apply_mpt_state(&mut witness_block, &builder.mpt_init_state);
         log::debug!("block_apply_mpt_state done");

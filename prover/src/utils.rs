@@ -1,10 +1,10 @@
 use crate::{
-    types::eth::BlockTraceJsonRpcResult,
+    types::BlockTraceJsonRpcResult,
     zkevm::circuit::{block_traces_to_witness_block, check_batch_capacity},
 };
 use anyhow::{bail, Result};
 use chrono::Utc;
-use eth_types::l2_types::BlockTrace;
+use eth_types::{l2_types::BlockTrace, Address};
 use git_version::git_version;
 use halo2_proofs::{
     halo2curves::bn256::{Bn256, Fr},
@@ -91,7 +91,7 @@ pub fn get_block_trace_from_file<P: AsRef<Path>>(path: P) -> BlockTrace {
     let mut f = File::open(&path).unwrap();
     f.read_to_end(&mut buffer).unwrap();
 
-    serde_json::from_slice::<BlockTrace>(&buffer).unwrap_or_else(|e1| {
+    let mut trace = serde_json::from_slice::<BlockTrace>(&buffer).unwrap_or_else(|e1| {
         serde_json::from_slice::<BlockTraceJsonRpcResult>(&buffer)
             .map_err(|e2| {
                 panic!(
@@ -103,7 +103,34 @@ pub fn get_block_trace_from_file<P: AsRef<Path>>(path: P) -> BlockTrace {
             })
             .unwrap()
             .result
-    })
+    });
+    // fill intrinsicStorageProofs into tx storage proof
+    let addrs = vec![
+        Address::from_str("0x5300000000000000000000000000000000000000").unwrap(),
+        Address::from_str("0x5300000000000000000000000000000000000002").unwrap(),
+    ];
+    for tx_storage_trace in &mut trace.tx_storage_trace {
+        if let Some(proof) = tx_storage_trace.proofs.as_mut() {
+            for addr in &addrs {
+                proof.insert(
+                    *addr,
+                    trace
+                        .storage_trace
+                        .proofs
+                        .as_ref()
+                        .map(|p| p[addr].clone())
+                        .unwrap(),
+                );
+            }
+        }
+        for addr in &addrs {
+            tx_storage_trace
+                .storage_proofs
+                .insert(*addr, trace.storage_trace.storage_proofs[addr].clone());
+        }
+    }
+
+    trace
 }
 
 pub fn read_env_var<T: Clone + FromStr>(var_name: &'static str, default: T) -> T {
@@ -212,19 +239,4 @@ pub fn short_git_version() -> String {
     } else {
         commit_version[1..8].to_string()
     }
-}
-
-pub fn tick(desc: &str) {
-    #[cfg(target_os = "linux")]
-    let memory = match procfs::Meminfo::new() {
-        Ok(m) => m.mem_total - m.mem_free,
-        Err(_) => 0,
-    };
-    #[cfg(not(target_os = "linux"))]
-    let memory = 0;
-    log::debug!(
-        "memory usage when {}: {:?}GB",
-        desc,
-        memory / 1024 / 1024 / 1024
-    );
 }
