@@ -17,8 +17,8 @@ members = [
 ]
 
 [patch.crates-io]
-ethers-core = { git = "https://github.com/scroll-tech/ethers-rs.git", branch = "v0.17.0" }
-ethers-etherscan = { git = "https://github.com/scroll-tech/ethers-rs.git", branch = "v0.17.0" }
+ethers-core = { git = "https://github.com/scroll-tech/ethers-rs.git", branch = "v2.0.7" }
+ethers-etherscan = { git = "https://github.com/scroll-tech/ethers-rs.git", branch = "v2.0.7" }
 # Replace for GPU build.
 # [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
 # halo2_proofs = { path = "../halo2-gpu/halo2_proofs" }
