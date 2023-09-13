@@ -3,7 +3,7 @@ use eth_types::{
     evm_types::{GasCost, OpcodeId},
     U256,
 };
-use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
+use halo2_proofs::{arithmetic::FieldExt, plonk::{Expression, ConstraintSystem, VirtualCells}};
 
 /// Returns the sum of the passed in cells
 pub mod sum {
@@ -220,6 +220,19 @@ pub fn expr_from_u16<F: FieldExt, E: Expr<F>>(u16s: &[E]) -> Expression<F> {
         multiplier *= F::from(2u64.pow(16));
     }
     value
+}
+
+/// Query an expression from the constraint system.
+pub fn query_expression<F: FieldExt, T>(
+    meta: &mut ConstraintSystem<F>,
+    mut f: impl FnMut(&mut VirtualCells<F>) -> T,
+) -> T {
+    let mut expr = None;
+    meta.create_gate("Query expression", |meta| {
+        expr = Some(f(meta));
+        Some(0.expr())
+    });
+    expr.unwrap()
 }
 
 /// Returns 2**by as FieldExt

@@ -22,6 +22,7 @@ pub mod monotone;
 pub mod mul_add;
 pub mod range;
 pub mod util;
+pub mod bus;
 
 use eth_types::Field;
 use halo2_proofs::{
