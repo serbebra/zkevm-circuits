@@ -7,7 +7,11 @@ use chrono::Utc;
 use eth_types::{l2_types::BlockTrace, Address};
 use git_version::git_version;
 use halo2_proofs::{
-    halo2curves::bn256::{Bn256, Fr},
+    arithmetic::{g_to_lagrange, Field},
+    halo2curves::{
+        bn256::{Bn256, Fr, G1},
+        group::Curve,
+    },
     poly::kzg::commitment::ParamsKZG,
     SerdeFormat,
 };
@@ -20,7 +24,9 @@ use log4rs::{
     config::{Appender, Config, Root},
 };
 use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use rand_xorshift::XorShiftRng;
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::{
     fs::{self, metadata, File},
     io::{BufReader, Read},
@@ -83,6 +89,30 @@ pub fn load_params(
 
     log::info!("load params successfully!");
     Ok(p)
+}
+
+pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
+    let mut rng = ChaCha20Rng::from_seed(*seed);
+    let secret = Fr::random(&mut rng);
+
+    // Old g = [G1, [s] G1, [s^2] G1, ..., [s^(n-1)] G1]
+    // we multiply each g by secret^i
+    // and the new secret becomes s*secret
+    let mut powers = vec![Fr::one(), secret];
+    for _ in 0..param.n - 2 {
+        powers.push(secret * powers.last().unwrap())
+    }
+
+    let new_g_proj = param
+        .g
+        .par_iter()
+        .zip(powers.par_iter())
+        .map(|(gi, power)| gi * power)
+        .collect::<Vec<_>>();
+    G1::batch_normalize(&new_g_proj, &mut param.g);
+
+    param.g_lagrange = g_to_lagrange(new_g_proj, param.k);
+    param.s_g2 = (param.s_g2 * secret).into();
 }
 
 /// get a block-result from file
