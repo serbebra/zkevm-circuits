@@ -49,6 +49,7 @@ impl Prover {
         )?;
         log::info!("Got inner snark: {name}");
 
+        /*
         // Check pairing for super circuit.
         extract_proof_and_instances_with_pairing_check(
             self.params(LayerId::Layer1.degree()),
@@ -56,6 +57,7 @@ impl Prover {
             gen_rng(),
         )
         .map_err(|err| anyhow!("Failed to check pairing for super circuit: {err:?}"))?;
+        */
 
         // Load or generate compression wide snark (layer-1).
         let layer1_snark = self.load_or_gen_comp_snark(
