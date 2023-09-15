@@ -82,12 +82,16 @@ pub fn load_params(
         bail!("invalid params file len {} for degree {}. check DEGREE or remove the invalid params file", file_size, degree);
     }
 
-    let p = ParamsKZG::<Bn256>::read_custom::<_>(&mut BufReader::new(f), serde_fmt)?;
+    let mut p = ParamsKZG::<Bn256>::read_custom::<_>(&mut BufReader::new(f), serde_fmt)?;
     if format!("{:?}", p.s_g2()) != PARAMS_G2_SECRET_POWER {
         bail!("Wrong params file of degree {}", degree);
     }
 
     log::info!("load params successfully!");
+
+    re_randomize_srs(&mut p, &[0; 32]);
+    log::info!("re-randomize params successfully!");
+
     Ok(p)
 }
 
