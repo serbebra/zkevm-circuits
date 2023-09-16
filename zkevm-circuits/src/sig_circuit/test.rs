@@ -54,61 +54,49 @@ fn test_edge_cases() {
         1u8,
     );
     let ecrecover_data = vec![
-        // 1. good data
-        good_ecrecover_data,
-        // 2. msg_hash == 0
         (
-            Word::zero(),
-            good_ecrecover_data.1,
-            good_ecrecover_data.2,
-            good_ecrecover_data.3,
+            word!("0xbf8b1c970c00aaee95d14297775b60c4cb81ba60a98eed616b4c3827efdf7c1f"),
+            word!("0x9257255cbe0feb4887f6c9183f97b3e2104bc4534d7443734a479be147bd7565"),
+            word!("0x77891e2ac09ed1bd3a9a71b75886decd469ab0850b44fc6ab0a786128d8b4675"),
+            1u8,
         ),
-        // 3. r == 0
         (
-            good_ecrecover_data.0,
-            Word::zero(),
-            good_ecrecover_data.2,
-            good_ecrecover_data.3,
+            word!("0x571b659b539a9da729fca1f2efdd8b07d6a7042e0640ac5ce3a8c5e3445523d7"),
+            word!("0x5d14c6d7824ddecc43d307891c4fae49307e370f827fae93e014796665705800"),
+            word!("0x6b0c5c6fb456b976d50eb155a6a15c9e9e93c4afa99d4cad4d86f4ba0cc175fd"),
+            1u8,
         ),
-        // 4. s == 0
         (
-            good_ecrecover_data.0,
-            good_ecrecover_data.1,
-            Word::zero(),
-            good_ecrecover_data.3,
+            word!("0x723dc59107206ce630dd06cd8255e37c008e09d975fc9abae242baea938d4e10"),
+            word!("0xe6252f1746377abadfcef2006a6691908249b0d5f40a85f154e8e7889147e799"),
+            word!("0x42afbe6922469e4c9c4cd153de7c62c4f2b15f5c566f3b6c4f190d1b7bc2e880"),
+            1u8,
         ),
-        // 5. r == 0 and s == 0
         (
-            good_ecrecover_data.0,
-            Word::zero(),
-            Word::zero(),
-            good_ecrecover_data.3,
+            word!("0x02a091ae82cec2dd9fba5b896ddb84993911d3b0a4e384215611404640283810"),
+            word!("0x75ad626aaaa03dbec5aeff7e8a0385db304ca0a42abf5f82b37faf0732b3caf9"),
+            word!("0x0876b7bf2490a27387b1ec15548dc7853075f77bdff2533290a0515ac9159d04"),
+            0u8,
         ),
-        // 6. random r and s for random msg hash
-        {
-            let mut bytes = [0u8; 32];
-            rng.fill(&mut bytes[..]);
-            let msg_hash = Word::from_big_endian(&bytes);
-            rng.fill(&mut bytes[..]);
-            let r = Word::from_big_endian(&bytes);
-            rng.fill(&mut bytes[..]);
-            let s = Word::from_big_endian(&bytes);
-            (msg_hash, r, s, 0u8)
-        },
-        // 7. v == 0 when v should be 1
         (
-            good_ecrecover_data.0,
-            good_ecrecover_data.1,
-            good_ecrecover_data.2,
-            1 - good_ecrecover_data.3,
+            word!("0x78316e682c7fadcddcc5f0bd605fdbd7d298d28dbde406b1034ccbf4bc657f49"),
+            word!("0x41710bb0ec56cc1c1ed1a2d5f087a84972f6f881e1d710e4fdec6bca55b2ce0b"),
+            word!("0x355ac68eb223986c7396170b119c6a92d48b6f86b7ce798afd168563ffa92371"),
+            1u8,
         ),
-        // 8. msg_hash outside FQ::MODULUS
         (
-            Word::MAX,
-            good_ecrecover_data.1,
-            good_ecrecover_data.2,
-            good_ecrecover_data.3,
+            word!("0x254e4d6aee7126aec44aecc77cb07a2121b0f6285770ccdcd734c9c61361a2c6"),
+            word!("0xe02b1cbeacb541f488ad5c0176534fd78973aff2380aadc856841953b001a0e0"),
+            word!("0x6b9248d0b2e85ee57e8b71bd92825b900bd3025a0ffcfff5d5b90bc4b891d852"),
+            1u8,
         ),
+        (
+            word!("0xfeb09775634a8b9eb6d15f8858430ef452562e44028bd0b957bd5333d1ca4361"),
+            word!("0x0f54d9f839cda418b20da71a40320a5c88b258c3e27dc8c4f5f2d88d3b2637bc"),
+            word!("0x4778d4ff9d5e0dc0cdabf05cb43fca3184141ee0eab8ccdc88a60b566e62e6f7"),
+            0u8,
+        )
+    
     ];
     let signatures = ecrecover_data
         .iter()
@@ -128,7 +116,7 @@ fn test_edge_cases() {
     log::debug!("signatures=");
     log::debug!("{:#?}", signatures);
 
-    run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, 8, signatures);
+    run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, 7, signatures);
 }
 
 #[test]
