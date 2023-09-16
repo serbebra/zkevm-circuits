@@ -421,6 +421,7 @@ impl<F: Field> SigCircuit<F> {
             QuantumCell::Existing(assigned_y_tmp),
             QuantumCell::Existing(y_coord_is_zero),
         );
+log::error!("assigned_y_tmp {:?}", assigned_y_tmp);
         ecc_chip
             .field_chip
             .range
