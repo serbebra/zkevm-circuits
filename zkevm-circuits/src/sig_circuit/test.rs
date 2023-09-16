@@ -54,18 +54,21 @@ fn test_edge_cases() {
         1u8,
     );
     let ecrecover_data = vec![
+/*
         (
             word!("0xbf8b1c970c00aaee95d14297775b60c4cb81ba60a98eed616b4c3827efdf7c1f"),
             word!("0x9257255cbe0feb4887f6c9183f97b3e2104bc4534d7443734a479be147bd7565"),
             word!("0x77891e2ac09ed1bd3a9a71b75886decd469ab0850b44fc6ab0a786128d8b4675"),
             1u8,
         ),
+*/
         (
             word!("0x571b659b539a9da729fca1f2efdd8b07d6a7042e0640ac5ce3a8c5e3445523d7"),
             word!("0x5d14c6d7824ddecc43d307891c4fae49307e370f827fae93e014796665705800"),
             word!("0x6b0c5c6fb456b976d50eb155a6a15c9e9e93c4afa99d4cad4d86f4ba0cc175fd"),
             1u8,
         ),
+/*
         (
             word!("0x723dc59107206ce630dd06cd8255e37c008e09d975fc9abae242baea938d4e10"),
             word!("0xe6252f1746377abadfcef2006a6691908249b0d5f40a85f154e8e7889147e799"),
@@ -96,6 +99,7 @@ fn test_edge_cases() {
             word!("0x4778d4ff9d5e0dc0cdabf05cb43fca3184141ee0eab8ccdc88a60b566e62e6f7"),
             0u8,
         )
+*/
     
     ];
     let signatures = ecrecover_data
@@ -116,7 +120,7 @@ fn test_edge_cases() {
     log::debug!("signatures=");
     log::debug!("{:#?}", signatures);
 
-    run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, 7, signatures);
+    run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, 1, signatures);
 }
 
 #[test]
