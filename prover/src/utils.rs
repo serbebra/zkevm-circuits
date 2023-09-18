@@ -42,7 +42,7 @@ pub const DEFAULT_SERDE_FORMAT: SerdeFormat = SerdeFormat::RawBytesUnchecked;
 pub const GIT_VERSION: &str = git_version!(args = ["--abbrev=7", "--always"]);
 
 // FIXME: update me once the the srs is re-randomized
-#[cfg(feature="unrandomized_srs")]
+#[cfg(feature = "unrandomized_srs")]
 pub const PARAMS_G2_SECRET_POWER: &str = "(Fq2 { c0: 0x17944351223333f260ddc3b4af45191b856689eda9eab5cbcddbbe570ce860d2, c1: 0x186282957db913abd99f91db59fe69922e95040603ef44c0bd7aa3adeef8f5ac }, Fq2 { c0: 0x297772d34bc9aa8ae56162486363ffe417b02dc7e8c207fc2cc20203e67a02ad, c1: 0x298adc7396bd3865cbf6d6df91bae406694e6d2215baa893bdeadb63052895f4 })";
 
 /// Load setup params from a file.
@@ -86,7 +86,7 @@ pub fn load_params(
 
     let p = ParamsKZG::<Bn256>::read_custom::<_>(&mut BufReader::new(f), serde_fmt)?;
 
-    #[cfg(feature="unrandomized_srs")]
+    #[cfg(feature = "unrandomized_srs")]
     if format!("{:?}", p.s_g2()) != PARAMS_G2_SECRET_POWER {
         bail!("Wrong params file of degree {}", degree);
     }
@@ -285,7 +285,9 @@ mod tests {
         plonk::*,
         poly::kzg::commitment::ParamsKZG,
     };
-    use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
+    use snark_verifier_sdk::{
+        evm_verify, gen_evm_proof_shplonk, gen_evm_verifier_shplonk, gen_pk, CircuitExt,
+    };
     use zkevm_circuits::util::Challenges;
 
     use crate::utils::re_randomize_srs;
@@ -375,11 +377,14 @@ mod tests {
         };
 
         let pk = gen_pk(&param, &circuit, None);
-        let snark = gen_snark_shplonk(&param, &pk, circuit, &mut rng, None::<String>);
-        assert!(verify_snark_shplonk::<MyCircuit>(
+        let proof =
+            gen_evm_proof_shplonk(&param, &pk, circuit.clone(), circuit.instances(), &mut rng);
+        let deployment_code = gen_evm_verifier_shplonk::<MyCircuit>(
             &param,
-            snark.clone(),
-            pk.get_vk()
-        ));
+            pk.get_vk(),
+            circuit.num_instance(),
+            None,
+        );
+        evm_verify(deployment_code, circuit.instances(), proof.clone());
     }
 }
