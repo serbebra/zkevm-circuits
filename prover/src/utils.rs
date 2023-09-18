@@ -270,3 +270,112 @@ pub fn short_git_version() -> String {
         commit_version[1..8].to_string()
     }
 }
+#[cfg(test)]
+mod tests {
+
+    use aggregator::RlcConfig;
+    use ark_std::test_rng;
+    use halo2_proofs::{
+        circuit::*,
+        halo2curves::bn256::{Bn256, Fr},
+        plonk::*,
+        poly::kzg::commitment::ParamsKZG,
+    };
+    use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
+    use zkevm_circuits::util::Challenges;
+
+    use crate::utils::re_randomize_srs;
+
+    #[derive(Clone, Default)]
+    struct MyCircuit {
+        f1: Fr,
+        f2: Fr,
+        f3: Fr,
+    }
+
+    impl Circuit<Fr> for MyCircuit {
+        type Config = RlcConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let challenges = Challenges::construct(meta);
+            RlcConfig::configure(meta, challenges)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let mut first_pass = true;
+            layouter.assign_region(
+                || "test field circuit",
+                |mut region| -> Result<(), Error> {
+                    if first_pass {
+                        first_pass = false;
+                        return Ok(());
+                    }
+
+                    config.init(&mut region)?;
+
+                    let mut offset = 0;
+
+                    let f1 = config.load_private(&mut region, &self.f1, &mut offset)?;
+                    let f2 = config.load_private(&mut region, &self.f2, &mut offset)?;
+                    let f3 = config.load_private(&mut region, &self.f3, &mut offset)?;
+                    {
+                        let f3_rec = config.add(&mut region, &f1, &f2, &mut offset)?;
+                        region.constrain_equal(f3.cell(), f3_rec.cell())?;
+                    }
+
+                    Ok(())
+                },
+            )?;
+            Ok(())
+        }
+    }
+
+    impl CircuitExt<Fr> for MyCircuit {
+        fn num_instance(&self) -> Vec<usize> {
+            vec![]
+        }
+
+        fn instances(&self) -> Vec<Vec<Fr>> {
+            vec![]
+        }
+
+        fn accumulator_indices() -> Option<Vec<(usize, usize)>> {
+            None
+        }
+
+        fn selectors(_config: &Self::Config) -> Vec<Selector> {
+            vec![]
+        }
+    }
+
+    #[test]
+    fn test_srs_rerandomization() {
+        let k = 5;
+        let mut rng = test_rng();
+        let mut param = ParamsKZG::<Bn256>::unsafe_setup(k);
+        re_randomize_srs(&mut param, &[0; 32]);
+
+        let circuit = MyCircuit {
+            f1: Fr::from(10),
+            f2: Fr::from(15),
+            f3: Fr::from(25),
+        };
+
+        let pk = gen_pk(&param, &circuit, None);
+        let snark = gen_snark_shplonk(&param, &pk, circuit, &mut rng, None::<String>);
+        assert!(verify_snark_shplonk::<MyCircuit>(
+            &param,
+            snark.clone(),
+            pk.get_vk()
+        ));
+    }
+}
