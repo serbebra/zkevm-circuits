@@ -1,4 +1,4 @@
-use super::bus_chip::{BusPort, BusTerm};
+use super::{bus_builder::BusPort, bus_chip::BusTerm};
 use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -130,14 +130,14 @@ impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
     }
 }
 
-/// A chip to access the bus. It manages its own helper column.
+/// A chip to access the bus. It manages its own helper column and gives one access per row.
 #[derive(Clone)]
-pub struct BusPortColumn<F> {
+pub struct BusPortChip<F> {
     helper: Column<Advice>,
     port: BusPortSingle<F>,
 }
 
-impl<F: FieldExt> BusPortColumn<F> {
+impl<F: FieldExt> BusPortChip<F> {
     /// Create a new bus port with a single access.
     pub fn new(meta: &mut ConstraintSystem<F>, op: BusOp<F>) -> Self {
         let helper = meta.advice_column_in(SecondPhase);
@@ -162,7 +162,7 @@ impl<F: FieldExt> BusPortColumn<F> {
     }
 }
 
-impl<F: FieldExt> BusPort<F> for BusPortColumn<F> {
+impl<F: FieldExt> BusPort<F> for BusPortChip<F> {
     fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
         self.port.create_term(meta, rand)
     }

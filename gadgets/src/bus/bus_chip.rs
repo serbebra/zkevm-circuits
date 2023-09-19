@@ -1,12 +1,10 @@
+use crate::util::Expr;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase},
     poly::Rotation,
 };
-use std::marker::PhantomData;
-
-use crate::util::Expr;
 
 /// A term of the bus sum check.
 #[derive(Clone)]
@@ -77,7 +75,7 @@ impl BusConfig {
         &self,
         region: &mut Region<'_, F>,
         n_rows: usize,
-        terms: &[Value<F>],
+        terms: Value<&[F]>,
     ) -> Result<(), Error> {
         region.assign_fixed(
             || "Bus_is_first",
@@ -102,48 +100,19 @@ impl BusConfig {
             )?;
         }
 
-        let mut acc = Value::known(F::zero());
+        terms.map(|terms| {
+            let mut acc = F::zero();
 
-        for offset in 0..n_rows {
-            region.assign_advice(|| "Bus_acc", self.acc, offset, || acc)?;
+            for offset in 0..n_rows {
+                region
+                    .assign_advice(|| "Bus_acc", self.acc, offset, || Value::known(acc))
+                    .unwrap();
 
-            if let Some(term) = terms.get(offset) {
-                acc = acc + term;
+                if let Some(term) = terms.get(offset) {
+                    acc = acc + term;
+                }
             }
-        }
+        });
         Ok(())
     }
-}
-
-/// BusBuilder
-pub struct BusBuilder<F> {
-    rand: Expression<F>,
-    terms: Vec<BusTerm<F>>,
-}
-
-impl<F: FieldExt> BusBuilder<F> {
-    /// Create a new bus.
-    pub fn new(rand: Expression<F>) -> Self {
-        Self {
-            rand,
-            terms: vec![],
-        }
-    }
-
-    /// Connect a port to the bus.
-    pub fn connect_port<BP: BusPort<F>>(&mut self, meta: &mut ConstraintSystem<F>, port: &BP) {
-        let term = port.create_term(meta, self.rand.clone());
-        self.terms.push(term);
-    }
-
-    /// Return the collected terms.
-    pub fn terms(self) -> Vec<BusTerm<F>> {
-        self.terms
-    }
-}
-
-/// BusPort prepares a term to be added to the bus.
-pub trait BusPort<F: FieldExt> {
-    /// The term to add to the bus. This expression must be fully constrained on all rows.
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F>;
 }

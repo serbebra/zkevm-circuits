@@ -1,5 +1,6 @@
 use super::{
-    bus_chip::{BusPort, BusTerm},
+    bus_builder::BusPort,
+    bus_chip::BusTerm,
     bus_port::{BusOp, BusPortSingle},
 };
 use crate::util::Expr;

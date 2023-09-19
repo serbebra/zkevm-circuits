@@ -1,19 +1,15 @@
 use crate::util::{query_expression, Expr};
-use eth_types::Field;
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Layouter, Region, SimpleFloorPlanner, Value},
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     halo2curves::bn256::Fr,
-    plonk::{
-        Advice, Challenge, Circuit, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed,
-        Phase, VirtualCells,
-    },
+    plonk::{Advice, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, Fixed},
     poly::Rotation,
 };
 use std::marker::PhantomData;
 
-use super::{bus_chip::*, bus_multi::*, bus_port::*};
+use super::{bus_builder::*, bus_chip::*, bus_port::*};
 
 #[test]
 fn test_bus() {
@@ -24,9 +20,8 @@ fn test_bus() {
 struct TestCircuitConfig<F: FieldExt> {
     enabled: Column<Fixed>,
     count1: Column<Advice>,
-    port1: BusPortColumn<F>,
-    count2: Column<Advice>,
-    port2: BusPortColumn<F>,
+    port1: BusPortChip<F>,
+    port2: BusPortChip<F>,
     bus_check: BusConfig,
     rand: Challenge,
     _marker: PhantomData<F>,
@@ -58,30 +53,28 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
         let value = 2.expr();
 
-        // Circuit 1.
+        // Circuit 1 puts values dynamically.
         let count1 = cs.advice_column();
-        let count1_expr = query_expression(cs, |cs| cs.query_advice(count1, Rotation::cur()));
-        let port1 = BusPortColumn::new(
-            cs,
-            BusOp::put(enabled_expr.clone() * count1_expr, value.clone()),
-        );
+        let count1_expr = enabled_expr.clone()
+            * query_expression(cs, |cs| cs.query_advice(count1, Rotation::cur()));
+
+        let port1 = BusPortChip::new(cs, BusOp::put(count1_expr, value.clone()));
         bus_builder.connect_port(cs, &port1);
 
-        // Circuit 2.
-        let count2 = cs.advice_column();
-        let count2_expr = query_expression(cs, |cs| cs.query_advice(count2, Rotation::cur()));
-        let port2 = BusPortColumn::new(cs, BusOp::take(enabled_expr * count2_expr, value));
+        // Circuit 2 takes one value per row.
+        let count2_expr = enabled_expr * 1.expr();
+
+        let port2 = BusPortChip::new(cs, BusOp::take(count2_expr, value));
         bus_builder.connect_port(cs, &port2);
 
         // Global bus connection.
-        let bus_check = BusConfig::new(cs, &bus_builder.terms());
+        let bus_check = BusConfig::new(cs, &bus_builder.build());
 
         TestCircuitConfig {
             enabled,
             bus_check,
             count1,
             port1,
-            count2,
             port2,
             rand,
             _marker: PhantomData,
@@ -109,31 +102,26 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     )?;
                 }
 
-                let mut terms = vec![Value::known(F::zero()); self.n_rows];
+                let mut bus_assigner = BusAssigner::new(self.n_rows);
 
-                // Circuit 1.
-                let off1 = 1;
-                region.assign_advice(
-                    || "count1",
-                    config.count1,
-                    off1,
-                    || Value::known(F::one()),
-                )?;
-                let h1 = config.port1.assign(&mut region, off1, value, rand)?;
-                terms[off1] = terms[off1] + h1;
+                // Circuit 1 puts the value once, but it is worth `count` times.
+                {
+                    let count = Value::known(F::from(self.n_rows as u64));
+                    let offset = 3; // can be anywhere.
+                    region.assign_advice(|| "count1", config.count1, offset, || count)?;
+                    let term = config.port1.assign(&mut region, offset, value, rand)?;
+                    bus_assigner.put_term(offset, count * term);
+                }
 
-                // Circuit 2.
-                let off2 = 3;
-                region.assign_advice(
-                    || "count2",
-                    config.count2,
-                    off2,
-                    || Value::known(F::one()),
-                )?;
-                let h2 = config.port2.assign(&mut region, off2, value, rand)?;
-                terms[off2] = terms[off2] - h2;
+                // Circuit 2 takes the value once per row.
+                for offset in 0..self.n_rows {
+                    let term = config.port2.assign(&mut region, offset, value, rand)?;
+                    bus_assigner.take_term(offset, term);
+                }
 
-                config.bus_check.assign(&mut region, self.n_rows, &terms)?;
+                config
+                    .bus_check
+                    .assign(&mut region, self.n_rows, bus_assigner.terms())?;
 
                 Ok(())
             },
