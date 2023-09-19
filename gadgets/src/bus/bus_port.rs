@@ -2,8 +2,8 @@ use super::bus_chip::{BusPort, BusTerm};
 use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::Value,
-    plonk::{Advice, Column, ConstraintSystem, Expression},
+    circuit::{Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, SecondPhase},
     poly::Rotation,
 };
 
@@ -40,6 +40,7 @@ impl<F: FieldExt> BusOp<F> {
 }
 
 /// A chip to access to the bus.
+#[derive(Clone)]
 pub struct BusPortSingle<F> {
     helper: Expression<F>,
     op: BusOp<F>,
@@ -52,8 +53,8 @@ impl<F: FieldExt> BusPortSingle<F> {
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    pub fn helper_witness(value: F, rand: Value<F>) -> Value<F> {
-        rand.map(|rand| (rand + value).invert().unwrap_or(F::zero()))
+    pub fn helper_witness(value: Value<F>, rand: Value<F>) -> Value<F> {
+        (rand + value).map(|x| x.invert().unwrap_or(F::zero()))
     }
 }
 
@@ -89,12 +90,8 @@ impl<F: FieldExt> BusPortDual<F> {
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    pub fn helper_witness(values: [F; 2], rand: Value<F>) -> Value<F> {
-        rand.map(|rand| {
-            ((rand + values[0]) * (rand + values[1]))
-                .invert()
-                .unwrap_or(F::zero())
-        })
+    pub fn helper_witness(values: [Value<F>; 2], rand: Value<F>) -> Value<F> {
+        ((rand + values[0]) * (rand + values[1])).map(|x| x.invert().unwrap_or(F::zero()))
     }
 }
 
@@ -134,6 +131,7 @@ impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
 }
 
 /// A chip to access the bus. It manages its own helper column.
+#[derive(Clone)]
 pub struct BusPortColumn<F> {
     helper: Column<Advice>,
     port: BusPortSingle<F>,
@@ -141,8 +139,8 @@ pub struct BusPortColumn<F> {
 
 impl<F: FieldExt> BusPortColumn<F> {
     /// Create a new bus port with a single access.
-    pub fn put(meta: &mut ConstraintSystem<F>, op: BusOp<F>) -> Self {
-        let helper = meta.advice_column();
+    pub fn new(meta: &mut ConstraintSystem<F>, op: BusOp<F>) -> Self {
+        let helper = meta.advice_column_in(SecondPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
         let port = BusPortSingle::new(helper_expr, op);
@@ -150,7 +148,18 @@ impl<F: FieldExt> BusPortColumn<F> {
         Self { helper, port }
     }
 
-    // TODO: assign function.
+    /// Assign the helper witness.
+    pub fn assign(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        value: Value<F>,
+        rand: Value<F>,
+    ) -> Result<Value<F>, Error> {
+        let helper = BusPortSingle::helper_witness(value, rand);
+        region.assign_advice(|| "BusPort_helper", self.helper, offset, || helper)?;
+        Ok(helper)
+    }
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortColumn<F> {

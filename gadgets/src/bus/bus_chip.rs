@@ -1,6 +1,7 @@
 use halo2_proofs::{
     arithmetic::FieldExt,
-    plonk::{Advice, Column, ConstraintSystem, Expression, Fixed},
+    circuit::{Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase},
     poly::Rotation,
 };
 use std::marker::PhantomData;
@@ -25,21 +26,21 @@ impl<F: FieldExt> Expr<F> for BusTerm<F> {
 }
 
 /// BusConfig
-pub struct BusConfig<F> {
+#[derive(Clone)]
+pub struct BusConfig {
     enabled: Column<Fixed>,
     is_first: Column<Fixed>,
     is_last: Column<Fixed>,
     acc: Column<Advice>,
-    _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> BusConfig<F> {
+impl BusConfig {
     /// Create a new bus.
-    pub fn new(cs: &mut ConstraintSystem<F>, terms: &[BusTerm<F>]) -> Self {
+    pub fn new<F: FieldExt>(cs: &mut ConstraintSystem<F>, terms: &[BusTerm<F>]) -> Self {
         let enabled = cs.fixed_column();
         let is_first = cs.fixed_column();
         let is_last = cs.fixed_column();
-        let acc = cs.advice_column();
+        let acc = cs.advice_column_in(SecondPhase);
 
         cs.create_gate("bus sum check", |cs| {
             let enabled = cs.query_fixed(enabled, Rotation::cur());
@@ -55,8 +56,8 @@ impl<F: FieldExt> BusConfig<F> {
             let next_or_zero = (1.expr() - is_last) * acc_next;
 
             [
-                // If is_first, then initialize: `acc = ∑terms`.
-                is_first * (acc.clone() - sum.clone()),
+                // If is_first, then initialize: `acc = 0`.
+                is_first * acc.clone(),
                 // If not is_last, then accumulate: `acc_next = acc + ∑terms`
                 // If is_last, then the final sum is zero: `0 = acc + ∑terms`
                 enabled * (next_or_zero - (acc.clone() + sum)),
@@ -68,8 +69,49 @@ impl<F: FieldExt> BusConfig<F> {
             is_first,
             is_last,
             acc,
-            _marker: PhantomData,
         }
+    }
+
+    /// Assign the helper witness.
+    pub fn assign<F: FieldExt>(
+        &self,
+        region: &mut Region<'_, F>,
+        n_rows: usize,
+        terms: &[Value<F>],
+    ) -> Result<(), Error> {
+        region.assign_fixed(
+            || "Bus_is_first",
+            self.is_first,
+            0,
+            || Value::known(F::one()),
+        )?;
+
+        region.assign_fixed(
+            || "Bus_is_last",
+            self.is_last,
+            n_rows - 1,
+            || Value::known(F::one()),
+        )?;
+
+        for offset in 0..n_rows {
+            region.assign_fixed(
+                || "Bus_enable",
+                self.enabled,
+                offset,
+                || Value::known(F::one()),
+            )?;
+        }
+
+        let mut acc = Value::known(F::zero());
+
+        for offset in 0..n_rows {
+            region.assign_advice(|| "Bus_acc", self.acc, offset, || acc)?;
+
+            if let Some(term) = terms.get(offset) {
+                acc = acc + term;
+            }
+        }
+        Ok(())
     }
 }
 
