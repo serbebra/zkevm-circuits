@@ -2,6 +2,7 @@ use super::bus_chip::{BusPort, BusTerm};
 use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
+    circuit::Value,
     plonk::{Advice, Column, ConstraintSystem, Expression},
     poly::Rotation,
 };
@@ -49,6 +50,11 @@ impl<F: FieldExt> BusPortSingle<F> {
     pub fn new(helper: Expression<F>, op: BusOp<F>) -> Self {
         Self { helper, op }
     }
+
+    /// Return the witness that must be assigned to the helper cell.
+    pub fn helper_witness(value: F, rand: Value<F>) -> Value<F> {
+        rand.map(|rand| (rand + value).invert().unwrap_or(F::zero()))
+    }
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
@@ -57,6 +63,8 @@ impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
 
         meta.create_gate("bus access", |_| {
             // Verify that `term = count / (rand + value)`.
+            //
+            // With witness: helper = 1 / (rand + value)
             //
             // If `count = 0`, then `term = 0` by definition. In that case, the helper cell is not
             // constrained, so it can be used for something else.
@@ -78,6 +86,15 @@ impl<F: FieldExt> BusPortDual<F> {
     /// Create a new bus port with two accesses.
     pub fn new(helper: Expression<F>, ops: [BusOp<F>; 2]) -> Self {
         Self { helper, ops }
+    }
+
+    /// Return the witness that must be assigned to the helper cell.
+    pub fn helper_witness(values: [F; 2], rand: Value<F>) -> Value<F> {
+        rand.map(|rand| {
+            ((rand + values[0]) * (rand + values[1]))
+                .invert()
+                .unwrap_or(F::zero())
+        })
     }
 }
 
@@ -132,6 +149,8 @@ impl<F: FieldExt> BusPortColumn<F> {
 
         Self { helper, port }
     }
+
+    // TODO: assign function.
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortColumn<F> {
