@@ -7,6 +7,23 @@ use std::marker::PhantomData;
 
 use crate::util::Expr;
 
+/// A term of the bus sum check.
+#[derive(Clone)]
+pub struct BusTerm<F>(Expression<F>);
+
+impl<F> BusTerm<F> {
+    /// Wrap an expression to indicate that it was properly constructed as a bus term.
+    pub fn verified(term: Expression<F>) -> Self {
+        Self(term)
+    }
+}
+
+impl<F: FieldExt> Expr<F> for BusTerm<F> {
+    fn expr(&self) -> Expression<F> {
+        self.0.clone()
+    }
+}
+
 /// BusConfig
 pub struct BusConfig<F> {
     enabled: Column<Fixed>,
@@ -18,7 +35,7 @@ pub struct BusConfig<F> {
 
 impl<F: FieldExt> BusConfig<F> {
     /// Create a new bus.
-    pub fn new(cs: &mut ConstraintSystem<F>, terms: &[Expression<F>]) -> Self {
+    pub fn new(cs: &mut ConstraintSystem<F>, terms: &[BusTerm<F>]) -> Self {
         let enabled = cs.fixed_column();
         let is_first = cs.fixed_column();
         let is_last = cs.fixed_column();
@@ -32,7 +49,9 @@ impl<F: FieldExt> BusConfig<F> {
             let acc_next = cs.query_advice(acc, Rotation::next());
             let acc = cs.query_advice(acc.clone(), Rotation::cur());
 
-            let sum = terms.iter().fold(0.expr(), |acc, term| acc + term.clone());
+            let sum = terms
+                .iter()
+                .fold(0.expr(), |acc, term| acc + term.0.clone());
             let next_or_zero = (1.expr() - is_last) * acc_next;
 
             [
@@ -57,7 +76,7 @@ impl<F: FieldExt> BusConfig<F> {
 /// BusBuilder
 pub struct BusBuilder<F> {
     rand: Expression<F>,
-    terms: Vec<Expression<F>>,
+    terms: Vec<BusTerm<F>>,
 }
 
 impl<F: FieldExt> BusBuilder<F> {
@@ -76,7 +95,7 @@ impl<F: FieldExt> BusBuilder<F> {
     }
 
     /// Return the collected terms.
-    pub fn terms(self) -> Vec<Expression<F>> {
+    pub fn terms(self) -> Vec<BusTerm<F>> {
         self.terms
     }
 }
@@ -84,5 +103,5 @@ impl<F: FieldExt> BusBuilder<F> {
 /// BusPort prepares a term to be added to the bus.
 pub trait BusPort<F: FieldExt> {
     /// The term to add to the bus. This expression must be fully constrained on all rows.
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> Expression<F>;
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F>;
 }

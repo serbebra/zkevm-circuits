@@ -1,5 +1,5 @@
 use super::{
-    bus_chip::BusPort,
+    bus_chip::{BusPort, BusTerm},
     bus_port::{BusOp, BusPortSingle},
 };
 use crate::util::Expr;
@@ -25,13 +25,18 @@ impl<F: FieldExt> BusPortMulti<F> {
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortMulti<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> Expression<F> {
-        self.ops
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
+        let term = self
+            .ops
             .iter()
             .map(|op| {
-                BusPortSingle::new(self.helper.clone(), op.clone()).create_term(meta, rand.clone())
+                BusPortSingle::new(self.helper.clone(), op.clone())
+                    .create_term(meta, rand.clone())
+                    .expr()
             })
             .reduce(|acc, term| acc + term)
-            .unwrap_or(0.expr())
+            .unwrap_or(0.expr());
+
+        BusTerm::verified(term)
     }
 }

@@ -1,4 +1,4 @@
-use super::bus_chip::BusPort;
+use super::bus_chip::{BusPort, BusTerm};
 use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -52,7 +52,7 @@ impl<F: FieldExt> BusPortSingle<F> {
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> Expression<F> {
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
         let term = self.op.count() * self.helper.clone();
 
         meta.create_gate("bus access", |_| {
@@ -63,7 +63,7 @@ impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
             [term.clone() * (rand + self.op.value()) - self.op.count()]
         });
 
-        term
+        BusTerm::verified(term)
     }
 }
 
@@ -82,7 +82,7 @@ impl<F: FieldExt> BusPortDual<F> {
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> Expression<F> {
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
         let rv_0 = rand.clone() + self.ops[0].value();
         let rv_1 = rand.clone() + self.ops[1].value();
 
@@ -112,7 +112,7 @@ impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
             ]
         });
 
-        term_0 + term_1
+        BusTerm::verified(term_0 + term_1)
     }
 }
 
@@ -135,7 +135,7 @@ impl<F: FieldExt> BusPortColumn<F> {
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortColumn<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> Expression<F> {
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
         self.port.create_term(meta, rand)
     }
 }
