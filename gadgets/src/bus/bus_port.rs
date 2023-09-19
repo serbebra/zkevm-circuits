@@ -45,6 +45,7 @@ pub struct BusPortSingle<F> {
 
 impl<F: FieldExt> BusPortSingle<F> {
     /// Create a new bus port with a single access.
+    /// The helper cell can be used for something else if op.count is zero.
     pub fn new(helper: Expression<F>, op: BusOp<F>) -> Self {
         Self { helper, op }
     }
@@ -73,8 +74,9 @@ impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
     }
 }
 
-/// A chip with two accesses to the bus. BusPortDual uses only one witness cell, however the
+/// A chip with two accesses to the bus. BusPortDual uses only one helper cell, however the
 /// degree of input expressions is more limited than with BusPortSingle.
+/// The helper cell can be used for something else if both op.count are zero.
 pub struct BusPortDual<F> {
     helper: Expression<F>,
     ops: [BusOp<F>; 2],
