@@ -7,9 +7,9 @@ use chrono::Utc;
 use eth_types::{l2_types::BlockTrace, Address};
 use git_version::git_version;
 use halo2_proofs::{
-    arithmetic::{g_to_lagrange, Field},
+    arithmetic::{g_to_lagrange, parallelize, Field},
     halo2curves::{
-        bn256::{Bn256, Fr, G1},
+        bn256::{Bn256, Fr, G1Affine, G1},
         group::Curve,
     },
     poly::kzg::commitment::ParamsKZG,
@@ -98,7 +98,8 @@ pub fn load_params(
 pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
     let mut rng = ChaCha20Rng::from_seed(*seed);
     let secret = Fr::random(&mut rng);
-
+    let num_threads = rayon::current_num_threads();
+    let chunk_size = param.n as usize / num_threads;
     // Old g = [G1, [s] G1, [s^2] G1, ..., [s^(n-1)] G1]
     // we multiply each g by secret^i
     // and the new secret becomes s*secret
@@ -111,9 +112,16 @@ pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
         .g
         .par_iter()
         .zip(powers.par_iter())
-        .map(|(gi, power)| gi * power)
+        .chunks(chunk_size)
+        .flat_map_iter(|pair| pair.iter().map(|(g, s)| *g * *s).collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    G1::batch_normalize(&new_g_proj, &mut param.g);
+    param.g = {
+        let mut g = vec![G1Affine::default(); param.n as usize];
+        parallelize(&mut g, |g, starts| {
+            G1::batch_normalize(&new_g_proj[starts..(starts + g.len())], g);
+        });
+        g
+    };
 
     param.g_lagrange = g_to_lagrange(new_g_proj, param.k);
     param.s_g2 = (param.s_g2 * secret).into();
