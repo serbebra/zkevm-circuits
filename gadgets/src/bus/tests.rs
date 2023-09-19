@@ -51,20 +51,20 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
         let rand_expr = query_expression(cs, |cs| cs.query_challenge(rand));
         let mut bus_builder = BusBuilder::<F>::new(rand_expr);
 
-        let value = 2.expr();
+        let message = 2.expr();
 
         // Circuit 1 puts values dynamically.
         let count1 = cs.advice_column();
         let count1_expr = enabled_expr.clone()
             * query_expression(cs, |cs| cs.query_advice(count1, Rotation::cur()));
 
-        let port1 = BusPortChip::new(cs, BusOp::put(count1_expr, value.clone()));
+        let port1 = BusPortChip::new(cs, BusOp::put(count1_expr, message.clone()));
         bus_builder.connect_port(cs, &port1);
 
         // Circuit 2 takes one value per row.
         let count2_expr = enabled_expr * 1.expr();
 
-        let port2 = BusPortChip::new(cs, BusOp::take(count2_expr, value));
+        let port2 = BusPortChip::new(cs, BusOp::take(count2_expr, message));
         bus_builder.connect_port(cs, &port2);
 
         // Global bus connection.
@@ -91,7 +91,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
         layouter.assign_region(
             || "witness",
             |mut region| {
-                let value = Value::known(F::from(2));
+                let message = Value::known(F::from(2));
 
                 for offset in 0..self.n_rows {
                     region.assign_fixed(
@@ -109,13 +109,13 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     let count = Value::known(F::from(self.n_rows as u64));
                     let offset = 3; // can be anywhere.
                     region.assign_advice(|| "count1", config.count1, offset, || count)?;
-                    let term = config.port1.assign(&mut region, offset, value, rand)?;
+                    let term = config.port1.assign(&mut region, offset, message, rand)?;
                     bus_assigner.put_term(offset, count * term);
                 }
 
                 // Circuit 2 takes the value once per row.
                 for offset in 0..self.n_rows {
-                    let term = config.port2.assign(&mut region, offset, value, rand)?;
+                    let term = config.port2.assign(&mut region, offset, message, rand)?;
                     bus_assigner.take_term(offset, term);
                 }
 
