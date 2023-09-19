@@ -96,6 +96,7 @@ pub fn load_params(
 }
 
 pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
+    log::info!("start re-randomization");
     let mut rng = ChaCha20Rng::from_seed(*seed);
     let secret = Fr::random(&mut rng);
     let num_threads = rayon::current_num_threads();
@@ -103,11 +104,12 @@ pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
     // Old g = [G1, [s] G1, [s^2] G1, ..., [s^(n-1)] G1]
     // we multiply each g by secret^i
     // and the new secret becomes s*secret
+    log::info!("generating new seed");
     let mut powers = vec![Fr::one(), secret];
     for _ in 0..param.n - 2 {
         powers.push(secret * powers.last().unwrap())
     }
-
+    log::info!("build new params");
     let new_g_proj = param
         .g
         .par_iter()
@@ -115,6 +117,8 @@ pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
         .chunks(chunk_size)
         .flat_map_iter(|pair| pair.iter().map(|(g, s)| *g * *s).collect::<Vec<_>>())
         .collect::<Vec<_>>();
+
+    log::info!("normalizing new params");
     param.g = {
         let mut g = vec![G1Affine::default(); param.n as usize];
         parallelize(&mut g, |g, starts| {
@@ -122,9 +126,11 @@ pub fn re_randomize_srs(param: &mut ParamsKZG<Bn256>, seed: &[u8; 32]) {
         });
         g
     };
-
+    log::info!("converting to lagrange basis");
     param.g_lagrange = g_to_lagrange(new_g_proj, param.k);
     param.s_g2 = (param.s_g2 * secret).into();
+
+    log::info!("finished re-randomization");
 }
 
 /// get a block-result from file
