@@ -590,6 +590,36 @@ mod test {
     }
 
     #[test]
+    #[ignore = "iter over 1M possible nonces"]
+    fn test_create_address_full() {
+        for caller_nonce in 0..(1u64 << 20) {
+            let caller_address = mock::MOCK_ACCOUNTS[0];
+            let (rlp_word, rlp_len) = {
+                let mut stream = ethers_core::utils::rlp::RlpStream::new();
+                stream.begin_list(2);
+                stream.append(&caller_address);
+                stream.append(&caller_nonce);
+                let rlp_encoded = stream.out().to_vec();
+                (
+                    Word::from_big_endian(&rlp_encoded),
+                    Word::from(rlp_encoded.len()),
+                )
+            };
+            try_test!(
+                ContractCreateGadgetContainer<Fr, false>,
+                vec![
+                    caller_address.to_word(),
+                    Word::from(caller_nonce),
+                    rlp_len,
+                    rlp_word,
+                ],
+                true
+            );
+            log::debug!("caller_nonce = {} is ok", caller_nonce);
+        }
+    }
+
+    #[test]
     fn create2_address() {
         let caller_address = mock::MOCK_ACCOUNTS[0];
         let salt = Word::from(0xbeefcafedeadu64);
