@@ -21,6 +21,8 @@ pub use gadgets::util::Expr;
 
 /// A wrapper of is_zero in gadgets which gives is_zero at any rotation
 pub mod is_zero;
+pub mod word;
+pub mod int_decomposition;
 
 pub(crate) fn query_expression<F: FieldExt, T>(
     meta: &mut ConstraintSystem<F>,
