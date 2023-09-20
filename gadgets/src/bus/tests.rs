@@ -122,31 +122,27 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
                 // Circuit 2 takes one message per row.
                 {
+                    let count = Value::known(F::one());
+
                     // This uses a batching method rather than row-by-row.
-                    let mut helper_batch = HelperBatch::new();
+                    let mut port_assigner = PortAssigner::new(rand);
 
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
                         // … do normal circuit assignment logic …
 
                         // Collect the message(s) of this step into the batch.
-                        let denom = BusPortSingle::helper_denom(message, rand);
-                        helper_batch.add_denom(denom, offset);
+                        port_assigner.take_message(
+                            offset,
+                            config.port2.column(),
+                            0,
+                            count,
+                            message,
+                        );
                     }
 
                     // Final pass: assign the bus witnesses.
-                    helper_batch.invert().map(|terms| {
-                        // The batch has converted the messages into bus terms.
-                        for (term, offset) in terms {
-                            let term = Value::known(term);
-
-                            // Set the helper cell.
-                            config.port2.assign_term(&mut region, offset, term).unwrap();
-
-                            // Report the term to the global bus.
-                            bus_assigner.take_term(offset, term);
-                        }
-                    });
+                    port_assigner.finish(&mut region, &mut bus_assigner);
                 }
 
                 config

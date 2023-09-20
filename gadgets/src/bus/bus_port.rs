@@ -1,4 +1,7 @@
-use super::{bus_builder::BusPort, bus_chip::BusTerm};
+use super::{
+    bus_builder::{BusAssigner, BusPort},
+    bus_chip::BusTerm,
+};
 use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -57,7 +60,7 @@ impl<F: FieldExt> BusPortSingle<F> {
     }
 
     /// Return the denominator of the helper cell, to be inverted.
-    pub fn helper_denom(message: Value<F>, rand: Value<F>) -> Value<F> {
+    fn helper_denom(message: Value<F>, rand: Value<F>) -> Value<F> {
         rand + message
     }
 }
@@ -175,6 +178,11 @@ impl<F: FieldExt> BusPortChip<F> {
         region.assign_advice(|| "BusPort_helper", self.helper, offset, || term)?;
         Ok(())
     }
+
+    /// The column of the helper cell.
+    pub fn column(&self) -> Column<Advice> {
+        self.helper
+    }
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortChip<F> {
@@ -184,14 +192,14 @@ impl<F: FieldExt> BusPort<F> for BusPortChip<F> {
 }
 
 /// TermBatch calculates helper witnesses, in batches for better performance.
-pub struct HelperBatch<F, INFO> {
+struct HelperBatch<F, INFO> {
     denoms: Vec<(F, INFO)>,
     unknown: bool,
 }
 
 impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
     /// Create a new term batch.
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             denoms: vec![],
             unknown: false,
@@ -199,7 +207,7 @@ impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
     }
 
     /// Add a helper denominator to the batch. Some `info` can be attached for later use.
-    pub fn add_denom(&mut self, denom: Value<F>, info: INFO) {
+    fn add_denom(&mut self, denom: Value<F>, info: INFO) {
         if self.unknown {
             return;
         }
@@ -212,12 +220,73 @@ impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
     }
 
     /// Return the inverse of all denominators and their associated info.
-    pub fn invert(mut self) -> Value<Vec<(F, INFO)>> {
+    fn invert(mut self) -> Value<Vec<(F, INFO)>> {
         if self.unknown {
             Value::unknown()
         } else {
             self.denoms.iter_mut().map(|(d, _)| d).batch_invert();
             Value::known(self.denoms)
         }
+    }
+}
+
+/// PortAssigner computes and assigns terms into helper cells and the bus.
+pub struct PortAssigner<F> {
+    rand: Value<F>,
+    batch: HelperBatch<F, (usize, Column<Advice>, isize, Value<F>)>,
+}
+
+impl<F: FieldExt> PortAssigner<F> {
+    /// Create a new PortAssigner.
+    pub fn new(rand: Value<F>) -> Self {
+        Self {
+            rand,
+            batch: HelperBatch::new(),
+        }
+    }
+
+    /// Put a message.
+    pub fn put_message(
+        &mut self,
+        offset: usize,
+        column: Column<Advice>,
+        rotation: isize,
+        count: Value<F>,
+        message: Value<F>,
+    ) {
+        let denom = BusPortSingle::helper_denom(message, self.rand);
+        self.batch
+            .add_denom(denom, (offset, column, rotation, count));
+    }
+
+    /// Take a message.
+    pub fn take_message(
+        &mut self,
+        offset: usize,
+        column: Column<Advice>,
+        rotation: isize,
+        count: Value<F>,
+        message: Value<F>,
+    ) {
+        self.put_message(offset, column, rotation, -count, message);
+    }
+
+    /// Assign the helper cells and report the terms to the bus.
+    pub fn finish(self, region: &mut Region<'_, F>, bus_assigner: &mut BusAssigner<F>) {
+        self.batch.invert().map(|terms| {
+            // The batch has converted the messages into bus terms.
+            for (term, (offset, column, rotation, count)) in terms {
+                let term = Value::known(term);
+
+                // Set the helper cell.
+                let cell_offset = (offset as isize + rotation) as usize;
+                region
+                    .assign_advice(|| "BusPort_helper", column, cell_offset, || term)
+                    .unwrap();
+
+                // Report the term to the global bus.
+                bus_assigner.put_term(offset, count * term);
+            }
+        });
     }
 }
