@@ -104,19 +104,49 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
                 let mut bus_assigner = BusAssigner::new(self.n_rows);
 
-                // Circuit 1 puts the value once, but it is worth `count` times.
+                // Circuit 1 puts a message on some row.
                 {
+                    // Put `count` copies of the same message.
                     let count = Value::known(F::from(self.n_rows as u64));
                     let offset = 3; // can be anywhere.
                     region.assign_advice(|| "count1", config.count1, offset, || count)?;
-                    let term = config.port1.assign(&mut region, offset, message, rand)?;
+
+                    // Set the helper cell.
+                    let term = config
+                        .port1
+                        .assign_message(&mut region, offset, message, rand)?;
+
+                    // Report the term to the global bus.
                     bus_assigner.put_term(offset, count * term);
                 }
 
-                // Circuit 2 takes the value once per row.
-                for offset in 0..self.n_rows {
-                    let term = config.port2.assign(&mut region, offset, message, rand)?;
-                    bus_assigner.take_term(offset, term);
+                // Circuit 2 takes one message per row.
+                {
+                    // This uses a batching method rather than row-by-row.
+                    let mut helper_batch = HelperBatch::new();
+
+                    // First pass: run circuit steps.
+                    for offset in 0..self.n_rows {
+                        // … do normal circuit assignment logic …
+
+                        // Collect the message(s) of this step into the batch.
+                        let denom = BusPortSingle::helper_denom(message, rand);
+                        helper_batch.add_denom(denom, offset);
+                    }
+
+                    // Final pass: assign the bus witnesses.
+                    helper_batch.invert().map(|terms| {
+                        // The batch has converted the messages into bus terms.
+                        for (term, offset) in terms {
+                            let term = Value::known(term);
+
+                            // Set the helper cell.
+                            config.port2.assign_term(&mut region, offset, term).unwrap();
+
+                            // Report the term to the global bus.
+                            bus_assigner.take_term(offset, term);
+                        }
+                    });
                 }
 
                 config

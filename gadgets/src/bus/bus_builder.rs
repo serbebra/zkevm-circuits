@@ -42,7 +42,7 @@ impl<F: FieldExt> BusBuilder<F> {
 /// BusAssigner
 pub struct BusAssigner<F> {
     terms: Vec<F>,
-    all_assigned: bool,
+    unknown: bool,
 }
 
 impl<F: FieldExt> BusAssigner<F> {
@@ -50,7 +50,7 @@ impl<F: FieldExt> BusAssigner<F> {
     pub fn new(n_rows: usize) -> Self {
         Self {
             terms: vec![F::zero(); n_rows],
-            all_assigned: true,
+            unknown: false,
         }
     }
 
@@ -61,10 +61,15 @@ impl<F: FieldExt> BusAssigner<F> {
             "offset={offset} out of bounds n_rows={}",
             self.terms.len()
         );
-        if term.is_none() {
-            self.all_assigned = false;
+        if self.unknown {
+            return;
         }
-        term.map(|t| self.terms[offset] += t);
+        if term.is_none() {
+            self.unknown = true;
+            self.terms.clear();
+        } else {
+            term.map(|t| self.terms[offset] += t);
+        }
     }
 
     /// Take a term value from the bus.
@@ -74,10 +79,10 @@ impl<F: FieldExt> BusAssigner<F> {
 
     /// Return the collected terms.
     pub fn terms(&self) -> Value<&[F]> {
-        if self.all_assigned {
-            Value::known(&self.terms)
-        } else {
+        if self.unknown {
             Value::unknown()
+        } else {
+            Value::known(&self.terms)
         }
     }
 }

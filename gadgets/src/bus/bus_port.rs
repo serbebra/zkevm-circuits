@@ -3,6 +3,7 @@ use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
+    halo2curves::group::ff::BatchInvert,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, SecondPhase},
     poly::Rotation,
 };
@@ -53,6 +54,11 @@ impl<F: FieldExt> BusPortSingle<F> {
     /// Return the witness that must be assigned to the helper cell.
     pub fn helper_witness(message: Value<F>, rand: Value<F>) -> Value<F> {
         (rand + message).map(|x| x.invert().unwrap_or(F::zero()))
+    }
+
+    /// Return the denominator of the helper cell, to be inverted.
+    pub fn helper_denom(message: Value<F>, rand: Value<F>) -> Value<F> {
+        rand + message
     }
 }
 
@@ -146,8 +152,8 @@ impl<F: FieldExt> BusPortChip<F> {
         Self { helper, port }
     }
 
-    /// Assign the helper witness.
-    pub fn assign(
+    /// Assign the helper witness based on a message.
+    pub fn assign_message(
         &self,
         region: &mut Region<'_, F>,
         offset: usize,
@@ -158,10 +164,60 @@ impl<F: FieldExt> BusPortChip<F> {
         region.assign_advice(|| "BusPort_helper", self.helper, offset, || helper)?;
         Ok(helper)
     }
+
+    /// Assign the helper witness based on a precomputed term (without count).
+    pub fn assign_term(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        term: Value<F>,
+    ) -> Result<(), Error> {
+        region.assign_advice(|| "BusPort_helper", self.helper, offset, || term)?;
+        Ok(())
+    }
 }
 
 impl<F: FieldExt> BusPort<F> for BusPortChip<F> {
     fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
         self.port.create_term(meta, rand)
+    }
+}
+
+/// TermBatch calculates helper witnesses, in batches for better performance.
+pub struct HelperBatch<F, INFO> {
+    denoms: Vec<(F, INFO)>,
+    unknown: bool,
+}
+
+impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
+    /// Create a new term batch.
+    pub fn new() -> Self {
+        Self {
+            denoms: vec![],
+            unknown: false,
+        }
+    }
+
+    /// Add a helper denominator to the batch. Some `info` can be attached for later use.
+    pub fn add_denom(&mut self, denom: Value<F>, info: INFO) {
+        if self.unknown {
+            return;
+        }
+        if denom.is_none() {
+            self.unknown = true;
+            self.denoms.clear();
+        } else {
+            denom.map(|denom| self.denoms.push((denom, info)));
+        }
+    }
+
+    /// Return the inverse of all denominators and their associated info.
+    pub fn invert(mut self) -> Value<Vec<(F, INFO)>> {
+        if self.unknown {
+            Value::unknown()
+        } else {
+            self.denoms.iter_mut().map(|(d, _)| d).batch_invert();
+            Value::known(self.denoms)
+        }
     }
 }
