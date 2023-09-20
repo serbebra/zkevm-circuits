@@ -22,8 +22,8 @@ pub type BusOpVal<F> = BusOp<Value<F>>;
 /// A bus operation.
 #[derive(Clone)]
 pub struct BusOp<T> {
-    count: T,
     message: T,
+    count: T,
 }
 
 impl<T> BusOp<T>
@@ -31,23 +31,23 @@ where
     T: Clone + Neg<Output = T>,
 {
     /// Put an item. The expression evaluates to 0 or the number of copies.
-    pub fn put(count: T, message: T) -> Self {
-        Self { count, message }
+    pub fn put(message: T, count: T) -> Self {
+        Self { message, count }
     }
 
     /// Take an item. The expression evaluates to 0 or 1.
-    pub fn take(count: T, message: T) -> Self {
-        Self::put(-count, message)
+    pub fn take(message: T, count: T) -> Self {
+        Self::put(message, -count)
     }
 
-    /// The expression of the count of items to put or take.
-    pub fn count(&self) -> T {
-        self.count.clone()
-    }
-
-    /// The expression of the message to put or take.
+    /// The message to put or take.
     pub fn message(&self) -> T {
         self.message.clone()
+    }
+
+    /// The number of copies of the message to put (if positive) or take (if negative).
+    pub fn count(&self) -> T {
+        self.count.clone()
     }
 }
 

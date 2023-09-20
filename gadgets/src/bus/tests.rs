@@ -22,7 +22,7 @@ struct TestCircuitConfig<F: FieldExt> {
     count1: Column<Advice>,
     port1: BusPortChip<F>,
     port2: BusPortChip<F>,
-    bus_check: BusConfig,
+    bus_config: BusConfig,
     rand: Challenge,
     _marker: PhantomData<F>,
 }
@@ -58,21 +58,21 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
         let count1_expr = enabled_expr.clone()
             * query_expression(cs, |cs| cs.query_advice(count1, Rotation::cur()));
 
-        let port1 = BusPortChip::new(cs, BusOp::put(count1_expr, message.clone()));
+        let port1 = BusPortChip::new(cs, BusOp::put(message.clone(), count1_expr));
         bus_builder.connect_port(cs, &port1);
 
         // Circuit 2 takes one value per row.
         let count2_expr = enabled_expr * 1.expr();
 
-        let port2 = BusPortChip::new(cs, BusOp::take(count2_expr, message));
+        let port2 = BusPortChip::new(cs, BusOp::take(message, count2_expr));
         bus_builder.connect_port(cs, &port2);
 
         // Global bus connection.
-        let bus_check = BusConfig::new(cs, &bus_builder.build());
+        let bus_config = BusConfig::new(cs, &bus_builder.build());
 
         TestCircuitConfig {
             enabled,
-            bus_check,
+            bus_config,
             count1,
             port1,
             port2,
@@ -135,7 +135,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                             offset,
                             config.port2.column(),
                             0,
-                            BusOp::take(count, message),
+                            BusOp::take(message, count),
                         );
                     }
 
@@ -144,7 +144,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                 }
 
                 config
-                    .bus_check
+                    .bus_config
                     .assign(&mut region, self.n_rows, bus_assigner.terms())?;
 
                 Ok(())
