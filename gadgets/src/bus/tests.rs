@@ -91,8 +91,6 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
         layouter.assign_region(
             || "witness",
             |mut region| {
-                let message = Value::known(F::from(2));
-
                 for offset in 0..self.n_rows {
                     region.assign_fixed(
                         || "Port_enable",
@@ -107,6 +105,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                 // Circuit 1 puts a message on some row.
                 {
                     // Put `count` copies of the same message.
+                    let message = Value::known(F::from(2));
                     let count = Value::known(F::from(self.n_rows as u64));
                     let offset = 3; // can be anywhere.
                     region.assign_advice(|| "count1", config.count1, offset, || count)?;
@@ -122,22 +121,21 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
                 // Circuit 2 takes one message per row.
                 {
-                    let count = Value::known(F::one());
-
                     // This uses a batching method rather than row-by-row.
                     let mut port_assigner = PortAssigner::new(rand);
 
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
                         // … do normal circuit assignment logic …
+                        let count = Value::known(F::one());
+                        let message = Value::known(F::from(2));
 
-                        // Collect the message(s) of this step into the batch.
-                        port_assigner.take_message(
+                        // Collect the bus operations into the batch.
+                        port_assigner.set_op(
                             offset,
                             config.port2.column(),
                             0,
-                            count,
-                            message,
+                            BusOp::take(count, message),
                         );
                     }
 

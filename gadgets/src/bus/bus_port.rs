@@ -1,3 +1,5 @@
+use std::ops::Neg;
+
 use super::{
     bus_builder::{BusAssigner, BusPort},
     bus_chip::BusTerm,
@@ -11,31 +13,40 @@ use halo2_proofs::{
     poly::Rotation,
 };
 
+/// A bus operation, as expressions for circuit config.
+pub type BusOpExpr<F> = BusOp<Expression<F>>;
+
+/// A bus operation, as values for circuit assignment.
+pub type BusOpVal<F> = BusOp<Value<F>>;
+
 /// A bus operation.
 #[derive(Clone)]
-pub struct BusOp<F> {
-    count: Expression<F>,
-    message: Expression<F>,
+pub struct BusOp<T> {
+    count: T,
+    message: T,
 }
 
-impl<F: FieldExt> BusOp<F> {
+impl<T> BusOp<T>
+where
+    T: Clone + Neg<Output = T>,
+{
     /// Put an item. The expression evaluates to 0 or the number of copies.
-    pub fn put(count: Expression<F>, message: Expression<F>) -> Self {
+    pub fn put(count: T, message: T) -> Self {
         Self { count, message }
     }
 
     /// Take an item. The expression evaluates to 0 or 1.
-    pub fn take(count: Expression<F>, message: Expression<F>) -> Self {
+    pub fn take(count: T, message: T) -> Self {
         Self::put(-count, message)
     }
 
     /// The expression of the count of items to put or take.
-    pub fn count(&self) -> Expression<F> {
+    pub fn count(&self) -> T {
         self.count.clone()
     }
 
     /// The expression of the message to put or take.
-    pub fn message(&self) -> Expression<F> {
+    pub fn message(&self) -> T {
         self.message.clone()
     }
 }
@@ -44,13 +55,13 @@ impl<F: FieldExt> BusOp<F> {
 #[derive(Clone)]
 pub struct BusPortSingle<F> {
     helper: Expression<F>,
-    op: BusOp<F>,
+    op: BusOpExpr<F>,
 }
 
 impl<F: FieldExt> BusPortSingle<F> {
     /// Create a new bus port with a single access.
     /// The helper cell can be used for something else if op.count is zero.
-    pub fn new(helper: Expression<F>, op: BusOp<F>) -> Self {
+    pub fn new(helper: Expression<F>, op: BusOpExpr<F>) -> Self {
         Self { helper, op }
     }
 
@@ -88,12 +99,12 @@ impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
 /// The helper cell can be used for something else if both op.count are zero.
 pub struct BusPortDual<F> {
     helper: Expression<F>,
-    ops: [BusOp<F>; 2],
+    ops: [BusOpExpr<F>; 2],
 }
 
 impl<F: FieldExt> BusPortDual<F> {
     /// Create a new bus port with two accesses.
-    pub fn new(helper: Expression<F>, ops: [BusOp<F>; 2]) -> Self {
+    pub fn new(helper: Expression<F>, ops: [BusOpExpr<F>; 2]) -> Self {
         Self { helper, ops }
     }
 
@@ -146,7 +157,7 @@ pub struct BusPortChip<F> {
 
 impl<F: FieldExt> BusPortChip<F> {
     /// Create a new bus port with a single access.
-    pub fn new(meta: &mut ConstraintSystem<F>, op: BusOp<F>) -> Self {
+    pub fn new(meta: &mut ConstraintSystem<F>, op: BusOpExpr<F>) -> Self {
         let helper = meta.advice_column_in(SecondPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
@@ -245,30 +256,17 @@ impl<F: FieldExt> PortAssigner<F> {
         }
     }
 
-    /// Put a message.
-    pub fn put_message(
+    /// Assign a message.
+    pub fn set_op(
         &mut self,
         offset: usize,
         column: Column<Advice>,
         rotation: isize,
-        count: Value<F>,
-        message: Value<F>,
+        op: BusOpVal<F>,
     ) {
-        let denom = BusPortSingle::helper_denom(message, self.rand);
+        let denom = BusPortSingle::helper_denom(op.message(), self.rand);
         self.batch
-            .add_denom(denom, (offset, column, rotation, count));
-    }
-
-    /// Take a message.
-    pub fn take_message(
-        &mut self,
-        offset: usize,
-        column: Column<Advice>,
-        rotation: isize,
-        count: Value<F>,
-        message: Value<F>,
-    ) {
-        self.put_message(offset, column, rotation, -count, message);
+            .add_denom(denom, (offset, column, rotation, op.count()));
     }
 
     /// Assign the helper cells and report the terms to the bus.
