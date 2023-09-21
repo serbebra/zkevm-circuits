@@ -493,6 +493,8 @@ impl<'a> CircuitInputBuilder {
             ),
         )?;
 
+        assert_eq!(state.block_ctx.rwc.0 - 1, state.block.container.size());
+
         let mut push_op = |step: &mut ExecStep, rwc: RWCounter, rw: RW, op: StartOp| {
             let op_ref = state.block.container.insert(Operation::new(rwc, rw, op));
             step.bus_mapping_instance.push(op_ref);

@@ -82,6 +82,19 @@ impl OperationContainer {
         self.insert_op_enum(rwc, rw, reversible, op.op.into_enum())
     }
 
+    pub(crate) fn size(&self) -> usize {
+        self.memory.len()
+            + self.stack.len()
+            + self.storage.len()
+            + self.tx_access_list_account.len()
+            + self.tx_access_list_account_storage.len()
+            + self.tx_refund.len()
+            + self.account.len()
+            + self.call_context.len()
+            + self.tx_receipt.len()
+            + self.tx_log.len()
+    }
+
     /// Inserts an [`OpEnum`] into the  container returning a lightweight
     /// reference to it in the form of an [`OperationRef`] which points to the
     /// location of the inserted operation inside the corresponding container
