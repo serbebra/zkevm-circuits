@@ -10,6 +10,7 @@ use halo2_proofs::{
     plonk::Circuit,
 };
 use integration_tests::{get_client, log_init, CIRCUIT, END_BLOCK, START_BLOCK, TX_ID};
+use tokio::time::{sleep, Duration};
 use zkevm_circuits::{
     copy_circuit::CopyCircuit,
     evm_circuit::{witness::block_convert, EvmCircuit},
@@ -140,12 +141,29 @@ async fn test_circuit_all_block() {
         .map(|start| {
             tokio::spawn(async move {
                 let mut blk = start;
+                let mut num_errs = 0;
                 while blk <= end {
                     let block_num = blk as u64;
                     log::info!("test {} circuit, block number: {}", *CIRCUIT, block_num);
                     let cli = get_client();
 
-                    let eth_block = cli.get_block_by_number(block_num.into()).await.unwrap();
+                    let eth_block_res = cli.get_block_by_number(block_num.into()).await;
+                    if eth_block_res.is_err() {
+                        log::debug!("invalid eth_block for block {} {:?}, err num {}, will sleep for {}s",
+                            block_num,
+                            eth_block_res.err().unwrap(),
+                            num_errs,
+                            2u64.pow(num_errs),
+                        );
+                        let duration = Duration::from_secs(2u64.pow(num_errs));
+                        sleep(duration).await;
+                        num_errs += 1;
+                        continue;
+                    }
+
+                    num_errs = u32::saturating_sub(num_errs, 1);
+                    let eth_block = eth_block_res.unwrap();
+
                     let params = CircuitsParams {
                         max_rws: 4_000_000,
                         max_copy_rows: 0, // dynamic
