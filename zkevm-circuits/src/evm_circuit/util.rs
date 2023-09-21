@@ -1,17 +1,23 @@
 use crate::{
     evm_circuit::{
         param::{
-            LOOKUP_CONFIG, N_BYTES_MEMORY_ADDRESS, N_BYTES_U64, N_BYTE_LOOKUPS, N_COPY_COLUMNS,
-            N_PHASE2_COLUMNS, N_PHASE2_COPY_COLUMNS,
+            LOOKUP_CONFIG, N_BYTES_ACCOUNT_ADDRESS, N_BYTES_MEMORY_ADDRESS, N_BYTES_U64,
+            N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE2_COLUMNS, N_PHASE2_COPY_COLUMNS,
         },
         table::Table,
     },
     table::RwTableTag,
-    util::{query_expression, Challenges, Expr},
+    //util::{cell_manager::CMFixedWidthStrategyDistribution, int_decomposition::IntDecomposition},
+    util::int_decomposition::IntDecomposition,
+    util::{
+        query_expression,
+        word::{Word, WordExpr},
+        Challenges, Expr,
+    },
     witness::{Block, ExecStep, Rw, RwMap},
 };
 use bus_mapping::state_db::CodeDB;
-use eth_types::{Address, ToLittleEndian, ToWord, U256};
+use eth_types::{Address, Field, ToLittleEndian, ToWord, U256};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Region, Value},
@@ -547,9 +553,11 @@ impl<F: FieldExt, const N: usize> Expr<F> for RandomLinearCombination<F, N> {
     }
 }
 
-pub(crate) type Word<F> = RandomLinearCombination<F, 32>;
-pub(crate) type U64Word<F> = RandomLinearCombination<F, N_BYTES_U64>;
-pub(crate) type MemoryAddress<F> = RandomLinearCombination<F, N_BYTES_MEMORY_ADDRESS>;
+pub(crate) type MemoryAddress<F> = IntDecomposition<F, N_BYTES_MEMORY_ADDRESS>;
+
+pub(crate) type AccountAddress<F> = IntDecomposition<F, N_BYTES_ACCOUNT_ADDRESS>;
+
+pub(crate) type U64Cell<F> = IntDecomposition<F, N_BYTES_U64>;
 
 /// Decodes a field element from its byte representation
 pub(crate) mod from_bytes {
@@ -703,6 +711,11 @@ pub(crate) fn transpose_val_ret<F, E>(value: Value<Result<F, E>>) -> Result<Valu
 
 pub(crate) fn is_precompiled(address: &Address) -> bool {
     address.0[0..19] == [0u8; 19] && (1..=9).contains(&address.0[19])
+}
+
+/// convert address (h160) to single expression.
+pub fn address_word_to_expr<F: Field>(address: Word<Expression<F>>) -> Expression<F> {
+    address.lo() + address.hi() * Expression::Constant(F::from_repr(BASE_128_BYTES).unwrap())
 }
 
 /// Helper struct to read rw operations from a step sequentially.

@@ -4,7 +4,10 @@ use crate::{
         constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
         from_bytes, pow_of_two_expr, split_u256, split_u256_limb64, CachedRegion, Cell,
     },
-    util::Expr,
+    util::{
+        word::{self, Word4, WordExpr},
+        Expr,
+    },
 };
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::{circuit::Value, plonk::Error};
@@ -52,8 +55,8 @@ impl<F: Field> MulAddWords512Gadget<F> {
     /// Addend is the optional c.
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        words: [&util::Word<F>; 4],
-        addend: Option<&util::Word<F>>,
+        words: [&word::Word32Cell<F>; 4],
+        addend: Option<&word::Word32Cell<F>>,
     ) -> Self {
         let carry_0 = cb.query_bytes();
         let carry_1 = cb.query_bytes();
@@ -65,16 +68,15 @@ impl<F: Field> MulAddWords512Gadget<F> {
         // Split input words in limbs
         let mut a_limbs = vec![];
         let mut b_limbs = vec![];
-        for trunk in 0..4 {
-            let idx = (trunk * 8) as usize;
-            a_limbs.push(from_bytes::expr(&words[0].cells[idx..idx + 8]));
-            b_limbs.push(from_bytes::expr(&words[1].cells[idx..idx + 8]));
+        let word4_a = words[0].to_word_n();
+        let word4_b = words[1].to_word_n();
+        for i in 0..4 {
+            a_limbs.push(word4_a.limbs[i].expr());
+            b_limbs.push(word4_b.limbs[i].expr());
         }
 
-        let d_lo = from_bytes::expr(&words[2].cells[0..16]);
-        let d_hi = from_bytes::expr(&words[2].cells[16..32]);
-        let e_lo = from_bytes::expr(&words[3].cells[0..16]);
-        let e_hi = from_bytes::expr(&words[3].cells[16..32]);
+        let (d_lo, d_hi) = words[2].to_word().to_lo_hi();
+        let (e_lo, e_hi) = words[3].to_word().to_lo_hi();
 
         // Limb multiplication
         let t0 = a_limbs[0].clone() * b_limbs[0].clone();
@@ -93,8 +95,8 @@ impl<F: Field> MulAddWords512Gadget<F> {
         let t6 = a_limbs[3].clone() * b_limbs[3].clone();
 
         if let Some(c) = addend {
-            let c_lo = from_bytes::expr(&c.cells[0..16]);
-            let c_hi = from_bytes::expr(&c.cells[16..32]);
+            let c = c.to_word();
+            let (c_lo, c_hi) = c.to_lo_hi();
             cb.require_equal(
                 "(t0 + t1 ⋅ 2^64) + c_lo == e_lo + carry_0 ⋅ 2^128",
                 t0.expr() + t1.expr() * pow_of_two_expr(64) + c_lo,

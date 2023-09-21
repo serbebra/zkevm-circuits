@@ -2,6 +2,7 @@ pub use crate::table::TxContextFieldTag;
 use crate::{
     evm_circuit::step::{ExecutionState, ResponsibleOp},
     impl_expr,
+    util::word::Word,
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
 use eth_types::Field;
@@ -166,11 +167,11 @@ pub struct RwValues<F> {
     pub id: Expression<F>,
     pub address: Expression<F>,
     pub field_tag: Expression<F>,
-    pub storage_key: Expression<F>,
-    pub value: Expression<F>,
-    pub value_prev: Expression<F>,
-    pub aux1: Expression<F>,
-    pub aux2: Expression<F>,
+    storage_key: Word<Expression<F>>,
+    value: Word<Expression<F>>,
+    value_prev: Word<Expression<F>>,
+    aux1: Word<Expression<F>>,
+    aux2: Word<Expression<F>>,
 }
 
 impl<F: Field> RwValues<F> {
@@ -179,11 +180,11 @@ impl<F: Field> RwValues<F> {
         id: Expression<F>,
         address: Expression<F>,
         field_tag: Expression<F>,
-        storage_key: Expression<F>,
-        value: Expression<F>,
-        value_prev: Expression<F>,
-        aux1: Expression<F>,
-        aux2: Expression<F>,
+        storage_key: Word<Expression<F>>,
+        value: Word<Expression<F>>,
+        value_prev: Word<Expression<F>>,
+        aux1: Word<Expression<F>>,
+        aux2: Word<Expression<F>>,
     ) -> Self {
         Self {
             id,

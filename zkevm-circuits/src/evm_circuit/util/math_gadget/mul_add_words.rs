@@ -4,9 +4,12 @@ use crate::{
         constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
         from_bytes, pow_of_two_expr, split_u256, split_u256_limb64, CachedRegion, Cell,
     },
-    util::Expr,
+    util::{
+        word::{Word, Word32Cell, Word4, WordExpr},
+        Expr,
+    },
 };
-use eth_types::{Field, ToLittleEndian, Word};
+use eth_types::{Field, ToLittleEndian, Word as U256Word};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -50,7 +53,7 @@ pub(crate) struct MulAddWordsGadget<F> {
 }
 
 impl<F: Field> MulAddWordsGadget<F> {
-    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&util::Word<F>; 4]) -> Self {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&Word32Cell<F>; 4]) -> Self {
         let (a, b, c, d) = (words[0], words[1], words[2], words[3]);
         let carry_lo = cb.query_bytes();
         let carry_hi = cb.query_bytes();
@@ -59,15 +62,16 @@ impl<F: Field> MulAddWordsGadget<F> {
 
         let mut a_limbs = vec![];
         let mut b_limbs = vec![];
-        for trunk in 0..4 {
-            let idx = (trunk * 8) as usize;
-            a_limbs.push(from_bytes::expr(&a.cells[idx..idx + 8]));
-            b_limbs.push(from_bytes::expr(&b.cells[idx..idx + 8]));
+        let word4_a: Word4<Expression<F>> = a.to_word_n();
+        let word4_b: Word4<Expression<F>> = b.to_word_n();
+        for i in 0..4 {
+            let idx = (i * 8) as usize;
+            a_limbs.push(word4_a.limbs[i].expr());
+            b_limbs.push(word4_b.limbs[i].expr());
         }
-        let c_lo = from_bytes::expr(&c.cells[0..16]);
-        let c_hi = from_bytes::expr(&c.cells[16..32]);
-        let d_lo = from_bytes::expr(&d.cells[0..16]);
-        let d_hi = from_bytes::expr(&d.cells[16..32]);
+
+        let word_c: Word<Expression<F>> = c.to_word();
+        let word_d: Word<Expression<F>> = d.to_word();
 
         let t0 = a_limbs[0].clone() * b_limbs[0].clone();
         let t1 = a_limbs[0].clone() * b_limbs[1].clone() + a_limbs[1].clone() * b_limbs[0].clone();
@@ -88,13 +92,13 @@ impl<F: Field> MulAddWordsGadget<F> {
 
         cb.require_equal(
             "(a * b)_lo + c_lo == d_lo + carry_lo ⋅ 2^128",
-            t0.expr() + t1.expr() * pow_of_two_expr(64) + c_lo,
-            d_lo + carry_lo_expr.clone() * pow_of_two_expr(128),
+            t0.expr() + t1.expr() * pow_of_two_expr(64) + word_c.lo().expr(),
+            word_d.lo().expr() + carry_lo_expr.clone() * pow_of_two_expr(128),
         );
         cb.require_equal(
             "(a * b)_hi + c_hi + carry_lo == d_hi + carry_hi ⋅ 2^128",
-            t2.expr() + t3.expr() * pow_of_two_expr(64) + c_hi + carry_lo_expr,
-            d_hi + carry_hi_expr * pow_of_two_expr(128),
+            t2.expr() + t3.expr() * pow_of_two_expr(64) + word_c.hi().expr() + carry_lo_expr,
+            word_d.hi().expr() + carry_hi_expr * pow_of_two_expr(128),
         );
 
         Self {
@@ -108,7 +112,7 @@ impl<F: Field> MulAddWordsGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        words: [Word; 4],
+        words: [U256Word; 4],
     ) -> Result<(), Error> {
         let (a, b, c, d) = (words[0], words[1], words[2], words[3]);
 

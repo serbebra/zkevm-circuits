@@ -5,7 +5,10 @@ use crate::{
         math_gadget::*,
         select, sum, CachedRegion,
     },
-    util::Expr,
+    util::{
+        word::{self, Word32Cell, WordExpr},
+        Expr,
+    },
 };
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::plonk::Error;
@@ -21,15 +24,15 @@ use halo2_proofs::plonk::Error;
 /// this equation assures that r<n or r=n=0.
 #[derive(Clone, Debug)]
 pub(crate) struct ModGadget<F, const IS_EVM: bool> {
-    k: util::Word<F>,
-    a_or_zero: util::Word<F>,
+    k: Word32Cell<F>,
+    a_or_zero: Word32Cell<F>,
     mul_add_words: MulAddWordsGadget<F>,
     n_is_zero: IsZeroGadget<F>,
     a_or_is_zero: IsZeroGadget<F>,
     lt: LtWordGadget<F>,
 }
 impl<F: Field, const IS_EVM: bool> ModGadget<F, IS_EVM> {
-    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&util::Word<F>; 3]) -> Self {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&Word32Cell<F>; 3]) -> Self {
         let (a, n, r) = (words[0], words[1], words[2]);
         let k = if IS_EVM {
             cb.query_word_rlc()

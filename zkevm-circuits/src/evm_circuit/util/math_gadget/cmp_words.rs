@@ -3,7 +3,10 @@ use crate::{
         self, constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, select,
         CachedRegion,
     },
-    util::Expr,
+    util::{
+        word::{Word32Cell, WordExpr},
+        Expr,
+    },
 };
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::plonk::{Error, Expression};
@@ -20,24 +23,18 @@ pub(crate) struct CmpWordsGadget<F> {
 impl<F: Field> CmpWordsGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        a: &util::Word<F>,
-        b: &util::Word<F>,
+        a: &Word32Cell<F>,
+        b: &Word32Cell<F>,
     ) -> Self {
         // `a[0..16] <= b[0..16]`
-        let comparison_lo = ComparisonGadget::construct(
-            cb,
-            from_bytes::expr(&a.cells[0..16]),
-            from_bytes::expr(&b.cells[0..16]),
-        );
+        let (a_lo, a_hi) = a.to_word().to_lo_hi();
+        let (b_lo, b_hi) = b.to_word().to_lo_hi();
+        let comparison_lo = ComparisonGadget::construct(cb, a_lo, b_lo);
 
         let (lt_lo, eq_lo) = comparison_lo.expr();
 
         // `a[16..32] <= b[16..32]`
-        let comparison_hi = ComparisonGadget::construct(
-            cb,
-            from_bytes::expr(&a.cells[16..32]),
-            from_bytes::expr(&b.cells[16..32]),
-        );
+        let comparison_hi = ComparisonGadget::construct(cb, a_hi, b_hi);
         let (lt_hi, eq_hi) = comparison_hi.expr();
 
         // `a < b` when:

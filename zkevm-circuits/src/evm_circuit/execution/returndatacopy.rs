@@ -19,7 +19,10 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::CallContextFieldTag,
-    util::Expr,
+    util::{
+        word::{Word, WordExpr},
+        Expr,
+    },
 };
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, ToScalar};
@@ -59,10 +62,14 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
-        let dest_offset = cb.query_cell_phase2();
-        let return_data_size: Cell<F> = cb.query_cell();
+        // let dest_offset = cb.query_cell_phase2();
+        // let return_data_size: Cell<F> = cb.query_cell();
 
-        let size: RandomLinearCombination<F, N_BYTES_MEMORY_ADDRESS> = cb.query_word_rlc();
+        // let size: RandomLinearCombination<F, N_BYTES_MEMORY_ADDRESS> = cb.query_word_rlc();
+        let dest_offset = cb.query_word_unchecked();
+        let data_offset = cb.query_memory_address();
+        let size = cb.query_memory_address();
+
         // enusre no other out of bound errors occur, otherwise go to `ErrorReturnDataOutOfBound`
         // state
         let check_overflow_gadget =
