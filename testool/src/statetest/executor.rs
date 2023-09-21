@@ -4,10 +4,9 @@ use bus_mapping::{
     circuit_input_builder::{CircuitInputBuilder, CircuitsParams, PrecompileEcParams},
     state_db::CodeDB,
 };
-#[cfg(feature = "scroll")]
-use eth_types::ToBigEndian;
 use eth_types::{
-    geth_types, geth_types::TxType, Address, Bytes, GethExecTrace, ToWord, H256, U256, U64,
+    geth_types, geth_types::TxType, Address, Bytes, GethExecTrace, ToBigEndian, ToWord, H256, U256,
+    U64,
 };
 use ethers_core::{
     types::{transaction::eip2718::TypedTransaction, TransactionRequest},
@@ -18,14 +17,6 @@ use external_tracer::{LoggerConfig, TraceConfig};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr, plonk::Circuit};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-#[cfg(any(feature = "inner-prove", feature = "chunk-prove"))]
-use prover::{
-    common::{Prover, Verifier},
-    config::LayerId,
-    config::{INNER_DEGREE, ZKEVM_DEGREES},
-};
-#[cfg(feature = "inner-prove")]
-use prover::{utils::gen_rng, zkevm::circuit};
 use std::{collections::HashMap, env, str::FromStr};
 use thiserror::Error;
 use zkevm_circuits::{
@@ -42,58 +33,6 @@ pub fn read_env_var<T: Clone + FromStr>(var_name: &'static str, default: T) -> T
 }
 /// Which circuit to test. Default is evm + state.
 pub static CIRCUIT: Lazy<String> = Lazy::new(|| read_env_var("CIRCUIT", "".to_string()));
-
-#[cfg(any(feature = "inner-prove", feature = "chunk-prove"))]
-static mut REAL_PROVER: Lazy<Prover> = Lazy::new(|| {
-    let params_dir = "./test_params";
-
-    let degrees: Vec<u32> = if cfg!(feature = "inner-prove") {
-        vec![*INNER_DEGREE]
-    } else {
-        // for chunk-prove
-        (*ZKEVM_DEGREES).clone()
-    };
-
-    let prover = Prover::from_params_dir(params_dir, &degrees);
-    log::info!("Constructed real-prover");
-
-    prover
-});
-
-#[cfg(feature = "inner-prove")]
-static mut INNER_VERIFIER: Lazy<
-    Verifier<<circuit::SuperCircuit as circuit::TargetCircuit>::Inner>,
-> = Lazy::new(|| {
-    let prover = unsafe { &mut REAL_PROVER };
-    let params = prover.params(*INNER_DEGREE).clone();
-
-    let id = read_env_var("COINBASE", LayerId::Inner.id().to_string());
-    let pk = prover.pk(&id).expect("Failed to get inner-prove PK");
-    let vk = pk.get_vk().clone();
-
-    let verifier = Verifier::new(params, vk);
-    log::info!("Constructed inner-verifier");
-
-    verifier
-});
-
-#[cfg(feature = "chunk-prove")]
-static mut CHUNK_VERIFIER: Lazy<Verifier<prover::CompressionCircuit>> = Lazy::new(|| {
-    env::set_var("COMPRESSION_CONFIG", LayerId::Layer2.config_path());
-
-    let prover = unsafe { &mut REAL_PROVER };
-    let params = prover.params(LayerId::Layer2.degree()).clone();
-
-    let pk = prover
-        .pk(LayerId::Layer2.id())
-        .expect("Failed to get chunk-prove PK");
-    let vk = pk.get_vk().clone();
-
-    let verifier = Verifier::new(params, vk);
-    log::info!("Constructed chunk-verifier");
-
-    verifier
-});
 
 #[derive(PartialEq, Eq, Error, Debug)]
 pub enum StateTestError {
@@ -294,7 +233,7 @@ fn check_geth_traces(
     suite: &TestSuite,
     verbose: bool,
 ) -> Result<(), StateTestError> {
-    #[cfg(feature = "skip-self-destruct")]
+    #[cfg(all(feature = "skip-self-destruct", not(feature = "scroll")))]
     if geth_traces.iter().any(|gt| {
         gt.struct_logs.iter().any(|sl| {
             sl.op == eth_types::evm_types::OpcodeId::SELFDESTRUCT
@@ -302,15 +241,6 @@ fn check_geth_traces(
         })
     }) {
         return Err(StateTestError::SkipTestSelfDestruct);
-    }
-
-    #[cfg(feature = "scroll")]
-    if geth_traces.iter().any(|gt| {
-        gt.struct_logs
-            .iter()
-            .any(|sl| sl.op == eth_types::evm_types::OpcodeId::DIFFICULTY)
-    }) {
-        return Err(StateTestError::SkipTestDifficulty);
     }
 
     if geth_traces[0].struct_logs.len() as u64 > suite.max_steps {
@@ -363,7 +293,13 @@ fn trace_config_to_witness_block_l2(
         .iter()
         .map(From::from)
         .collect::<Vec<_>>();
-    check_geth_traces(&geth_traces, &suite, verbose)?;
+    // if the trace exceed max steps, we cannot fit it into circuit
+    // but we still want to make it go through bus-mapping generation
+    let exceed_max_steps = match check_geth_traces(&geth_traces, &suite, verbose) {
+        Err(StateTestError::SkipTestMaxSteps(steps)) => steps,
+        Err(e) => return Err(e),
+        Ok(_) => 0,
+    };
 
     set_env_coinbase(&block_trace.coinbase.address.unwrap());
     env::set_var("CHAIN_ID", format!("{}", block_trace.chain_id));
@@ -378,6 +314,11 @@ fn trace_config_to_witness_block_l2(
     let mut block =
         zkevm_circuits::witness::block_convert(&builder.block, &builder.code_db).unwrap();
     zkevm_circuits::witness::block_apply_mpt_state(&mut block, &builder.mpt_init_state);
+    // as mentioned above, we cannot fit the trace into circuit
+    // stop here
+    if exceed_max_steps != 0 {
+        return Err(StateTestError::SkipTestMaxSteps(exceed_max_steps));
+    }
     Ok(Some((block, builder)))
 }
 
@@ -489,7 +430,7 @@ pub const MAX_BYTECODE: usize = 600_000;
 pub const MAX_MPT_ROWS: usize = 1_000_000;
 pub const MAX_KECCAK_ROWS: usize = 1_000_000;
 pub const MAX_POSEIDON_ROWS: usize = 1_000_000;
-pub const MAX_VERTICLE_ROWS: usize = 1_000_000;
+pub const MAX_VERTICAL_ROWS: usize = 1_000_000;
 pub const MAX_RWS: usize = 1_000_000;
 pub const MAX_PRECOMPILE_EC_ADD: usize = 50;
 pub const MAX_PRECOMPILE_EC_MUL: usize = 50;
@@ -509,8 +450,8 @@ fn get_sub_circuit_limit_l2() -> Vec<usize> {
         MAX_KECCAK_ROWS,   // modexp
         MAX_RWS,           // pi
         MAX_POSEIDON_ROWS, // poseidon
-        MAX_VERTICLE_ROWS, // sig
-        MAX_VERTICLE_ROWS, // ecc
+        MAX_VERTICAL_ROWS, // sig
+        MAX_VERTICAL_ROWS, // ecc
         MAX_MPT_ROWS,      // mpt
     ]
 }
@@ -526,7 +467,7 @@ fn get_params_for_super_circuit_test_l2() -> CircuitsParams {
         max_inner_blocks: MAX_INNER_BLOCKS,
         max_keccak_rows: MAX_KECCAK_ROWS,
         max_poseidon_rows: MAX_POSEIDON_ROWS,
-        max_vertical_circuit_rows: MAX_VERTICLE_ROWS,
+        max_vertical_circuit_rows: MAX_VERTICAL_ROWS,
         max_exp_steps: MAX_EXP_STEPS,
         max_mpt_rows: MAX_MPT_ROWS,
         max_rlp_rows: MAX_RLP_ROWS,
@@ -574,7 +515,7 @@ fn get_params_for_sub_circuit_test() -> CircuitsParams {
         max_exp_steps: 5000,
         max_keccak_rows: 0, // dynamic?
         max_poseidon_rows: 0,
-        max_vertical_circuit_rows: MAX_VERTICLE_ROWS, // is it good?
+        max_vertical_circuit_rows: MAX_VERTICAL_ROWS, // is it good?
         max_inner_blocks: 64,
         max_rlp_rows: 6000,
         max_ec_ops: PrecompileEcParams {
@@ -609,12 +550,17 @@ pub fn run_test(
     log::info!("{test_id}: run-test BEGIN - {circuits_config:?}");
 
     // get the geth traces
-    let (_, trace_config, post) = into_traceconfig(st.clone());
+    let (_, mut trace_config, post) = into_traceconfig(st.clone());
 
+    let balance_overflow = trace_config
+        .accounts
+        .iter()
+        .any(|(_, acc)| acc.balance.to_be_bytes()[0] != 0u8);
     #[cfg(feature = "scroll")]
-    for acc in trace_config.accounts.values() {
+    for (_, acc) in trace_config.accounts.iter_mut() {
         if acc.balance.to_be_bytes()[0] != 0u8 {
-            return Err(StateTestError::SkipTestBalanceOverflow);
+            acc.balance = U256::from(1u128 << 127);
+            //return Err(StateTestError::SkipTestBalanceOverflow);
         }
     }
     log::debug!("trace_config generated");
@@ -725,48 +671,64 @@ pub fn run_test(
             check_ccc();
         } else {
             #[cfg(feature = "inner-prove")]
-            inner_prove(&test_id, &st.env.current_coinbase, &witness_block);
+            {
+                set_env_coinbase(&st.env.current_coinbase);
+                prover::test::inner_prove(&test_id, &witness_block);
+            }
             #[cfg(feature = "chunk-prove")]
-            chunk_prove(&test_id, &st.env.current_coinbase, &witness_block);
+            {
+                set_env_coinbase(&st.env.current_coinbase);
+                prover::test::chunk_prove(&test_id, &witness_block);
+            }
             #[cfg(not(any(feature = "inner-prove", feature = "chunk-prove")))]
             mock_prove(&test_id, &witness_block);
         }
     };
-    //#[cfg(feature = "scroll")]
-    {
-        // fill these "untouched" storage slots
-        // It is better to fill these info after (instead of before) bus-mapping re-exec.
-        // To prevent these data being used unexpectedly.
-        // TODO: another method will be to skip empty account inside check_post?
-        for account in trace_config.accounts.values() {
-            builder.code_db.insert(account.code.to_vec());
-            let (exist, acc_in_local_sdb) = builder.sdb.get_account_mut(&account.address);
-            if !exist {
-                // modified from bus-mapping/src/mock.rs
-                let keccak_code_hash = H256(keccak256(&account.code));
-                let code_hash = CodeDB::hash(&account.code);
-                *acc_in_local_sdb = bus_mapping::state_db::Account {
-                    nonce: account.nonce,
-                    balance: account.balance,
-                    storage: account.storage.clone(),
-                    code_hash,
-                    keccak_code_hash,
-                    code_size: account.code.len().to_word(),
-                };
-            } else {
-                for (k, v) in &account.storage {
-                    if !acc_in_local_sdb.storage.contains_key(k) {
-                        acc_in_local_sdb.storage.insert(*k, *v);
+    log::debug!("balance_overflow = {balance_overflow}");
+    log::debug!(
+        "has_l2_different_evm_behaviour_trace = {}",
+        builder.has_l2_different_evm_behaviour_trace()
+    );
+    let skip_post_check = if cfg!(feature = "scroll") {
+        balance_overflow || builder.has_l2_different_evm_behaviour_trace()
+    } else {
+        false
+    };
+    if skip_post_check {
+        log::warn!("skip post check");
+    }
+    if !skip_post_check {
+        {
+            // fill these "untouched" storage slots
+            // It is better to fill these info after (instead of before) bus-mapping re-exec.
+            // To prevent these data being used unexpectedly.
+            // TODO: another method will be to skip empty account inside check_post?
+            for account in trace_config.accounts.values() {
+                builder.code_db.insert(account.code.to_vec());
+                let (exist, acc_in_local_sdb) = builder.sdb.get_account_mut(&account.address);
+                if !exist {
+                    // modified from bus-mapping/src/mock.rs
+                    let keccak_code_hash = H256(keccak256(&account.code));
+                    let code_hash = CodeDB::hash(&account.code);
+                    *acc_in_local_sdb = bus_mapping::state_db::Account {
+                        nonce: account.nonce,
+                        balance: account.balance,
+                        storage: account.storage.clone(),
+                        code_hash,
+                        keccak_code_hash,
+                        code_size: account.code.len().to_word(),
+                    };
+                } else {
+                    for (k, v) in &account.storage {
+                        if !acc_in_local_sdb.storage.contains_key(k) {
+                            acc_in_local_sdb.storage.insert(*k, *v);
+                        }
                     }
                 }
             }
         }
+        check_post(&builder, &post)?;
     }
-
-    // check_post(&builder, &post)?;
-
-    log::info!("{test_id}: run-test END");
-
     log::info!("{test_id}: run-test END");
     Ok(())
 }
@@ -775,6 +737,9 @@ pub fn run_test(
 fn set_env_coinbase(coinbase: &Address) -> String {
     let coinbase = format!("0x{}", hex::encode(coinbase));
     env::set_var("COINBASE", &coinbase);
+
+    // Used for inner-prove and chunk-prove.
+    env::set_var("INNER_LAYER_ID", &coinbase);
 
     coinbase
 }
@@ -791,75 +756,4 @@ fn mock_prove(test_id: &str, witness_block: &Block<Fr>) {
     prover.assert_satisfied_par();
 
     log::info!("{test_id}: mock-prove END");
-}
-
-#[cfg(feature = "inner-prove")]
-fn inner_prove(test_id: &str, coinbase: &Address, witness_block: &Block<Fr>) {
-    let coinbase = set_env_coinbase(coinbase);
-    log::info!("{test_id}: inner-prove BEGIN, coinbase = {coinbase}");
-
-    let prover = unsafe { &mut REAL_PROVER };
-    let coinbase_changed = prover.pk(&coinbase).is_none();
-
-    // Clear previous PKs if coinbase address changed.
-    if coinbase_changed {
-        prover.clear_pks();
-    }
-
-    let rng = gen_rng();
-    let snark = prover
-        .gen_inner_snark::<circuit::SuperCircuit>(&coinbase, rng, witness_block)
-        .unwrap_or_else(|err| panic!("{test_id}: failed to generate inner snark: {err}"));
-    log::info!("{test_id}: generated inner snark");
-
-    let verifier = unsafe { &mut INNER_VERIFIER };
-
-    // Reset VK if coinbase address changed.
-    if coinbase_changed {
-        let pk = prover.pk(&coinbase).unwrap_or_else(|| {
-            panic!("{test_id}: failed to get inner-prove PK, coinbase = {coinbase}")
-        });
-        let vk = pk.get_vk().clone();
-        verifier.set_vk(vk);
-    }
-
-    let verified = verifier.verify_snark(snark);
-    assert!(verified, "{test_id}: failed to verify inner snark");
-
-    log::info!("{test_id}: inner-prove END, coinbase = {coinbase}");
-}
-
-#[cfg(feature = "chunk-prove")]
-fn chunk_prove(test_id: &str, coinbase: &Address, witness_block: &Block<Fr>) {
-    let coinbase = set_env_coinbase(coinbase);
-    log::info!("{test_id}: chunk-prove BEGIN, coinbase = {coinbase}");
-
-    let prover = unsafe { &mut REAL_PROVER };
-    let coinbase_changed = prover.pk(&coinbase).is_none();
-
-    // Clear previous PKs if coinbase address changed.
-    if coinbase_changed {
-        prover.clear_pks();
-    }
-
-    let snark = prover
-        .load_or_gen_final_chunk_snark(test_id, witness_block, Some(&coinbase), None)
-        .unwrap_or_else(|err| panic!("{test_id}: failed to generate chunk snark: {err}"));
-    log::info!("{test_id}: generated chunk snark");
-
-    let verifier = unsafe { &mut CHUNK_VERIFIER };
-
-    // Reset VK if coinbase address changed.
-    if coinbase_changed {
-        let pk = prover.pk(LayerId::Layer2.id()).unwrap_or_else(|| {
-            panic!("{test_id}: failed to get inner-prove PK, coinbase = {coinbase}")
-        });
-        let vk = pk.get_vk().clone();
-        verifier.set_vk(vk);
-    }
-
-    let verified = verifier.verify_snark(snark);
-    assert!(verified, "{test_id}: failed to verify chunk snark");
-
-    log::info!("{test_id}: chunk-prove END, coinbase = {coinbase}");
 }
