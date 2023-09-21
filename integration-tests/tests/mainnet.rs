@@ -125,8 +125,8 @@ async fn test_circuit_all_block() {
     let start: usize = *START_BLOCK;
     let end: usize = *END_BLOCK;
 
-    let stride = std::env::var("PAR").map_or(1, |_| {
-        let stride = num_cpus::get();
+    let stride = std::env::var("PAR").map_or(1, |s| {
+        let stride = s.parse().map_or(num_cpus::get(), |s| s);
         if stride == 0 {
             1
         } else {
