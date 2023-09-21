@@ -125,7 +125,15 @@ async fn test_circuit_all_block() {
     let start: usize = *START_BLOCK;
     let end: usize = *END_BLOCK;
 
-    let stride = std::env::var("PAR").map_or(1, |_| num_cpus::get());
+    let stride = std::env::var("PAR").map_or(1, |_| {
+        let stride = num_cpus::get();
+        if stride == 0 {
+            1
+        } else {
+            stride
+        }
+    });
+    log::debug!("test with {stride}");
 
     let tasks: Vec<_> = (start..(start+stride))
         .into_iter()
@@ -142,19 +150,19 @@ async fn test_circuit_all_block() {
                         max_rws: 4_000_000,
                         max_copy_rows: 0, // dynamic
                         max_txs: eth_block.transactions.len(),
-                        max_calldata: eth_block.transactions.iter().map(|tx| tx.input.len()).count(),
+                        max_calldata: eth_block.transactions.iter().map(|tx| tx.input.len()).sum(),
                         max_inner_blocks: 1,
                         max_bytecode: 3_000_000,
                         max_mpt_rows: 2_000_000,
                         max_keccak_rows: 0,
                         max_exp_steps: 100_000,
                         max_evm_rows: 0,
-                        max_rlp_rows: eth_block.transactions.iter().map(|tx| 2*tx.rlp().len() + 800).count(),
+                        max_rlp_rows: eth_block.transactions.iter().map(|tx| 2*tx.rlp().len() + 800).sum(),
                         ..Default::default()
                     };
 
                     let cli = BuilderClient::new(cli, params).await.unwrap();
-                    let builder = cli.gen_inputs(block_num.into()).await;
+                    let builder = cli.gen_inputs(block_num).await;
 
                     if builder.is_err() {
                         let err = builder.err().unwrap();
