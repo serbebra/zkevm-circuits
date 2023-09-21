@@ -2,6 +2,7 @@ use bus_mapping::{
     circuit_input_builder::{keccak_inputs, BuilderClient, CircuitsParams, PrecompileEcParams},
     Error::JSONRpcError,
 };
+use futures::future;
 use halo2_proofs::{
     circuit::Value,
     dev::{MockProver, VerifyFailure},
@@ -123,54 +124,72 @@ async fn test_circuit_all_block() {
     log_init();
     let start: usize = *START_BLOCK;
     let end: usize = *END_BLOCK;
-    for blk in start..=end {
-        let block_num = blk as u64;
-        log::info!("test {} circuit, block number: {}", *CIRCUIT, block_num);
-        let cli = get_client();
-        let params = CircuitsParams {
-            max_rws: 4_000_000,
-            max_copy_rows: 0, // dynamic
-            max_txs: 350,
-            max_calldata: 2_000_000,
-            max_inner_blocks: 64,
-            max_bytecode: 3_000_000,
-            max_mpt_rows: 2_000_000,
-            max_keccak_rows: 0,
-            max_exp_steps: 100_000,
-            max_evm_rows: 0,
-            max_rlp_rows: 2_070_000,
-            ..Default::default()
-        };
-        let cli = BuilderClient::new(cli, params).await.unwrap();
-        let builder = cli.gen_inputs(block_num).await;
-        if builder.is_err() {
-            let err = builder.err().unwrap();
-            let err_msg = match err {
-                JSONRpcError(_json_rpc_err) => "JSONRpcError".to_string(), // too long...
-                _ => format!("{err:?}"),
-            };
-            log::error!("invalid builder {} {:?}, err num NA", block_num, err_msg);
-            continue;
-        }
-        let builder = builder.unwrap().0;
-        if builder.block.txs.is_empty() {
-            log::info!("skip empty block");
-            // skip empty block
-            continue;
-        }
 
-        let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
-        let errs = test_witness_block(&block);
-        log::info!(
-            "test {} circuit, block number: {} err num {:?}",
-            *CIRCUIT,
-            block_num,
-            errs.len()
-        );
-        for err in errs {
-            log::error!("circuit err: {}", err);
-        }
-    }
+    let stride = std::env::var("PAR").map_or(1, |_| num_cpus::get());
+
+    let tasks: Vec<_> = (start..(start+stride))
+        .into_iter()
+        .map(|start| {
+            tokio::spawn(async move {
+                let mut blk = start;
+                while blk <= end {
+                    let block_num = blk as u64;
+                    log::info!("test {} circuit, block number: {}", *CIRCUIT, block_num);
+                    let cli = get_client();
+
+                    let eth_block = cli.get_block_by_number(block_num.into()).await.unwrap();
+                    let params = CircuitsParams {
+                        max_rws: 4_000_000,
+                        max_copy_rows: 0, // dynamic
+                        max_txs: eth_block.transactions.len(),
+                        max_calldata: eth_block.transactions.iter().map(|tx| tx.input.len()).count(),
+                        max_inner_blocks: 1,
+                        max_bytecode: 3_000_000,
+                        max_mpt_rows: 2_000_000,
+                        max_keccak_rows: 0,
+                        max_exp_steps: 100_000,
+                        max_evm_rows: 0,
+                        max_rlp_rows: eth_block.transactions.iter().map(|tx| 2*tx.rlp().len() + 800).count(),
+                        ..Default::default()
+                    };
+
+                    let cli = BuilderClient::new(cli, params).await.unwrap();
+                    let builder = cli.gen_inputs(block_num.into()).await;
+
+                    if builder.is_err() {
+                        let err = builder.err().unwrap();
+                        let err_msg = match err {
+                            JSONRpcError(_json_rpc_err) => "JSONRpcError".to_string(), // too long...
+                            _ => format!("{err:?}"),
+                        };
+                        log::error!("invalid builder {} {:?}, err num NA", block_num, err_msg);
+                        continue;
+                    }
+                    let builder = builder.unwrap().0;
+                    if builder.block.txs.is_empty() {
+                        log::info!("skip empty block");
+                        // skip empty block
+                        continue
+                    }
+
+                    let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
+                    let errs = test_witness_block(&block);
+                    log::info!(
+                        "test {} circuit, block number: {} err num {:?}",
+                        *CIRCUIT,
+                        block_num,
+                        errs.len()
+                    );
+                    for err in errs {
+                        log::error!("circuit err: {}", err);
+                    }
+
+                    blk += stride;
+                }
+            })
+        })
+        .collect();
+    future::join_all(tasks).await;
 }
 
 #[ignore]
