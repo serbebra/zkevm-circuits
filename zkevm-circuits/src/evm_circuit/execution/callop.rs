@@ -147,7 +147,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         let callee_address = select::expr(
             is_callcode.expr() + is_delegatecall.expr(),
             current_callee_address.expr(),
-            call_gadget.callee_address_expr(),
+            call_gadget.callee_address(),
         );
 
         // Add callee to access list
@@ -156,7 +156,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         cb.require_true("callee add should be updated to warm", is_warm.expr());
         cb.account_access_list_write(
             tx_id.expr(),
-            call_gadget.callee_address_expr(),
+            call_gadget.callee_address(),
             is_warm.expr(),
             is_warm_prev.expr(),
             Some(&mut reversion_info),
@@ -215,9 +215,8 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
 
         // whether the call is to a precompiled contract.
         // precompile contracts are stored from address 0x01 to 0x09.
-        let is_code_address_zero = IsZeroGadget::construct(cb, call_gadget.callee_address_expr());
-        let is_precompile_lt =
-            LtGadget::construct(cb, call_gadget.callee_address_expr(), 0x0A.expr());
+        let is_code_address_zero = IsZeroGadget::construct(cb, call_gadget.callee_address());
+        let is_precompile_lt = LtGadget::construct(cb, call_gadget.callee_address(), 0x0A.expr());
         let is_precompile = and::expr([
             not::expr(is_code_address_zero.expr()),
             is_precompile_lt.expr(),
@@ -333,7 +332,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                     ),
                     (
                         CallContextFieldTag::CalleeAddress,
-                        call_gadget.callee_address_expr(),
+                        call_gadget.callee_address(),
                     ),
                     (CallContextFieldTag::CallerId, cb.curr.state.call_id.expr()),
                     (
@@ -500,7 +499,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 let precompile_gadget = PrecompileGadget::construct(
                     cb,
                     call_gadget.is_success.expr(),
-                    call_gadget.callee_address_expr(),
+                    call_gadget.callee_address(),
                     cb.curr.state.call_id.expr(),
                     call_gadget.cd_address.offset(),
                     call_gadget.cd_address.length(),

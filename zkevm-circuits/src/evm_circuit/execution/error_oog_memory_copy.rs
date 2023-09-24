@@ -89,11 +89,11 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGMemoryCopyGadget<F> {
 
         let dst_memory_addr = MemoryExpandedAddressGadget::construct_self(cb);
 
-        cb.stack_pop(dst_memory_addr.offset_rlc());
+        cb.stack_pop(dst_memory_addr.offset_word());
         cb.stack_pop(src_offset.expr());
-        cb.stack_pop(dst_memory_addr.length_rlc());
+        cb.stack_pop(dst_memory_addr.length_word());
 
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [dst_memory_addr.end_offset()]);
+        let memory_expansion = MemoryExpansionGadget::construct(cb, [dst_memory_addr.address()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
             dst_memory_addr.length(),

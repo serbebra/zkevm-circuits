@@ -46,7 +46,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
         cb.opcode_lookup(opcode.expr(), 1.expr());
 
         let memory_address = MemoryExpandedAddressGadget::construct_self(cb);
-        cb.stack_pop(memory_address.offset_rlc());
+        cb.stack_pop(memory_address.offset_word());
 
         // Check if this is an MSTORE8
         let is_mload = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MLOAD.expr());
@@ -68,12 +68,12 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
 
         cb.require_equal(
             "Memory length must be 32 for MLOAD and MSTORE, and 1 for MSTORE8",
-            memory_address.length_rlc(),
+            memory_address.length_word(),
             select::expr(is_mstore8.expr(), 1.expr(), 32.expr()),
         );
 
         // Get the next memory size and the gas cost for this memory access
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
+        let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.address()]);
 
         // Check if the amount of gas available is less than the amount of gas
         // required

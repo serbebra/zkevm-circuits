@@ -64,15 +64,15 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGCreateGadget<F> {
         let memory_address = MemoryExpandedAddressGadget::construct_self(cb);
 
         cb.stack_pop(value.expr());
-        cb.stack_pop(memory_address.offset_rlc());
-        cb.stack_pop(memory_address.length_rlc());
+        cb.stack_pop(memory_address.offset_word());
+        cb.stack_pop(memory_address.length_word());
         cb.condition(is_create2.expr().0, |cb| cb.stack_pop(salt.expr()));
 
         let init_code_size_overflow =
             LtGadget::construct(cb, MAX_INIT_CODE_SIZE.expr(), memory_address.length());
 
         let minimum_word_size = MemoryWordSizeGadget::construct(cb, memory_address.length());
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
+        let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.address()]);
 
         let keccak_gas_cost = minimum_word_size.expr()
             * select::expr(

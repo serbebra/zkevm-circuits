@@ -197,6 +197,15 @@ impl<F: Field> RwValues<F> {
             aux2,
         }
     }
+
+    pub(crate) fn revert_value(&self) -> Self {
+        let new_self = self.clone();
+        Self {
+            value_prev: new_self.value,
+            value: new_self.value_prev,
+            ..new_self
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
