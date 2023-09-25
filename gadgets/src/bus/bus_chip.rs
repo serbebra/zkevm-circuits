@@ -4,7 +4,7 @@ use crate::util::Expr;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, ThirdPhase},
     poly::Rotation,
 };
 
@@ -26,7 +26,7 @@ impl<F: FieldExt> Expr<F> for BusTerm<F> {
 }
 
 /// BusConfig
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BusConfig {
     enabled: Column<Fixed>,
     is_first: Column<Fixed>,
@@ -40,7 +40,7 @@ impl BusConfig {
         let enabled = cs.fixed_column();
         let is_first = cs.fixed_column();
         let is_last = cs.fixed_column();
-        let acc = cs.advice_column_in(SecondPhase);
+        let acc = cs.advice_column_in(ThirdPhase);
 
         cs.create_gate("bus sum check", |cs| {
             let enabled = cs.query_fixed(enabled, Rotation::cur());
@@ -107,6 +107,8 @@ impl BusConfig {
                 || Value::known(F::one()),
             )?;
         }
+
+        println!("XXX bus enabled up to row {}", n_rows - 1);
 
         terms.map(|terms| {
             assert!(terms.len() <= n_rows, "Bus terms out-of-bound");

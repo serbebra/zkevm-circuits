@@ -80,7 +80,6 @@ use crate::{
         MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable,
         TxTable, U16Table, U8Table,
     },
-    table_bus::{self, TableBusCircuit, TableBusConfig},
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
     witness::{block_convert, Block, Transaction},
@@ -94,10 +93,6 @@ use bus_mapping::{
     mock::BlockData,
 };
 use eth_types::{geth_types::GethData, Field};
-use gadgets::bus::{
-    bus_builder::{BusAssigner, BusBuilder},
-    bus_chip::BusConfig,
-};
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     halo2curves::bn256::Fr,
@@ -109,8 +104,6 @@ use snark_verifier_sdk::CircuitExt;
 /// Configuration of the Super Circuit
 #[derive(Clone)]
 pub struct SuperCircuitConfig<F: Field> {
-    bus_config: BusConfig,
-    table_bus: TableBusConfig<F>,
     block_table: BlockTable,
     mpt_table: MptTable,
     rlp_table: RlpTable,
@@ -171,8 +164,6 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             log::debug!("circuit info after {}: {:#?}", tag, circuit_stats(meta));
         };
         let challenges_expr = challenges.exprs(meta);
-
-        let mut bus_builder = BusBuilder::<Fr>::new(challenges_expr.lookup_input());
 
         let tx_table = TxTable::construct(meta);
         log_circuit_info(meta, "tx table");
@@ -337,7 +328,6 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
 
         let evm_circuit = EvmCircuitConfig::new(
             meta,
-            &mut bus_builder,
             EvmCircuitConfigArgs {
                 challenges: challenges_expr.clone(),
                 tx_table: tx_table.clone(),
@@ -377,20 +367,12 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         );
         log_circuit_info(meta, "ecc circuit");
 
-        // Table to Bus.
-        let table_bus = TableBusConfig::new(meta, &mut bus_builder, &rw_table);
-
-        // The Bus.
-        let bus_config = BusConfig::new(meta, &bus_builder.build());
-
         #[cfg(feature = "onephase")]
         if meta.max_phase() != 0 {
             log::warn!("max_phase: {}", meta.max_phase());
         }
 
         SuperCircuitConfig {
-            bus_config,
-            table_bus,
             block_table,
             mpt_table,
             tx_table,
@@ -438,8 +420,6 @@ pub struct SuperCircuit<
     const MAX_INNER_BLOCKS: usize,
     const MOCK_RANDOMNESS: u64,
 > {
-    /// TableBus Circuit
-    pub table_bus: TableBusCircuit<F>,
     /// EVM Circuit
     pub evm_circuit: EvmCircuit<F>,
     /// State Circuit
@@ -579,7 +559,6 @@ impl<
     }
 
     fn new_from_block(block: &Block<Fr>) -> Self {
-        let table_bus = TableBusCircuit::new();
         let evm_circuit = EvmCircuit::new_from_block(block);
         let state_circuit = StateCircuit::new_from_block(block);
         let tx_circuit = TxCircuit::new_from_block(block);
@@ -596,7 +575,6 @@ impl<
         #[cfg(feature = "zktrie")]
         let mpt_circuit = MptCircuit::new_from_block(block);
         SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS> {
-            table_bus,
             evm_circuit,
             state_circuit,
             tx_circuit,
@@ -646,9 +624,6 @@ impl<
         challenges: &crate::util::Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let n_rows = 10; // TODO.
-        let mut bus_assigner = BusAssigner::new(n_rows);
-
         log::debug!("assigning evm_circuit");
         self.evm_circuit
             .synthesize_sub(&config.evm_circuit, challenges, layouter)?;
@@ -715,22 +690,6 @@ impl<
             self.mpt_circuit
                 .synthesize_sub(&config.mpt_circuit, challenges, layouter)?;
         }
-
-        self.table_bus.synthesize_sub(
-            &config.table_bus,
-            challenges,
-            layouter,
-            &mut bus_assigner,
-        )?;
-
-        layouter.assign_region(
-            || "bus",
-            |mut region| {
-                config
-                    .bus_config
-                    .assign(&mut region, n_rows, bus_assigner.terms())
-            },
-        )?;
 
         log::debug!("super circuit synthesize_sub done");
         Ok(())

@@ -1,10 +1,15 @@
 //! The EVM circuit implementation.
 
 #![allow(missing_docs)]
-use gadgets::bus::bus_builder::BusBuilder;
+use gadgets::bus::{
+    bus_builder::{BusAssigner, BusBuilder},
+    bus_chip::BusConfig,
+    bus_port::{BusOp, BusOpCounter, PortAssigner},
+};
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     plonk::*,
+    poly::Rotation,
 };
 
 mod execution;
@@ -26,7 +31,8 @@ use crate::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
         ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
     },
-    util::{SubCircuit, SubCircuitConfig},
+    table_bus::LookupBusConfig,
+    util::{query_expression, SubCircuit, SubCircuitConfig},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
@@ -41,6 +47,9 @@ use witness::Block;
 pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     byte_table: [Column<Fixed>; 1],
+    enable_table: Column<Fixed>,
+    bus: BusConfig,
+    table_to_bus: LookupBusConfig<F>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
     tx_table: TxTable,
@@ -111,7 +120,6 @@ impl<F: Field> EvmCircuitConfig<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
         EvmCircuitConfigArgs {
             challenges,
             tx_table,
@@ -129,10 +137,17 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
         let byte_table = [(); 1].map(|_| meta.fixed_column());
+        let enable_table = meta.fixed_column();
+
+        let mut bus_builder = BusBuilder::<F>::new(challenges.lookup_input());
+
+        let table_to_bus =
+            Self::configure_table_to_bus(meta, &mut bus_builder, &byte_table, enable_table);
+
         let execution = Box::new(ExecutionConfig::configure(
             meta,
             challenges,
-            bus_builder,
+            &mut bus_builder,
             &fixed_table,
             &byte_table,
             &tx_table,
@@ -147,6 +162,8 @@ impl<F: Field> EvmCircuitConfig<F> {
             &ecc_table,
             &pow_of_rand_table,
         ));
+
+        let bus = BusConfig::new(meta, &bus_builder.build());
 
         meta.annotate_lookup_any_column(byte_table[0], || "byte_range");
         fixed_table.iter().enumerate().for_each(|(idx, &col)| {
@@ -167,6 +184,9 @@ impl<F: Field> EvmCircuitConfig<F> {
         Self {
             fixed_table,
             byte_table,
+            enable_table,
+            bus,
+            table_to_bus,
             execution,
             tx_table,
             rw_table,
@@ -180,6 +200,17 @@ impl<F: Field> EvmCircuitConfig<F> {
             ecc_table,
             pow_of_rand_table,
         }
+    }
+
+    fn configure_table_to_bus(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F>,
+        byte_table: &dyn LookupTable<F>,
+        enabled: Column<Fixed>,
+    ) -> LookupBusConfig<F> {
+        let byte_expr = query_expression(meta, |meta| byte_table.table_exprs(meta)[0].clone());
+        let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
+        LookupBusConfig::new(meta, bus_builder, byte_expr, enabled)
     }
 }
 
@@ -208,18 +239,40 @@ impl<F: Field> EvmCircuitConfig<F> {
     }
 
     /// Load byte table
-    pub fn load_byte_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+    pub fn load_byte_table(
+        &self,
+        challenges: &crate::util::Challenges<Value<F>>,
+        layouter: &mut impl Layouter<F>,
+        bus_assigner: &mut BusAssigner<F>,
+        bus_op_counter: &BusOpCounter<F>,
+    ) -> Result<(), Error> {
         layouter.assign_region(
             || "byte table",
             |mut region| {
+                let mut port_assigner = PortAssigner::new(challenges.lookup_input());
+
                 for offset in 0..256 {
+                    let value = Value::known(F::from(offset as u64));
+
+                    region.assign_fixed(|| "", self.byte_table[0], offset, || value)?;
+
                     region.assign_fixed(
                         || "",
-                        self.byte_table[0],
+                        self.enable_table,
                         offset,
-                        || Value::known(F::from(offset as u64)),
+                        || Value::known(F::one()),
+                    )?;
+
+                    let count = bus_op_counter.count_of_message(value);
+                    self.table_to_bus.assign(
+                        &mut region,
+                        &mut port_assigner,
+                        offset,
+                        BusOp::put(value, count),
                     )?;
                 }
+
+                port_assigner.finish(&mut region, bus_assigner);
 
                 Ok(())
             },
@@ -294,6 +347,9 @@ impl<F: Field> EvmCircuit<F> {
             }
         }
 
+        // It must fit the byte table.
+        num_rows = num_rows.max(256);
+
         // It must have one row for EndBlock and at least one unused one
         num_rows + 2
     }
@@ -345,12 +401,32 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
+        let num_rows = Self::get_num_rows_required(block);
 
         config.load_fixed_table(layouter, self.fixed_table_tags.clone())?;
-        config.load_byte_table(layouter)?;
         config.pow_of_rand_table.assign(layouter, challenges)?;
-        let export = config.execution.assign_block(layouter, block, challenges)?;
+
+        let mut bus_assigner = BusAssigner::new(num_rows);
+
+        let (export, bus_op_counter) =
+            config
+                .execution
+                .assign_block(layouter, &mut bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
+
+        if let Some(bus_op_counter) = bus_op_counter {
+            config.load_byte_table(challenges, layouter, &mut bus_assigner, &bus_op_counter)?;
+        }
+
+        layouter.assign_region(
+            || "EVM_Bus",
+            |mut region| {
+                config
+                    .bus
+                    .assign(&mut region, num_rows, bus_assigner.terms())
+            },
+        )?;
+
         Ok(())
     }
 }
@@ -469,7 +545,6 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let challenges = Challenges::construct(meta);
         let challenges_expr = challenges.exprs(meta);
-        let mut bus_builder = BusBuilder::<F>::new(challenges_expr.lookup_input());
         let rw_table = RwTable::construct(meta);
         let tx_table = TxTable::construct(meta);
         let bytecode_table = BytecodeTable::construct(meta);
@@ -485,7 +560,6 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         (
             EvmCircuitConfig::new(
                 meta,
-                &mut bus_builder,
                 EvmCircuitConfigArgs {
                     challenges: challenges_expr,
                     tx_table,

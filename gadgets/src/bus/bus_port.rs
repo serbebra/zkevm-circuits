@@ -1,4 +1,4 @@
-use std::ops::Neg;
+use std::{collections::HashMap, ops::Neg};
 
 use super::{
     bus_builder::{BusAssigner, BusPort},
@@ -9,7 +9,7 @@ use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
     halo2curves::group::ff::BatchInvert,
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, SecondPhase},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, ThirdPhase},
     poly::Rotation,
 };
 
@@ -20,7 +20,7 @@ pub type BusOpExpr<F> = BusOp<Expression<F>>;
 pub type BusOpVal<F> = BusOp<Value<F>>;
 
 /// A bus operation.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BusOp<T> {
     message: T,
     count: T,
@@ -52,7 +52,7 @@ where
 }
 
 /// A chip to access to the bus.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BusPortSingle<F> {
     helper: Expression<F>,
     op: BusOpExpr<F>,
@@ -149,7 +149,7 @@ impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
 }
 
 /// A chip to access the bus. It manages its own helper column and gives one access per row.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BusPortChip<F> {
     helper: Column<Advice>,
     port: BusPortSingle<F>,
@@ -158,7 +158,7 @@ pub struct BusPortChip<F> {
 impl<F: FieldExt> BusPortChip<F> {
     /// Create a new bus port with a single access.
     pub fn new(meta: &mut ConstraintSystem<F>, op: BusOpExpr<F>) -> Self {
-        let helper = meta.advice_column_in(SecondPhase);
+        let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
         let port = BusPortSingle::new(helper_expr, op);
@@ -245,6 +245,7 @@ impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
 pub struct PortAssigner<F> {
     rand: Value<F>,
     batch: HelperBatch<F, (usize, Column<Advice>, isize, Value<F>)>,
+    bus_op_counter: BusOpCounter<F>,
 }
 
 impl<F: FieldExt> PortAssigner<F> {
@@ -253,6 +254,7 @@ impl<F: FieldExt> PortAssigner<F> {
         Self {
             rand,
             batch: HelperBatch::new(),
+            bus_op_counter: BusOpCounter::new(),
         }
     }
 
@@ -264,13 +266,19 @@ impl<F: FieldExt> PortAssigner<F> {
         rotation: isize,
         op: BusOpVal<F>,
     ) {
+        self.bus_op_counter.set_op(&op);
+
         let denom = BusPortSingle::helper_denom(op.message(), self.rand);
         self.batch
             .add_denom(denom, (offset, column, rotation, op.count()));
     }
 
     /// Assign the helper cells and report the terms to the bus.
-    pub fn finish(self, region: &mut Region<'_, F>, bus_assigner: &mut BusAssigner<F>) {
+    pub fn finish(
+        self,
+        region: &mut Region<'_, F>,
+        bus_assigner: &mut BusAssigner<F>,
+    ) -> BusOpCounter<F> {
         self.batch.invert().map(|terms| {
             // The batch has converted the messages into bus terms.
             for (term, (offset, column, rotation, count)) in terms {
@@ -287,5 +295,44 @@ impl<F: FieldExt> PortAssigner<F> {
                 bus_assigner.put_term(global_offset, count * term);
             }
         });
+        self.bus_op_counter
+    }
+}
+
+/// OpCounter tracks the messages taken, to help generating the puts.
+#[derive(Clone, Debug, Default)]
+pub struct BusOpCounter<F> {
+    counts: HashMap<Vec<u8>, Value<F>>,
+}
+
+impl<F: FieldExt> BusOpCounter<F> {
+    /// Create a new OpCounter.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Report an operation.
+    pub fn set_op(&mut self, op: &BusOpVal<F>) {
+        op.message().map(|message| {
+            self.counts
+                .entry(Self::to_key(message))
+                .and_modify(|c| *c = *c + op.count())
+                .or_insert_with(|| op.count());
+        });
+    }
+
+    /// Count the number of copies of this messages taken.
+    pub fn count_of_message(&self, message: Value<F>) -> Value<F> {
+        let mut count = Value::known(F::zero());
+        message.map(|message| {
+            if let Some(c) = self.counts.get(&Self::to_key(message)) {
+                count = *c;
+            }
+        });
+        count
+    }
+
+    fn to_key(message: F) -> Vec<u8> {
+        Vec::from(message.to_repr().as_ref())
     }
 }

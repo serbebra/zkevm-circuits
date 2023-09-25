@@ -5,79 +5,51 @@ use std::marker::PhantomData;
 use eth_types::Field;
 use gadgets::bus::{
     bus_builder::{BusAssigner, BusBuilder},
-    bus_port::{BusOp, BusPortChip, PortAssigner},
+    bus_port::{BusOp, BusOpVal, BusPortChip, PortAssigner},
 };
 use halo2_proofs::{
-    circuit::{Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    circuit::{Layouter, Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression},
+    poly::Rotation,
 };
 
-use crate::{table::LookupTable, util::query_expression};
+use crate::util::query_expression;
 
-/// TableBusConfig
-#[derive(Clone)]
-pub struct TableBusConfig<F: Field> {
+/// LookupBus exposes a table as a lookup through the bus.
+#[derive(Clone, Debug)]
+pub struct LookupBusConfig<F> {
     port: BusPortChip<F>,
+    count: Column<Advice>,
 }
 
-impl<F: Field> TableBusConfig<F> {
-    /// Create a new TableBus circuit.
+impl<F: Field> LookupBusConfig<F> {
+    /// Create a new LookupBus circuit from the expressions of message and count.
     pub fn new(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F>,
-        table: &dyn LookupTable<F>,
+        message: Expression<F>,
+        enabled: Expression<F>,
     ) -> Self {
-        let exprs = query_expression(meta, |meta| table.table_exprs(meta));
+        let count = meta.advice_column();
+        let count_expr = query_expression(meta, |meta| meta.query_advice(count, Rotation::cur()));
 
-        let count = exprs[0].clone();
-        let message = exprs[1].clone();
-        // TODO: multi-column message.
-
-        let port = BusPortChip::new(meta, BusOp::put(message, count));
+        let port = BusPortChip::new(meta, BusOp::put(message, enabled * count_expr));
         bus_builder.connect_port(meta, &port);
 
-        Self { port }
-    }
-}
-
-/// TableBusCircuit
-#[derive(Clone, Default, Debug)]
-pub struct TableBusCircuit<F: Field> {
-    _marker: PhantomData<F>,
-}
-
-impl<F: Field> TableBusCircuit<F> {
-    /// Create a new TableBus circuit.
-    pub fn new() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
+        Self { port, count }
     }
 
-    /// Make the assignments to the circuit
-    pub fn synthesize_sub(
+    /// Assign a lookup operation.
+    pub fn assign(
         &self,
-        config: &TableBusConfig<F>,
-        challenges: &crate::util::Challenges<Value<F>>,
-        layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F>,
+        region: &mut Region<'_, F>,
+        port_assigner: &mut PortAssigner<F>,
+        offset: usize,
+        op: BusOpVal<F>,
     ) -> Result<(), Error> {
-        layouter.assign_region(
-            || "TableBus",
-            |mut region| {
-                let rand = challenges.lookup_input();
-                let mut port_assigner = PortAssigner::new(rand);
+        region.assign_advice(|| "LookupBus", self.count, offset, || op.count())?;
 
-                let message = Value::known(F::zero());
-                let count = Value::known(F::zero());
-                port_assigner.set_op(0, config.port.column(), 0, BusOp::take(message, count));
-
-                port_assigner.finish(&mut region, bus_assigner);
-
-                Ok(())
-            },
-        )?;
-
+        port_assigner.set_op(offset, self.port.column(), 0, op);
         Ok(())
     }
 }

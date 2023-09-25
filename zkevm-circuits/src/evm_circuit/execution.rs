@@ -22,11 +22,18 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{LookupTable, RwTableTag, TxReceiptFieldTag},
+    table_bus::LookupBusConfig,
     util::{query_expression, Challenges, Expr},
 };
 use bus_mapping::util::read_env_var;
 use eth_types::{Field, ToLittleEndian};
-use gadgets::{util::not, bus::bus_builder::BusBuilder};
+use gadgets::{
+    bus::{
+        bus_builder::{BusAssigner, BusBuilder},
+        bus_port::{BusOp, BusPortChip, PortAssigner, BusOpCounter},
+    },
+    util::not,
+};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region, Value},
@@ -260,6 +267,7 @@ pub(crate) struct ExecutionConfig<F> {
     q_step_last: Selector,
     advices: [Column<Advice>; STEP_WIDTH],
     step: Step<F>,
+    bus_port: BusPortChip<F>,
     pub(crate) height_map: HashMap<ExecutionState, usize>,
     stored_expressions_map: HashMap<ExecutionState, Vec<StoredExpression<F>>>,
     instrument: Instrument,
@@ -533,6 +541,8 @@ impl<F: Field> ExecutionConfig<F> {
 
         let cell_manager = step_curr.cell_manager.clone();
 
+        let bus_port = Self::configure_bus(meta, bus_builder, q_usable, &cell_manager);
+
         let config = Self {
             q_usable,
             q_step,
@@ -541,6 +551,7 @@ impl<F: Field> ExecutionConfig<F> {
             num_rows_inv,
             q_step_first,
             q_step_last,
+            bus_port,
             advices,
             // internal states
             begin_tx_gadget: configure_gadget!(),
@@ -912,6 +923,25 @@ impl<F: Field> ExecutionConfig<F> {
         });
     }
 
+    fn configure_bus(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F>,
+        q_usable: Selector,
+        cell_manager: &CellManager<F>,
+    ) -> BusPortChip<F> {
+        let q_usable = query_expression(meta, |meta| meta.query_selector(q_usable));
+
+        for column in cell_manager.columns().iter() {
+            if let CellType::LookupByte = column.cell_type {
+                let port = BusPortChip::new(meta, BusOp::take(column.expr(), q_usable));
+                bus_builder.connect_port(meta, &port);
+                return port;
+                // TODO: support all columns.
+            }
+        }
+        unreachable!()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn configure_lookup(
         meta: &mut ConstraintSystem<F>,
@@ -1028,11 +1058,13 @@ impl<F: Field> ExecutionConfig<F> {
     pub fn assign_block(
         &self,
         layouter: &mut impl Layouter<F>,
+        bus_assigner: &mut BusAssigner<F>,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<EvmCircuitExports<Assigned<F>>, Error> {
+    ) -> Result<(EvmCircuitExports<Assigned<F>>, Option<BusOpCounter<F>>), Error> {
         let mut is_first_time = true;
-
+        let mut bus_op_counter = None;
+        
         layouter.assign_region(
             || "Execution step",
             |mut region| {
@@ -1046,6 +1078,9 @@ impl<F: Field> ExecutionConfig<F> {
                     )?;
                     return Ok(());
                 }
+
+                let mut port_assigner = PortAssigner::new(challenges.lookup_input());
+
                 let mut offset = 0;
 
                 // Annotate the EVMCircuit columns within it's single region.
@@ -1121,6 +1156,7 @@ impl<F: Field> ExecutionConfig<F> {
                     }
                     self.assign_exec_step(
                         &mut region,
+                        &mut port_assigner,
                         offset,
                         block,
                         transaction,
@@ -1158,6 +1194,7 @@ impl<F: Field> ExecutionConfig<F> {
                     }
                     self.assign_same_exec_step_in_range(
                         &mut region,
+                        &mut port_assigner,
                         offset,
                         last_row,
                         block,
@@ -1180,6 +1217,7 @@ impl<F: Field> ExecutionConfig<F> {
                 log::trace!("assign last EndBlock at offset {}", offset);
                 self.assign_exec_step(
                     &mut region,
+                    &mut port_assigner,
                     offset,
                     block,
                     &dummy_tx,
@@ -1209,6 +1247,8 @@ impl<F: Field> ExecutionConfig<F> {
                     || Value::known(F::zero()),
                 )?;
 
+                bus_op_counter = Some(port_assigner.finish(&mut region, bus_assigner));
+
                 log::debug!("assign for region done at offset {}", offset);
                 Ok(())
             },
@@ -1232,9 +1272,9 @@ impl<F: Field> ExecutionConfig<F> {
             .evm_word()
             .map(|r| rlc::value(&block.withdraw_root.to_le_bytes(), r));
 
-        Ok(EvmCircuitExports {
+        Ok((EvmCircuitExports {
             withdraw_root: (final_withdraw_root_cell, withdraw_root_rlc.into()),
-        })
+        }, bus_op_counter))
     }
 
     fn annotate_circuit(&self, region: &mut Region<F>) {
@@ -1274,10 +1314,40 @@ impl<F: Field> ExecutionConfig<F> {
         region.name_column(|| "Copy_Constr_const", self.constants);
     }
 
+    fn assign_bus_ports(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        port_assigner: &mut PortAssigner<F>,
+        offset_begin: usize,
+        offset_end: usize,
+    ) {
+        for column in self.step.cell_manager.columns() {
+            if let CellType::LookupByte = column.cell_type {
+                for offset in offset_begin..offset_end {
+                    let byte = region.get_advice(
+                        offset,
+                        self.advices[column.index].index(),
+                        Rotation::cur(),
+                    );
+                    println!("XXX offset={} byte={:?}", offset, byte);
+                    let count = Value::known(F::one());
+                    port_assigner.set_op(
+                        offset,
+                        self.bus_port.column(),
+                        0,
+                        BusOp::take(Value::known(byte), count),
+                    );
+                }
+                break; // TODO: support all columns at all rotations.
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn assign_same_exec_step_in_range(
         &self,
         region: &mut Region<'_, F>,
+        port_assigner: &mut PortAssigner<F>,
         offset_begin: usize,
         offset_end: usize,
         block: &Block<F>,
@@ -1310,6 +1380,8 @@ impl<F: Field> ExecutionConfig<F> {
             offset_end,
         )?;
 
+        self.assign_bus_ports(region, port_assigner, offset_begin, offset_end);
+
         Ok(())
     }
 
@@ -1317,6 +1389,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_exec_step(
         &self,
         region: &mut Region<'_, F>,
+        port_assigner: &mut PortAssigner<F>,
         offset: usize,
         block: &Block<F>,
         transaction: &Transaction,
@@ -1353,7 +1426,11 @@ impl<F: Field> ExecutionConfig<F> {
             )?;
         }
 
-        self.assign_exec_step_int(region, offset, block, transaction, call, step, true)
+        self.assign_exec_step_int(region, offset, block, transaction, call, step, true)?;
+
+        self.assign_bus_ports(region, port_assigner, offset, offset + height);
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
