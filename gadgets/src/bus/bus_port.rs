@@ -283,7 +283,8 @@ impl<F: FieldExt> PortAssigner<F> {
                     .unwrap();
 
                 // Report the term to the global bus.
-                bus_assigner.put_term(offset, count * term);
+                let global_offset = offset; // region.global_offset(offset);
+                bus_assigner.put_term(global_offset, count * term);
             }
         });
     }

@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::util::Expr;
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -7,7 +9,7 @@ use halo2_proofs::{
 };
 
 /// A term of the bus sum check.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BusTerm<F>(Expression<F>);
 
 impl<F> BusTerm<F> {
@@ -77,6 +79,12 @@ impl BusConfig {
         n_rows: usize,
         terms: Value<&[F]>,
     ) -> Result<(), Error> {
+        /*assert_eq!(
+            region.global_offset(0),
+            0,
+            "The bus requires a global region"
+        );*/
+
         region.assign_fixed(
             || "Bus_is_first",
             self.is_first,
@@ -101,6 +109,7 @@ impl BusConfig {
         }
 
         terms.map(|terms| {
+            assert!(terms.len() <= n_rows, "Bus terms out-of-bound");
             let mut acc = F::zero();
 
             for offset in 0..n_rows {

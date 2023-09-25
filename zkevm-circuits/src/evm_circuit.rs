@@ -1,6 +1,7 @@
 //! The EVM circuit implementation.
 
 #![allow(missing_docs)]
+use gadgets::bus::bus_builder::BusBuilder;
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     plonk::*,
@@ -90,14 +91,28 @@ pub struct EvmCircuitExports<V> {
     pub withdraw_root: (Cell, Value<V>),
 }
 
+// Implement this marker trait. Its method is never called.
 impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
-    type ConfigArgs = EvmCircuitConfigArgs<F>;
+    type ConfigArgs = Unreachable;
 
+    #[allow(clippy::too_many_arguments)]
+    fn new(_: &mut ConstraintSystem<F>, _: Self::ConfigArgs) -> Self {
+        unreachable!()
+    }
+}
+
+/// This type guarantees that SubCircuitConfig::new() is never called.
+pub struct Unreachable {
+    _private: (),
+}
+
+impl<F: Field> EvmCircuitConfig<F> {
     /// Configure EvmCircuitConfig
     #[allow(clippy::too_many_arguments)]
-    fn new(
+    pub fn new(
         meta: &mut ConstraintSystem<F>,
-        Self::ConfigArgs {
+        bus_builder: &mut BusBuilder<F>,
+        EvmCircuitConfigArgs {
             challenges,
             tx_table,
             rw_table,
@@ -110,13 +125,14 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             modexp_table,
             ecc_table,
             pow_of_rand_table,
-        }: Self::ConfigArgs,
+        }: EvmCircuitConfigArgs<F>,
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
         let byte_table = [(); 1].map(|_| meta.fixed_column());
         let execution = Box::new(ExecutionConfig::configure(
             meta,
             challenges,
+            bus_builder,
             &fixed_table,
             &byte_table,
             &tx_table,
@@ -453,6 +469,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let challenges = Challenges::construct(meta);
         let challenges_expr = challenges.exprs(meta);
+        let mut bus_builder = BusBuilder::<F>::new(challenges_expr.lookup_input());
         let rw_table = RwTable::construct(meta);
         let tx_table = TxTable::construct(meta);
         let bytecode_table = BytecodeTable::construct(meta);
@@ -468,6 +485,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         (
             EvmCircuitConfig::new(
                 meta,
+                &mut bus_builder,
                 EvmCircuitConfigArgs {
                     challenges: challenges_expr,
                     tx_table,

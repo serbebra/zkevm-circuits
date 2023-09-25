@@ -127,8 +127,8 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
                         // … do normal circuit assignment logic …
-                        let count = Value::known(F::one());
                         let message = Value::known(F::from(2));
+                        let count = Value::known(F::one());
 
                         // Collect the bus operations into the batch.
                         port_assigner.set_op(

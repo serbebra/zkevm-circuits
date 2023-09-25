@@ -208,7 +208,7 @@ pub(crate) fn build_tx_log_expression<F: Field>(
 /// table(s) if any).
 pub trait SubCircuit<F: Field> {
     /// Configuration of the SubCircuit.
-    type Config: SubCircuitConfig<F>;
+    type Config;
 
     /// Returns number of unusable rows of the SubCircuit, which should be
     /// `meta.blinding_factors() + 1`.

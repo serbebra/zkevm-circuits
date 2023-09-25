@@ -13,6 +13,7 @@ pub trait BusPort<F: FieldExt> {
 }
 
 /// BusBuilder
+#[derive(Debug)]
 pub struct BusBuilder<F> {
     rand: Expression<F>,
     terms: Vec<BusTerm<F>>,

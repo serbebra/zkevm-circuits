@@ -26,7 +26,7 @@ use crate::{
 };
 use bus_mapping::util::read_env_var;
 use eth_types::{Field, ToLittleEndian};
-use gadgets::util::not;
+use gadgets::{util::not, bus::bus_builder::BusBuilder};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region, Value},
@@ -370,6 +370,7 @@ impl<F: Field> ExecutionConfig<F> {
     pub(crate) fn configure(
         meta: &mut ConstraintSystem<F>,
         challenges: Challenges<Expression<F>>,
+        bus_builder: &mut BusBuilder<F>,
         fixed_table: &dyn LookupTable<F>,
         byte_table: &dyn LookupTable<F>,
         tx_table: &dyn LookupTable<F>,
