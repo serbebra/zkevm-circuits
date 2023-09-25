@@ -11,11 +11,14 @@ use crate::{
                 Transition::Delta,
             },
             math_gadget::{IsZeroGadget, LtGadget},
-            not, or, select, sum, CachedRegion, Cell, Word,
+            not, or, select, sum, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{
+        word::{Word32Cell, WordExpr},
+        Expr,
+    },
 };
 use array_init::array_init;
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, U256};
@@ -25,7 +28,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 pub(crate) struct PushGadget<F> {
     same_context: SameContextGadget<F>,
     is_push0: IsZeroGadget<F>,
-    value: Word<F>,
+    value: Word32Cell<F>,
     is_pushed: [Cell<F>; 32],
     is_padding: [Cell<F>; 32],
     code_length: Cell<F>,
@@ -42,8 +45,8 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
 
         let is_push0 = IsZeroGadget::construct(cb, opcode.expr() - OpcodeId::PUSH0.expr());
 
-        let value = cb.query_word_rlc();
-        cb.stack_push(value.expr());
+        let value = cb.query_word32();
+        cb.stack_push(value.to_word());
 
         // Query selectors for each opcode_lookup whether byte in value needs to be pushed
         let is_pushed = array_init(|_| cb.query_bool());
@@ -80,7 +83,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
         for (idx, (is_pushed_cell, is_padding_cell)) in
             is_pushed.iter().zip(is_padding.iter()).enumerate()
         {
-            let byte = &value.cells[idx];
+            let byte = &value.limbs[idx];
             let index =
                 cb.curr.state.program_counter.expr() + num_bytes_needed.clone() - idx.expr();
 
@@ -184,8 +187,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
         } else {
             U256::zero()
         };
-        self.value
-            .assign(region, offset, Some(value.to_le_bytes()))?;
+        self.value.assign_u256(region, offset, value)?;
 
         let code_length_left = code_length
             .checked_sub(step.program_counter + 1)

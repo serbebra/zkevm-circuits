@@ -20,12 +20,15 @@ use crate::{
             },
             from_bytes,
             memory_gadget::{BufferReaderGadget, MemoryMask, MemoryWordAddress},
-            not, select, CachedRegion, Cell, Word,
+            not, select, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{CallContextFieldTag, TxContextFieldTag},
-    util::Expr,
+    util::{
+        word::{Word, Word32Cell, WordExpr},
+        Expr,
+    },
 };
 
 use super::ExecutionGadget;

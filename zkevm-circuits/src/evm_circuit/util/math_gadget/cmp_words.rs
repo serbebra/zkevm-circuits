@@ -10,22 +10,20 @@ use crate::{
 };
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::plonk::{Error, Expression};
+use std::marker::PhantomData;
 
 #[derive(Clone, Debug)]
 /// CmpWordsGadget compares two words, exposing `eq`  and `lt`
-pub(crate) struct CmpWordsGadget<F> {
+pub(crate) struct CmpWordsGadget<F, T1, T2> {
     comparison_lo: ComparisonGadget<F, 16>,
     comparison_hi: ComparisonGadget<F, 16>,
     pub eq: Expression<F>,
     pub lt: Expression<F>,
+    _marker: PhantomData<(T1, T2)>,
 }
 
-impl<F: Field> CmpWordsGadget<F> {
-    pub(crate) fn construct(
-        cb: &mut EVMConstraintBuilder<F>,
-        a: &Word32Cell<F>,
-        b: &Word32Cell<F>,
-    ) -> Self {
+impl<F: Field, T1: WordExpr<F>, T2: WordExpr<F>> CmpWordsGadget<F, T1, T2> {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, a: T1, b: T2) -> Self {
         // `a[0..16] <= b[0..16]`
         let (a_lo, a_hi) = a.to_word().to_lo_hi();
         let (b_lo, b_hi) = b.to_word().to_lo_hi();

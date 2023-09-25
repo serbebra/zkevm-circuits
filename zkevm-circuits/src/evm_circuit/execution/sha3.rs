@@ -3,21 +3,24 @@ use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use gadgets::util::{not, Expr};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
-use crate::evm_circuit::{
-    param::N_BYTES_MEMORY_WORD_SIZE,
-    step::ExecutionState,
-    util::{
-        common_gadget::{get_copy_bytes, SameContextGadget},
-        constraint_builder::{
-            ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
+use crate::{
+    evm_circuit::{
+        param::N_BYTES_MEMORY_WORD_SIZE,
+        step::ExecutionState,
+        util::{
+            common_gadget::{get_copy_bytes, SameContextGadget},
+            constraint_builder::{
+                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
+            },
+            memory_gadget::{
+                CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
+                MemoryExpansionGadget,
+            },
+            rlc, CachedRegion, Cell, StepRws, Word,
         },
-        memory_gadget::{
-            CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
-            MemoryExpansionGadget,
-        },
-        rlc, CachedRegion, Cell, StepRws, Word,
+        witness::{Block, Call, ExecStep, Transaction},
     },
-    witness::{Block, Call, ExecStep, Transaction},
+    util::word::{Word, WordCell, WordExpr},
 };
 
 use super::ExecutionGadget;
@@ -26,7 +29,7 @@ use super::ExecutionGadget;
 pub(crate) struct Sha3Gadget<F> {
     same_context: SameContextGadget<F>,
     memory_address: MemoryAddressGadget<F>,
-    sha3_rlc: Word<F>,
+    sha3_digest: WordCell<F>,
     copy_rwc_inc: Cell<F>,
     rlc_acc: Cell<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
@@ -41,9 +44,9 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
-        let offset = cb.query_cell_phase2();
-        let size = cb.query_word_rlc();
-        let sha3_rlc = cb.query_word_rlc();
+        let offset = cb.query_word_unchecked();
+        let size = cb.query_memory_address();
+        let sha3_digest = cb.query_word_unchecked();
 
         cb.stack_pop(offset.expr());
         cb.stack_pop(size.expr());
@@ -56,9 +59,9 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
 
         cb.condition(memory_address.has_length(), |cb| {
             cb.copy_table_lookup(
-                cb.curr.state.call_id.expr(),
+                Word::from_lo_unchecked(cb.curr.state.call_id.expr()),
                 CopyDataType::Memory.expr(),
-                cb.curr.state.call_id.expr(),
+                Word::from_lo_unchecked(cb.curr.state.call_id.expr()),
                 CopyDataType::RlcAcc.expr(),
                 memory_address.offset(),
                 memory_address.address(),
@@ -97,7 +100,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
         Self {
             same_context,
             memory_address,
-            sha3_rlc,
+            sha3_digest: sha3_rlc,
             copy_rwc_inc,
             rlc_acc,
             memory_expansion,
@@ -122,8 +125,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
         let memory_address = self
             .memory_address
             .assign(region, offset, memory_offset, size)?;
-        self.sha3_rlc
-            .assign(region, offset, Some(sha3_output.to_le_bytes()))?;
+        self.sha3_digest.assign_u256(region, offset, sha3_output)?;
 
         let shift = memory_offset.low_u64() % 32;
         let copy_rwc_inc = step.copy_rw_counter_delta;

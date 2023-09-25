@@ -1380,9 +1380,9 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn copy_table_lookup(
         &mut self,
-        src_id: Expression<F>,
+        src_id: Word<Expression<F>>,
         src_tag: Expression<F>,
-        dst_id: Expression<F>,
+        dst_id: Word<Expression<F>>,
         dst_tag: Expression<F>,
         src_addr: Expression<F>,
         src_addr_end: Expression<F>,

@@ -9,11 +9,11 @@ use crate::{
             from_bytes,
             math_gadget::IsEqualGadget,
             memory_gadget::{MemoryMask, MemoryWordAddress},
-            CachedRegion, Cell, RandomLinearCombination, Word,
+            CachedRegion, Cell, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{word::WordExpr, Expr},
 };
 
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};

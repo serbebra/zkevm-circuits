@@ -11,10 +11,10 @@ use crate::{
             },
             from_bytes,
             math_gadget::{
-                AddWordsGadget, ConstantDivisionGadget, IsEqualGadget, IsZeroGadget, MinMaxGadget,
-                MulWordByU64Gadget,
+                AddWordsGadget, ConstantDivisionGadget, IsEqualGadget, IsZeroGadget,
+                IsZeroWordGadget, MinMaxGadget, MulWordByU64Gadget,
             },
-            CachedRegion, Cell, StepRws, Word,
+            CachedRegion, Cell, StepRws,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -22,7 +22,10 @@ use crate::{
         AccountFieldTag, BlockContextFieldTag, CallContextFieldTag, RwTableTag, TxContextFieldTag,
         TxReceiptFieldTag,
     },
-    util::Expr,
+    util::{
+        word::{Word, WordCell, WordExpr},
+        Expr,
+    },
 };
 use eth_types::{
     evm_types::MAX_REFUND_QUOTIENT_OF_GAS_USED, geth_types::TxType, Field, ToLittleEndian, ToScalar,
@@ -39,18 +42,18 @@ pub(crate) struct EndTxGadget<F> {
     max_refund: ConstantDivisionGadget<F, N_BYTES_GAS>,
     refund: Cell<F>,
     effective_refund: MinMaxGadget<F, N_BYTES_GAS>,
-    effective_fee: Word<F>,
+    effective_fee: WordCell<F>,
     mul_gas_price_by_refund: MulWordByU64Gadget<F>,
     tx_caller_address: Cell<F>,
     tx_data_gas_cost: Cell<F>,
     gas_fee_refund: UpdateBalanceGadget<F, 2, true>,
     sub_gas_price_by_base_fee: AddWordsGadget<F, 2, true>,
     mul_effective_tip_by_gas_used: MulWordByU64Gadget<F>,
-    coinbase: Cell<F>,
-    coinbase_codehash: Cell<F>,
+    coinbase: WordCell<F>,
+    coinbase_codehash: WordCell<F>,
     #[cfg(feature = "scroll")]
     coinbase_keccak_codehash: Cell<F>,
-    coinbase_codehash_is_zero: IsZeroGadget<F>,
+    coinbase_code_hash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
     coinbase_transfer: TransferToGadget<F>,
     current_cumulative_gas_used: Cell<F>,
     is_first_tx: IsEqualGadget<F>,
@@ -109,15 +112,15 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         });
 
         // Add gas_used * effective_tip to coinbase's balance
-        let coinbase = cb.query_cell();
-        let base_fee = cb.query_word_rlc();
+        let coinbase = cb.query_word_unchecked();
+        let base_fee = cb.query_word32();
         for (tag, value) in [
             (BlockContextFieldTag::Coinbase, coinbase.expr()),
             (BlockContextFieldTag::BaseFee, base_fee.expr()),
         ] {
             cb.block_lookup(tag.expr(), cb.curr.state.block_number.expr(), value);
         }
-        let effective_tip = cb.query_word_rlc();
+        let effective_tip = cb.query_word32();
         let sub_gas_price_by_base_fee =
             AddWordsGadget::construct(cb, [effective_tip.clone(), base_fee], tx_gas_price);
 
@@ -149,26 +152,23 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             cb.require_zero("effective fee is zero for l1 msg", effective_fee.expr());
         });
 
-        let coinbase_codehash = cb.query_cell_phase2();
-        cb.account_read(
-            coinbase.expr(),
-            AccountFieldTag::CodeHash,
-            coinbase_codehash.expr(),
-        );
+        let coinbase_code_hash = cb.query_word_unchecked();
+        let coinbase_code_hash_is_zero = IsZeroWordGadget::construct(cb, &coinbase_code_hash);
         #[cfg(feature = "scroll")]
         let coinbase_keccak_codehash = cb.query_cell_phase2();
 
-        let coinbase_codehash_is_zero = cb.annotation("coinbase_codehash_is_zero", |cb| {
-            IsZeroGadget::construct(cb, coinbase_codehash.expr())
-        });
-
+        cb.account_read(
+            coinbase.to_word(),
+            AccountFieldTag::CodeHash,
+            coinbase_code_hash.to_word(),
+        );
         // If coinbase account balance will become positive because of this tx, update its codehash
         // from 0 to the empty codehash.
         let coinbase_transfer = cb.condition(not::expr(tx_is_l1msg.expr()), |cb| {
             TransferToGadget::construct(
                 cb,
-                coinbase.expr(),
-                not::expr(coinbase_codehash_is_zero.expr()),
+                coinbase.to_word(),
+                not::expr(coinbase_code_hash_is_zero.expr()),
                 false.expr(),
                 coinbase_codehash.expr(),
                 #[cfg(feature = "scroll")]

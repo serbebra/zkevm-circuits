@@ -12,12 +12,15 @@ use crate::{
                 Transition::Delta,
             },
             math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
-            not, CachedRegion, Cell,
+            not, CachedRegion, Cell, U64Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::CallContextFieldTag,
-    util::Expr,
+    util::{
+        word::{Word, Word32Cell, WordCell, WordExpr},
+        Expr,
+    },
 };
 
 use eth_types::{evm_types::GasCost, Field, ToScalar};
@@ -32,16 +35,20 @@ pub(crate) struct SstoreGadget<F> {
     tx_id: Cell<F>,
     is_static: Cell<F>,
     reversion_info: ReversionInfo<F>,
-    callee_address: Cell<F>,
-    phase2_key: Cell<F>,
-    phase2_value: Cell<F>,
-    phase2_value_prev: Cell<F>,
-    phase2_original_value: Cell<F>,
+    callee_address: WordCell<F>,
+    //phase2_key
+    key: Word32Cell<F>,
+    //phase2_value
+    value: Word32Cell<F>,
+    // phase2_value_prev
+    value_prev: Word32Cell<F>,
+    // phase2_original_value
+    original_value: Word32Cell<F>,
     is_warm: Cell<F>,
-    tx_refund_prev: Cell<F>,
+    tx_refund_prev: U64Cell<F>,
     // Constrain for SSTORE reentrancy sentry.
     sufficient_gas_sentry: LtGadget<F, N_BYTES_GAS>,
-    gas_cost: SstoreGasGadget<F>,
+    gas_cost: SstoreGasGadget<F, Word32Cell<F>>,
     tx_refund: SstoreTxRefundGadget<F>,
 }
 
@@ -60,41 +67,41 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
         cb.require_zero("is_static is false", is_static.expr());
 
         let mut reversion_info = cb.reversion_info_read(None);
-        let callee_address = cb.call_context(None, CallContextFieldTag::CalleeAddress);
+        let callee_address = cb.call_context_read_as_word(None, CallContextFieldTag::CalleeAddress);
 
-        let phase2_key = cb.query_cell_phase2();
+        let key = cb.query_word32();
         // Pop the key from the stack
-        cb.stack_pop(phase2_key.expr());
+        cb.stack_pop(key.to_word());
 
-        let phase2_value = cb.query_cell_phase2();
+        let value = cb.query_word32();
         // Pop the value from the stack
-        cb.stack_pop(phase2_value.expr());
+        cb.stack_pop(value.to_word());
 
-        let phase2_value_prev = cb.query_cell_phase2();
-        let phase2_original_value = cb.query_cell_phase2();
+        let value_prev = cb.query_word32();
+        let original_value = cb.query_word32();
         cb.account_storage_write(
-            callee_address.expr(),
-            phase2_key.expr(),
-            phase2_value.expr(),
-            phase2_value_prev.expr(),
+            callee_address.to_word(),
+            key.to_word(),
+            value.to_word(),
+            value_prev.to_word(),
             tx_id.expr(),
-            phase2_original_value.expr(),
+            original_value.to_word(),
             Some(&mut reversion_info),
         );
 
         let is_warm = cb.query_bool();
         cb.account_storage_access_list_read(
             tx_id.expr(),
-            callee_address.expr(),
-            phase2_key.expr(),
-            is_warm.expr(),
+            callee_address.to_word(),
+            key.to_word(),
+            Word::from_lo_unchecked(is_warm.expr()),
         );
         cb.account_storage_access_list_write(
             tx_id.expr(),
-            callee_address.expr(),
-            phase2_key.expr(),
-            true.expr(),
-            is_warm.expr(),
+            callee_address.to_word(),
+            key.to_word(),
+            Word::from_lo_unchecked(true.expr()),
+            Word::from_lo_unchecked(is_warm.expr()),
             Some(&mut reversion_info),
         );
 
@@ -112,27 +119,26 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
 
         let gas_cost = SstoreGasGadget::construct(
             cb,
-            phase2_value.clone(),
-            phase2_value_prev.clone(),
-            phase2_original_value.clone(),
             is_warm.clone(),
+            value.clone(),
+            value_prev.clone(),
+            original_value.clone(),
         );
 
-        let tx_refund_prev = cb.query_cell();
+        let tx_refund_prev = cb.query_u64();
         let tx_refund = SstoreTxRefundGadget::construct(
             cb,
             tx_refund_prev.clone(),
-            phase2_value.clone(),
-            phase2_value_prev.clone(),
-            phase2_original_value.clone(),
+            value.clone(),
+            value_prev.clone(),
+            original_value.clone(),
         );
         cb.tx_refund_write(
             tx_id.expr(),
-            tx_refund.expr(),
-            tx_refund_prev.expr(),
+            Word::from_lo_unchecked(tx_refund.expr()),
+            tx_refund_prev.to_word(),
             Some(&mut reversion_info),
         );
-
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(11.expr()),
             program_counter: Delta(1.expr()),
@@ -149,10 +155,10 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
             is_static,
             reversion_info,
             callee_address,
-            phase2_key,
-            phase2_value,
-            phase2_value_prev,
-            phase2_original_value,
+            key,
+            value,
+            value_prev,
+            original_value,
             is_warm,
             tx_refund_prev,
             sufficient_gas_sentry,
@@ -182,28 +188,18 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
             call.rw_counter_end_of_reversion,
             call.is_persistent,
         )?;
-        self.callee_address.assign(
-            region,
-            offset,
-            Value::known(
-                call.callee_address
-                    .to_scalar()
-                    .expect("unexpected Address -> Scalar conversion failure"),
-            ),
-        )?;
+        self.callee_address
+            .assign_h160(region, offset, call.address)?;
 
         let [key, value] =
             [step.rw_indices[5], step.rw_indices[6]].map(|idx| block.rws[idx].stack_value());
-        self.phase2_key
-            .assign(region, offset, region.word_rlc(key))?;
-        self.phase2_value
-            .assign(region, offset, region.word_rlc(value))?;
+        self.key.assign_u256(region, offset, key)?;
+        self.value.assign_u256(region, offset, value)?;
 
         let (_, value_prev, _, original_value) = block.rws[step.rw_indices[7]].storage_value_aux();
-        self.phase2_value_prev
-            .assign(region, offset, region.word_rlc(value_prev))?;
-        self.phase2_original_value
-            .assign(region, offset, region.word_rlc(original_value))?;
+        self.value_prev.assign_u256(region, offset, value_prev)?;
+        self.original_value
+            .assign_u256(region, offset, original_value)?;
 
         let (_, is_warm) = block.rws[step.rw_indices[8]].tx_access_list_value_pair();
         self.is_warm
@@ -244,7 +240,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct SstoreTxRefundGadget<F> {
-    tx_refund_old: Cell<F>,
+    tx_refund_old: U64Cell<F>,
     tx_refund_new: Expression<F>,
     value: Cell<F>,
     value_prev: Cell<F>,
