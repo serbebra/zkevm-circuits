@@ -1,0 +1,26 @@
+[package]
+name = "benchmarks"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bus-mapping = { path = "../bus-mapping", features = ["test"] }
+eth-types = { path = "../eth-types" }
+halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2.git", tag = "v2023_02_02" }
+keccak256 = { path = "../keccak256" }
+mock = { path = "../mock" }
+prover = { path = "../prover" }
+serde_json = "1"
+zkevm-circuits = { path = "../zkevm-circuits", features = ["test"] }
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "serde"
+harness = false
+
+[[bench]]
+name = "estimate_rows"
+harness = false
+

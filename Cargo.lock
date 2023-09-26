@@ -371,6 +371,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 
 [[package]]
+name = "benchmarks"
+version = "0.1.0"
+dependencies = [
+ "bus-mapping",
+ "criterion",
+ "eth-types",
+ "halo2_proofs",
+ "keccak256",
+ "mock",
+ "prover",
+ "serde_json",
+ "zkevm-circuits",
+]
+
+[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -13,7 +13,8 @@ members = [
     "mock",
     "testool",
     "aggregator",
-    "prover"
+    "prover",
+    "benchmarks"
 ]
 
 [patch.crates-io]
