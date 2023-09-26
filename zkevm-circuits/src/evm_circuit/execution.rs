@@ -1331,12 +1331,8 @@ impl<F: Field> ExecutionConfig<F> {
                         self.advices[column.index].index(),
                         Rotation::cur(),
                     );
-                    port_assigner.set_op(
-                        offset,
-                        self.bus_port.column(),
-                        0,
-                        BusOp::take(Value::known(byte), 1),
-                    );
+                    self.bus_port
+                        .assign(port_assigner, offset, BusOp::take(Value::known(byte), 1));
                 }
                 break; // TODO: support all columns at all rotations.
             }

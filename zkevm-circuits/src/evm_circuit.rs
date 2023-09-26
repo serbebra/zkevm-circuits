@@ -271,12 +271,12 @@ impl<F: Field> EvmCircuitConfig<F> {
                         || Value::known(F::one()),
                     )?;
 
-                    let count = bus_op_counter.count_of_message(value);
+                    let count = bus_op_counter.count_takes(value);
                     self.table_to_bus.assign(
                         &mut region,
                         &mut port_assigner,
                         offset,
-                        BusOp::put(value, -count),
+                        BusOp::put(value, count),
                     )?;
                 }
 

@@ -52,8 +52,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
             offset,
             || Value::known(from_isize::<F>(op.count())),
         )?;
-
-        port_assigner.set_op(offset, self.port.column(), 0, op);
+        self.port.assign(port_assigner, offset, op);
         Ok(())
     }
 }

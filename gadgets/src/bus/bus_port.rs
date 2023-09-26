@@ -179,6 +179,11 @@ impl<F: FieldExt> BusPortChip<F> {
         Self { helper, port }
     }
 
+    /// Assign an operation.
+    pub fn assign(&self, port_assigner: &mut PortAssigner<F>, offset: usize, op: BusOpF<F>) {
+        port_assigner.set_op(offset, self.helper, 0, op);
+    }
+
     /// Assign the helper witness based on a message.
     pub fn assign_message(
         &self,
@@ -201,11 +206,6 @@ impl<F: FieldExt> BusPortChip<F> {
     ) -> Result<(), Error> {
         region.assign_advice(|| "BusPort_helper", self.helper, offset, || term)?;
         Ok(())
-    }
-
-    /// The column of the helper cell.
-    pub fn column(&self) -> Column<Advice> {
-        self.helper
     }
 }
 
@@ -335,8 +335,18 @@ impl BusOpCounter {
         });
     }
 
-    /// Count the number of copies of this messages put (positive) or taken (negative).
-    pub fn count_of_message<F: FieldExt>(&self, message: Value<F>) -> isize {
+    /// Count how many times a message was taken (net of puts).
+    pub fn count_takes<F: FieldExt>(&self, message: Value<F>) -> isize {
+        (-self.count_ops(message)).max(0)
+    }
+
+    /// Count how many times a message was put (net of takes).
+    pub fn count_puts<F: FieldExt>(&self, message: Value<F>) -> isize {
+        self.count_ops(message).max(0)
+    }
+
+    /// Count how many times a message was put (net positive) or taken (net negative).
+    fn count_ops<F: FieldExt>(&self, message: Value<F>) -> isize {
         let mut count = 0;
         message.map(|message| {
             count = *self.counts.get(&Self::to_key(message)).unwrap_or(&0);
