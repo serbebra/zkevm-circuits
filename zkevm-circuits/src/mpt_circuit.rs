@@ -112,7 +112,9 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
         (
             // For an empty storage proof, we may need to lookup the canonical representations of
             // three different keys. Each lookup requires 32 rows.
-            3 * 32 * block.mpt_updates.len(),
+            // The key bit lookup within the mpt circuit requires a minimum of 8 * 256 rows. The +1
+            // comes from the fact that the mpt circuit starts assigning at offset = 1.
+            std::cmp::min(8 * 256 + 1, 3 * 32 * block.mpt_updates.len()),
             block.circuits_params.max_mpt_rows,
         )
     }
