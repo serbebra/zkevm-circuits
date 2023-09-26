@@ -114,7 +114,7 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
             // three different keys. Each lookup requires 32 rows.
             // The key bit lookup within the mpt circuit requires a minimum of 8 * 256 rows. The +1
             // comes from the fact that the mpt circuit starts assigning at offset = 1.
-            std::cmp::min(8 * 256 + 1, 3 * 32 * block.mpt_updates.len()),
+            std::cmp::max(8 * 256 + 1, 3 * 32 * block.mpt_updates.len()),
             block.circuits_params.max_mpt_rows,
         )
     }
