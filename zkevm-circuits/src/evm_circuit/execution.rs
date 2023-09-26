@@ -29,7 +29,7 @@ use eth_types::{Field, ToLittleEndian};
 use gadgets::{
     bus::{
         bus_builder::{BusAssigner, BusBuilder},
-        bus_port::{BusOp, BusOpCounter, BusPortChip, PortAssigner},
+        bus_port::{BusOp, BusOpCounter, BusPortMulti, PortAssigner},
     },
     util::not,
 };
@@ -266,7 +266,7 @@ pub(crate) struct ExecutionConfig<F> {
     q_step_last: Selector,
     advices: [Column<Advice>; STEP_WIDTH],
     step: Step<F>,
-    bus_port: BusPortChip<F>,
+    bus_port: BusPortMulti<F>,
     pub(crate) height_map: HashMap<ExecutionState, usize>,
     stored_expressions_map: HashMap<ExecutionState, Vec<StoredExpression<F>>>,
     instrument: Instrument,
@@ -927,18 +927,17 @@ impl<F: Field> ExecutionConfig<F> {
         bus_builder: &mut BusBuilder<F>,
         q_usable: Selector,
         cell_manager: &CellManager<F>,
-    ) -> BusPortChip<F> {
+    ) -> BusPortMulti<F> {
         let q_usable = query_expression(meta, |meta| meta.query_selector(q_usable));
 
-        for column in cell_manager.columns().iter() {
-            if let CellType::LookupByte = column.cell_type {
-                let port =
-                    BusPortChip::connect(meta, bus_builder, BusOp::take(column.expr(), q_usable));
-                return port;
-                // TODO: support all columns.
-            }
-        }
-        unreachable!()
+        let ops = cell_manager
+            .columns()
+            .iter()
+            .filter(|column| column.cell_type == CellType::LookupByte)
+            .map(|column| BusOp::take(column.expr(), q_usable.clone()))
+            .collect::<Vec<_>>();
+
+        BusPortMulti::connect(meta, bus_builder, ops)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1323,19 +1322,24 @@ impl<F: Field> ExecutionConfig<F> {
         offset_begin: usize,
         offset_end: usize,
     ) {
-        for column in self.step.cell_manager.columns() {
-            if let CellType::LookupByte = column.cell_type {
-                for offset in offset_begin..offset_end {
-                    let byte = region.get_advice(
-                        offset,
-                        self.advices[column.index].index(),
-                        Rotation::cur(),
-                    );
-                    self.bus_port
-                        .assign(port_assigner, offset, BusOp::take(Value::known(byte), 1));
-                }
-                break; // TODO: support all columns at all rotations.
-            }
+        let column_indexes = self
+            .step
+            .cell_manager
+            .columns()
+            .iter()
+            .filter(|column| column.cell_type == CellType::LookupByte)
+            .map(|column| self.advices[column.index].index())
+            .collect::<Vec<_>>();
+
+        for offset in offset_begin..offset_end {
+            let ops = column_indexes
+                .iter()
+                .map(|column_index| {
+                    let byte = region.get_advice(offset, *column_index, Rotation::cur());
+                    BusOp::take(Value::known(byte), 1)
+                })
+                .collect::<Vec<_>>();
+            self.bus_port.assign(port_assigner, offset, ops);
         }
     }
 

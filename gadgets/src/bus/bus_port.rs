@@ -1,5 +1,3 @@
-use std::{collections::HashMap, ops::Neg};
-
 use super::{
     bus_builder::{BusAssigner, BusBuilder, BusPort},
     bus_chip::BusTerm,
@@ -13,6 +11,7 @@ use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, ThirdPhase},
     poly::Rotation,
 };
+use std::{collections::HashMap, ops::Neg};
 
 /// A bus operation, as expressions for circuit config.
 pub type BusOpExpr<F> = BusOp<Expression<F>, Expression<F>>;
@@ -170,7 +169,7 @@ impl<F: FieldExt> BusPortChip<F> {
     }
 
     /// Create a new bus port with a single access.
-    pub fn new(meta: &mut ConstraintSystem<F>, op: BusOpExpr<F>) -> Self {
+    fn new(meta: &mut ConstraintSystem<F>, op: BusOpExpr<F>) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
@@ -212,6 +211,36 @@ impl<F: FieldExt> BusPortChip<F> {
 impl<F: FieldExt> BusPort<F> for BusPortChip<F> {
     fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
         self.port.create_term(meta, rand)
+    }
+}
+
+/// A chip to access the bus. It manages its own helper columns and gives multiple accesses per row.
+#[derive(Clone, Debug)]
+pub struct BusPortMulti<F> {
+    // TODO: implement with as few helper columns as possible.
+    ports: Vec<BusPortChip<F>>,
+}
+
+impl<F: FieldExt> BusPortMulti<F> {
+    /// Create and connect a new bus port with multiple accesses.
+    pub fn connect(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F>,
+        ops: Vec<BusOpExpr<F>>,
+    ) -> Self {
+        let ports = ops
+            .into_iter()
+            .map(|op| BusPortChip::connect(meta, bus_builder, op))
+            .collect();
+        Self { ports }
+    }
+
+    /// Assign operations.
+    pub fn assign(&self, port_assigner: &mut PortAssigner<F>, offset: usize, ops: Vec<BusOpF<F>>) {
+        assert_eq!(self.ports.len(), ops.len());
+        for (port, op) in self.ports.iter().zip(ops) {
+            port.assign(port_assigner, offset, op);
+        }
     }
 }
 
