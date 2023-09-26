@@ -12,7 +12,7 @@ fn bench(c: &mut Criterion) {
 
     for trace in traces {
         let size = trace.as_bytes().len();
-        group.bench_function(BenchmarkId::from_parameter(size), |b| {
+        group.bench_function(BenchmarkId::from_parameter(size / 1024), |b| {
             b.iter_with_large_drop(|| serde_json::from_str::<BlockTrace>(black_box(&trace)))
         });
     }
