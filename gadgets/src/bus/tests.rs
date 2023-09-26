@@ -4,12 +4,12 @@ use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     halo2curves::bn256::Fr,
-    plonk::{Advice, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, Fixed},
+    plonk::{Challenge, Circuit, Column, ConstraintSystem, Error, Fixed, SecondPhase},
     poly::Rotation,
 };
 use std::marker::PhantomData;
 
-use super::{bus_builder::*, bus_chip::*, bus_port::*};
+use super::{bus_builder::*, bus_chip::*, bus_lookup::BusLookupConfig, bus_port::*};
 
 #[test]
 fn test_bus() {
@@ -19,10 +19,9 @@ fn test_bus() {
 #[derive(Clone)]
 struct TestCircuitConfig<F: FieldExt> {
     enabled: Column<Fixed>,
-    count1: Column<Advice>,
-    port1: BusPortChip<F>,
-    port2: BusPortChip<F>,
     bus_config: BusConfig,
+    bus_lookup: BusLookupConfig<F>,
+    port2: BusPortChip<F>,
     rand: Challenge,
     _marker: PhantomData<F>,
 }
@@ -43,26 +42,20 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
     fn configure(cs: &mut ConstraintSystem<F>) -> Self::Config {
         cs.advice_column(); // Bypass illogical validation.
+        cs.advice_column_in(SecondPhase);
 
         let enabled = cs.fixed_column();
         let enabled_expr = query_expression(cs, |cs| cs.query_fixed(enabled, Rotation::cur()));
 
-        let rand = cs.challenge_usable_after(FirstPhase);
+        let rand = cs.challenge_usable_after(SecondPhase);
         let rand_expr = query_expression(cs, |cs| cs.query_challenge(rand));
         let mut bus_builder = BusBuilder::<F>::new(rand_expr);
 
         let message = 2.expr();
 
         // Circuit 1 puts values dynamically.
-        let count1 = cs.advice_column();
-        let count1_expr = enabled_expr.clone()
-            * query_expression(cs, |cs| cs.query_advice(count1, Rotation::cur()));
-
-        let port1 = BusPortChip::connect(
-            cs,
-            &mut bus_builder,
-            BusOp::put(message.clone(), count1_expr),
-        );
+        let bus_lookup =
+            BusLookupConfig::connect(cs, &mut bus_builder, message.clone(), enabled_expr.clone());
 
         // Circuit 2 takes one value per row.
         let count2_expr = enabled_expr * 1.expr();
@@ -75,8 +68,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
         TestCircuitConfig {
             enabled,
             bus_config,
-            count1,
-            port1,
+            bus_lookup,
             port2,
             rand,
             _marker: PhantomData,
@@ -104,46 +96,43 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
                 let mut bus_assigner = BusAssigner::new(self.n_rows);
 
+                // This uses a batching method rather than row-by-row.
+                let mut port_assigner = PortAssigner::new(rand);
+
                 // Circuit 1 puts a message on some row.
                 {
-                    // Put `count` copies of the same message.
+                    // Do normal circuit assignment logic, and obtain a message.
                     let message = Value::known(F::from(2));
-                    let count = Value::known(F::from(self.n_rows as u64));
+
+                    // Set the `count` of copies of the same message.
+                    let count = self.n_rows as isize;
                     let offset = 3; // can be anywhere.
-                    region.assign_advice(|| "count1", config.count1, offset, || count)?;
 
-                    // Set the helper cell.
-                    let term = config
-                        .port1
-                        .assign_message(&mut region, offset, message, rand)?;
-
-                    // Report the term to the global bus.
-                    bus_assigner.put_term(offset, count * term);
+                    // Assign an operation to the port of this circuit, and to the shared bus.
+                    config.bus_lookup.assign(
+                        &mut region,
+                        &mut port_assigner,
+                        offset,
+                        BusOp::put(message, count),
+                    )?;
                 }
 
                 // Circuit 2 takes one message per row.
                 {
-                    // This uses a batching method rather than row-by-row.
-                    let mut port_assigner = PortAssigner::new(rand);
-
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
-                        // … do normal circuit assignment logic …
+                        // Do normal circuit assignment logic, and obtain a message.
                         let message = Value::known(F::from(2));
-                        let count = Value::known(F::one());
 
-                        // Collect the bus operations into the batch.
-                        port_assigner.set_op(
-                            offset,
-                            config.port2.column(),
-                            0,
-                            BusOp::take(message, count),
-                        );
+                        // Assign an operation to the port of this circuit, and to the shared bus.
+                        config
+                            .port2
+                            .assign(&mut port_assigner, offset, BusOp::take(message, 1));
                     }
-
-                    // Final pass: assign the bus witnesses.
-                    port_assigner.finish(&mut region, &mut bus_assigner);
                 }
+
+                // Final pass: assign the bus witnesses.
+                port_assigner.finish(&mut region, &mut bus_assigner);
 
                 config
                     .bus_config
