@@ -28,9 +28,13 @@ impl<F: FieldExt> BusBuilder<F> {
         }
     }
 
-    /// Connect a port to the bus.
-    pub fn connect_port<BP: BusPort<F>>(&mut self, meta: &mut ConstraintSystem<F>, port: &BP) {
-        let term = port.create_term(meta, self.rand.clone());
+    /// The random challenge used to encode messages.
+    pub fn rand(&self) -> Expression<F> {
+        self.rand.clone()
+    }
+
+    /// Add a term to the bus.
+    pub fn add_term(&mut self, term: BusTerm<F>) {
         self.terms.push(term);
     }
 

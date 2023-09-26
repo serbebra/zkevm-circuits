@@ -8,10 +8,10 @@ use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
     halo2curves::group::ff::BatchInvert,
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, ThirdPhase},
+    plonk::{Advice, Column, ConstraintSystem, Expression, ThirdPhase},
     poly::Rotation,
 };
-use std::{collections::HashMap, ops::Neg};
+use std::{collections::HashMap, marker::PhantomData, ops::Neg};
 
 /// A bus operation, as expressions for circuit config.
 pub type BusOpExpr<F> = BusOp<Expression<F>, Expression<F>>;
@@ -55,15 +55,23 @@ where
 /// A chip to access to the bus.
 #[derive(Clone, Debug)]
 pub struct BusPortSingle<F> {
-    helper: Expression<F>,
     op: BusOpExpr<F>,
+    helper: Expression<F>,
 }
 
 impl<F: FieldExt> BusPortSingle<F> {
     /// Create a new bus port with a single access.
     /// The helper cell can be used for something else if op.count is zero.
-    pub fn new(helper: Expression<F>, op: BusOpExpr<F>) -> Self {
-        Self { helper, op }
+    pub fn connect(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F>,
+        op: BusOpExpr<F>,
+        helper: Expression<F>,
+    ) -> Self {
+        let port = Self { op, helper };
+        let term = port.create_term(meta, bus_builder.rand());
+        bus_builder.add_term(term);
+        port
     }
 
     /// Return the witness that must be assigned to the helper cell.
@@ -99,14 +107,22 @@ impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
 /// degree of input expressions is more limited than with BusPortSingle.
 /// The helper cell can be used for something else if both op.count are zero.
 pub struct BusPortDual<F> {
-    helper: Expression<F>,
     ops: [BusOpExpr<F>; 2],
+    helper: Expression<F>,
 }
 
 impl<F: FieldExt> BusPortDual<F> {
     /// Create a new bus port with two accesses.
-    pub fn new(helper: Expression<F>, ops: [BusOpExpr<F>; 2]) -> Self {
-        Self { helper, ops }
+    pub fn connect(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F>,
+        ops: [BusOpExpr<F>; 2],
+        helper: Expression<F>,
+    ) -> Self {
+        let port = Self { ops, helper };
+        let term = port.create_term(meta, bus_builder.rand());
+        bus_builder.add_term(term);
+        port
     }
 
     /// Return the witness that must be assigned to the helper cell.
@@ -153,64 +169,30 @@ impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
 #[derive(Clone, Debug)]
 pub struct BusPortChip<F> {
     helper: Column<Advice>,
-    port: BusPortSingle<F>,
+    _marker: PhantomData<F>,
 }
 
 impl<F: FieldExt> BusPortChip<F> {
-    /// Create and connect a new bus port with a single access.
+    /// Create a new bus port with a single access.
     pub fn connect(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F>,
         op: BusOpExpr<F>,
     ) -> Self {
-        let port = Self::new(meta, op);
-        bus_builder.connect_port(meta, &port);
-        port
-    }
-
-    /// Create a new bus port with a single access.
-    fn new(meta: &mut ConstraintSystem<F>, op: BusOpExpr<F>) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
-        let port = BusPortSingle::new(helper_expr, op);
+        BusPortSingle::connect(meta, bus_builder, op, helper_expr);
 
-        Self { helper, port }
+        Self {
+            helper,
+            _marker: PhantomData,
+        }
     }
 
     /// Assign an operation.
     pub fn assign(&self, port_assigner: &mut PortAssigner<F>, offset: usize, op: BusOpF<F>) {
         port_assigner.set_op(offset, self.helper, 0, op);
-    }
-
-    /// Assign the helper witness based on a message.
-    pub fn assign_message(
-        &self,
-        region: &mut Region<'_, F>,
-        offset: usize,
-        message: Value<F>,
-        rand: Value<F>,
-    ) -> Result<Value<F>, Error> {
-        let helper = BusPortSingle::helper_witness(message, rand);
-        region.assign_advice(|| "BusPort_helper", self.helper, offset, || helper)?;
-        Ok(helper)
-    }
-
-    /// Assign the helper witness based on a precomputed term (without count).
-    pub fn assign_term(
-        &self,
-        region: &mut Region<'_, F>,
-        offset: usize,
-        term: Value<F>,
-    ) -> Result<(), Error> {
-        region.assign_advice(|| "BusPort_helper", self.helper, offset, || term)?;
-        Ok(())
-    }
-}
-
-impl<F: FieldExt> BusPort<F> for BusPortChip<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
-        self.port.create_term(meta, rand)
     }
 }
 
