@@ -7,13 +7,13 @@ use std::env::var;
 fn bench(c: &mut Criterion) {
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let mut group = c.benchmark_group("estimate_rows");
-    group.plot_config(plot_config);
+    group.sample_size(10).plot_config(plot_config);
 
     let traces = TracesFileIterator::from_dir(var("TRACE_PATH").unwrap());
 
     for trace in traces {
         let size = trace.as_bytes().len();
-        group.bench_function(BenchmarkId::from_parameter(size / 1024), |b| {
+        group.bench_function(BenchmarkId::from_parameter(size), |b| {
             let block_trace =
                 serde_json::from_str::<BlockTrace>(&trace).expect("deserialize block trace");
             let traces = vec![block_trace];
