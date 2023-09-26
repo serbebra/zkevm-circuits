@@ -9,5 +9,11 @@ pub mod bus_builder;
 /// A chip to access the bus.
 pub mod bus_port;
 
+/// A chip to expose a lookup table on a bus.
+pub mod bus_lookup;
+
+/// Utility functions.
+mod util;
+
 #[cfg(test)]
 mod tests;

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::util::Expr;
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -107,8 +105,6 @@ impl BusConfig {
                 || Value::known(F::one()),
             )?;
         }
-
-        println!("XXX bus enabled up to row {}", n_rows - 1);
 
         terms.map(|terms| {
             assert!(terms.len() <= n_rows, "Bus terms out-of-bound");

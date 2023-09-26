@@ -3,6 +3,7 @@ use std::{collections::HashMap, ops::Neg};
 use super::{
     bus_builder::{BusAssigner, BusPort},
     bus_chip::BusTerm,
+    util::from_isize,
 };
 use crate::util::query_expression;
 use halo2_proofs::{
@@ -14,39 +15,40 @@ use halo2_proofs::{
 };
 
 /// A bus operation, as expressions for circuit config.
-pub type BusOpExpr<F> = BusOp<Expression<F>>;
+pub type BusOpExpr<F> = BusOp<Expression<F>, Expression<F>>;
 
 /// A bus operation, as values for circuit assignment.
-pub type BusOpVal<F> = BusOp<Value<F>>;
+pub type BusOpF<F> = BusOp<Value<F>, isize>;
 
 /// A bus operation.
 #[derive(Clone, Debug)]
-pub struct BusOp<T> {
-    message: T,
-    count: T,
+pub struct BusOp<M, C> {
+    message: M,
+    count: C,
 }
 
-impl<T> BusOp<T>
+impl<M, C> BusOp<M, C>
 where
-    T: Clone + Neg<Output = T>,
+    M: Clone,
+    C: Clone + Neg<Output = C>,
 {
     /// Put an item. The expression evaluates to 0 or the number of copies.
-    pub fn put(message: T, count: T) -> Self {
+    pub fn put(message: M, count: C) -> Self {
         Self { message, count }
     }
 
     /// Take an item. The expression evaluates to 0 or 1.
-    pub fn take(message: T, count: T) -> Self {
+    pub fn take(message: M, count: C) -> Self {
         Self::put(message, -count)
     }
 
     /// The message to put or take.
-    pub fn message(&self) -> T {
+    pub fn message(&self) -> M {
         self.message.clone()
     }
 
     /// The number of copies of the message to put (if positive) or take (if negative).
-    pub fn count(&self) -> T {
+    pub fn count(&self) -> C {
         self.count.clone()
     }
 }
@@ -244,8 +246,8 @@ impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
 /// PortAssigner computes and assigns terms into helper cells and the bus.
 pub struct PortAssigner<F> {
     rand: Value<F>,
-    batch: HelperBatch<F, (usize, Column<Advice>, isize, Value<F>)>,
-    bus_op_counter: BusOpCounter<F>,
+    batch: HelperBatch<F, (usize, Column<Advice>, isize, isize)>,
+    bus_op_counter: BusOpCounter,
 }
 
 impl<F: FieldExt> PortAssigner<F> {
@@ -264,7 +266,7 @@ impl<F: FieldExt> PortAssigner<F> {
         offset: usize,
         column: Column<Advice>,
         rotation: isize,
-        op: BusOpVal<F>,
+        op: BusOpF<F>,
     ) {
         self.bus_op_counter.set_op(&op);
 
@@ -278,7 +280,7 @@ impl<F: FieldExt> PortAssigner<F> {
         self,
         region: &mut Region<'_, F>,
         bus_assigner: &mut BusAssigner<F>,
-    ) -> BusOpCounter<F> {
+    ) -> BusOpCounter {
         self.batch.invert().map(|terms| {
             // The batch has converted the messages into bus terms.
             for (term, (offset, column, rotation, count)) in terms {
@@ -292,6 +294,7 @@ impl<F: FieldExt> PortAssigner<F> {
 
                 // Report the term to the global bus.
                 let global_offset = offset; // region.global_offset(offset);
+                let count = Value::known(from_isize::<F>(count));
                 bus_assigner.put_term(global_offset, count * term);
             }
         });
@@ -301,18 +304,18 @@ impl<F: FieldExt> PortAssigner<F> {
 
 /// OpCounter tracks the messages taken, to help generating the puts.
 #[derive(Clone, Debug, Default)]
-pub struct BusOpCounter<F> {
-    counts: HashMap<Vec<u8>, Value<F>>,
+pub struct BusOpCounter {
+    counts: HashMap<Vec<u8>, isize>,
 }
 
-impl<F: FieldExt> BusOpCounter<F> {
+impl BusOpCounter {
     /// Create a new OpCounter.
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Report an operation.
-    pub fn set_op(&mut self, op: &BusOpVal<F>) {
+    pub fn set_op<F: FieldExt>(&mut self, op: &BusOpF<F>) {
         op.message().map(|message| {
             self.counts
                 .entry(Self::to_key(message))
@@ -321,18 +324,16 @@ impl<F: FieldExt> BusOpCounter<F> {
         });
     }
 
-    /// Count the number of copies of this messages taken.
-    pub fn count_of_message(&self, message: Value<F>) -> Value<F> {
-        let mut count = Value::known(F::zero());
+    /// Count the number of copies of this messages put (positive) or taken (negative).
+    pub fn count_of_message<F: FieldExt>(&self, message: Value<F>) -> isize {
+        let mut count = 0;
         message.map(|message| {
-            if let Some(c) = self.counts.get(&Self::to_key(message)) {
-                count = *c;
-            }
+            count = *self.counts.get(&Self::to_key(message)).unwrap_or(&0);
         });
         count
     }
 
-    fn to_key(message: F) -> Vec<u8> {
+    fn to_key<F: FieldExt>(message: F) -> Vec<u8> {
         Vec::from(message.to_repr().as_ref())
     }
 }

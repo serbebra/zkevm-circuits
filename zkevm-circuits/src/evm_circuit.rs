@@ -1,10 +1,14 @@
 //! The EVM circuit implementation.
 
 #![allow(missing_docs)]
-use gadgets::bus::{
-    bus_builder::{BusAssigner, BusBuilder},
-    bus_chip::BusConfig,
-    bus_port::{BusOp, BusOpCounter, PortAssigner},
+use gadgets::{
+    bus::{
+        bus_builder::{BusAssigner, BusBuilder},
+        bus_chip::BusConfig,
+        bus_lookup::BusLookupConfig,
+        bus_port::{BusOp, BusOpCounter, PortAssigner},
+    },
+    util::Expr,
 };
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
@@ -31,7 +35,6 @@ use crate::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
         ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
     },
-    table_bus::LookupBusConfig,
     util::{query_expression, SubCircuit, SubCircuitConfig},
 };
 use bus_mapping::evm::OpcodeId;
@@ -49,7 +52,7 @@ pub struct EvmCircuitConfig<F> {
     byte_table: [Column<Fixed>; 1],
     enable_table: Column<Fixed>,
     bus: BusConfig,
-    table_to_bus: LookupBusConfig<F>,
+    table_to_bus: BusLookupConfig<F>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
     tx_table: TxTable,
@@ -207,10 +210,10 @@ impl<F: Field> EvmCircuitConfig<F> {
         bus_builder: &mut BusBuilder<F>,
         byte_table: &dyn LookupTable<F>,
         enabled: Column<Fixed>,
-    ) -> LookupBusConfig<F> {
+    ) -> BusLookupConfig<F> {
         let byte_expr = query_expression(meta, |meta| byte_table.table_exprs(meta)[0].clone());
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        LookupBusConfig::new(meta, bus_builder, byte_expr, enabled)
+        BusLookupConfig::new(meta, bus_builder, byte_expr, enabled)
     }
 }
 
@@ -244,11 +247,19 @@ impl<F: Field> EvmCircuitConfig<F> {
         challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F>,
-        bus_op_counter: &BusOpCounter<F>,
+        bus_op_counter: &BusOpCounter,
     ) -> Result<(), Error> {
+        let mut closure_count = 0;
+
         layouter.assign_region(
             || "byte table",
             |mut region| {
+                // TODO: deal with this some other way.
+                closure_count += 1;
+                if closure_count == 1 {
+                    return Ok(());
+                }
+
                 let mut port_assigner = PortAssigner::new(challenges.lookup_input());
 
                 for offset in 0..256 {
@@ -268,7 +279,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                         &mut region,
                         &mut port_assigner,
                         offset,
-                        BusOp::put(value, count),
+                        BusOp::put(value, -count),
                     )?;
                 }
 
@@ -276,7 +287,9 @@ impl<F: Field> EvmCircuitConfig<F> {
 
                 Ok(())
             },
-        )
+        )?;
+        assert_eq!(closure_count, 2, "assign_region behavior changed");
+        Ok(())
     }
 }
 

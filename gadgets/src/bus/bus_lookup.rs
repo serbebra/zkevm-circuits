@@ -1,29 +1,28 @@
 //! The TableBus circuit puts items from a table to the bus.
 
-use std::marker::PhantomData;
+use crate::util::query_expression;
 
-use eth_types::Field;
-use gadgets::bus::{
-    bus_builder::{BusAssigner, BusBuilder},
-    bus_port::{BusOp, BusOpVal, BusPortChip, PortAssigner},
+use super::{
+    bus_builder::BusBuilder,
+    bus_port::{BusOp, BusOpF, BusPortChip, PortAssigner},
+    util::from_isize,
 };
 use halo2_proofs::{
-    circuit::{Layouter, Region, Value},
+    circuit::{Region, Value},
+    halo2curves::FieldExt,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression},
     poly::Rotation,
 };
 
-use crate::util::query_expression;
-
-/// LookupBus exposes a table as a lookup through the bus.
+/// BusLookup exposes a table as a lookup through the bus.
 #[derive(Clone, Debug)]
-pub struct LookupBusConfig<F> {
+pub struct BusLookupConfig<F> {
     port: BusPortChip<F>,
     count: Column<Advice>,
 }
 
-impl<F: Field> LookupBusConfig<F> {
-    /// Create a new LookupBus circuit from the expressions of message and count.
+impl<F: FieldExt> BusLookupConfig<F> {
+    /// Create a new BusLookup circuit from the expressions of message and count.
     pub fn new(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F>,
@@ -45,9 +44,14 @@ impl<F: Field> LookupBusConfig<F> {
         region: &mut Region<'_, F>,
         port_assigner: &mut PortAssigner<F>,
         offset: usize,
-        op: BusOpVal<F>,
+        op: BusOpF<F>,
     ) -> Result<(), Error> {
-        region.assign_advice(|| "LookupBus", self.count, offset, || op.count())?;
+        region.assign_advice(
+            || "BusLookup",
+            self.count,
+            offset,
+            || Value::known(from_isize::<F>(op.count())),
+        )?;
 
         port_assigner.set_op(offset, self.port.column(), 0, op);
         Ok(())

@@ -22,7 +22,6 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{LookupTable, RwTableTag, TxReceiptFieldTag},
-    table_bus::LookupBusConfig,
     util::{query_expression, Challenges, Expr},
 };
 use bus_mapping::util::read_env_var;
@@ -30,7 +29,7 @@ use eth_types::{Field, ToLittleEndian};
 use gadgets::{
     bus::{
         bus_builder::{BusAssigner, BusBuilder},
-        bus_port::{BusOp, BusPortChip, PortAssigner, BusOpCounter},
+        bus_port::{BusOp, BusOpCounter, BusPortChip, PortAssigner},
     },
     util::not,
 };
@@ -1061,10 +1060,10 @@ impl<F: Field> ExecutionConfig<F> {
         bus_assigner: &mut BusAssigner<F>,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<(EvmCircuitExports<Assigned<F>>, Option<BusOpCounter<F>>), Error> {
+    ) -> Result<(EvmCircuitExports<Assigned<F>>, Option<BusOpCounter>), Error> {
         let mut is_first_time = true;
         let mut bus_op_counter = None;
-        
+
         layouter.assign_region(
             || "Execution step",
             |mut region| {
@@ -1272,9 +1271,12 @@ impl<F: Field> ExecutionConfig<F> {
             .evm_word()
             .map(|r| rlc::value(&block.withdraw_root.to_le_bytes(), r));
 
-        Ok((EvmCircuitExports {
-            withdraw_root: (final_withdraw_root_cell, withdraw_root_rlc.into()),
-        }, bus_op_counter))
+        Ok((
+            EvmCircuitExports {
+                withdraw_root: (final_withdraw_root_cell, withdraw_root_rlc.into()),
+            },
+            bus_op_counter,
+        ))
     }
 
     fn annotate_circuit(&self, region: &mut Region<F>) {
@@ -1329,13 +1331,11 @@ impl<F: Field> ExecutionConfig<F> {
                         self.advices[column.index].index(),
                         Rotation::cur(),
                     );
-                    println!("XXX offset={} byte={:?}", offset, byte);
-                    let count = Value::known(F::one());
                     port_assigner.set_op(
                         offset,
                         self.bus_port.column(),
                         0,
-                        BusOp::take(Value::known(byte), count),
+                        BusOp::take(Value::known(byte), 1),
                     );
                 }
                 break; // TODO: support all columns at all rotations.
