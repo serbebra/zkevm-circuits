@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Neg};
 
 use super::{
-    bus_builder::{BusAssigner, BusPort},
+    bus_builder::{BusAssigner, BusBuilder, BusPort},
     bus_chip::BusTerm,
     util::from_isize,
 };
@@ -158,6 +158,17 @@ pub struct BusPortChip<F> {
 }
 
 impl<F: FieldExt> BusPortChip<F> {
+    /// Create and connect a new bus port with a single access.
+    pub fn connect(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F>,
+        op: BusOpExpr<F>,
+    ) -> Self {
+        let port = Self::new(meta, op);
+        bus_builder.connect_port(meta, &port);
+        port
+    }
+
     /// Create a new bus port with a single access.
     pub fn new(meta: &mut ConstraintSystem<F>, op: BusOpExpr<F>) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);

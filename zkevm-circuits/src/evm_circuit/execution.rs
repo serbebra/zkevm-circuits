@@ -932,8 +932,8 @@ impl<F: Field> ExecutionConfig<F> {
 
         for column in cell_manager.columns().iter() {
             if let CellType::LookupByte = column.cell_type {
-                let port = BusPortChip::new(meta, BusOp::take(column.expr(), q_usable));
-                bus_builder.connect_port(meta, &port);
+                let port =
+                    BusPortChip::connect(meta, bus_builder, BusOp::take(column.expr(), q_usable));
                 return port;
                 // TODO: support all columns.
             }

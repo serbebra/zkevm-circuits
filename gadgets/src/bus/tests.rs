@@ -58,14 +58,16 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
         let count1_expr = enabled_expr.clone()
             * query_expression(cs, |cs| cs.query_advice(count1, Rotation::cur()));
 
-        let port1 = BusPortChip::new(cs, BusOp::put(message.clone(), count1_expr));
-        bus_builder.connect_port(cs, &port1);
+        let port1 = BusPortChip::connect(
+            cs,
+            &mut bus_builder,
+            BusOp::put(message.clone(), count1_expr),
+        );
 
         // Circuit 2 takes one value per row.
         let count2_expr = enabled_expr * 1.expr();
 
-        let port2 = BusPortChip::new(cs, BusOp::take(message, count2_expr));
-        bus_builder.connect_port(cs, &port2);
+        let port2 = BusPortChip::connect(cs, &mut bus_builder, BusOp::take(message, count2_expr));
 
         // Global bus connection.
         let bus_config = BusConfig::new(cs, &bus_builder.build());

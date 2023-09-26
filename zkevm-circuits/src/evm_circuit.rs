@@ -1,14 +1,11 @@
 //! The EVM circuit implementation.
 
 #![allow(missing_docs)]
-use gadgets::{
-    bus::{
-        bus_builder::{BusAssigner, BusBuilder},
-        bus_chip::BusConfig,
-        bus_lookup::BusLookupConfig,
-        bus_port::{BusOp, BusOpCounter, PortAssigner},
-    },
-    util::Expr,
+use gadgets::bus::{
+    bus_builder::{BusAssigner, BusBuilder},
+    bus_chip::BusConfig,
+    bus_lookup::BusLookupConfig,
+    bus_port::{BusOp, BusOpCounter, PortAssigner},
 };
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
@@ -213,7 +210,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> BusLookupConfig<F> {
         let byte_expr = query_expression(meta, |meta| byte_table.table_exprs(meta)[0].clone());
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        BusLookupConfig::new(meta, bus_builder, byte_expr, enabled)
+        BusLookupConfig::connect(meta, bus_builder, byte_expr, enabled)
     }
 }
 

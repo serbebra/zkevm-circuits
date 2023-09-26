@@ -22,8 +22,8 @@ pub struct BusLookupConfig<F> {
 }
 
 impl<F: FieldExt> BusLookupConfig<F> {
-    /// Create a new BusLookup circuit from the expressions of message and count.
-    pub fn new(
+    /// Create and connect a new BusLookup circuit from the expressions of message and count.
+    pub fn connect(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F>,
         message: Expression<F>,
@@ -32,8 +32,8 @@ impl<F: FieldExt> BusLookupConfig<F> {
         let count = meta.advice_column();
         let count_expr = query_expression(meta, |meta| meta.query_advice(count, Rotation::cur()));
 
-        let port = BusPortChip::new(meta, BusOp::put(message, enabled * count_expr));
-        bus_builder.connect_port(meta, &port);
+        let port =
+            BusPortChip::connect(meta, bus_builder, BusOp::put(message, enabled * count_expr));
 
         Self { port, count }
     }
