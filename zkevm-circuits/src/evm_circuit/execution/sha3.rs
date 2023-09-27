@@ -16,7 +16,7 @@ use crate::{
                 CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
                 MemoryExpansionGadget,
             },
-            rlc, CachedRegion, Cell, StepRws, Word,
+            rlc, CachedRegion, Cell, StepRws,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -100,7 +100,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
         Self {
             same_context,
             memory_address,
-            sha3_digest: sha3_rlc,
+            sha3_digest,
             copy_rwc_inc,
             rlc_acc,
             memory_expansion,

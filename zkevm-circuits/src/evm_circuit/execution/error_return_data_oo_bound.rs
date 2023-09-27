@@ -5,7 +5,7 @@ use crate::{
         util::{
             common_gadget::{CommonErrorGadget, CommonReturnDataCopyGadget},
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-            CachedRegion, Cell, Word,
+            CachedRegion, Cell, U64Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

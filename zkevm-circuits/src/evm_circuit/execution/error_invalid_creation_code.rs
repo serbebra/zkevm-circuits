@@ -13,7 +13,10 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::{word::WordExpr, Expr},
+    util::{
+        word::{Word32Cell, WordExpr},
+        Expr,
+    },
 };
 
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};

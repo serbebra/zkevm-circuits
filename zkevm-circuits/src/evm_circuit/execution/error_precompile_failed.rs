@@ -6,11 +6,14 @@ use crate::{
             constraint_builder::EVMConstraintBuilder,
             math_gadget::IsZeroGadget,
             memory_gadget::{CommonMemoryAddressGadget, MemoryAddressGadget},
-            sum, CachedRegion, Cell, Word,
+            sum, CachedRegion, Cell,
         },
     },
     table::CallContextFieldTag,
-    util::Expr,
+    util::{
+        word::{Word, Word32Cell, WordCell, WordExpr},
+        Expr,
+    },
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::evm::OpcodeId;
@@ -24,9 +27,10 @@ pub(crate) struct ErrorPrecompileFailedGadget<F> {
     is_callcode: IsZeroGadget<F>,
     is_delegatecall: IsZeroGadget<F>,
     is_staticcall: IsZeroGadget<F>,
-    gas: Word<F>,
-    callee_address: Word<F>,
-    value: Word<F>,
+    //gas: Word<F>,
+    gas: Word32Cell<F>,
+    callee_address: WordCell<F>,
+    value: Word32Cell<F>,
     cd_address: MemoryAddressGadget<F>,
     rd_address: MemoryAddressGadget<F>,
 }
@@ -64,37 +68,50 @@ impl<F: Field> ExecutionGadget<F> for ErrorPrecompileFailedGadget<F> {
         // Use rw_counter of the step which triggers next call as its call_id.
         let callee_call_id = cb.curr.state.rw_counter.clone();
 
-        let gas = cb.query_word_rlc();
-        let callee_address = cb.query_word_rlc();
-        let value = cb.query_word_rlc();
+        //let gas = cb.query_word_rlc();
+        let gas = cb.query_word_unchecked();
+        //  let callee_address = cb.query_word_rlc();
+        let callee_address = cb.call_context_read_as_word(None, CallContextFieldTag::CalleeAddress);
+
+        let value = cb.query_word32();
+
         let cd_offset = cb.query_cell_phase2();
-        let cd_length = cb.query_word_rlc();
+        let cd_length = cb.query_word32();
         let rd_offset = cb.query_cell_phase2();
-        let rd_length = cb.query_word_rlc();
-
-        cb.stack_pop(gas.expr());
-        cb.stack_pop(callee_address.expr());
-
-        // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
-        cb.condition(is_call.expr() + is_callcode.expr(), |cb| {
-            cb.stack_pop(value.expr())
-        });
-        cb.stack_pop(cd_offset.expr());
-        cb.stack_pop(cd_length.expr());
-        cb.stack_pop(rd_offset.expr());
-        cb.stack_pop(rd_length.expr());
-        cb.stack_push(0.expr());
-
-        for (field_tag, value) in [
-            (CallContextFieldTag::LastCalleeId, callee_call_id.expr()),
-            (CallContextFieldTag::LastCalleeReturnDataOffset, 0.expr()),
-            (CallContextFieldTag::LastCalleeReturnDataLength, 0.expr()),
-        ] {
-            cb.call_context_lookup(true.expr(), None, field_tag, value);
-        }
+        let rd_length = cb.query_word32();
 
         let cd_address = MemoryAddressGadget::construct(cb, cd_offset, cd_length);
         let rd_address = MemoryAddressGadget::construct(cb, rd_offset, rd_length);
+
+        cb.stack_pop(gas.to_word());
+        cb.stack_pop(callee_address.to_word());
+
+        // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
+        cb.condition(is_call.expr() + is_callcode.expr(), |cb| {
+            cb.stack_pop(value.to_word())
+        });
+        cb.stack_pop(cd_address.offset_word());
+        cb.stack_pop(cd_address.length_word());
+        cb.stack_pop(rd_address.offset_word());
+        cb.stack_pop(rd_address.length_word());
+        cb.stack_push(Word::zero());
+
+        for (field_tag, value) in [
+            (
+                CallContextFieldTag::LastCalleeId,
+                Word::from_lo_unchecked(callee_call_id.expr()),
+            ),
+            (
+                CallContextFieldTag::LastCalleeReturnDataOffset,
+                Word::zero(),
+            ),
+            (
+                CallContextFieldTag::LastCalleeReturnDataLength,
+                Word::zero(),
+            ),
+        ] {
+            cb.call_context_lookup(true.expr(), None, field_tag, value);
+        }
 
         Self {
             opcode,
@@ -160,11 +177,10 @@ impl<F: Field> ExecutionGadget<F> for ErrorPrecompileFailedGadget<F> {
             offset,
             F::from(opcode.as_u64()) - F::from(OpcodeId::STATICCALL.as_u64()),
         )?;
-        self.gas.assign(region, offset, Some(gas.to_le_bytes()))?;
+        self.gas.assign_u256(region, offset, gas)?;
         self.callee_address
-            .assign(region, offset, Some(callee_address.to_le_bytes()))?;
-        self.value
-            .assign(region, offset, Some(value.to_le_bytes()))?;
+            .assign_h160(region, offset, callee_address.to_address())?;
+        self.value.assign_u256(region, offset, value)?;
         self.cd_address
             .assign(region, offset, cd_offset, cd_length)?;
         self.rd_address

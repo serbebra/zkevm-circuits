@@ -133,7 +133,6 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         // - `memory_size` needs to be set to `next_memory_size`
         let gas_cost = OpcodeId::MLOAD.constant_gas_cost().expr() + memory_expansion.gas_cost();
         let step_state_transition = StepStateTransition {
-            //TODO: update rw_counter
             rw_counter: Delta(4.expr() - is_mstore8.expr()),
             program_counter: Delta(1.expr()),
             stack_pointer: Delta(is_store * 2.expr()),

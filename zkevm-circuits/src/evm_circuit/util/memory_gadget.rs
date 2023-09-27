@@ -17,7 +17,7 @@ use crate::{
         },
     },
     util::{
-        word::{Word, WordCell, WordExpr},
+        word::{Word, Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };
@@ -43,33 +43,10 @@ pub(crate) mod address_low {
     use eth_types::Field;
     use halo2_proofs::plonk::Expression;
 
-    pub(crate) fn expr<F: Field>(address: &Word<F>) -> Expression<F> {
-        from_bytes::expr(&address.cells[..N_BYTES_MEMORY_ADDRESS])
-    }
-
     pub(crate) fn value(address: [u8; 32]) -> u64 {
         let mut bytes = [0; 8];
         bytes[..N_BYTES_MEMORY_ADDRESS].copy_from_slice(&address[..N_BYTES_MEMORY_ADDRESS]);
         u64::from_le_bytes(bytes)
-    }
-}
-
-/// The sum of bytes of the address that are unused for most calculations on the
-/// address
-pub(crate) mod address_high {
-    use crate::evm_circuit::{
-        param::N_BYTES_MEMORY_ADDRESS,
-        util::{from_bytes, Word},
-    };
-    use eth_types::Field;
-    use halo2_proofs::plonk::Expression;
-
-    pub(crate) fn expr<F: Field>(address: &Word<F>) -> Expression<F> {
-        from_bytes::expr(&address.cells[N_BYTES_MEMORY_ADDRESS..])
-    }
-
-    pub(crate) fn value<F: Field>(address: [u8; 32]) -> F {
-        from_bytes::value::<F>(&address[N_BYTES_MEMORY_ADDRESS..])
     }
 }
 
@@ -105,16 +82,17 @@ pub(crate) trait CommonMemoryAddressGadget<F: FieldExt> {
 /// the RLC value for `memory_offset` need not match the bytes.
 #[derive(Clone, Debug)]
 pub(crate) struct MemoryAddressGadget<F> {
-    memory_offset: Cell<F>,
     memory_offset_bytes: MemoryAddress<F>,
+    memory_offset: WordCell<F>,
     memory_length: MemoryAddress<F>,
     memory_length_is_zero: IsZeroGadget<F>,
 }
 
 impl<F: Field> CommonMemoryAddressGadget<F> for MemoryAddressGadget<F> {
     fn construct_self(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let offset = cb.query_cell_phase2();
-        let length = cb.query_word_rlc();
+        let offset = cb.query_word_unchecked();
+        //let length = cb.query_word_rlc();
+        let length = cb.query_memory_address();
         Self::construct(cb, offset, length)
     }
 
@@ -128,11 +106,7 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryAddressGadget<F> {
         let memory_offset_bytes = memory_offset.to_le_bytes();
         let memory_length_bytes = memory_length.to_le_bytes();
         let memory_length_is_zero = memory_length.is_zero();
-        self.memory_offset.assign(
-            region,
-            offset,
-            region.word_rlc(U256::from_little_endian(&memory_offset_bytes)),
-        )?;
+
         self.memory_offset_bytes.assign(
             region,
             offset,
@@ -144,15 +118,10 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryAddressGadget<F> {
                     .unwrap()
             }),
         )?;
-        self.memory_length.assign(
-            region,
-            offset,
-            Some(
-                memory_length_bytes[..N_BYTES_MEMORY_ADDRESS]
-                    .try_into()
-                    .unwrap(),
-            ),
-        )?;
+        self.memory_offset
+            .assign_u256(region, offset, memory_offset)?;
+        self.memory_length
+            .assign_u256(region, offset, memory_length)?;
         self.memory_length_is_zero
             .assign(region, offset, sum::value(&memory_length_bytes))?;
         Ok(if memory_length_is_zero {
@@ -162,16 +131,16 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryAddressGadget<F> {
         })
     }
 
-    fn offset_word(&self) -> Expression<F> {
-        self.memory_offset.expr()
+    fn offset_word(&self) -> Word<Expression<F>> {
+        self.memory_offset.to_word()
     }
 
-    fn length_word(&self) -> Expression<F> {
-        self.memory_length.expr()
+    fn length_word(&self) -> Word<Expression<F>> {
+        self.memory_length.to_word()
     }
 
     fn length(&self) -> Expression<F> {
-        from_bytes::expr(&self.memory_length.cells)
+        from_bytes::expr(&self.memory_length.limbs)
     }
 
     fn address(&self) -> Expression<F> {
@@ -182,22 +151,22 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryAddressGadget<F> {
 impl<F: Field> MemoryAddressGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
-        memory_offset: Cell<F>,
+        memory_offset: WordCell<F>,
         memory_length: MemoryAddress<F>,
     ) -> Self {
-        debug_assert_eq!(
-            CellType::StoragePhase2,
-            cb.curr.cell_manager.columns()[memory_offset.cell_column_index].cell_type
-        );
-        let memory_length_is_zero = IsZeroGadget::construct(cb, sum::expr(&memory_length.cells));
-        let memory_offset_bytes = cb.query_word_rlc();
+        // debug_assert_eq!(
+        //     CellType::StoragePhase2,
+        //     cb.curr.cell_manager.columns()[memory_offset.cell_column_index].cell_type
+        // );
+        let memory_length_is_zero = IsZeroGadget::construct(cb, sum::expr(&memory_length.limbs));
+        let memory_offset_bytes = cb.query_memory_address();
 
         let has_length = 1.expr() - memory_length_is_zero.expr();
         cb.condition(has_length, |cb| {
-            cb.require_equal(
+            cb.require_equal_word(
                 "Offset decomposition into 5 bytes",
-                memory_offset_bytes.expr(),
-                memory_offset.expr(),
+                Word::from_lo_unchecked(memory_offset_bytes.expr()),
+                memory_offset.to_word(),
             );
         });
 
@@ -214,7 +183,7 @@ impl<F: Field> MemoryAddressGadget<F> {
     }
 
     pub(crate) fn offset(&self) -> Expression<F> {
-        self.has_length() * from_bytes::expr(&self.memory_offset_bytes.cells)
+        self.has_length() * from_bytes::expr(&self.memory_offset_bytes.limbs)
     }
 }
 
@@ -245,7 +214,7 @@ impl<F: Field> CommonMemoryAddressGadget<F> for MemoryExpandedAddressGadget<F> {
             (MAX_EXPANDED_MEMORY_ADDRESS + 1).expr(),
         );
 
-        let sum_overflow_hi = sum::expr(&sum.cells[N_BYTES_U64..]);
+        let sum_overflow_hi = sum::expr(&sum.limbs[N_BYTES_U64..]);
         let sum_within_u64 = IsZeroGadget::construct(cb, sum_overflow_hi);
 
         let length_is_zero = IsZeroGadget::construct(cb, sum::expr(&length.limbs));
@@ -427,10 +396,10 @@ impl<F: Field> MemoryWordAddress<F> {
         cb.require_equal(
             "shift bits match the address",
             from_bits::expr(&address_first_bits[..]),
-            address.cells[0].expr(),
+            address.limbs[0].expr(),
         );
 
-        let address_int = from_bytes::expr(&address.cells[..]);
+        let address_int = from_bytes::expr(&address.limbs[..]);
         let slot = cb.query_cell();
         let shift = from_bits::expr(&address_first_bits[..5]);
 
@@ -555,8 +524,8 @@ impl<F: Field> MemoryMask<F> {
     pub(crate) fn require_left_equal(
         &self,
         cb: &mut EVMConstraintBuilder<F>,
-        value_left: &Word<F>,
-        value_left_prev: &Word<F>,
+        value_left: &Word32Cell<F>,
+        value_left_prev: &Word32Cell<F>,
     ) {
         let a = self.left_rlc(cb, value_left);
         let a_prev = self.left_rlc(cb, value_left_prev);
@@ -566,8 +535,8 @@ impl<F: Field> MemoryMask<F> {
     pub(crate) fn require_right_equal(
         &self,
         cb: &mut EVMConstraintBuilder<F>,
-        value_right: &Word<F>,
-        value_right_prev: &Word<F>,
+        value_right: &Word32Cell<F>,
+        value_right_prev: &Word32Cell<F>,
     ) {
         let d = self.right_rlc(cb, value_right);
         let d_prev = self.right_rlc(cb, value_right_prev);
@@ -578,7 +547,7 @@ impl<F: Field> MemoryMask<F> {
         &self,
         cb: &mut EVMConstraintBuilder<F>,
         byte: Expression<F>,
-        value_left: &Word<F>,
+        value_left: &Word32Cell<F>,
     ) {
         let b = self.right_rlc(cb, value_left);
 
@@ -593,8 +562,9 @@ impl<F: Field> MemoryMask<F> {
         &self,
         cb: &mut EVMConstraintBuilder<F>,
         value_rlc: Expression<F>,
-        value_left: &Word<F>,
-        value_right: &Word<F>,
+        //value_left: &Word<F>,
+        value_left: &Word32Cell<F>,
+        value_right: &Word32Cell<F>,
     ) {
         let b = self.right_rlc(cb, value_left);
         let c = self.left_rlc(cb, value_right);
@@ -608,20 +578,20 @@ impl<F: Field> MemoryMask<F> {
 
     /// Return the RLC of the left part of a word, called "A" or "C". The right part is zeroed.
     /// The value is MSB-first so we read the mask in reverse.
-    fn left_rlc(&self, cb: &mut EVMConstraintBuilder<F>, word: &Word<F>) -> Expression<F> {
+    fn left_rlc(&self, cb: &mut EVMConstraintBuilder<F>, word: &Word32Cell<F>) -> Expression<F> {
         let masked: [Expression<F>; N_BYTES_WORD] = array_init(|i| {
             let reversed_i = N_BYTES_WORD - 1 - i;
-            word.cells[i].expr() * self.mask[reversed_i].expr()
+            word.limbs[i].expr() * self.mask[reversed_i].expr()
         });
         cb.word_rlc(masked)
     }
 
     /// Return the RLC of the right part of a word, called "B" or "D". The left part is zeroed.
     /// The value is MSB-first so we read the mask in reverse.
-    fn right_rlc(&self, cb: &mut EVMConstraintBuilder<F>, word: &Word<F>) -> Expression<F> {
+    fn right_rlc(&self, cb: &mut EVMConstraintBuilder<F>, word: &Word32Cell<F>) -> Expression<F> {
         let masked: [Expression<F>; N_BYTES_WORD] = array_init(|i| {
             let reversed_i = N_BYTES_WORD - 1 - i;
-            word.cells[i].expr() * (1.expr() - self.mask[reversed_i].expr())
+            word.limbs[i].expr() * (1.expr() - self.mask[reversed_i].expr())
         });
         cb.word_rlc(masked)
     }

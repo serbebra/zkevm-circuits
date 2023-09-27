@@ -11,7 +11,7 @@ use crate::{
             },
             from_bytes,
             math_gadget::{IsZeroGadget, IsZeroWordGadget},
-            not, select, CachedRegion, Cell, U64Cell,
+            not, select, AccountAddress, CachedRegion, Cell, U64Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

@@ -23,7 +23,7 @@ use halo2_proofs::plonk::Error;
 /// case of n=0. Unlike the usual k * n + r = a, which forces r = a when n=0,
 /// this equation assures that r<n or r=n=0.
 #[derive(Clone, Debug)]
-pub(crate) struct ModGadget<F, const IS_EVM: bool> {
+pub(crate) struct ModGadget<F> {
     k: Word32Cell<F>,
     a_or_zero: Word32Cell<F>,
     mul_add_words: MulAddWordsGadget<F>,
@@ -31,19 +31,14 @@ pub(crate) struct ModGadget<F, const IS_EVM: bool> {
     a_or_is_zero: IsZeroGadget<F>,
     lt: LtWordGadget<F>,
 }
-impl<F: Field, const IS_EVM: bool> ModGadget<F, IS_EVM> {
+impl<F: Field> ModGadget<F> {
     pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, words: [&Word32Cell<F>; 3]) -> Self {
         let (a, n, r) = (words[0], words[1], words[2]);
-        let k = if IS_EVM {
-            cb.query_word_rlc()
-        } else {
-            cb.query_keccak_rlc()
-        };
-        let a_or_zero = if IS_EVM {
-            cb.query_word_rlc()
-        } else {
-            cb.query_keccak_rlc()
-        };
+        let k = cb.query_word32();
+        let a_or_zero = cb.query_word32();
+        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.limbs));
+        let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.limbs));
+
         let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.cells));
         let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.cells));
         let mul_add_words = MulAddWordsGadget::construct(cb, [&k, n, r, &a_or_zero]);
@@ -86,9 +81,9 @@ impl<F: Field, const IS_EVM: bool> ModGadget<F, IS_EVM> {
     ) -> Result<(), Error> {
         let a_or_zero = if n.is_zero() { Word::zero() } else { a };
 
-        self.k.assign(region, offset, Some(k.to_le_bytes()))?;
+        self.k.assign_u256(region, offset, k)?;
         self.a_or_zero
-            .assign(region, offset, Some(a_or_zero.to_le_bytes()))?;
+            .assign_u256(region, offset, a_or_zero.to_le_bytes())?;
         let n_sum = (0..32).fold(0, |acc, idx| acc + n.byte(idx) as u64);
         let a_or_zero_sum = (0..32).fold(0, |acc, idx| acc + a_or_zero.byte(idx) as u64);
         self.n_is_zero.assign(region, offset, F::from(n_sum))?;

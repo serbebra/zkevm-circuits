@@ -185,6 +185,22 @@ pub(crate) trait ConstrainBuilderCommon<F: Field> {
         self.add_constraint(name, constraint);
     }
 
+    fn require_zero_word(&mut self, name: &'static str, word: Word<Expression<F>>) {
+        self.require_equal_word(name, word, Word::zero());
+    }
+
+    fn require_equal_word(
+        &mut self,
+        name: &'static str,
+        lhs: Word<Expression<F>>,
+        rhs: Word<Expression<F>>,
+    ) {
+        let (lhs_lo, lhs_hi) = lhs.to_lo_hi();
+        let (rhs_lo, rhs_hi) = rhs.to_lo_hi();
+        self.add_constraint(name, lhs_lo - rhs_lo);
+        self.add_constraint(name, lhs_hi - rhs_hi);
+    }
+
     fn require_equal(&mut self, name: &'static str, lhs: Expression<F>, rhs: Expression<F>) {
         self.add_constraint(name, lhs - rhs);
     }

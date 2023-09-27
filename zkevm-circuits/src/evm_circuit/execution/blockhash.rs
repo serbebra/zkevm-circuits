@@ -12,12 +12,12 @@ use crate::{
             },
             from_bytes,
             math_gadget::LtGadget,
-            CachedRegion, Cell, U64Word,
+            CachedRegion, Cell, Word,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::BlockContextFieldTag,
-    util::Expr,
+    util::word::WordExpr,
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::{

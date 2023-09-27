@@ -35,7 +35,7 @@ pub(crate) struct MulModGadget<F> {
     a_reduced: Word32Cell<F>,
     d: Word32Cell<F>,
     e: Word32Cell<F>,
-    modword: ModGadget<F, true>,
+    modword: ModGadget<F>,
     mul512_left: MulAddWords512Gadget<F>,
     mul512_right: MulAddWords512Gadget<F>,
     n_is_zero: IsZeroWordGadget<F, Word32Cell<F>>,
