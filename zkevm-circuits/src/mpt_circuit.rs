@@ -1,17 +1,23 @@
 #![allow(missing_docs)]
 //! wrapping of mpt-circuit
+// #[cfg(test)]
+// use crate::mpt_circuit::mpt;
 use crate::{
     table::{LookupTable, MptTable, PoseidonTable},
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
 };
 use eth_types::Field;
+#[cfg(test)]
+use halo2_proofs::{circuit::SimpleFloorPlanner, plonk::Circuit};
 use halo2_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
+    circuit::{Layouter, Value},
     halo2curves::bn256::Fr,
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed},
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
 use itertools::Itertools;
+#[cfg(test)]
+use mpt_zktrie::mpt_circuits::gadgets::mpt_update::hash_traces;
 use mpt_zktrie::mpt_circuits::{gadgets::poseidon::PoseidonLookup, mpt, types::Proof};
 
 impl PoseidonLookup for PoseidonTable {
@@ -86,6 +92,16 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
     type Config = MptCircuitConfig<Fr>;
 
     fn new_from_block(block: &witness::Block<Fr>) -> Self {
+        // 0 means "dynamic"
+        if block.circuits_params.max_mpt_rows != 0 {
+            // Fixed byte-bit-index lookup needs 2049 rows.
+            if block.circuits_params.max_mpt_rows < 2049 {
+                panic!(
+                    "invalid max_mpt_rows {}",
+                    block.circuits_params.max_mpt_rows
+                );
+            }
+        }
         let traces: Vec<_> = block
             .mpt_updates
             .proof_types
@@ -106,8 +122,10 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
         (
             // For an empty storage proof, we may need to lookup the canonical representations of
             // three different keys. Each lookup requires 32 rows.
+            // The key bit lookup within the mpt circuit requires a minimum of 8 * 256 rows. The +1
+            // comes from the fact that the mpt circuit starts assigning at offset = 1.
             3 * 32 * block.mpt_updates.len(),
-            block.circuits_params.max_mpt_rows,
+            block.circuits_params.max_mpt_rows.max(8 * 256 + 1),
         )
     }
 
@@ -135,9 +153,9 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
     }
 }
 
-#[cfg(any(feature = "test", test))]
+#[cfg(test)]
 impl Circuit<Fr> for MptCircuit<Fr> {
-    type Config = (MptCircuitConfig<Fr>, Challenges);
+    type Config = (MptCircuitConfig<Fr>, PoseidonTable, Challenges);
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -149,7 +167,7 @@ impl Circuit<Fr> for MptCircuit<Fr> {
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         let challenges = Challenges::construct(meta);
-        let poseidon_table = PoseidonTable::dev_construct(meta);
+        let poseidon_table = PoseidonTable::construct(meta);
         let mpt_table = MptTable::construct(meta);
 
         let config = {
@@ -163,15 +181,22 @@ impl Circuit<Fr> for MptCircuit<Fr> {
             )
         };
 
-        (config, challenges)
+        (config, poseidon_table, challenges)
     }
 
     fn synthesize(
         &self,
-        (config, challenges): Self::Config,
+        (mpt_config, poseidon_table, challenges): Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        let poseidon_table_rows: Vec<_> = hash_traces(&self.proofs)
+            .iter()
+            .map(|([left, right], domain, hash)| {
+                [*hash, *left, *right, Fr::zero(), *domain, Fr::one()].map(Value::known)
+            })
+            .collect();
+        poseidon_table.load(&mut layouter, &poseidon_table_rows)?;
         let challenges = challenges.values(&layouter);
-        self.synthesize_sub(&config, &challenges, &mut layouter)
+        self.synthesize_sub(&mpt_config, &challenges, &mut layouter)
     }
 }
