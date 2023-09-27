@@ -4,17 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bus-mapping = { path = "../bus-mapping", features = ["test"] }
-eth-types = { path = "../eth-types" }
-halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2.git", tag = "v2023_02_02" }
-keccak256 = { path = "../keccak256" }
-mock = { path = "../mock" }
-prover = { path = "../prover" }
+eth-types = { path = "../eth-types", features = ["scroll"]  }
+prover = { path = "../prover", features = ["scroll"]  }
 serde_json = "1"
-zkevm-circuits = { path = "../zkevm-circuits", features = ["test"] }
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = { version = "0.4", features = ["real_blackbox"] }
 
 [[bench]]
 name = "serde"
