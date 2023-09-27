@@ -12,6 +12,9 @@ pub mod bus_port;
 /// A chip to expose a lookup table on a bus.
 pub mod bus_lookup;
 
+/// This module encodes messages into terms.
+pub mod bus_codec;
+
 /// Utility functions.
 mod util;
 

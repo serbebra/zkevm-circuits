@@ -9,7 +9,9 @@ use halo2_proofs::{
 };
 use std::marker::PhantomData;
 
-use super::{bus_builder::*, bus_chip::*, bus_lookup::BusLookupConfig, bus_port::*};
+use super::{
+    bus_builder::*, bus_chip::*, bus_codec::BusCodecVal, bus_lookup::BusLookupConfig, bus_port::*,
+};
 
 #[test]
 fn test_bus() {
@@ -94,10 +96,10 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     )?;
                 }
 
-                let mut bus_assigner = BusAssigner::new(self.n_rows);
+                let mut bus_assigner = BusAssigner::new(self.n_rows, BusCodecVal::new(rand));
 
                 // This uses a batching method rather than row-by-row.
-                let mut port_assigner = PortAssigner::new(rand);
+                let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
 
                 // Circuit 1 puts a message on some row.
                 {

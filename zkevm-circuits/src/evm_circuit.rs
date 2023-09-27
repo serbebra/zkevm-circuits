@@ -4,6 +4,7 @@
 use gadgets::bus::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusConfig,
+    bus_codec::BusCodecVal,
     bus_lookup::BusLookupConfig,
     bus_port::{BusOp, BusOpCounter, PortAssigner},
 };
@@ -241,7 +242,6 @@ impl<F: Field> EvmCircuitConfig<F> {
     /// Load byte table
     pub fn load_byte_table(
         &self,
-        challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F>,
         bus_op_counter: &BusOpCounter,
@@ -257,7 +257,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                     return Ok(());
                 }
 
-                let mut port_assigner = PortAssigner::new(challenges.lookup_input());
+                let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
 
                 for offset in 0..256 {
                     let value = Value::known(F::from(offset as u64));
@@ -416,7 +416,8 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         config.load_fixed_table(layouter, self.fixed_table_tags.clone())?;
         config.pow_of_rand_table.assign(layouter, challenges)?;
 
-        let mut bus_assigner = BusAssigner::new(num_rows);
+        let mut bus_assigner =
+            BusAssigner::new(num_rows, BusCodecVal::new(challenges.lookup_input()));
 
         let (export, bus_op_counter) =
             config
@@ -425,7 +426,7 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         self.exports.borrow_mut().replace(export);
 
         if let Some(bus_op_counter) = bus_op_counter {
-            config.load_byte_table(challenges, layouter, &mut bus_assigner, &bus_op_counter)?;
+            config.load_byte_table(layouter, &mut bus_assigner, &bus_op_counter)?;
         }
 
         layouter.assign_region(

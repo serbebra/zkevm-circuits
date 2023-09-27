@@ -1,6 +1,7 @@
 use super::{
-    bus_builder::{BusAssigner, BusBuilder, BusPort},
+    bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
+    bus_codec::{BusCodecExpr, BusCodecVal},
     util::from_isize,
 };
 use crate::util::query_expression;
@@ -69,7 +70,7 @@ impl<F: FieldExt> BusPortSingle<F> {
         helper: Expression<F>,
     ) -> Self {
         let port = Self { op, helper };
-        let term = port.create_term(meta, bus_builder.rand());
+        let term = port.create_term(meta, bus_builder.codec());
         bus_builder.add_term(term);
         port
     }
@@ -79,14 +80,7 @@ impl<F: FieldExt> BusPortSingle<F> {
         (rand + message).map(|x| x.invert().unwrap_or(F::zero()))
     }
 
-    /// Return the denominator of the helper cell, to be inverted.
-    fn helper_denom(message: Value<F>, rand: Value<F>) -> Value<F> {
-        rand + message
-    }
-}
-
-impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, codec: &BusCodecExpr<F>) -> BusTerm<F> {
         let term = self.op.count() * self.helper.clone();
 
         meta.create_gate("bus access", |_| {
@@ -96,7 +90,7 @@ impl<F: FieldExt> BusPort<F> for BusPortSingle<F> {
             //
             // If `count = 0`, then `term = 0` by definition. In that case, the helper cell is not
             // constrained, so it can be used for something else.
-            [term.clone() * (rand + self.op.message()) - self.op.count()]
+            [term.clone() * codec.encode(self.op.message()) - self.op.count()]
         });
 
         BusTerm::verified(term)
@@ -120,7 +114,7 @@ impl<F: FieldExt> BusPortDual<F> {
         helper: Expression<F>,
     ) -> Self {
         let port = Self { ops, helper };
-        let term = port.create_term(meta, bus_builder.rand());
+        let term = port.create_term(meta, bus_builder.codec());
         bus_builder.add_term(term);
         port
     }
@@ -129,12 +123,10 @@ impl<F: FieldExt> BusPortDual<F> {
     pub fn helper_witness(messages: [Value<F>; 2], rand: Value<F>) -> Value<F> {
         ((rand + messages[0]) * (rand + messages[1])).map(|x| x.invert().unwrap_or(F::zero()))
     }
-}
 
-impl<F: FieldExt> BusPort<F> for BusPortDual<F> {
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, rand: Expression<F>) -> BusTerm<F> {
-        let rm_0 = rand.clone() + self.ops[0].message();
-        let rm_1 = rand.clone() + self.ops[1].message();
+    fn create_term(&self, meta: &mut ConstraintSystem<F>, codec: &BusCodecExpr<F>) -> BusTerm<F> {
+        let rm_0 = codec.encode(self.ops[0].message());
+        let rm_1 = codec.encode(self.ops[1].message());
 
         // With witness: helper = 1 / rm_0 / rm_1
 
@@ -267,16 +259,16 @@ impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
 
 /// PortAssigner computes and assigns terms into helper cells and the bus.
 pub struct PortAssigner<F> {
-    rand: Value<F>,
+    codec: BusCodecVal<F>,
     batch: HelperBatch<F, (usize, Column<Advice>, isize, isize)>,
     bus_op_counter: BusOpCounter,
 }
 
 impl<F: FieldExt> PortAssigner<F> {
     /// Create a new PortAssigner.
-    pub fn new(rand: Value<F>) -> Self {
+    pub fn new(codec: BusCodecVal<F>) -> Self {
         Self {
-            rand,
+            codec,
             batch: HelperBatch::new(),
             bus_op_counter: BusOpCounter::new(),
         }
@@ -292,7 +284,7 @@ impl<F: FieldExt> PortAssigner<F> {
     ) {
         self.bus_op_counter.set_op(&op);
 
-        let denom = BusPortSingle::helper_denom(op.message(), self.rand);
+        let denom = self.codec.encode(op.message());
         self.batch
             .add_denom(denom, (offset, column, rotation, op.count()));
     }
@@ -317,7 +309,7 @@ impl<F: FieldExt> PortAssigner<F> {
                 // Report the term to the global bus.
                 let global_offset = offset; // region.global_offset(offset);
                 let count = Value::known(from_isize::<F>(count));
-                bus_assigner.put_term(global_offset, count * term);
+                bus_assigner.add_term(global_offset, count * term);
             }
         });
         self.bus_op_counter

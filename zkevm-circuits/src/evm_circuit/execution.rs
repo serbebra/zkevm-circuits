@@ -1077,7 +1077,7 @@ impl<F: Field> ExecutionConfig<F> {
                     return Ok(());
                 }
 
-                let mut port_assigner = PortAssigner::new(challenges.lookup_input());
+                let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
 
                 let mut offset = 0;
 
