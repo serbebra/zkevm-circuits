@@ -4,7 +4,7 @@
 use gadgets::bus::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusConfig,
-    bus_codec::BusCodecVal,
+    bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupConfig,
     bus_port::{BusOp, BusOpCounter, PortAssigner},
 };
@@ -140,7 +140,7 @@ impl<F: Field> EvmCircuitConfig<F> {
         let byte_table = [(); 1].map(|_| meta.fixed_column());
         let enable_table = meta.fixed_column();
 
-        let mut bus_builder = BusBuilder::<F>::new(challenges.lookup_input());
+        let mut bus_builder = BusBuilder::<F>::new(BusCodecExpr::new(challenges.lookup_input()));
 
         let table_to_bus =
             Self::configure_table_to_bus(meta, &mut bus_builder, &byte_table, enable_table);
@@ -211,7 +211,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> BusLookupConfig<F> {
         let byte_expr = query_expression(meta, |meta| byte_table.table_exprs(meta)[0].clone());
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        BusLookupConfig::connect(meta, bus_builder, byte_expr, enabled)
+        BusLookupConfig::connect(meta, bus_builder, vec![byte_expr], enabled)
     }
 }
 
@@ -271,12 +271,13 @@ impl<F: Field> EvmCircuitConfig<F> {
                         || Value::known(F::one()),
                     )?;
 
-                    let count = bus_op_counter.count_takes(value);
+                    let message = vec![value];
+                    let count = bus_op_counter.count_takes(&message);
                     self.table_to_bus.assign(
                         &mut region,
                         &mut port_assigner,
                         offset,
-                        BusOp::put(value, count),
+                        BusOp::put(message, count),
                     )?;
                 }
 
@@ -417,7 +418,7 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         config.pow_of_rand_table.assign(layouter, challenges)?;
 
         let mut bus_assigner =
-            BusAssigner::new(num_rows, BusCodecVal::new(challenges.lookup_input()));
+            BusAssigner::new(BusCodecVal::new(challenges.lookup_input()), num_rows);
 
         let (export, bus_op_counter) =
             config

@@ -934,7 +934,7 @@ impl<F: Field> ExecutionConfig<F> {
             .columns()
             .iter()
             .filter(|column| column.cell_type == CellType::LookupByte)
-            .map(|column| BusOp::take(column.expr(), q_usable.clone()))
+            .map(|column| BusOp::take(vec![column.expr()], q_usable.clone()))
             .collect::<Vec<_>>();
 
         BusPortMulti::connect(meta, bus_builder, ops)
@@ -1336,7 +1336,8 @@ impl<F: Field> ExecutionConfig<F> {
                 .iter()
                 .map(|column_index| {
                     let byte = region.get_advice(offset, *column_index, Rotation::cur());
-                    BusOp::take(Value::known(byte), 1)
+                    let message = vec![Value::known(byte)];
+                    BusOp::take(message, 1)
                 })
                 .collect::<Vec<_>>();
             self.bus_port.assign(port_assigner, offset, ops);

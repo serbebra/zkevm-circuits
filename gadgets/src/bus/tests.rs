@@ -10,7 +10,11 @@ use halo2_proofs::{
 use std::marker::PhantomData;
 
 use super::{
-    bus_builder::*, bus_chip::*, bus_codec::BusCodecVal, bus_lookup::BusLookupConfig, bus_port::*,
+    bus_builder::*,
+    bus_chip::*,
+    bus_codec::{BusCodecExpr, BusCodecVal},
+    bus_lookup::BusLookupConfig,
+    bus_port::*,
 };
 
 #[test]
@@ -51,9 +55,9 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
         let rand = cs.challenge_usable_after(SecondPhase);
         let rand_expr = query_expression(cs, |cs| cs.query_challenge(rand));
-        let mut bus_builder = BusBuilder::<F>::new(rand_expr);
+        let mut bus_builder = BusBuilder::<F>::new(BusCodecExpr::new(rand_expr));
 
-        let message = 2.expr();
+        let message = vec![2.expr()];
 
         // Circuit 1 puts values dynamically.
         let bus_lookup =
@@ -96,7 +100,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     )?;
                 }
 
-                let mut bus_assigner = BusAssigner::new(self.n_rows, BusCodecVal::new(rand));
+                let mut bus_assigner = BusAssigner::new(BusCodecVal::new(rand), self.n_rows);
 
                 // This uses a batching method rather than row-by-row.
                 let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
@@ -104,7 +108,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                 // Circuit 1 puts a message on some row.
                 {
                     // Do normal circuit assignment logic, and obtain a message.
-                    let message = Value::known(F::from(2));
+                    let message = vec![Value::known(F::from(2))];
 
                     // Set the `count` of copies of the same message.
                     let count = self.n_rows as isize;
@@ -124,7 +128,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
                         // Do normal circuit assignment logic, and obtain a message.
-                        let message = Value::known(F::from(2));
+                        let message = vec![Value::known(F::from(2))];
 
                         // Assign an operation to the port of this circuit, and to the shared bus.
                         config

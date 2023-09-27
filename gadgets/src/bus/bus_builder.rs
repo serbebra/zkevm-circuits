@@ -1,4 +1,4 @@
-use halo2_proofs::{arithmetic::FieldExt, circuit::Value, plonk::Expression};
+use halo2_proofs::{arithmetic::FieldExt, circuit::Value};
 
 use super::{
     bus_chip::BusTerm,
@@ -14,9 +14,9 @@ pub struct BusBuilder<F> {
 
 impl<F: FieldExt> BusBuilder<F> {
     /// Create a new bus.
-    pub fn new(rand: Expression<F>) -> Self {
+    pub fn new(codec: BusCodecExpr<F>) -> Self {
         Self {
-            codec: BusCodecExpr::new(rand),
+            codec,
             terms: vec![],
         }
     }
@@ -46,7 +46,7 @@ pub struct BusAssigner<F> {
 
 impl<F: FieldExt> BusAssigner<F> {
     /// Create a new bus assigner with a maximum number of rows.
-    pub fn new(n_rows: usize, codec: BusCodecVal<F>) -> Self {
+    pub fn new(codec: BusCodecVal<F>, n_rows: usize) -> Self {
         Self {
             codec,
             terms: vec![F::zero(); n_rows],

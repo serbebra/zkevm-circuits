@@ -2,23 +2,22 @@ use super::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal},
-    util::from_isize,
+    util::{from_isize, HelperBatch},
 };
 use crate::util::query_expression;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
-    halo2curves::group::ff::BatchInvert,
     plonk::{Advice, Column, ConstraintSystem, Expression, ThirdPhase},
     poly::Rotation,
 };
 use std::{collections::HashMap, marker::PhantomData, ops::Neg};
 
 /// A bus operation, as expressions for circuit config.
-pub type BusOpExpr<F> = BusOp<Expression<F>, Expression<F>>;
+pub type BusOpExpr<F> = BusOp<Vec<Expression<F>>, Expression<F>>;
 
 /// A bus operation, as values for circuit assignment.
-pub type BusOpF<F> = BusOp<Value<F>, isize>;
+pub type BusOpF<F> = BusOp<Vec<Value<F>>, isize>;
 
 /// A bus operation.
 #[derive(Clone, Debug)]
@@ -82,6 +81,7 @@ impl<F: FieldExt> BusPortSingle<F> {
 
     fn create_term(&self, meta: &mut ConstraintSystem<F>, codec: &BusCodecExpr<F>) -> BusTerm<F> {
         let term = self.op.count() * self.helper.clone();
+        let enc = codec.encode(self.op.message());
 
         meta.create_gate("bus access", |_| {
             // Verify that `term = count / (rand + message)`.
@@ -90,7 +90,7 @@ impl<F: FieldExt> BusPortSingle<F> {
             //
             // If `count = 0`, then `term = 0` by definition. In that case, the helper cell is not
             // constrained, so it can be used for something else.
-            [term.clone() * codec.encode(self.op.message()) - self.op.count()]
+            [term.clone() * enc - self.op.count()]
         });
 
         BusTerm::verified(term)
@@ -218,45 +218,6 @@ impl<F: FieldExt> BusPortMulti<F> {
     }
 }
 
-/// TermBatch calculates helper witnesses, in batches for better performance.
-struct HelperBatch<F, INFO> {
-    denoms: Vec<(F, INFO)>,
-    unknown: bool,
-}
-
-impl<F: FieldExt, INFO> HelperBatch<F, INFO> {
-    /// Create a new term batch.
-    fn new() -> Self {
-        Self {
-            denoms: vec![],
-            unknown: false,
-        }
-    }
-
-    /// Add a helper denominator to the batch. Some `info` can be attached for later use.
-    fn add_denom(&mut self, denom: Value<F>, info: INFO) {
-        if self.unknown {
-            return;
-        }
-        if denom.is_none() {
-            self.unknown = true;
-            self.denoms.clear();
-        } else {
-            denom.map(|denom| self.denoms.push((denom, info)));
-        }
-    }
-
-    /// Return the inverse of all denominators and their associated info.
-    fn invert(mut self) -> Value<Vec<(F, INFO)>> {
-        if self.unknown {
-            Value::unknown()
-        } else {
-            self.denoms.iter_mut().map(|(d, _)| d).batch_invert();
-            Value::known(self.denoms)
-        }
-    }
-}
-
 /// PortAssigner computes and assigns terms into helper cells and the bus.
 pub struct PortAssigner<F> {
     codec: BusCodecVal<F>,
@@ -330,34 +291,41 @@ impl BusOpCounter {
 
     /// Report an operation.
     pub fn set_op<F: FieldExt>(&mut self, op: &BusOpF<F>) {
-        op.message().map(|message| {
+        if let Some(key) = Self::to_key(&op.message()) {
             self.counts
-                .entry(Self::to_key(message))
+                .entry(key)
                 .and_modify(|c| *c = *c + op.count())
                 .or_insert_with(|| op.count());
-        });
+        }
     }
 
     /// Count how many times a message was taken (net of puts).
-    pub fn count_takes<F: FieldExt>(&self, message: Value<F>) -> isize {
+    pub fn count_takes<F: FieldExt>(&self, message: &Vec<Value<F>>) -> isize {
         (-self.count_ops(message)).max(0)
     }
 
     /// Count how many times a message was put (net of takes).
-    pub fn count_puts<F: FieldExt>(&self, message: Value<F>) -> isize {
+    pub fn count_puts<F: FieldExt>(&self, message: &Vec<Value<F>>) -> isize {
         self.count_ops(message).max(0)
     }
 
     /// Count how many times a message was put (net positive) or taken (net negative).
-    fn count_ops<F: FieldExt>(&self, message: Value<F>) -> isize {
-        let mut count = 0;
-        message.map(|message| {
-            count = *self.counts.get(&Self::to_key(message)).unwrap_or(&0);
-        });
-        count
+    fn count_ops<F: FieldExt>(&self, message: &Vec<Value<F>>) -> isize {
+        if let Some(key) = Self::to_key(message) {
+            *self.counts.get(&key).unwrap_or(&0)
+        } else {
+            0
+        }
     }
 
-    fn to_key<F: FieldExt>(message: F) -> Vec<u8> {
-        Vec::from(message.to_repr().as_ref())
+    fn to_key<F: FieldExt>(message: &Vec<Value<F>>) -> Option<Vec<u8>> {
+        let mut bytes = vec![];
+        for v in message {
+            if v.is_none() {
+                return None;
+            }
+            v.map(|v| bytes.extend_from_slice(v.to_repr().as_ref()));
+        }
+        Some(bytes)
     }
 }

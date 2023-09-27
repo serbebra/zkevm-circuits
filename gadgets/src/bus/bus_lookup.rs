@@ -26,7 +26,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
     pub fn connect(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F>,
-        message: Expression<F>,
+        message: Vec<Expression<F>>,
         enabled: Expression<F>,
     ) -> Self {
         let count = meta.advice_column();
