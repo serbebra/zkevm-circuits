@@ -48,9 +48,9 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
         let size = cb.query_memory_address();
         let sha3_digest = cb.query_word_unchecked();
 
-        cb.stack_pop(offset.expr());
-        cb.stack_pop(size.expr());
-        cb.stack_push(sha3_rlc.expr());
+        cb.stack_pop(offset.to_word());
+        cb.stack_pop(size.to_word());
+        cb.stack_push(sha3_digest.to_word());
 
         let memory_address = MemoryAddressGadget::construct(cb, offset, size);
 
@@ -76,7 +76,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             cb.require_zero("copy_rwc_inc == 0 for size = 0", copy_rwc_inc.expr());
             cb.require_zero("rlc_acc == 0 for size = 0", rlc_acc.expr());
         });
-        cb.keccak_table_lookup(rlc_acc.expr(), memory_address.length(), sha3_rlc.expr());
+        cb.keccak_table_lookup(rlc_acc.expr(), memory_address.length(), sha3_digest.expr());
 
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.address()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(

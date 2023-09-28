@@ -53,7 +53,7 @@ pub(crate) struct EndTxGadget<F> {
     coinbase_codehash: WordCell<F>,
     #[cfg(feature = "scroll")]
     coinbase_keccak_codehash: Cell<F>,
-    coinbase_code_hash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
+    coinbase_codehash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
     coinbase_transfer: TransferToGadget<F>,
     current_cumulative_gas_used: Cell<F>,
     is_first_tx: IsEqualGadget<F>,
@@ -152,15 +152,16 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             cb.require_zero("effective fee is zero for l1 msg", effective_fee.expr());
         });
 
-        let coinbase_code_hash = cb.query_word_unchecked();
-        let coinbase_code_hash_is_zero = IsZeroWordGadget::construct(cb, &coinbase_code_hash);
+        let coinbase_codehash = cb.query_word_unchecked();
+        let coinbase_codehash_is_zero = IsZeroWordGadget::construct(cb, &coinbase_codehash);
+
         #[cfg(feature = "scroll")]
         let coinbase_keccak_codehash = cb.query_cell_phase2();
 
         cb.account_read(
             coinbase.to_word(),
             AccountFieldTag::CodeHash,
-            coinbase_code_hash.to_word(),
+            coinbase_codehash.to_word(),
         );
         // If coinbase account balance will become positive because of this tx, update its codehash
         // from 0 to the empty codehash.
@@ -168,9 +169,9 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             TransferToGadget::construct(
                 cb,
                 coinbase.to_word(),
-                not::expr(coinbase_code_hash_is_zero.expr()),
+                not::expr(coinbase_codehash_is_zero.expr()),
                 false.expr(),
-                coinbase_codehash.expr(),
+                coinbase_codehash.to_word(),
                 #[cfg(feature = "scroll")]
                 coinbase_keccak_codehash.expr(),
                 effective_fee.clone(),
@@ -362,11 +363,11 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             effective_tip * (gas_used - effective_refund)
         };
         let (coinbase_codehash, _) = rws.next().account_codehash_pair();
-        let coinbase_codehash_rlc = region.code_hash(coinbase_codehash);
+        // let coinbase_codehash_rlc = region.code_hash(coinbase_codehash);
         self.coinbase_codehash
-            .assign(region, offset, coinbase_codehash_rlc)?;
+            .assign_u256(region, offset, coinbase_codehash)?;
         self.coinbase_codehash_is_zero
-            .assign_value(region, offset, coinbase_codehash_rlc)?;
+            .assign_u256(region, offset, coinbase_codehash)?;
 
         if !tx.tx_type.is_l1_msg() {
             self.mul_effective_tip_by_gas_used.assign(
@@ -378,16 +379,8 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             )?;
         }
 
-        self.coinbase.assign(
-            region,
-            offset,
-            Value::known(
-                context
-                    .coinbase
-                    .to_scalar()
-                    .expect("unexpected Address -> Scalar conversion failure"),
-            ),
-        )?;
+        self.coinbase
+            .assign_h160(region, offset, context.coinbase)?;
 
         let tx_l1_fee = if tx.tx_type.is_l1_msg() {
             log::trace!("tx is l1msg and l1 fee is 0");

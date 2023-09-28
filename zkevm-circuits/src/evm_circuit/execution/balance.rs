@@ -1,7 +1,6 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_ACCOUNT_ADDRESS,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -9,7 +8,6 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::Delta,
             },
-            from_bytes,
             math_gadget::IsZeroWordGadget,
             not, select, AccountAddress, CachedRegion, Cell,
         },
@@ -17,7 +15,7 @@ use crate::{
     },
     table::{AccountFieldTag, CallContextFieldTag},
     util::{
-        word::{Word, Word32Cell, WordCell, WordExpr},
+        word::{Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };

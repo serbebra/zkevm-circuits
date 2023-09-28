@@ -30,7 +30,10 @@ use halo2_proofs::{
 };
 use itertools::Itertools;
 
-use super::{address_word_to_expr, rlc, CachedRegion, CellType, StoredExpression};
+use super::{
+    address_word_to_expr, rlc, AccountAddress, CachedRegion, CellType, MemoryAddress,
+    StoredExpression,
+};
 
 // Max degree allowed in all expressions passing through the ConstraintBuilder.
 // It aims to cap `extended_k` to 2, which allows constraint degree to 2^2+1,
@@ -779,14 +782,14 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     pub(crate) fn block_lookup(
         &mut self,
         tag: Expression<F>,
-        number: Expression<F>,
-        val: Expression<F>,
+        number: Option<Expression<F>>,
+        val: Word<Expression<F>>,
     ) {
         self.add_lookup(
             "Block lookup",
             Lookup::Block {
                 field_tag: tag,
-                number,
+                number: number.unwrap_or_else(|| 0.expr()),
                 value: val,
             },
         );

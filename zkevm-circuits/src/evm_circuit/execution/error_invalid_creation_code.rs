@@ -28,7 +28,7 @@ pub(crate) struct ErrorInvalidCreationCodeGadget<F> {
     opcode: Cell<F>,
     memory_address: MemoryWordAddress<F>,
     length: RandomLinearCombination<F, N_BYTES_MEMORY_ADDRESS>,
-    value_left: Word<F>,
+    value_left: Word32Cell<F>,
     first_byte: Cell<F>,
     is_first_byte_invalid: IsEqualGadget<F>,
     mask: MemoryMask<F>,
@@ -52,12 +52,12 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
 
         //let address = cb.query_word_rlc();
 
-        let offset = cb.query_word_rlc();
-        let length = cb.query_word_rlc();
-        let value_left = cb.query_word_rlc();
+        let offset = cb.query_word32();
+        let length = cb.query_word32();
+        let value_left = cb.query_word32();
 
-        cb.stack_pop(offset.expr());
-        cb.stack_pop(length.expr());
+        cb.stack_pop(offset.to_word());
+        cb.stack_pop(length.to_word());
         cb.require_true("is_create is true", cb.curr.state.is_create.expr());
 
         let address_word = MemoryWordAddress::construct(cb, offset.clone());
@@ -130,7 +130,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
 
         let word_left = block.rws[step.rw_indices[2]].memory_word_pair().0;
         self.value_left
-            .assign(region, offset, Some(word_left.to_le_bytes()))?;
+            .assign_u256(region, offset, word_left.to_le_bytes())?;
 
         let mut bytes = word_left.to_le_bytes();
         bytes.reverse();

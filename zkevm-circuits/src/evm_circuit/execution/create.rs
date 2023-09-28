@@ -19,12 +19,15 @@ use crate::{
             memory_gadget::{
                 CommonMemoryAddressGadget, MemoryAddressGadget, MemoryExpansionGadget,
             },
-            not, CachedRegion, Cell, StepRws, Word,
+            not, AccountAddress, CachedRegion, Cell, StepRws,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
-    util::Expr,
+    util::{
+        word::{Word, Word32Cell, WordCell},
+        Expr,
+    },
 };
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId, state_db::CodeDB};
 use eth_types::{
@@ -41,10 +44,10 @@ use std::iter::once;
 #[derive(Clone, Debug)]
 pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionState> {
     opcode: Cell<F>,
-    value: Word<F>,
     tx_id: Cell<F>,
     reversion_info: ReversionInfo<F>,
     was_warm: Cell<F>,
+    value: Word32Cell<F>,
     depth: Cell<F>,
     callee_reversion_info: ReversionInfo<F>,
     callee_is_success: Cell<F>,
@@ -59,7 +62,7 @@ pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionStat
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     gas_left: ConstantDivisionGadget<F, N_BYTES_GAS>,
     create: ContractCreateGadget<F, IS_CREATE2>,
-    caller_balance: Word<F>,
+    caller_balance: WordCell<F>,
     is_depth_in_range: LtGadget<F, N_BYTES_U64>,
     is_insufficient_balance: LtWordGadget<F>,
     is_nonce_in_range: LtGadget<F, N_BYTES_U64>,
@@ -67,11 +70,11 @@ pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionStat
     callee_nonce: Cell<F>,
     callee_nonce_is_zero: IsZeroGadget<F>,
     keccak_code_hash: Cell<F>,
-    keccak_output: Word<F>,
+    keccak_output: Word32Cell<F>,
     // prevous code hash befor creating
-    code_hash_previous: Cell<F>,
+    code_hash_previous: WordCell<F>,
     #[cfg(feature = "scroll")]
-    keccak_code_hash_previous: Cell<F>,
+    keccak_code_hash_previous: WordCell<F>,
     code_hash_is_empty: IsEqualGadget<F>,
     code_hash_is_zero: IsZeroGadget<F>,
     copy_rwc_inc: Cell<F>,
@@ -112,7 +115,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         let is_static = cb.call_context(None, CallContextFieldTag::IsStatic);
         cb.require_zero("is_static is false", is_static.expr());
 
-        let value = cb.query_word_rlc();
+        let value = cb.query_word32();
 
         let init_code_memory_offset = cb.query_cell_phase2();
         let init_code_length = cb.query_word_rlc();
@@ -129,18 +132,15 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             1.expr(),
         );
 
-        let keccak_output = cb.query_word_rlc();
-        let new_address_rlc = cb.word_rlc::<N_BYTES_ACCOUNT_ADDRESS>(
-            keccak_output
-                .cells
-                .iter()
-                .take(N_BYTES_ACCOUNT_ADDRESS)
-                .map(Expr::expr)
-                .collect::<Vec<_>>()
+        let keccak_output = cb.query_word32();
+        let contract_addr = AccountAddress::new(
+            keccak_output.limbs[..N_BYTES_ACCOUNT_ADDRESS]
+                .to_vec()
                 .try_into()
                 .unwrap(),
         );
-        let new_address = expr_from_bytes(&keccak_output.cells[..N_BYTES_ACCOUNT_ADDRESS]);
+
+        let new_address = expr_from_bytes(&keccak_output.limbs[..N_BYTES_ACCOUNT_ADDRESS]);
         let callee_is_success = cb.query_bool();
 
         let create = ContractCreateGadget::construct(cb);
@@ -152,7 +152,11 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             cb.stack_pop(create.salt_word_rlc(cb));
         }
 
-        cb.stack_push(callee_is_success.expr() * new_address_rlc);
+        cb.stack_push(
+            contract_addr
+                .to_word()
+                .mul_selector(callee_is_success.expr()),
+        );
 
         let (init_code_rlc, keccak_code_hash) = cb.condition(init_code.has_length(), |cb| {
             // the init code is being copied from memory to bytecode, so a copy table lookup to
@@ -160,9 +164,9 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             let keccak_code_hash = cb.query_cell_phase2();
             let init_code_rlc = cb.query_cell_phase2();
             cb.copy_table_lookup(
-                cb.curr.state.call_id.expr(),
+                Word::from_lo_unchecked(cb.curr.state.call_id.expr()),
                 CopyDataType::Memory.expr(),
-                create.code_hash_word_rlc(),
+                create.code_hash(),
                 CopyDataType::Bytecode.expr(),
                 init_code.offset(),
                 init_code.address(),
@@ -579,7 +583,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         rws.next(); // is_static
         let [value, init_code_start, init_code_length] = [(); 3].map(|_| rws.next().stack_value());
         self.value
-            .assign(region, offset, Some(value.to_le_bytes()))?;
+            .assign_u256(region, offset, value.to_le_bytes())?;
         let salt = if is_create2 {
             rws.next().stack_value()
         } else {
@@ -780,8 +784,14 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         let mut keccak_output = keccak256(keccak_input);
         keccak_output.reverse();
 
-        self.keccak_output
-            .assign(region, offset, Some(keccak_output))?;
+        self.keccak_output.assign_u256(
+            region,
+            offset,
+            U256::from_little_endian(&keccak_output),
+        )?;
+
+        // self.keccak_output
+        //     .assign(region, offset, Some(keccak_output))?;
 
         let code_hash = CodeDB::hash(&values);
         self.create.assign(
@@ -794,7 +804,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             Some(salt),
         )?;
         self.caller_balance
-            .assign(region, offset, Some(caller_balance.to_le_bytes()))?;
+            .assign_u256(region, offset, caller_balance)?;
         self.is_insufficient_balance
             .assign(region, offset, caller_balance, value)?;
 

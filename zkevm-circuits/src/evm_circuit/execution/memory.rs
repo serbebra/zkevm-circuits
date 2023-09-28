@@ -12,11 +12,14 @@ use crate::{
             from_bytes,
             math_gadget::IsEqualGadget,
             memory_gadget::{MemoryExpansionGadget, MemoryMask, MemoryWordAddress},
-            not, CachedRegion, Word,
+            not, CachedRegion, MemoryAddress,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{
+        word::{Word32Cell, WordExpr},
+        Expr,
+    },
 };
 
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, U256};
@@ -30,15 +33,15 @@ pub(crate) struct MemoryGadget<F> {
     mask: MemoryMask<F>,
     // consider move to MemoryWordAddress ?
     /// The value poped from or pushed to the stack.
-    value: Word<F>,
+    value: Word32Cell<F>,
     /// The left memory word read or written.
-    value_left: Word<F>,
+    value_left: Word32Cell<F>,
     /// The left memory word before the write.
-    value_left_prev: Word<F>,
+    value_left_prev: Word32Cell<F>,
     /// The right memory word read or written.
-    value_right: Word<F>,
+    value_right: Word32Cell<F>,
     /// The right memory word before the write.
-    value_right_prev: Word<F>,
+    value_right_prev: Word32Cell<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     is_mload: IsEqualGadget<F>,
     is_mstore8: IsEqualGadget<F>,
@@ -53,13 +56,15 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         let opcode = cb.query_cell();
 
         // In successful case the address must be in 5 bytes
-        let address = cb.query_word_rlc();
+
+        let address = cb.query_memory_address();
+        let value = cb.query_word32();
         let address_word = MemoryWordAddress::construct(cb, address.clone());
-        let value = cb.query_word_rlc();
-        let value_left = cb.query_word_rlc();
-        let value_left_prev = cb.query_word_rlc();
-        let value_right = cb.query_word_rlc();
-        let value_right_prev = cb.query_word_rlc();
+        let value = cb.query_word32();
+        let value_left = cb.query_word32();
+        let value_left_prev = cb.query_word32();
+        let value_right = cb.query_word32();
+        let value_right_prev = cb.query_word32();
         // Optimization possible: MSTORE does not need the value bytes, only the RLC. MSTORE8 does
         // not need the right value. So we could repurpose the same cells.
 
@@ -76,7 +81,7 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         // access
         let memory_expansion = MemoryExpansionGadget::construct(
             cb,
-            [from_bytes::expr(&address.cells) + 1.expr() + (is_not_mstore8.clone() * 31.expr())],
+            [from_bytes::expr(&address.limbs) + 1.expr() + (is_not_mstore8.clone() * 31.expr())],
         );
 
         let mask = MemoryMask::construct(cb, &address_word.shift_bits(), is_mstore8.expr());
@@ -87,13 +92,13 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
 
         // Stack operations
         // Pop the address from the stack
-        cb.stack_pop(address.expr());
+        cb.stack_pop(address.to_word());
         // For MLOAD push the value to the stack
         // FOR MSTORE pop the value from the stack
         cb.stack_lookup(
             is_mload.expr(),
             cb.stack_pointer_offset().expr() - is_mload.expr(),
-            value.expr(),
+            value.to_word(),
         );
 
         // Read or update the left word.
@@ -175,9 +180,8 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
         let address = address.as_u64();
 
-        self.address.assign(region, offset, address)?;
-        self.value
-            .assign(region, offset, Some(value.to_le_bytes()))?;
+        self.address.assign_u256(region, offset, address)?;
+        self.value.assign_u256(region, offset, value)?;
 
         // Check if this is an MLOAD
         self.is_mload.assign(
@@ -215,14 +219,14 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         };
 
         self.value_left
-            .assign(region, offset, Some(value_left.to_le_bytes()))?;
+            .assign_u256(region, offset, value_left.to_le_bytes())?;
         self.value_left_prev
-            .assign(region, offset, Some(value_left_prev.to_le_bytes()))?;
+            .assign_u256(region, offset, value_left_prev.to_le_bytes())?;
 
         self.value_right
-            .assign(region, offset, Some(value_right.to_le_bytes()))?;
+            .assign_u256(region, offset, value_right.to_le_bytes())?;
         self.value_right_prev
-            .assign(region, offset, Some(value_right_prev.to_le_bytes()))?;
+            .assign_u256(region, offset, value_right_prev.to_le_bytes())?;
         Ok(())
     }
 }

@@ -1663,12 +1663,12 @@ impl<F: Field> CommonReturnDataCopyGadget<F> {
         return_data_length: Expression<F>,
         is_overflow: Expression<F>,
     ) -> Self {
-        let data_offset = cb.query_word_rlc();
-        let size_word = cb.query_word_rlc();
-        let remainder_end = cb.query_word_rlc();
+        let data_offset = cb.query_word32();
+        let size_word = cb.query_word32();
+        let remainder_end = cb.query_word32();
 
         // Check if `data_offset` is Uint64 overflow.
-        let data_offset_larger_u64 = sum::expr(&data_offset.cells[N_BYTES_U64..]);
+        let data_offset_larger_u64 = sum::expr(&data_offset.limbs[N_BYTES_U64..]);
         let is_data_offset_within_u64 = IsZeroGadget::construct(cb, data_offset_larger_u64);
 
         let sum: AddWordsGadget<F, 2, false> =
@@ -1677,14 +1677,14 @@ impl<F: Field> CommonReturnDataCopyGadget<F> {
         // Need to check if `data_offset + size` is U256 overflow via `AddWordsGadget` carry. If
         // yes, it should be also an error of return data out of bound.
         let is_end_u256_overflow = sum.carry().as_ref().unwrap();
-        let remainder_end_larger_u64 = sum::expr(&remainder_end.cells[N_BYTES_U64..]);
+        let remainder_end_larger_u64 = sum::expr(&remainder_end.limbs[N_BYTES_U64..]);
         let is_remainder_end_within_u64 = IsZeroGadget::construct(cb, remainder_end_larger_u64);
 
         // check if `remainder_end` exceeds return data length.
         let is_remainder_end_exceed_len = LtGadget::construct(
             cb,
             return_data_length.expr(),
-            from_bytes::expr(&remainder_end.cells[..N_BYTES_U64]),
+            from_bytes::expr(&remainder_end.limbs[..N_BYTES_U64]),
         );
 
         // enusre it is expected overflow condition.

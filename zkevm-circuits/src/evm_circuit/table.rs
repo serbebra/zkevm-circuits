@@ -268,7 +268,7 @@ pub(crate) enum Lookup<F> {
         /// indicates a parent block number.
         number: Expression<F>,
         /// Value of the field.
-        value: Expression<F>,
+        value: Word<Expression<F>>,
     },
     /// Lookup to copy table.
     CopyTable {

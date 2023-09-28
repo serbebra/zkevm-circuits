@@ -70,6 +70,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         let data_offset = cb.query_memory_address();
         let size = cb.query_memory_address();
 
+        let return_data_size = cb.query_cell();
+
         // enusre no other out of bound errors occur, otherwise go to `ErrorReturnDataOutOfBound`
         // state
         let check_overflow_gadget =
@@ -81,30 +83,27 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
             check_overflow_gadget.size().expr(),
         );
         // 1. Pop dest_offset, offset, length from stack
-        cb.stack_pop(dest_offset.expr());
-        cb.stack_pop(check_overflow_gadget.data_offset().expr());
-        cb.stack_pop(size.expr());
+        cb.stack_pop(dest_offset.to_word());
+        cb.stack_pop(Word::from_lo_unchecked(data_offset.expr()));
+        cb.stack_pop(Word::from_lo_unchecked(size.expr()));
 
         // 2. Add lookup constraint in the call context for the returndatacopy field.
         let last_callee_id = cb.query_cell();
         let return_data_offset = cb.query_cell();
-        cb.call_context_lookup(
-            false.expr(),
+        cb.call_context_lookup_read(
             None,
             CallContextFieldTag::LastCalleeId,
-            last_callee_id.expr(),
+            Word::from_lo_unchecked(last_callee_id.expr()),
         );
-        cb.call_context_lookup(
-            false.expr(),
+        cb.call_context_lookup_read(
             None,
             CallContextFieldTag::LastCalleeReturnDataOffset,
-            return_data_offset.expr(),
+            Word::from_lo_unchecked(return_data_offset.expr()),
         );
-        cb.call_context_lookup(
-            false.expr(),
+        cb.call_context_lookup_read(
             None,
             CallContextFieldTag::LastCalleeReturnDataLength,
-            return_data_size.expr(),
+            Word::from_lo_unchecked(return_data_size.expr()),
         );
 
         // 4. memory copy
@@ -123,9 +122,9 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         let copy_rwc_inc = cb.query_cell();
         cb.condition(dst_memory_addr.has_length(), |cb| {
             cb.copy_table_lookup(
-                last_callee_id.expr(),
+                Word::from_lo_unchecked(last_callee_id.expr()),
                 CopyDataType::Memory.expr(),
-                cb.curr.state.call_id.expr(),
+                Word::from_lo_unchecked(cb.curr.state.call_id.expr()),
                 CopyDataType::Memory.expr(),
                 return_data_offset.expr()
                     + from_bytes::expr(&check_overflow_gadget.data_offset().cells[..N_BYTES_U64]),

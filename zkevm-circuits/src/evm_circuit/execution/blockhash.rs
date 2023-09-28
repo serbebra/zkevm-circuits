@@ -12,12 +12,12 @@ use crate::{
             },
             from_bytes,
             math_gadget::LtGadget,
-            CachedRegion, Cell, Word,
+            CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::BlockContextFieldTag,
-    util::word::WordExpr,
+    util::word::{Word, WordCell, WordExpr},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::{
@@ -32,8 +32,8 @@ pub(crate) struct BlockHashGadget<F> {
     same_context: SameContextGadget<F>,
     block_number: WordByteCapGadget<F, N_BYTES_U64>,
     current_block_number: Cell<F>,
-    block_hash: Cell<F>,
-    chain_id: U64Word<F>,
+    block_hash: Word<Cell<F>>,
+    chain_id: WordCell<F>,
     diff_lt: LtGadget<F, N_BYTES_U64>,
 }
 
@@ -47,17 +47,18 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         cb.block_lookup(
             BlockContextFieldTag::Number.expr(),
             cb.curr.state.block_number.expr(),
-            current_block_number.expr(),
+            Word::from_lo_unchecked(current_block_number.expr()),
         );
 
         let block_number = WordByteCapGadget::construct(cb, current_block_number.expr());
-        cb.stack_pop(block_number.original_word());
+        cb.stack_pop(block_number.original_word().to_word());
 
-        let chain_id = cb.query_word_rlc();
+        let chain_id = cb.query_word_unchecked();
+
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
             cb.curr.state.block_number.expr(),
-            from_bytes::expr(&chain_id.cells),
+            chain_id.to_word(),
         );
 
         let diff_lt = cb.condition(block_number.not_overflow(), |cb| {
@@ -71,14 +72,14 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         });
 
         let is_valid = and::expr([block_number.lt_cap(), diff_lt.expr()]);
-        let block_hash = cb.query_cell_phase2();
+        let block_hash = cb.query_word_unchecked();
         cb.condition(is_valid.expr(), |cb| {
             // For non-scroll, lookup for the block hash.
             #[cfg(not(feature = "scroll"))]
             cb.block_lookup(
                 BlockContextFieldTag::BlockHash.expr(),
-                block_number.valid_value(),
-                block_hash.expr(),
+                Some(block_number.valid_value()),
+                block_hash.to_word(),
             );
 
             // For scroll, the block hash is calculated by Keccak256. The input
@@ -111,13 +112,13 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         });
 
         cb.condition(not::expr(is_valid), |cb| {
-            cb.require_zero(
+            cb.require_zero_word(
                 "Invalid block number for block hash lookup",
-                block_hash.expr(),
+                block_hash.to_word(),
             );
         });
 
-        cb.stack_push(block_hash.expr());
+        cb.stack_push(block_hash.to_word());
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(2.expr()),
@@ -171,10 +172,8 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
             .assign(region, offset, block_number, current_block_number)?;
         self.current_block_number
             .assign(region, offset, Value::known(current_block_number))?;
-        self.block_hash
-            .assign(region, offset, region.word_rlc(block_hash))?;
-        self.chain_id
-            .assign(region, offset, Some(chain_id.to_le_bytes()))?;
+        self.block_hash.assign_u256(region, offset, block_hash)?;
+        self.chain_id.assign_u256(region, offset, chain_id)?;
 
         // Block number overflow should be constrained by WordByteCapGadget.
         let block_number: F = block_number
