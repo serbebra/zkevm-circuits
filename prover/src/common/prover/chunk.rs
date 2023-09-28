@@ -18,6 +18,7 @@ impl Prover {
             self.load_or_gen_last_chunk_snark(name, witness_block, inner_id, output_dir)?;
 
         // Load or generate compression thin snark (layer-2).
+        let t = std::time::Instant::now();
         let layer2_snark = self.load_or_gen_comp_snark(
             name,
             LayerId::Layer2.id(),
@@ -26,6 +27,7 @@ impl Prover {
             layer1_snark,
             output_dir,
         )?;
+        log::info!("layer2-elapsed = {} secs", t.elapsed().as_secs_f64());
         log::info!("Got compression thin snark (layer-2): {name}");
 
         Ok(layer2_snark)
@@ -41,12 +43,14 @@ impl Prover {
         output_dir: Option<&str>,
     ) -> Result<Snark> {
         // Load or generate inner snark.
+        let t = std::time::Instant::now();
         let inner_snark = self.load_or_gen_inner_snark(
             name,
             inner_id.unwrap_or(LayerId::Inner.id()),
             witness_block,
             output_dir,
         )?;
+        log::info!("inner-elapsed = {} secs", t.elapsed().as_secs_f64());
         log::info!("Got inner snark: {name}");
 
         // Check pairing for super circuit.
@@ -58,6 +62,7 @@ impl Prover {
         .map_err(|err| anyhow!("Failed to check pairing for super circuit: {err:?}"))?;
 
         // Load or generate compression wide snark (layer-1).
+        let t = std::time::Instant::now();
         let layer1_snark = self.load_or_gen_comp_snark(
             name,
             LayerId::Layer1.id(),
@@ -66,6 +71,7 @@ impl Prover {
             inner_snark,
             output_dir,
         )?;
+        log::info!("layer1-elapsed = {} secs", t.elapsed().as_secs_f64());
         log::info!("Got compression wide snark (layer-1): {name}");
 
         Ok(layer1_snark)
