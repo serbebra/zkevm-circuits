@@ -72,7 +72,7 @@ evm_exec_steps_occupancy: # Print a table for each EVM-CellManager CellType with
 	@cargo test -p zkevm-circuits --release get_exec_steps_occupancy --features=test,warn-unimplemented -- --nocapture --ignored
 
 testool_docker_build_inner_prove:
-	docker build --build-arg TESTOOL_FEATURE=inner-prove -f docker/testool-gpu.Dockerfile -t asongala1/testool-inner-prove:v0.2 .
+	docker build --build-arg TESTOOL_FEATURE=inner-prove -f docker/testool-gpu.Dockerfile -t asongala1/testool-inner-prove:v0.2-fix1 .
 
 testool_docker_build_chunk_prove:
 	docker build --build-arg TESTOOL_FEATURE=chunk-prove -f docker/testool-gpu.Dockerfile -t asongala1/testool-chunk-prove:v0.1 .
