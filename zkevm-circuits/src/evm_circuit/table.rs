@@ -249,6 +249,9 @@ pub(crate) enum Lookup<F> {
         is_code: Expression<F>,
         /// Value corresponding to the tag.
         value: Expression<F>,
+        /// The RLC of the PUSH data (LE order), or 0.
+        /// Warning: If the bytecode is truncated, this is the actual data, without zero-padding.
+        push_rlc: Expression<F>,
     },
     /// Lookup to block table, which contains constants of this block.
     Block {
@@ -312,6 +315,7 @@ pub(crate) enum Lookup<F> {
         sig_r_rlc: Expression<F>,
         sig_s_rlc: Expression<F>,
         recovered_addr: Expression<F>,
+        is_valid: Expression<F>,
     },
     ModExpTable {
         base_limbs: [Expression<F>; 3],
@@ -403,6 +407,7 @@ impl<F: Field> Lookup<F> {
                 index,
                 is_code,
                 value,
+                push_rlc,
             } => {
                 vec![
                     1.expr(), // q_enable
@@ -411,6 +416,7 @@ impl<F: Field> Lookup<F> {
                     index.clone(),
                     is_code.clone(),
                     value.clone(),
+                    push_rlc.clone(),
                 ]
             }
             Self::Block {
@@ -481,6 +487,7 @@ impl<F: Field> Lookup<F> {
                 sig_r_rlc,
                 sig_s_rlc,
                 recovered_addr,
+                is_valid,
             } => vec![
                 1.expr(), // q_enable
                 msg_hash_rlc.clone(),
@@ -488,6 +495,7 @@ impl<F: Field> Lookup<F> {
                 sig_r_rlc.clone(),
                 sig_s_rlc.clone(),
                 recovered_addr.clone(),
+                is_valid.clone(),
             ],
             Self::ModExpTable {
                 base_limbs,

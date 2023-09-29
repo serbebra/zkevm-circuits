@@ -891,57 +891,23 @@ impl PoseidonTable {
         }
     }
 
-    /// Construct a new PoseidonTable for dev
-    pub(crate) fn dev_construct<F: FieldExt>(meta: &mut ConstraintSystem<F>) -> Self {
-        Self::construct(meta)
-    }
-
-    pub(crate) fn assign<F: Field>(
-        &self,
-        region: &mut Region<'_, F>,
-        offset: usize,
-        row: &[Value<F>],
-    ) -> Result<(), Error> {
-        region.assign_fixed(
-            || "assign poseidon table row value",
-            self.q_enable,
-            offset,
-            || Value::known(F::one()),
-        )?;
-        let poseidon_table_columns = <PoseidonTable as LookupTable<F>>::advice_columns(self);
-        for (column, value) in poseidon_table_columns.iter().zip_eq(row) {
-            region.assign_advice(
-                || "assign poseidon table row value",
-                *column,
-                offset,
-                || *value,
-            )?;
-        }
-        Ok(())
-    }
-
-    // Is this method used anyhwhere?
-    pub(crate) fn load<'d, F: Field>(
+    #[cfg(test)]
+    /// Load mpt hashes (without the poseidon circuit) for testing purposes.
+    pub fn load<F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,
-        hashes: impl Iterator<Item = &'d [Value<F>]> + Clone,
+        hashes: &[[Value<F>; 6]],
     ) -> Result<(), Error> {
         layouter.assign_region(
             || "poseidon table",
-            |mut region| self.load_with_region(&mut region, hashes.clone()),
+            |mut region| {
+                self.assign(&mut region, 0, [Value::known(F::zero()); 6])?;
+                for (offset, row) in hashes.iter().enumerate() {
+                    self.assign(&mut region, offset + 1, *row)?;
+                }
+                Ok(())
+            },
         )
-    }
-
-    pub(crate) fn load_with_region<'d, F: Field>(
-        &self,
-        region: &mut Region<'_, F>,
-        hashes: impl Iterator<Item = &'d [Value<F>]>,
-    ) -> Result<(), Error> {
-        self.assign(region, 0, [Value::known(F::zero()); 6].as_slice())?;
-        for (offset, row) in hashes.enumerate() {
-            self.assign(region, offset + 1, row)?;
-        }
-        Ok(())
     }
 
     /// Provide this function for the case that we want to consume a poseidon
@@ -1064,6 +1030,30 @@ impl PoseidonTable {
             },
         )
     }
+
+    fn assign<F: Field>(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        row: [Value<F>; 6],
+    ) -> Result<(), Error> {
+        region.assign_fixed(
+            || "assign poseidon table row value",
+            self.q_enable,
+            offset,
+            || Value::known(F::one()),
+        )?;
+        let poseidon_table_columns = <PoseidonTable as LookupTable<F>>::advice_columns(self);
+        for (column, value) in poseidon_table_columns.iter().zip_eq(row) {
+            region.assign_advice(
+                || "assign poseidon table row value",
+                *column,
+                offset,
+                || value,
+            )?;
+        }
+        Ok(())
+    }
 }
 
 /// Tag to identify the field in a Bytecode Table row
@@ -1091,6 +1081,9 @@ pub struct BytecodeTable {
     pub is_code: Column<Advice>,
     /// Value
     pub value: Column<Advice>,
+    /// The RLC of the PUSH data (LE order), or 0.
+    /// Warning: If the bytecode is truncated, this is the actual data, without zero-padding.
+    pub push_rlc: Column<Advice>,
 }
 
 impl BytecodeTable {
@@ -1098,6 +1091,7 @@ impl BytecodeTable {
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         let [tag, index, is_code, value] = array::from_fn(|_| meta.advice_column());
         let code_hash = meta.advice_column_in(SecondPhase);
+        let push_rlc = meta.advice_column_in(SecondPhase);
         Self {
             q_enable: meta.fixed_column(),
             code_hash,
@@ -1105,6 +1099,7 @@ impl BytecodeTable {
             index,
             is_code,
             value,
+            push_rlc,
         }
     }
 
@@ -1145,6 +1140,25 @@ impl BytecodeTable {
             },
         )
     }
+
+    /// A sub-table of bytecode without is_code nor push_rlc.
+    fn columns_mini<F: Field>(&self) -> Vec<Column<Any>> {
+        vec![
+            self.q_enable.into(),
+            self.code_hash.into(),
+            self.tag.into(),
+            self.index.into(),
+            self.value.into(),
+        ]
+    }
+
+    /// The expressions of the sub-table of bytecode without is_code nor push_rlc.
+    pub fn table_exprs_mini<F: Field>(&self, meta: &mut VirtualCells<F>) -> Vec<Expression<F>> {
+        self.columns_mini::<F>()
+            .iter()
+            .map(|&column| meta.query_any(column, Rotation::cur()))
+            .collect()
+    }
 }
 
 impl<F: Field> LookupTable<F> for BytecodeTable {
@@ -1156,6 +1170,7 @@ impl<F: Field> LookupTable<F> for BytecodeTable {
             self.index.into(),
             self.is_code.into(),
             self.value.into(),
+            self.push_rlc.into(),
         ]
     }
 
@@ -1167,6 +1182,7 @@ impl<F: Field> LookupTable<F> for BytecodeTable {
             String::from("index"),
             String::from("is_code"),
             String::from("value"),
+            String::from("push_rlc"),
         ]
     }
 }
@@ -1514,7 +1530,7 @@ pub struct CopyTable {
 }
 
 type CopyTableRow<F> = [(Value<F>, &'static str); 8];
-type CopyCircuitRow<F> = [(Value<F>, &'static str); 11];
+type CopyCircuitRow<F> = [(Value<F>, &'static str); 10];
 
 /// CopyThread is the state used while generating rows of the copy table.
 struct CopyThread<F: Field> {
@@ -1626,22 +1642,12 @@ impl CopyTable {
                     value: read_step.0,
                     prev_value: read_step.0,
                     mask: read_step.2,
-                    is_code: if copy_event.src_type == CopyDataType::Bytecode {
-                        Some(read_step.1)
-                    } else {
-                        None
-                    },
                 };
                 let write_step = CopyStep {
                     value: write_step.0,
                     // Will overwrite if previous values are given.
                     prev_value: write_step.0,
                     mask: write_step.2,
-                    is_code: if copy_event.dst_type == CopyDataType::Bytecode {
-                        Some(write_step.1)
-                    } else {
-                        None
-                    },
                 };
                 once((true, read_step)).chain(once((false, write_step)))
             })
@@ -1690,9 +1696,6 @@ impl CopyTable {
 
             let word_index = (step_idx as u64 / 2) % 32;
 
-            // is_code
-            let is_code = Value::known(copy_step.is_code.map_or(F::zero(), |v| F::from(v)));
-
             // For LOG, format the address including the log_id.
             let addr = if thread.tag == CopyDataType::TxLog {
                 build_tx_log_address(thread.addr, TxLogFieldTag::Data, copy_event.log_id.unwrap())
@@ -1722,7 +1725,6 @@ impl CopyTable {
                     (thread.word_rlc_prev, "value_word_rlc_prev"),
                     (thread.value_acc, "value_acc"),
                     (Value::known(F::from(is_pad)), "is_pad"),
-                    (is_code, "is_code"),
                     (Value::known(F::from(copy_step.mask)), "mask"),
                     (Value::known(F::from(thread.front_mask)), "front_mask"),
                     (Value::known(F::from(word_index)), "word_index"),
@@ -2059,7 +2061,7 @@ impl<F: Field> LookupTable<F> for ExpTable {
 pub struct RlpFsmRlpTable {
     /// Whether the row is enabled.
     pub q_enable: Column<Fixed>,
-    /// The transaction's index in the batch.
+    /// The transaction's index in the chunk.
     pub tx_id: Column<Advice>,
     /// The format of the tx being decoded.
     pub format: Column<Advice>,
@@ -2209,7 +2211,6 @@ pub struct SigTable {
     /// Random-linear combination of the Keccak256 hash of the message that's signed.
     pub msg_hash_rlc: Column<Advice>,
     /// should be in range [0, 1]
-    /// TODO: we need to constrain v <=> pub.y oddness
     pub sig_v: Column<Advice>,
     /// Random-linear combination of the signature's `r` component.
     pub sig_r_rlc: Column<Advice>,
@@ -2269,7 +2270,6 @@ impl SigTable {
                     });
                     let sig_v = Value::known(F::from(sign_data.signature.2 as u64));
                     let recovered_addr = Value::known(sign_data.get_addr().to_scalar().unwrap());
-
                     region.assign_fixed(
                         || format!("sig table q_enable {offset}"),
                         self.q_enable,
@@ -2282,7 +2282,11 @@ impl SigTable {
                         ("sig_r_rlc", self.sig_r_rlc, sig_r_rlc),
                         ("sig_s_rlc", self.sig_s_rlc, sig_s_rlc),
                         ("recovered_addr", self.recovered_addr, recovered_addr),
-                        ("is_valid", self.is_valid, Value::known(F::one())),
+                        (
+                            "is_valid",
+                            self.is_valid,
+                            Value::known(F::from(!sign_data.get_addr().is_zero())),
+                        ),
                     ] {
                         region.assign_advice(
                             || format!("sig table {column_name} {offset}"),
@@ -2323,20 +2327,6 @@ impl<F: Field> LookupTable<F> for SigTable {
             String::from("sig_s_rlc"),
             String::from("recovered_addr"),
             String::from("is_valid"),
-        ]
-    }
-
-    fn table_exprs(&self, meta: &mut VirtualCells<F>) -> Vec<Expression<F>> {
-        vec![
-            // ignore the is_valid field as the EVM circuit's use-case (Ecrecover precompile) does
-            // not care whether the signature is valid or not. It only cares about the recovered
-            // address.
-            meta.query_fixed(self.q_enable, Rotation::cur()),
-            meta.query_advice(self.msg_hash_rlc, Rotation::cur()),
-            meta.query_advice(self.sig_v, Rotation::cur()),
-            meta.query_advice(self.sig_r_rlc, Rotation::cur()),
-            meta.query_advice(self.sig_s_rlc, Rotation::cur()),
-            meta.query_advice(self.recovered_addr, Rotation::cur()),
         ]
     }
 }

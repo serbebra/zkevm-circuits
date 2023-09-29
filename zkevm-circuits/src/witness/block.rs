@@ -24,15 +24,15 @@ use super::{
     mpt::ZktrieState as MptState, step::step_convert, tx::tx_convert, Bytecode, ExecStep,
     MptUpdates, RwMap, Transaction,
 };
-use crate::util::{Challenges, DEFAULT_RAND};
+use crate::util::Challenges;
 
 // TODO: Remove fields that are duplicated in`eth_block`
 /// Block is the struct used by all circuits, which contains all the needed
 /// data for witness generation.
 #[derive(Debug, Clone, Default)]
 pub struct Block<F> {
-    /// The randomness for random linear combination
-    pub randomness: F,
+    /// For historical reasons..
+    pub _marker: std::marker::PhantomData<F>,
     /// Transactions in the block
     pub txs: Vec<Transaction>,
     /// Signatures in the block
@@ -52,14 +52,14 @@ pub struct Block<F> {
     pub copy_events: Vec<CopyEvent>,
     /// Exponentiation traces for the exponentiation circuit's table.
     pub exp_events: Vec<ExpEvent>,
-    /// Pad exponentiation circuit to make selectors fixed.
-    pub exp_circuit_pad_to: usize,
     /// Circuit Setup Parameters
     pub circuits_params: CircuitsParams,
     /// Inputs to the SHA3 opcode
     pub sha3_inputs: Vec<Vec<u8>>,
     /// State root of the previous block
     pub prev_state_root: Word, // TODO: Make this H256
+    /// State root after the block, is set if block_apply_mpt_state is called
+    pub state_root: Option<Word>, // TODO: Make this H256
     /// Withdraw root
     pub withdraw_root: Word,
     /// Withdraw roof of the previous block
@@ -458,8 +458,7 @@ pub fn block_convert<F: Field>(
     code_db: &bus_mapping::state_db::CodeDB,
 ) -> Result<Block<F>, Error> {
     let rws = RwMap::from(&block.container);
-    #[cfg(debug_assertions)]
-    rws.check_value();
+    rws.check_value()?;
     let num_txs = block.txs().len();
     let last_block_num = block
         .headers
@@ -520,7 +519,7 @@ pub fn block_convert<F: Field>(
     }
 
     Ok(Block {
-        randomness: F::from_u128(DEFAULT_RAND),
+        _marker: Default::default(),
         context: block.into(),
         rws,
         txs: block
@@ -560,8 +559,8 @@ pub fn block_convert<F: Field>(
             max_rws,
             ..block.circuits_params
         },
-        exp_circuit_pad_to: <usize>::default(),
         prev_state_root: block.prev_state_root,
+        state_root: None,
         withdraw_root: block.withdraw_root,
         prev_withdraw_root: block.prev_withdraw_root,
         keccak_inputs: circuit_input_builder::keccak_inputs(block, code_db)?,
@@ -590,4 +589,5 @@ pub fn block_convert_with_l1_queue_index<F: Field>(
 /// Attach witness block with mpt states
 pub fn block_apply_mpt_state<F: Field>(block: &mut Block<F>, mpt_state: &MptState) {
     block.mpt_updates.fill_state_roots(mpt_state);
+    block.state_root = Some(block.mpt_updates.new_root());
 }

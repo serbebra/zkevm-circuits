@@ -5,19 +5,15 @@ use bus_mapping::{
     circuit_input_builder::{self, CircuitInputBuilder, CircuitsParams, PrecompileEcParams},
     state_db::{CodeDB, StateDB},
 };
-use eth_types::{
-    l2_types::{BlockTrace, StorageTrace},
-    ToBigEndian, ToWord, H256,
-};
+use eth_types::{l2_types::BlockTrace, ToWord, H256};
 use halo2_proofs::halo2curves::bn256::Fr;
 use itertools::Itertools;
-use mpt_zktrie::state::ZktrieState;
+use mpt_zktrie::state::{ZkTrieHash, ZktrieState};
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, time::Instant};
+use std::time::Instant;
 use zkevm_circuits::{
     evm_circuit::witness::{block_apply_mpt_state, block_convert_with_l1_queue_index, Block},
     util::SubCircuit,
-    witness::WithdrawProof,
 };
 
 static CHAIN_ID: Lazy<u64> = Lazy::new(|| read_env_var("CHAIN_ID", 53077));
@@ -33,7 +29,7 @@ pub const MAX_BYTECODE: usize = 600_000;
 pub const MAX_MPT_ROWS: usize = 1_000_000;
 pub const MAX_KECCAK_ROWS: usize = 1_000_000;
 pub const MAX_POSEIDON_ROWS: usize = 1_000_000;
-pub const MAX_VERTICLE_ROWS: usize = 1_000_000;
+pub const MAX_VERTICAL_ROWS: usize = 1_000_000;
 pub const MAX_RWS: usize = 1_000_000;
 pub const MAX_PRECOMPILE_EC_ADD: usize = 50;
 pub const MAX_PRECOMPILE_EC_MUL: usize = 50;
@@ -51,7 +47,7 @@ pub fn get_super_circuit_params() -> CircuitsParams {
         max_inner_blocks: MAX_INNER_BLOCKS,
         max_keccak_rows: MAX_KECCAK_ROWS,
         max_poseidon_rows: MAX_POSEIDON_ROWS,
-        max_vertical_circuit_rows: MAX_VERTICLE_ROWS,
+        max_vertical_circuit_rows: MAX_VERTICAL_ROWS,
         max_exp_steps: MAX_EXP_STEPS,
         max_mpt_rows: MAX_MPT_ROWS,
         max_rlp_rows: MAX_RLP_ROWS,
@@ -202,23 +198,21 @@ fn prepare_default_builder(
     builder_block.prev_state_root = old_root.to_word();
     let code_db = CodeDB::new();
 
-    if let Some(mpt_state) = initial_mpt_state {
+    if let Some(mpt_state) = &initial_mpt_state {
         assert_eq!(
             H256::from_slice(mpt_state.root()),
             old_root,
             "the provided zktrie state must be the prev state"
         );
-        let state_db = StateDB::from(&mpt_state);
-        let mut builder = CircuitInputBuilder::new(state_db, code_db, &builder_block);
-        builder.mpt_init_state = mpt_state;
-        builder
-    } else {
-        CircuitInputBuilder::new(StateDB::new(), code_db, &builder_block)
     }
+
+    let mut builder = CircuitInputBuilder::new(StateDB::new(), code_db, &builder_block);
+    builder.mpt_init_state = initial_mpt_state;
+    builder
 }
 
-// check if block traces match preset parameters
-fn validite_block_traces(block_traces: &[BlockTrace]) -> Result<()> {
+/// check if block traces match preset parameters
+pub fn validite_block_traces(block_traces: &[BlockTrace]) -> Result<()> {
     let chain_id = block_traces
         .iter()
         .map(|block_trace| block_trace.chain_id)
@@ -234,6 +228,7 @@ fn validite_block_traces(block_traces: &[BlockTrace]) -> Result<()> {
 }
 
 pub fn block_traces_to_witness_block(block_traces: &[BlockTrace]) -> Result<Block<Fr>> {
+    validite_block_traces(block_traces)?;
     let block_num = block_traces.len();
     let total_tx_num = block_traces
         .iter()
@@ -260,7 +255,7 @@ pub fn block_traces_to_witness_block(block_traces: &[BlockTrace]) -> Result<Bloc
     // etc, so the generated block maybe invalid without any message
     if block_traces.is_empty() {
         let mut builder = prepare_default_builder(eth_types::Hash::zero(), None);
-        block_traces_to_witness_block_with_updated_state(&[], &mut builder, false)
+        block_traces_to_witness_block_with_updated_state(&[], &mut builder)
     } else {
         let mut builder = CircuitInputBuilder::new_from_l2_trace(
             get_super_circuit_params(),
@@ -268,7 +263,7 @@ pub fn block_traces_to_witness_block(block_traces: &[BlockTrace]) -> Result<Bloc
             block_traces.len() > 1,
             false,
         )?;
-        block_traces_to_witness_block_with_updated_state(&block_traces[1..], &mut builder, false)
+        block_traces_to_witness_block_with_updated_state(&block_traces[1..], &mut builder)
     }
 }
 
@@ -279,10 +274,7 @@ pub fn block_traces_to_witness_block(block_traces: &[BlockTrace]) -> Result<Bloc
 pub fn block_traces_to_witness_block_with_updated_state(
     block_traces: &[BlockTrace],
     builder: &mut CircuitInputBuilder,
-    light_mode: bool,
 ) -> Result<Block<Fr>> {
-    validite_block_traces(block_traces)?;
-
     let metric = |builder: &CircuitInputBuilder, idx: usize| -> Result<(), bus_mapping::Error> {
         let t = Instant::now();
         let block = block_convert_with_l1_queue_index::<Fr>(
@@ -326,7 +318,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
             "add_more_l2_trace idx {idx}, block num {:?}",
             block_trace.header.number
         );
-        builder.add_more_l2_trace(block_trace, !is_last, false)?;
+        builder.add_more_l2_trace(block_trace, !is_last)?;
         if per_block_metric {
             metric(builder, idx + initial_blk_index)?;
         }
@@ -343,45 +335,24 @@ pub fn block_traces_to_witness_block_with_updated_state(
         witness_block.circuits_params
     );
 
-    if !light_mode && *builder.mpt_init_state.root() != [0u8; 32] {
-        log::debug!("block_apply_mpt_state");
-        block_apply_mpt_state(&mut witness_block, &builder.mpt_init_state);
-        log::debug!("block_apply_mpt_state done");
-    }
-    log::debug!(
-        "finish replay trie updates, root {}",
-        hex::encode(builder.mpt_init_state.root())
-    );
-    Ok(witness_block)
-}
+    if let Some(state) = &mut builder.mpt_init_state {
+        if *state.root() != [0u8; 32] {
+            log::debug!("block_apply_mpt_state");
+            block_apply_mpt_state(&mut witness_block, state);
+            log::debug!("block_apply_mpt_state done");
+        };
+        let root_after = witness_block.state_root.unwrap_or_default();
 
-pub fn normalize_withdraw_proof(proof: &WithdrawProof) -> StorageTrace {
-    let address = *bus_mapping::l2_predeployed::message_queue::ADDRESS;
-    let key = *bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT;
-    StorageTrace {
-        // Not typo! We are preparing `StorageTrace` for the dummy padding chunk
-        // So `post_state_root` of prev chunk will be `root_before` for new chunk
-        root_before: H256::from(proof.state_root.to_be_bytes()),
-        root_after: H256::from(proof.state_root.to_be_bytes()),
-        proofs: Some(HashMap::from([(
-            address,
-            proof
-                .account_proof
-                .iter()
-                .map(|b| b.clone().into())
-                .collect(),
-        )])),
-        storage_proofs: HashMap::from([(
-            address,
-            HashMap::from([(
-                key,
-                proof
-                    .storage_proof
-                    .iter()
-                    .map(|b| b.clone().into())
-                    .collect(),
-            )]),
-        )]),
-        deletion_proofs: Default::default(),
+        log::debug!(
+            "finish replay trie updates, root {}, root after {:#x?}",
+            hex::encode(state.root()),
+            root_after,
+        );
+        // switch state to new root
+        let mut new_root_hash = ZkTrieHash::default();
+        root_after.to_big_endian(&mut new_root_hash);
+        assert!(state.switch_to(new_root_hash));
     }
+
+    Ok(witness_block)
 }
