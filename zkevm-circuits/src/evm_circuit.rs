@@ -40,7 +40,7 @@ use eth_types::Field;
 use execution::ExecutionConfig;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
-use table::FixedTableTag;
+use table::{ByteMsgV, ByteMsgX, FixedTableTag};
 use witness::Block;
 
 /// EvmCircuitConfig implements verification of execution trace of a block.
@@ -115,8 +115,6 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
 pub struct Unreachable {
     _private: (),
 }
-
-type ByteMsgX<F> = Vec<Expression<F>>;
 
 impl<F: Field> EvmCircuitConfig<F> {
     /// Configure EvmCircuitConfig
@@ -213,7 +211,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> BusLookupConfig<F> {
         let byte_expr = query_expression(meta, |meta| byte_table.table_exprs(meta)[0].clone());
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        BusLookupConfig::connect(meta, bus_builder, vec![byte_expr], enabled)
+        BusLookupConfig::connect(meta, bus_builder, [byte_expr], enabled)
     }
 }
 
@@ -245,8 +243,8 @@ impl<F: Field> EvmCircuitConfig<F> {
     pub fn load_byte_table(
         &self,
         layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F>,
-        bus_op_counter: &BusOpCounter,
+        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
+        bus_op_counter: &BusOpCounter<F, ByteMsgV<F>>,
     ) -> Result<(), Error> {
         let mut closure_count = 0;
 
@@ -273,7 +271,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                         || Value::known(F::one()),
                     )?;
 
-                    let message = vec![value];
+                    let message = [value];
                     let count = bus_op_counter.count_takes(&message);
                     self.table_to_bus.assign(
                         &mut region,

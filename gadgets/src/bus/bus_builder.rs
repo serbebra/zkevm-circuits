@@ -1,20 +1,20 @@
-use halo2_proofs::{arithmetic::FieldExt, circuit::Value, plonk::Expression};
+use halo2_proofs::{arithmetic::FieldExt, circuit::Value};
 
 use super::{
     bus_chip::BusTerm,
-    bus_codec::{BusCodec, BusCodecVal},
+    bus_codec::{BusCodecExpr, BusCodecVal},
 };
 
 /// BusBuilder
 #[derive(Debug)]
 pub struct BusBuilder<F, M> {
-    codec: BusCodec<Expression<F>, M>,
+    codec: BusCodecExpr<F, M>,
     terms: Vec<BusTerm<F>>,
 }
 
 impl<F: FieldExt, M> BusBuilder<F, M> {
     /// Create a new bus.
-    pub fn new(codec: BusCodec<Expression<F>, M>) -> Self {
+    pub fn new(codec: BusCodecExpr<F, M>) -> Self {
         Self {
             codec,
             terms: vec![],
@@ -22,7 +22,7 @@ impl<F: FieldExt, M> BusBuilder<F, M> {
     }
 
     /// Return the codec for messages on this bus.
-    pub fn codec(&self) -> &BusCodec<Expression<F>, M> {
+    pub fn codec(&self) -> &BusCodecExpr<F, M> {
         &self.codec
     }
 
@@ -38,15 +38,15 @@ impl<F: FieldExt, M> BusBuilder<F, M> {
 }
 
 /// BusAssigner
-pub struct BusAssigner<F> {
-    codec: BusCodecVal<F>,
+pub struct BusAssigner<F, M> {
+    codec: BusCodecVal<F, M>,
     terms: Vec<F>,
     unknown: bool,
 }
 
-impl<F: FieldExt> BusAssigner<F> {
+impl<F: FieldExt, M> BusAssigner<F, M> {
     /// Create a new bus assigner with a maximum number of rows.
-    pub fn new(codec: BusCodecVal<F>, n_rows: usize) -> Self {
+    pub fn new(codec: BusCodecVal<F, M>, n_rows: usize) -> Self {
         Self {
             codec,
             terms: vec![F::zero(); n_rows],
@@ -55,7 +55,7 @@ impl<F: FieldExt> BusAssigner<F> {
     }
 
     /// Return the codec for messages on this bus.
-    pub fn codec(&self) -> &BusCodecVal<F> {
+    pub fn codec(&self) -> &BusCodecVal<F, M> {
         &self.codec
     }
 

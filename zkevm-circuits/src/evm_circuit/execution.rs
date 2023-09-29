@@ -6,13 +6,13 @@ use super::{
         RW_TABLE_LOOKUPS, SIG_TABLE_LOOKUPS, TX_TABLE_LOOKUPS,
     },
     util::{instrumentation::Instrument, CachedRegion, CellManager, StoredExpression},
-    EvmCircuitExports, ByteMsgX,
+    EvmCircuitExports,
 };
 use crate::{
     evm_circuit::{
         param::{EVM_LOOKUP_COLS, MAX_STEP_HEIGHT, N_PHASE2_COLUMNS, STEP_WIDTH},
         step::{ExecutionState, Step},
-        table::Table,
+        table::{ByteMsgV, ByteMsgX, Table},
         util::{
             constraint_builder::{
                 BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
@@ -934,7 +934,7 @@ impl<F: Field> ExecutionConfig<F> {
             .columns()
             .iter()
             .filter(|column| column.cell_type == CellType::LookupByte)
-            .map(|column| BusOp::take(vec![column.expr()], q_usable.clone()))
+            .map(|column| BusOp::take([column.expr()], q_usable.clone()))
             .collect::<Vec<_>>();
 
         BusPortMulti::connect(meta, bus_builder, ops)
@@ -1056,10 +1056,16 @@ impl<F: Field> ExecutionConfig<F> {
     pub fn assign_block(
         &self,
         layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F>,
+        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<(EvmCircuitExports<Assigned<F>>, Option<BusOpCounter>), Error> {
+    ) -> Result<
+        (
+            EvmCircuitExports<Assigned<F>>,
+            Option<BusOpCounter<F, ByteMsgV<F>>>,
+        ),
+        Error,
+    > {
         let mut is_first_time = true;
         let mut bus_op_counter = None;
 
@@ -1318,7 +1324,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_bus_ports(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
-        port_assigner: &mut PortAssigner<F>,
+        port_assigner: &mut PortAssigner<F, ByteMsgV<F>>,
         offset_begin: usize,
         offset_end: usize,
     ) {
@@ -1336,7 +1342,7 @@ impl<F: Field> ExecutionConfig<F> {
                 .iter()
                 .map(|column_index| {
                     let byte = region.get_advice(offset, *column_index, Rotation::cur());
-                    let message = vec![Value::known(byte)];
+                    let message = [Value::known(byte)];
                     BusOp::take(message, 1)
                 })
                 .collect::<Vec<_>>();
@@ -1348,7 +1354,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_same_exec_step_in_range(
         &self,
         region: &mut Region<'_, F>,
-        port_assigner: &mut PortAssigner<F>,
+        port_assigner: &mut PortAssigner<F, ByteMsgV<F>>,
         offset_begin: usize,
         offset_end: usize,
         block: &Block<F>,
@@ -1390,7 +1396,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_exec_step(
         &self,
         region: &mut Region<'_, F>,
-        port_assigner: &mut PortAssigner<F>,
+        port_assigner: &mut PortAssigner<F, ByteMsgV<F>>,
         offset: usize,
         block: &Block<F>,
         transaction: &Transaction,

@@ -1,7 +1,7 @@
 use super::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
-    bus_codec::{BusCodecExpr, BusCodecVal, BusMessage, DefaultMsg},
+    bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
     util::{from_isize, HelperBatch},
 };
 use crate::util::query_expression;
@@ -17,7 +17,7 @@ use std::{collections::HashMap, marker::PhantomData, ops::Neg};
 pub type BusOpX<F, M> = BusOp<M, Expression<F>>;
 
 /// A bus operation, as values for circuit assignment.
-pub type BusOpF<F> = BusOp<DefaultMsg<Value<F>>, isize>;
+pub type BusOpA<M> = BusOp<M, isize>;
 
 /// A bus operation.
 #[derive(Clone, Debug)]
@@ -194,7 +194,12 @@ impl<F: FieldExt> BusPortChip<F> {
     }
 
     /// Assign an operation.
-    pub fn assign(&self, port_assigner: &mut PortAssigner<F>, offset: usize, op: BusOpF<F>) {
+    pub fn assign<M: BusMessage<Value<F>>>(
+        &self,
+        port_assigner: &mut PortAssigner<F, M>,
+        offset: usize,
+        op: BusOpA<M>,
+    ) {
         port_assigner.set_op(offset, self.helper, 0, op);
     }
 }
@@ -221,7 +226,12 @@ impl<F: FieldExt> BusPortMulti<F> {
     }
 
     /// Assign operations.
-    pub fn assign(&self, port_assigner: &mut PortAssigner<F>, offset: usize, ops: Vec<BusOpF<F>>) {
+    pub fn assign<M: BusMessage<Value<F>>>(
+        &self,
+        port_assigner: &mut PortAssigner<F, M>,
+        offset: usize,
+        ops: Vec<BusOpA<M>>,
+    ) {
         assert_eq!(self.ports.len(), ops.len());
         for (port, op) in self.ports.iter().zip(ops) {
             port.assign(port_assigner, offset, op);
@@ -230,15 +240,16 @@ impl<F: FieldExt> BusPortMulti<F> {
 }
 
 /// PortAssigner computes and assigns terms into helper cells and the bus.
-pub struct PortAssigner<F> {
-    codec: BusCodecVal<F>,
+
+pub struct PortAssigner<F, M> {
+    codec: BusCodecVal<F, M>,
     batch: HelperBatch<F, (usize, Column<Advice>, isize, isize)>,
-    bus_op_counter: BusOpCounter,
+    bus_op_counter: BusOpCounter<F, M>,
 }
 
-impl<F: FieldExt> PortAssigner<F> {
+impl<F: FieldExt, M: BusMessage<Value<F>>> PortAssigner<F, M> {
     /// Create a new PortAssigner.
-    pub fn new(codec: BusCodecVal<F>) -> Self {
+    pub fn new(codec: BusCodecVal<F, M>) -> Self {
         Self {
             codec,
             batch: HelperBatch::new(),
@@ -252,7 +263,7 @@ impl<F: FieldExt> PortAssigner<F> {
         offset: usize,
         column: Column<Advice>,
         rotation: isize,
-        op: BusOpF<F>,
+        op: BusOpA<M>,
     ) {
         self.bus_op_counter.set_op(&op);
 
@@ -265,8 +276,8 @@ impl<F: FieldExt> PortAssigner<F> {
     pub fn finish(
         self,
         region: &mut Region<'_, F>,
-        bus_assigner: &mut BusAssigner<F>,
-    ) -> BusOpCounter {
+        bus_assigner: &mut BusAssigner<F, M>,
+    ) -> BusOpCounter<F, M> {
         self.batch.invert().map(|terms| {
             // The batch has converted the messages into bus terms.
             for (term, (offset, column, rotation, count)) in terms {
@@ -289,20 +300,24 @@ impl<F: FieldExt> PortAssigner<F> {
 }
 
 /// OpCounter tracks the messages taken, to help generating the puts.
-#[derive(Clone, Debug, Default)]
-pub struct BusOpCounter {
+#[derive(Clone, Debug)]
+pub struct BusOpCounter<F, M> {
     counts: HashMap<Vec<u8>, isize>,
+    _marker: PhantomData<(F, M)>,
 }
 
-impl BusOpCounter {
-    /// Create a new OpCounter.
+impl<F: FieldExt, M: BusMessage<Value<F>>> BusOpCounter<F, M> {
+    /// Create a new BusOpCounter.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            counts: HashMap::new(),
+            _marker: PhantomData,
+        }
     }
 
     /// Report an operation.
-    pub fn set_op<F: FieldExt>(&mut self, op: &BusOpF<F>) {
-        if let Some(key) = Self::to_key(&op.message()) {
+    pub fn set_op(&mut self, op: &BusOpA<M>) {
+        if let Some(key) = Self::to_key(op.message()) {
             self.counts
                 .entry(key)
                 .and_modify(|c| *c = *c + op.count())
@@ -311,27 +326,27 @@ impl BusOpCounter {
     }
 
     /// Count how many times a message was taken (net of puts).
-    pub fn count_takes<F: FieldExt>(&self, message: &DefaultMsg<Value<F>>) -> isize {
+    pub fn count_takes(&self, message: &M) -> isize {
         (-self.count_ops(message)).max(0)
     }
 
     /// Count how many times a message was put (net of takes).
-    pub fn count_puts<F: FieldExt>(&self, message: &DefaultMsg<Value<F>>) -> isize {
+    pub fn count_puts(&self, message: &M) -> isize {
         self.count_ops(message).max(0)
     }
 
     /// Count how many times a message was put (net positive) or taken (net negative).
-    fn count_ops<F: FieldExt>(&self, message: &DefaultMsg<Value<F>>) -> isize {
-        if let Some(key) = Self::to_key(message) {
+    fn count_ops(&self, message: &M) -> isize {
+        if let Some(key) = Self::to_key(message.clone()) {
             *self.counts.get(&key).unwrap_or(&0)
         } else {
             0
         }
     }
 
-    fn to_key<F: FieldExt>(message: &DefaultMsg<Value<F>>) -> Option<Vec<u8>> {
+    fn to_key(message: M) -> Option<Vec<u8>> {
         let mut bytes = vec![];
-        for v in message {
+        for v in message.into_items() {
             if v.is_none() {
                 return None;
             }

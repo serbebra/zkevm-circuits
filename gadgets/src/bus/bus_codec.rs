@@ -5,14 +5,17 @@ use std::{
 
 use halo2_proofs::{circuit::Value, plonk::Expression};
 
-/// The default message type is simply a vector of items.
-pub type DefaultMsg<T> = Vec<T>;
+/// The default message type for expressions.
+pub type DefaultMsgExpr<F> = Vec<Expression<F>>;
 
-/// The codec for the default message type (expressions form).
-pub type BusCodecExpr<F, M = DefaultMsg<Expression<F>>> = BusCodec<Expression<F>, M>;
+/// The default message type for values.
+pub type DefaultMsgVal<F> = Vec<Value<F>>;
 
-/// The codec for the default message type (values form).
-pub type BusCodecVal<F, M = DefaultMsg<Value<F>>> = BusCodec<Value<F>, M>;
+/// The codec for expressions.
+pub type BusCodecExpr<F, M> = BusCodec<Expression<F>, M>;
+
+/// The codec for values.
+pub type BusCodecVal<F, M> = BusCodec<Value<F>, M>;
 
 /// A message codec that adds a random value to the message.
 #[derive(Clone, Debug)]
