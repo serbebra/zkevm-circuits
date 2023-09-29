@@ -5,11 +5,14 @@ use std::{
 
 use halo2_proofs::{circuit::Value, plonk::Expression};
 
-/// A simple message encoder (expressions).
-pub type BusCodecExpr<F> = BusCodec<Expression<F>, Vec<Expression<F>>>;
+/// The default message type is simply a vector of items.
+pub type DefaultMsg<T> = Vec<T>;
 
-/// A simple message encoder (values).
-pub type BusCodecVal<F> = BusCodec<Value<F>, Vec<Value<F>>>;
+/// The codec for the default message type (expressions form).
+pub type BusCodecExpr<F, M = DefaultMsg<Expression<F>>> = BusCodec<Expression<F>, M>;
+
+/// The codec for the default message type (values form).
+pub type BusCodecVal<F, M = DefaultMsg<Value<F>>> = BusCodec<Value<F>, M>;
 
 /// A message codec that adds a random value to the message.
 #[derive(Clone, Debug)]
@@ -31,8 +34,11 @@ where
         }
     }
 
-    /// Encode a message.
-    pub fn encode(&self, msg: M) -> T {
+    /// Compress a message into a field element, such that:
+    /// - the map from message to elements is collision-resistant.
+    /// - the inverses of the elements are linearly independent.
+    /// - Elements are non-zero.
+    pub fn compress(&self, msg: M) -> T {
         // TODO: support multiple values.
         let first = msg.into_items().next().unwrap().into();
         self.rand.clone() + first
@@ -40,7 +46,7 @@ where
 }
 
 /// A trait for messages that can be encoded.
-pub trait BusMessage<T> {
+pub trait BusMessage<T>: Clone {
     /// The item iterator type.
     type IntoIter: Iterator<Item = T>;
 
@@ -51,7 +57,7 @@ pub trait BusMessage<T> {
 // The default implementation of `BusMessage` for iterators of compatible types.
 impl<T, I> BusMessage<T> for I
 where
-    I: IntoIterator,
+    I: IntoIterator + Clone,
     I::Item: Into<T>,
 {
     type IntoIter = std::iter::Map<I::IntoIter, fn(I::Item) -> T>;
@@ -87,13 +93,13 @@ mod tests {
             // Using vectors as message type.
             let codec = BusCodec::new(Fr::one());
             let msg = vec![1u64, 2u64, 3u64];
-            assert_eq!(codec.encode(msg), Fr::from(2));
+            assert_eq!(codec.compress(msg), Fr::from(2));
         }
         {
             // Using a custom message type.
             let codec = BusCodec::new(Fr::one());
             let msg = TestMessage { a: 1, b: 2 };
-            assert_eq!(codec.encode(msg.clone()), Fr::from(2));
+            assert_eq!(codec.compress(msg.clone()), Fr::from(2));
         }
     }
 }

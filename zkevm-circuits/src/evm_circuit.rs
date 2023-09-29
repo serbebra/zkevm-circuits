@@ -116,6 +116,8 @@ pub struct Unreachable {
     _private: (),
 }
 
+type ByteMsgX<F> = Vec<Expression<F>>;
+
 impl<F: Field> EvmCircuitConfig<F> {
     /// Configure EvmCircuitConfig
     #[allow(clippy::too_many_arguments)]
@@ -140,7 +142,7 @@ impl<F: Field> EvmCircuitConfig<F> {
         let byte_table = [(); 1].map(|_| meta.fixed_column());
         let enable_table = meta.fixed_column();
 
-        let mut bus_builder = BusBuilder::<F>::new(BusCodecExpr::new(challenges.lookup_input()));
+        let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges.lookup_input()));
 
         let table_to_bus =
             Self::configure_table_to_bus(meta, &mut bus_builder, &byte_table, enable_table);
@@ -205,7 +207,7 @@ impl<F: Field> EvmCircuitConfig<F> {
 
     fn configure_table_to_bus(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
+        bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
         byte_table: &dyn LookupTable<F>,
         enabled: Column<Fixed>,
     ) -> BusLookupConfig<F> {

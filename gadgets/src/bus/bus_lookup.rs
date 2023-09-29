@@ -4,6 +4,7 @@ use crate::util::query_expression;
 
 use super::{
     bus_builder::BusBuilder,
+    bus_codec::BusMessage,
     bus_port::{BusOp, BusOpF, BusPortChip, PortAssigner},
     util::from_isize,
 };
@@ -23,10 +24,10 @@ pub struct BusLookupConfig<F> {
 
 impl<F: FieldExt> BusLookupConfig<F> {
     /// Create and connect a new BusLookup circuit from the expressions of message and count.
-    pub fn connect(
+    pub fn connect<M: BusMessage<Expression<F>>>(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
-        message: Vec<Expression<F>>,
+        bus_builder: &mut BusBuilder<F, M>,
+        message: M,
         enabled: Expression<F>,
     ) -> Self {
         let count = meta.advice_column();

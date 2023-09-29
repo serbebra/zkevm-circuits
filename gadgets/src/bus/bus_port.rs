@@ -1,7 +1,7 @@
 use super::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
-    bus_codec::{BusCodecExpr, BusCodecVal},
+    bus_codec::{BusCodecExpr, BusCodecVal, BusMessage, DefaultMsg},
     util::{from_isize, HelperBatch},
 };
 use crate::util::query_expression;
@@ -14,10 +14,10 @@ use halo2_proofs::{
 use std::{collections::HashMap, marker::PhantomData, ops::Neg};
 
 /// A bus operation, as expressions for circuit config.
-pub type BusOpExpr<F> = BusOp<Vec<Expression<F>>, Expression<F>>;
+pub type BusOpX<F, M> = BusOp<M, Expression<F>>;
 
 /// A bus operation, as values for circuit assignment.
-pub type BusOpF<F> = BusOp<Vec<Value<F>>, isize>;
+pub type BusOpF<F> = BusOp<DefaultMsg<Value<F>>, isize>;
 
 /// A bus operation.
 #[derive(Clone, Debug)]
@@ -54,43 +54,49 @@ where
 
 /// A chip to access to the bus.
 #[derive(Clone, Debug)]
-pub struct BusPortSingle<F> {
-    op: BusOpExpr<F>,
-    helper: Expression<F>,
-}
+pub struct BusPortSingle;
 
-impl<F: FieldExt> BusPortSingle<F> {
+impl BusPortSingle {
     /// Create a new bus port with a single access.
     /// The helper cell can be used for something else if op.count is zero.
-    pub fn connect(
+    pub fn connect<F: FieldExt, M: BusMessage<Expression<F>>>(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
-        op: BusOpExpr<F>,
+        bus_builder: &mut BusBuilder<F, M>,
+        op: BusOpX<F, M>,
         helper: Expression<F>,
-    ) -> Self {
-        let port = Self { op, helper };
-        let term = port.create_term(meta, bus_builder.codec());
+    ) {
+        let term = Self::create_term(meta, bus_builder.codec(), op, helper);
         bus_builder.add_term(term);
-        port
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    pub fn helper_witness(message: Value<F>, rand: Value<F>) -> Value<F> {
-        (rand + message).map(|x| x.invert().unwrap_or(F::zero()))
+    /// Prefer using PortAssigner instead.
+    pub fn helper_witness<F: FieldExt, M: BusMessage<Value<F>>>(
+        codec: &BusCodecVal<F, M>,
+        message: M,
+    ) -> Value<F> {
+        codec
+            .compress(message)
+            .map(|x| x.invert().unwrap_or(F::zero()))
     }
 
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, codec: &BusCodecExpr<F>) -> BusTerm<F> {
-        let term = self.op.count() * self.helper.clone();
-        let enc = codec.encode(self.op.message());
+    fn create_term<F: FieldExt, M: BusMessage<Expression<F>>>(
+        meta: &mut ConstraintSystem<F>,
+        codec: &BusCodecExpr<F, M>,
+        op: BusOpX<F, M>,
+        helper: Expression<F>,
+    ) -> BusTerm<F> {
+        let term = op.count() * helper.clone();
+        let denom = codec.compress(op.message());
 
         meta.create_gate("bus access", |_| {
-            // Verify that `term = count / (rand + message)`.
+            // Verify that `term = count / denom`.
             //
-            // With witness: helper = 1 / (rand + message)
+            // With witness: helper = 1 / denom
             //
             // If `count = 0`, then `term = 0` by definition. In that case, the helper cell is not
             // constrained, so it can be used for something else.
-            [term.clone() * enc - self.op.count()]
+            [term.clone() * denom - op.count()]
         });
 
         BusTerm::verified(term)
@@ -100,47 +106,52 @@ impl<F: FieldExt> BusPortSingle<F> {
 /// A chip with two accesses to the bus. BusPortDual uses only one helper cell, however the
 /// degree of input expressions is more limited than with BusPortSingle.
 /// The helper cell can be used for something else if both op.count are zero.
-pub struct BusPortDual<F> {
-    ops: [BusOpExpr<F>; 2],
-    helper: Expression<F>,
-}
+pub struct BusPortDual;
 
-impl<F: FieldExt> BusPortDual<F> {
+impl BusPortDual {
     /// Create a new bus port with two accesses.
-    pub fn connect(
+    pub fn connect<F: FieldExt, M: BusMessage<Expression<F>>>(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
-        ops: [BusOpExpr<F>; 2],
+        bus_builder: &mut BusBuilder<F, M>,
+        ops: [BusOpX<F, M>; 2],
         helper: Expression<F>,
-    ) -> Self {
-        let port = Self { ops, helper };
-        let term = port.create_term(meta, bus_builder.codec());
+    ) {
+        let term = Self::create_term(meta, bus_builder.codec(), ops, helper);
         bus_builder.add_term(term);
-        port
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    pub fn helper_witness(messages: [Value<F>; 2], rand: Value<F>) -> Value<F> {
-        ((rand + messages[0]) * (rand + messages[1])).map(|x| x.invert().unwrap_or(F::zero()))
+    /// Prefer using PortAssigner instead.
+    pub fn helper_witness<F: FieldExt, M: BusMessage<Value<F>>>(
+        codec: &BusCodecVal<F, M>,
+        messages: [M; 2],
+    ) -> Value<F> {
+        let [m0, m1] = messages;
+        (codec.compress(m0) * codec.compress(m1)).map(|x| x.invert().unwrap_or(F::zero()))
     }
 
-    fn create_term(&self, meta: &mut ConstraintSystem<F>, codec: &BusCodecExpr<F>) -> BusTerm<F> {
-        let rm_0 = codec.encode(self.ops[0].message());
-        let rm_1 = codec.encode(self.ops[1].message());
+    fn create_term<F: FieldExt, M: BusMessage<Expression<F>>>(
+        meta: &mut ConstraintSystem<F>,
+        codec: &BusCodecExpr<F, M>,
+        ops: [BusOpX<F, M>; 2],
+        helper: Expression<F>,
+    ) -> BusTerm<F> {
+        let denom_0 = codec.compress(ops[0].message());
+        let denom_1 = codec.compress(ops[1].message());
 
-        // With witness: helper = 1 / rm_0 / rm_1
+        // With witness: helper = 1 / (denom_0 * denom_1)
 
-        // term_0 = count_0 * helper * rm_1
-        let count_0 = self.ops[0].count();
-        let term_0 = count_0.clone() * self.helper.clone() * rm_1.clone();
+        // term_0 = count_0 * helper * denom_1
+        let count_0 = ops[0].count();
+        let term_0 = count_0.clone() * helper.clone() * denom_1.clone();
 
-        // term_1 = count_1 * helper * rm_0
-        let count_1 = self.ops[1].count();
-        let term_1 = count_1.clone() * self.helper.clone() * rm_0.clone();
+        // term_1 = count_1 * helper * denom_0
+        let count_1 = ops[1].count();
+        let term_1 = count_1.clone() * helper.clone() * denom_0.clone();
 
         // Verify that:
-        //     term_0 == count_0 / (rand + message_0)
-        //     term_0 * rm_0 - count_0 == 0
+        //     term_0 == count_0 / denom_0
+        //     term_0 * denom_0 - count_0 == 0
         //
         // And the same for term_1.
         //
@@ -148,8 +159,8 @@ impl<F: FieldExt> BusPortDual<F> {
         // can be used for something else.
         meta.create_gate("bus access (dual)", |_| {
             [
-                term_0.clone() * rm_0 - count_0,
-                term_1.clone() * rm_1 - count_1,
+                term_0.clone() * denom_0 - count_0,
+                term_1.clone() * denom_1 - count_1,
             ]
         });
 
@@ -166,10 +177,10 @@ pub struct BusPortChip<F> {
 
 impl<F: FieldExt> BusPortChip<F> {
     /// Create a new bus port with a single access.
-    pub fn connect(
+    pub fn connect<M: BusMessage<Expression<F>>>(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
-        op: BusOpExpr<F>,
+        bus_builder: &mut BusBuilder<F, M>,
+        op: BusOpX<F, M>,
     ) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
@@ -197,10 +208,10 @@ pub struct BusPortMulti<F> {
 
 impl<F: FieldExt> BusPortMulti<F> {
     /// Create and connect a new bus port with multiple accesses.
-    pub fn connect(
+    pub fn connect<M: BusMessage<Expression<F>>>(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
-        ops: Vec<BusOpExpr<F>>,
+        bus_builder: &mut BusBuilder<F, M>,
+        ops: Vec<BusOpX<F, M>>,
     ) -> Self {
         let ports = ops
             .into_iter()
@@ -245,7 +256,7 @@ impl<F: FieldExt> PortAssigner<F> {
     ) {
         self.bus_op_counter.set_op(&op);
 
-        let denom = self.codec.encode(op.message());
+        let denom = self.codec.compress(op.message());
         self.batch
             .add_denom(denom, (offset, column, rotation, op.count()));
     }
@@ -300,17 +311,17 @@ impl BusOpCounter {
     }
 
     /// Count how many times a message was taken (net of puts).
-    pub fn count_takes<F: FieldExt>(&self, message: &Vec<Value<F>>) -> isize {
+    pub fn count_takes<F: FieldExt>(&self, message: &DefaultMsg<Value<F>>) -> isize {
         (-self.count_ops(message)).max(0)
     }
 
     /// Count how many times a message was put (net of takes).
-    pub fn count_puts<F: FieldExt>(&self, message: &Vec<Value<F>>) -> isize {
+    pub fn count_puts<F: FieldExt>(&self, message: &DefaultMsg<Value<F>>) -> isize {
         self.count_ops(message).max(0)
     }
 
     /// Count how many times a message was put (net positive) or taken (net negative).
-    fn count_ops<F: FieldExt>(&self, message: &Vec<Value<F>>) -> isize {
+    fn count_ops<F: FieldExt>(&self, message: &DefaultMsg<Value<F>>) -> isize {
         if let Some(key) = Self::to_key(message) {
             *self.counts.get(&key).unwrap_or(&0)
         } else {
@@ -318,7 +329,7 @@ impl BusOpCounter {
         }
     }
 
-    fn to_key<F: FieldExt>(message: &Vec<Value<F>>) -> Option<Vec<u8>> {
+    fn to_key<F: FieldExt>(message: &DefaultMsg<Value<F>>) -> Option<Vec<u8>> {
         let mut bytes = vec![];
         for v in message {
             if v.is_none() {

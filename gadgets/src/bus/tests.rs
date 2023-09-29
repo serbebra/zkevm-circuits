@@ -55,7 +55,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
         let rand = cs.challenge_usable_after(SecondPhase);
         let rand_expr = query_expression(cs, |cs| cs.query_challenge(rand));
-        let mut bus_builder = BusBuilder::<F>::new(BusCodecExpr::new(rand_expr));
+        let mut bus_builder = BusBuilder::new(BusCodecExpr::new(rand_expr));
 
         let message = vec![2.expr()];
 

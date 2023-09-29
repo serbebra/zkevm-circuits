@@ -6,7 +6,7 @@ use super::{
         RW_TABLE_LOOKUPS, SIG_TABLE_LOOKUPS, TX_TABLE_LOOKUPS,
     },
     util::{instrumentation::Instrument, CachedRegion, CellManager, StoredExpression},
-    EvmCircuitExports,
+    EvmCircuitExports, ByteMsgX,
 };
 use crate::{
     evm_circuit::{
@@ -377,7 +377,7 @@ impl<F: Field> ExecutionConfig<F> {
     pub(crate) fn configure(
         meta: &mut ConstraintSystem<F>,
         challenges: Challenges<Expression<F>>,
-        bus_builder: &mut BusBuilder<F>,
+        bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
         fixed_table: &dyn LookupTable<F>,
         byte_table: &dyn LookupTable<F>,
         tx_table: &dyn LookupTable<F>,
@@ -924,7 +924,7 @@ impl<F: Field> ExecutionConfig<F> {
 
     fn configure_bus(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F>,
+        bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
         q_usable: Selector,
         cell_manager: &CellManager<F>,
     ) -> BusPortMulti<F> {
