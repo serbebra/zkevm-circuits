@@ -1342,7 +1342,7 @@ impl<F: Field> ExecutionConfig<F> {
                 .iter()
                 .map(|column_index| {
                     let byte = region.get_advice(offset, *column_index, Rotation::cur());
-                    let message = [Value::known(byte)];
+                    let message = [byte];
                     BusOp::take(message, 1)
                 })
                 .collect::<Vec<_>>();

@@ -40,7 +40,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
     }
 
     /// Assign a lookup operation.
-    pub fn assign<M: BusMessage<Value<F>>>(
+    pub fn assign<M: BusMessage<F>> (
         &self,
         region: &mut Region<'_, F>,
         port_assigner: &mut PortAssigner<F, M>,

@@ -260,9 +260,9 @@ impl<F: Field> EvmCircuitConfig<F> {
                 let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
 
                 for offset in 0..256 {
-                    let value = Value::known(F::from(offset as u64));
+                    let value = F::from(offset as u64);
 
-                    region.assign_fixed(|| "", self.byte_table[0], offset, || value)?;
+                    region.assign_fixed(|| "", self.byte_table[0], offset, || Value::known(value))?;
 
                     region.assign_fixed(
                         || "",

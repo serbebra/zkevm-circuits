@@ -6,12 +6,12 @@ use crate::{
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
 use eth_types::Field;
 use gadgets::util::Expr;
-use halo2_proofs::{circuit::Value, plonk::Expression};
+use halo2_proofs::plonk::Expression;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 pub type ByteMsgX<F> = [Expression<F>; 1];
-pub type ByteMsgV<F> = [Value<F>; 1];
+pub type ByteMsgV<F> = [F; 1];
 
 #[derive(Clone, Copy, Debug, EnumIter)]
 pub enum FixedTableTag {

@@ -108,7 +108,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                 // Circuit 1 puts a message on some row.
                 {
                     // Do normal circuit assignment logic, and obtain a message.
-                    let message = vec![Value::known(F::from(2))];
+                    let message = vec![F::from(2)];
 
                     // Set the `count` of copies of the same message.
                     let count = self.n_rows as isize;
@@ -128,7 +128,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
                         // Do normal circuit assignment logic, and obtain a message.
-                        let message = vec![Value::known(F::from(2))];
+                        let message = vec![F::from(2)];
 
                         // Assign an operation to the port of this circuit, and to the shared bus.
                         config

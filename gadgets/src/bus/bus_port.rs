@@ -71,7 +71,7 @@ impl BusPortSingle {
 
     /// Return the witness that must be assigned to the helper cell.
     /// Prefer using PortAssigner instead.
-    pub fn helper_witness<F: FieldExt, M: BusMessage<Value<F>>>(
+    pub fn helper_witness<F: FieldExt, M: BusMessage<F>>(
         codec: &BusCodecVal<F, M>,
         message: M,
     ) -> Value<F> {
@@ -122,7 +122,7 @@ impl BusPortDual {
 
     /// Return the witness that must be assigned to the helper cell.
     /// Prefer using PortAssigner instead.
-    pub fn helper_witness<F: FieldExt, M: BusMessage<Value<F>>>(
+    pub fn helper_witness<F: FieldExt, M: BusMessage<F>>(
         codec: &BusCodecVal<F, M>,
         messages: [M; 2],
     ) -> Value<F> {
@@ -194,7 +194,7 @@ impl<F: FieldExt> BusPortChip<F> {
     }
 
     /// Assign an operation.
-    pub fn assign<M: BusMessage<Value<F>>>(
+    pub fn assign<M: BusMessage<F>>(
         &self,
         port_assigner: &mut PortAssigner<F, M>,
         offset: usize,
@@ -226,7 +226,7 @@ impl<F: FieldExt> BusPortMulti<F> {
     }
 
     /// Assign operations.
-    pub fn assign<M: BusMessage<Value<F>>>(
+    pub fn assign<M: BusMessage<F>>(
         &self,
         port_assigner: &mut PortAssigner<F, M>,
         offset: usize,
@@ -247,7 +247,7 @@ pub struct PortAssigner<F, M> {
     bus_op_counter: BusOpCounter<F, M>,
 }
 
-impl<F: FieldExt, M: BusMessage<Value<F>>> PortAssigner<F, M> {
+impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
     /// Create a new PortAssigner.
     pub fn new(codec: BusCodecVal<F, M>) -> Self {
         Self {
@@ -306,7 +306,7 @@ pub struct BusOpCounter<F, M> {
     _marker: PhantomData<(F, M)>,
 }
 
-impl<F: FieldExt, M: BusMessage<Value<F>>> BusOpCounter<F, M> {
+impl<F: FieldExt, M: BusMessage<F>> BusOpCounter<F, M> {
     /// Create a new BusOpCounter.
     pub fn new() -> Self {
         Self {
@@ -317,12 +317,11 @@ impl<F: FieldExt, M: BusMessage<Value<F>>> BusOpCounter<F, M> {
 
     /// Report an operation.
     pub fn set_op(&mut self, op: &BusOpA<M>) {
-        if let Some(key) = Self::to_key(op.message()) {
-            self.counts
-                .entry(key)
-                .and_modify(|c| *c = *c + op.count())
-                .or_insert_with(|| op.count());
-        }
+        let key = Self::to_key(op.message());
+        self.counts
+            .entry(key)
+            .and_modify(|c| *c = *c + op.count())
+            .or_insert_with(|| op.count());
     }
 
     /// Count how many times a message was taken (net of puts).
@@ -337,21 +336,15 @@ impl<F: FieldExt, M: BusMessage<Value<F>>> BusOpCounter<F, M> {
 
     /// Count how many times a message was put (net positive) or taken (net negative).
     fn count_ops(&self, message: &M) -> isize {
-        if let Some(key) = Self::to_key(message.clone()) {
-            *self.counts.get(&key).unwrap_or(&0)
-        } else {
-            0
-        }
+        let key = Self::to_key(message.clone());
+        *self.counts.get(&key).unwrap_or(&0)
     }
 
-    fn to_key(message: M) -> Option<Vec<u8>> {
+    fn to_key(message: M) -> Vec<u8> {
         let mut bytes = vec![];
-        for v in message.into_items() {
-            if v.is_none() {
-                return None;
-            }
-            v.map(|v| bytes.extend_from_slice(v.to_repr().as_ref()));
+        for f in message.into_items() {
+            bytes.extend_from_slice(f.to_repr().as_ref());
         }
-        Some(bytes)
+        bytes
     }
 }
