@@ -7,7 +7,6 @@ use gadgets::bus::{
     bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupConfig,
     bus_port::BusOp,
-    BusOpCounter, PortAssigner,
 };
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
@@ -245,7 +244,6 @@ impl<F: Field> EvmCircuitConfig<F> {
         &self,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
-        bus_op_counter: &BusOpCounter<F, ByteMsgV<F>>,
     ) -> Result<(), Error> {
         let mut closure_count = 0;
 
@@ -257,8 +255,6 @@ impl<F: Field> EvmCircuitConfig<F> {
                 if closure_count == 1 {
                     return Ok(());
                 }
-
-                let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
 
                 for offset in 0..256 {
                     let value = F::from(offset as u64);
@@ -278,17 +274,16 @@ impl<F: Field> EvmCircuitConfig<F> {
                     )?;
 
                     let message = [value];
-                    let count = bus_op_counter.count_takes(&message);
+                    let count = bus_assigner.op_counter().count_takes(&message);
                     self.table_to_bus.assign(
                         &mut region,
-                        &mut port_assigner,
+                        bus_assigner,
                         offset,
                         BusOp::put(message, count),
                     )?;
                 }
 
-                port_assigner.finish(&mut region, bus_assigner);
-
+                bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
         )?;
@@ -426,15 +421,13 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         let mut bus_assigner =
             BusAssigner::new(BusCodecVal::new(challenges.lookup_input()), num_rows);
 
-        let (export, bus_op_counter) =
+        let export =
             config
                 .execution
                 .assign_block(layouter, &mut bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
 
-        if let Some(bus_op_counter) = bus_op_counter {
-            config.load_byte_table(layouter, &mut bus_assigner, &bus_op_counter)?;
-        }
+        config.load_byte_table(layouter, &mut bus_assigner)?;
 
         layouter.assign_region(
             || "EVM_Bus",

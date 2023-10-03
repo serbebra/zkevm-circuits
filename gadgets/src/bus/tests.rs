@@ -15,7 +15,6 @@ use super::{
     bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupConfig,
     bus_port::*,
-    PortAssigner,
 };
 
 #[test]
@@ -103,9 +102,6 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
 
                 let mut bus_assigner = BusAssigner::new(BusCodecVal::new(rand), self.n_rows);
 
-                // This uses a batching method rather than row-by-row.
-                let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
-
                 // Circuit 1 puts a message on some row.
                 {
                     // Do normal circuit assignment logic, and obtain a message.
@@ -118,7 +114,7 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                     // Assign an operation to the port of this circuit, and to the shared bus.
                     config.bus_lookup.assign(
                         &mut region,
-                        &mut port_assigner,
+                        &mut bus_assigner,
                         offset,
                         BusOp::put(message, count),
                     )?;
@@ -134,12 +130,12 @@ impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
                         // Assign an operation to the port of this circuit, and to the shared bus.
                         config
                             .port2
-                            .assign(&mut port_assigner, offset, BusOp::take(message, 1));
+                            .assign(&mut bus_assigner, offset, BusOp::take(message, 1));
                     }
                 }
 
                 // Final pass: assign the bus witnesses.
-                port_assigner.finish(&mut region, &mut bus_assigner);
+                bus_assigner.finish_ports(&mut region);
 
                 config
                     .bus_config

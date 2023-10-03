@@ -51,4 +51,8 @@ impl<F: ff::Field, INFO> HelperBatch<F, INFO> {
             Value::known(self.denoms)
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.denoms.len()
+    }
 }

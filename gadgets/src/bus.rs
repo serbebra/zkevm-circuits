@@ -23,5 +23,3 @@ mod util;
 
 #[cfg(test)]
 mod tests;
-
-pub use port_assigner::{BusOpCounter, PortAssigner};

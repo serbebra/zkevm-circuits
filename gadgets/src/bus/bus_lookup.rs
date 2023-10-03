@@ -3,11 +3,10 @@
 use crate::util::query_expression;
 
 use super::{
-    bus_builder::BusBuilder,
+    bus_builder::{BusAssigner, BusBuilder},
     bus_codec::BusMessage,
     bus_port::{BusOp, BusOpA, BusPortChip},
     util::from_isize,
-    PortAssigner,
 };
 use halo2_proofs::{
     circuit::{Region, Value},
@@ -44,7 +43,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
     pub fn assign<M: BusMessage<F>>(
         &self,
         region: &mut Region<'_, F>,
-        port_assigner: &mut PortAssigner<F, M>,
+        bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,
         op: BusOpA<M>,
     ) -> Result<(), Error> {
@@ -54,7 +53,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
             offset,
             || Value::known(from_isize::<F>(op.count())),
         )?;
-        self.port.assign(port_assigner, offset, op);
+        self.port.assign(bus_assigner, offset, op);
         Ok(())
     }
 }

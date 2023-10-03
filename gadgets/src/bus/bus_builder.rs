@@ -1,8 +1,14 @@
-use halo2_proofs::{arithmetic::FieldExt, circuit::Value};
+use std::mem;
+
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::{Region, Value},
+};
 
 use super::{
     bus_chip::BusTerm,
-    bus_codec::{BusCodecExpr, BusCodecVal},
+    bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
+    port_assigner::{BusOpCounter, PortAssigner},
 };
 
 /// BusBuilder
@@ -41,20 +47,41 @@ impl<F: FieldExt, M> BusBuilder<F, M> {
 pub struct BusAssigner<F, M> {
     codec: BusCodecVal<F, M>,
     term_adder: TermAdder<F>,
+    bus_op_counter: BusOpCounter<F, M>,
+    port_assigner: PortAssigner<F, M>,
 }
 
-impl<F: FieldExt, M> BusAssigner<F, M> {
+impl<F: FieldExt, M: BusMessage<F>> BusAssigner<F, M> {
     /// Create a new bus assigner with a maximum number of rows.
     pub fn new(codec: BusCodecVal<F, M>, n_rows: usize) -> Self {
         Self {
+            port_assigner: PortAssigner::new(),
             codec,
             term_adder: TermAdder::new(n_rows),
+            bus_op_counter: BusOpCounter::new(),
         }
     }
 
     /// Return the codec for messages on this bus.
     pub fn codec(&self) -> &BusCodecVal<F, M> {
         &self.codec
+    }
+
+    /// Return the op counter.
+    pub fn op_counter(&mut self) -> &mut BusOpCounter<F, M> {
+        &mut self.bus_op_counter
+    }
+
+    /// Return the port assigner.
+    pub fn port_assigner(&mut self) -> &mut PortAssigner<F, M> {
+        &mut self.port_assigner
+    }
+
+    /// Finish pending assignments in a region.
+    pub fn finish_ports(&mut self, region: &mut Region<'_, F>) {
+        let old_port_assigner = mem::replace(&mut self.port_assigner, PortAssigner::new());
+
+        old_port_assigner.finish(region, self);
     }
 
     /// Add a term value to the bus.
@@ -64,6 +91,9 @@ impl<F: FieldExt, M> BusAssigner<F, M> {
 
     /// Return the collected terms.
     pub fn terms(&self) -> Value<&[F]> {
+        assert_eq!(self.port_assigner.len(), 0, "finish_ports was not called");
+        // TODO: better error handling.
+
         self.term_adder.terms()
     }
 }

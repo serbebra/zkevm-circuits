@@ -30,7 +30,6 @@ use gadgets::{
     bus::{
         bus_builder::{BusAssigner, BusBuilder},
         bus_port::{BusOp, BusPortMulti},
-        BusOpCounter, PortAssigner,
     },
     util::not,
 };
@@ -1060,15 +1059,8 @@ impl<F: Field> ExecutionConfig<F> {
         bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<
-        (
-            EvmCircuitExports<Assigned<F>>,
-            Option<BusOpCounter<F, ByteMsgV<F>>>,
-        ),
-        Error,
-    > {
+    ) -> Result<EvmCircuitExports<Assigned<F>>, Error> {
         let mut is_first_time = true;
-        let mut bus_op_counter = None;
 
         layouter.assign_region(
             || "Execution step",
@@ -1083,8 +1075,6 @@ impl<F: Field> ExecutionConfig<F> {
                     )?;
                     return Ok(());
                 }
-
-                let mut port_assigner = PortAssigner::new(bus_assigner.codec().clone());
 
                 let mut offset = 0;
 
@@ -1161,7 +1151,7 @@ impl<F: Field> ExecutionConfig<F> {
                     }
                     self.assign_exec_step(
                         &mut region,
-                        &mut port_assigner,
+                        bus_assigner,
                         offset,
                         block,
                         transaction,
@@ -1199,7 +1189,7 @@ impl<F: Field> ExecutionConfig<F> {
                     }
                     self.assign_same_exec_step_in_range(
                         &mut region,
-                        &mut port_assigner,
+                        bus_assigner,
                         offset,
                         last_row,
                         block,
@@ -1222,7 +1212,7 @@ impl<F: Field> ExecutionConfig<F> {
                 log::trace!("assign last EndBlock at offset {}", offset);
                 self.assign_exec_step(
                     &mut region,
-                    &mut port_assigner,
+                    bus_assigner,
                     offset,
                     block,
                     &dummy_tx,
@@ -1252,7 +1242,7 @@ impl<F: Field> ExecutionConfig<F> {
                     || Value::known(F::zero()),
                 )?;
 
-                bus_op_counter = Some(port_assigner.finish(&mut region, bus_assigner));
+                bus_assigner.finish_ports(&mut region);
 
                 log::debug!("assign for region done at offset {}", offset);
                 Ok(())
@@ -1277,12 +1267,9 @@ impl<F: Field> ExecutionConfig<F> {
             .evm_word()
             .map(|r| rlc::value(&block.withdraw_root.to_le_bytes(), r));
 
-        Ok((
-            EvmCircuitExports {
-                withdraw_root: (final_withdraw_root_cell, withdraw_root_rlc.into()),
-            },
-            bus_op_counter,
-        ))
+        Ok(EvmCircuitExports {
+            withdraw_root: (final_withdraw_root_cell, withdraw_root_rlc.into()),
+        })
     }
 
     fn annotate_circuit(&self, region: &mut Region<F>) {
@@ -1325,7 +1312,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_bus_ports(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
-        port_assigner: &mut PortAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
         offset_begin: usize,
         offset_end: usize,
     ) {
@@ -1347,7 +1334,7 @@ impl<F: Field> ExecutionConfig<F> {
                     BusOp::take(message, 1)
                 })
                 .collect::<Vec<_>>();
-            self.bus_port.assign(port_assigner, offset, ops);
+            self.bus_port.assign(bus_assigner, offset, ops);
         }
     }
 
@@ -1355,7 +1342,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_same_exec_step_in_range(
         &self,
         region: &mut Region<'_, F>,
-        port_assigner: &mut PortAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
         offset_begin: usize,
         offset_end: usize,
         block: &Block<F>,
@@ -1388,7 +1375,7 @@ impl<F: Field> ExecutionConfig<F> {
             offset_end,
         )?;
 
-        self.assign_bus_ports(region, port_assigner, offset_begin, offset_end);
+        self.assign_bus_ports(region, bus_assigner, offset_begin, offset_end);
 
         Ok(())
     }
@@ -1397,7 +1384,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_exec_step(
         &self,
         region: &mut Region<'_, F>,
-        port_assigner: &mut PortAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
         offset: usize,
         block: &Block<F>,
         transaction: &Transaction,
@@ -1436,7 +1423,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         self.assign_exec_step_int(region, offset, block, transaction, call, step, true)?;
 
-        self.assign_bus_ports(region, port_assigner, offset, offset + height);
+        self.assign_bus_ports(region, bus_assigner, offset, offset + height);
 
         Ok(())
     }

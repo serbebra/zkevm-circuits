@@ -1,10 +1,9 @@
 use super::{
-    bus_builder::BusBuilder,
+    bus_builder::{BusBuilder, BusAssigner},
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
     port_assigner::Assigner,
     util::from_isize,
-    PortAssigner,
 };
 use crate::util::query_expression;
 use halo2_proofs::{
@@ -72,7 +71,7 @@ impl BusPortSingle {
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    /// Prefer using PortAssigner instead.
+    /// Prefer using BusAssigner instead.
     pub fn helper_witness<F: FieldExt, M: BusMessage<F>>(
         codec: &BusCodecVal<F, M>,
         message: M,
@@ -123,7 +122,7 @@ impl BusPortDual {
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    /// Prefer using PortAssigner instead.
+    /// Prefer using BusAssigner instead.
     pub fn helper_witness<F: FieldExt, M: BusMessage<F>>(
         codec: &BusCodecVal<F, M>,
         messages: [M; 2],
@@ -198,7 +197,7 @@ impl<F: FieldExt> BusPortChip<F> {
     /// Assign an operation.
     pub fn assign<M: BusMessage<F>>(
         &self,
-        port_assigner: &mut PortAssigner<F, M>,
+        bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,
         op: BusOpA<M>,
     ) {
@@ -207,10 +206,10 @@ impl<F: FieldExt> BusPortChip<F> {
             column: self.helper,
             count: op.count(),
         });
-        let denom = port_assigner.codec().compress(op.message());
+        let denom = bus_assigner.codec().compress(op.message());
 
-        port_assigner.track_op(&op);
-        port_assigner.assign_later(cmd, denom);
+        bus_assigner.op_counter().track_op(&op);
+        bus_assigner.port_assigner().assign_later(cmd, denom);
     }
 }
 
@@ -260,13 +259,13 @@ impl<F: FieldExt> BusPortMulti<F> {
     /// Assign operations.
     pub fn assign<M: BusMessage<F>>(
         &self,
-        port_assigner: &mut PortAssigner<F, M>,
+        bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,
         ops: Vec<BusOpA<M>>,
     ) {
         assert_eq!(self.ports.len(), ops.len());
         for (port, op) in self.ports.iter().zip(ops) {
-            port.assign(port_assigner, offset, op);
+            port.assign(bus_assigner, offset, op);
         }
     }
 }

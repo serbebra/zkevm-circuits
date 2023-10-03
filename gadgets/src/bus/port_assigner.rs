@@ -1,9 +1,4 @@
-use super::{
-    bus_builder::BusAssigner,
-    bus_codec::{BusCodecVal, BusMessage},
-    bus_port::BusOpA,
-    util::HelperBatch,
-};
+use super::{bus_builder::BusAssigner, bus_codec::BusMessage, bus_port::BusOpA, util::HelperBatch};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, Value},
@@ -19,29 +14,17 @@ pub trait Assigner<F: FieldExt> {
 
 /// PortAssigner computes and assigns terms into helper cells and the bus.
 pub struct PortAssigner<F, M> {
-    codec: BusCodecVal<F, M>,
-    bus_op_counter: BusOpCounter<F, M>,
     assigners: HelperBatch<F, Box<dyn Assigner<F>>>,
+    _marker: PhantomData<M>,
 }
 
 impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
     /// Create a new PortAssigner.
-    pub fn new(codec: BusCodecVal<F, M>) -> Self {
+    pub fn new() -> Self {
         Self {
-            codec,
-            bus_op_counter: BusOpCounter::new(),
             assigners: HelperBatch::new(),
+            _marker: PhantomData,
         }
-    }
-
-    /// The codec to compress messages on this bus.
-    pub fn codec(&self) -> &BusCodecVal<F, M> {
-        &self.codec
-    }
-
-    /// Track an operation.
-    pub fn track_op(&mut self, op: &BusOpA<M>) {
-        self.bus_op_counter.track_op(op);
     }
 
     /// Execute an assignment later, with the inverse of `denom`.
@@ -50,11 +33,7 @@ impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
     }
 
     /// Assign the helper cells and report the terms to the bus.
-    pub fn finish(
-        self,
-        region: &mut Region<'_, F>,
-        bus_assigner: &mut BusAssigner<F, M>,
-    ) -> BusOpCounter<F, M> {
+    pub fn finish(self, region: &mut Region<'_, F>, bus_assigner: &mut BusAssigner<F, M>) {
         self.assigners.invert().map(|commands| {
             for (helper, command) in commands {
                 let (offset, term) = command.assign(region, helper);
@@ -62,8 +41,10 @@ impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
                 // TODO: Ensure this is a global offset (need Halo2 support).
             }
         });
+    }
 
-        self.bus_op_counter
+    pub fn len(&self) -> usize {
+        self.assigners.len()
     }
 }
 
