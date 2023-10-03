@@ -6,7 +6,8 @@ use gadgets::bus::{
     bus_chip::BusConfig,
     bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupConfig,
-    bus_port::{BusOp, BusOpCounter, PortAssigner},
+    bus_port::BusOp,
+    BusOpCounter, PortAssigner,
 };
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
@@ -262,7 +263,12 @@ impl<F: Field> EvmCircuitConfig<F> {
                 for offset in 0..256 {
                     let value = F::from(offset as u64);
 
-                    region.assign_fixed(|| "", self.byte_table[0], offset, || Value::known(value))?;
+                    region.assign_fixed(
+                        || "",
+                        self.byte_table[0],
+                        offset,
+                        || Value::known(value),
+                    )?;
 
                     region.assign_fixed(
                         || "",

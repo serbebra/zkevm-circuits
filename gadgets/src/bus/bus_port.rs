@@ -1,8 +1,10 @@
 use super::{
-    bus_builder::{BusAssigner, BusBuilder},
+    bus_builder::BusBuilder,
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
-    util::{from_isize, HelperBatch},
+    port_assigner::Assigner,
+    util::from_isize,
+    PortAssigner,
 };
 use crate::util::query_expression;
 use halo2_proofs::{
@@ -11,7 +13,7 @@ use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Expression, ThirdPhase},
     poly::Rotation,
 };
-use std::{collections::HashMap, marker::PhantomData, ops::Neg};
+use std::{marker::PhantomData, ops::Neg};
 
 /// A bus operation, as expressions for circuit config.
 pub type BusOpX<F, M> = BusOp<M, Expression<F>>;
@@ -200,26 +202,26 @@ impl<F: FieldExt> BusPortChip<F> {
         offset: usize,
         op: BusOpA<M>,
     ) {
-        let cmd = Box::new(BPCCmd {
+        let cmd = Box::new(BusPortAssigner {
             offset,
             column: self.helper,
             count: op.count(),
         });
         let denom = port_assigner.codec().compress(op.message());
 
-        port_assigner.bus_op_counter.set_op(&op);
-        port_assigner.push_command(cmd, denom);
+        port_assigner.track_op(&op);
+        port_assigner.assign_later(cmd, denom);
     }
 }
 
-struct BPCCmd {
+struct BusPortAssigner {
     offset: usize,
     column: Column<Advice>,
     count: isize,
 }
 
-impl<F: FieldExt> Command<F> for BPCCmd {
-    fn exec(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F) {
+impl<F: FieldExt> Assigner<F> for BusPortAssigner {
+    fn assign(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F) {
         region
             .assign_advice(
                 || "BusPort_helper",
@@ -266,104 +268,5 @@ impl<F: FieldExt> BusPortMulti<F> {
         for (port, op) in self.ports.iter().zip(ops) {
             port.assign(port_assigner, offset, op);
         }
-    }
-}
-
-trait Command<F: FieldExt> {
-    #[must_use = "terms must be added to the bus"]
-    fn exec(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F);
-}
-
-/// PortAssigner computes and assigns terms into helper cells and the bus.
-pub struct PortAssigner<F, M> {
-    codec: BusCodecVal<F, M>,
-    bus_op_counter: BusOpCounter<F, M>,
-    commands: HelperBatch<F, Box<dyn Command<F>>>,
-}
-
-impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
-    /// Create a new PortAssigner.
-    pub fn new(codec: BusCodecVal<F, M>) -> Self {
-        Self {
-            codec,
-            bus_op_counter: BusOpCounter::new(),
-            commands: HelperBatch::new(),
-        }
-    }
-
-    /// The codec to compress messages on this bus.
-    pub fn codec(&self) -> &BusCodecVal<F, M> {
-        &self.codec
-    }
-
-    fn push_command(&mut self, cmd: Box<dyn Command<F>>, denom: Value<F>) {
-        self.commands.add_denom(denom, cmd)
-    }
-
-    /// Assign the helper cells and report the terms to the bus.
-    pub fn finish(
-        self,
-        region: &mut Region<'_, F>,
-        bus_assigner: &mut BusAssigner<F, M>,
-    ) -> BusOpCounter<F, M> {
-        self.commands.invert().map(|commands| {
-            for (helper, command) in commands {
-                let (offset, term) = command.exec(region, helper);
-                bus_assigner.add_term(offset, Value::known(term));
-                // TODO: Ensure this is a global offset (need Halo2 support).
-            }
-        });
-
-        self.bus_op_counter
-    }
-}
-
-/// OpCounter tracks the messages taken, to help generating the puts.
-#[derive(Clone, Debug)]
-pub struct BusOpCounter<F, M> {
-    counts: HashMap<Vec<u8>, isize>,
-    _marker: PhantomData<(F, M)>,
-}
-
-impl<F: FieldExt, M: BusMessage<F>> BusOpCounter<F, M> {
-    /// Create a new BusOpCounter.
-    pub fn new() -> Self {
-        Self {
-            counts: HashMap::new(),
-            _marker: PhantomData,
-        }
-    }
-
-    /// Report an operation.
-    pub fn set_op(&mut self, op: &BusOpA<M>) {
-        let key = Self::to_key(op.message());
-        self.counts
-            .entry(key)
-            .and_modify(|c| *c = *c + op.count())
-            .or_insert_with(|| op.count());
-    }
-
-    /// Count how many times a message was taken (net of puts).
-    pub fn count_takes(&self, message: &M) -> isize {
-        (-self.count_ops(message)).max(0)
-    }
-
-    /// Count how many times a message was put (net of takes).
-    pub fn count_puts(&self, message: &M) -> isize {
-        self.count_ops(message).max(0)
-    }
-
-    /// Count how many times a message was put (net positive) or taken (net negative).
-    fn count_ops(&self, message: &M) -> isize {
-        let key = Self::to_key(message.clone());
-        *self.counts.get(&key).unwrap_or(&0)
-    }
-
-    fn to_key(message: M) -> Vec<u8> {
-        let mut bytes = vec![];
-        for f in message.into_items() {
-            bytes.extend_from_slice(f.to_repr().as_ref());
-        }
-        bytes
     }
 }

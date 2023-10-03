@@ -40,8 +40,7 @@ impl<F: FieldExt, M> BusBuilder<F, M> {
 /// BusAssigner
 pub struct BusAssigner<F, M> {
     codec: BusCodecVal<F, M>,
-    terms: Vec<F>,
-    unknown: bool,
+    term_adder: TermAdder<F>,
 }
 
 impl<F: FieldExt, M> BusAssigner<F, M> {
@@ -49,8 +48,7 @@ impl<F: FieldExt, M> BusAssigner<F, M> {
     pub fn new(codec: BusCodecVal<F, M>, n_rows: usize) -> Self {
         Self {
             codec,
-            terms: vec![F::zero(); n_rows],
-            unknown: false,
+            term_adder: TermAdder::new(n_rows),
         }
     }
 
@@ -61,6 +59,31 @@ impl<F: FieldExt, M> BusAssigner<F, M> {
 
     /// Add a term value to the bus.
     pub fn add_term(&mut self, offset: usize, term: Value<F>) {
+        self.term_adder.add_term(offset, term);
+    }
+
+    /// Return the collected terms.
+    pub fn terms(&self) -> Value<&[F]> {
+        self.term_adder.terms()
+    }
+}
+
+struct TermAdder<F> {
+    terms: Vec<F>,
+    unknown: bool,
+}
+
+impl<F: FieldExt> TermAdder<F> {
+    /// Create a term adder with a maximum number of rows.
+    fn new(n_rows: usize) -> Self {
+        Self {
+            terms: vec![F::zero(); n_rows],
+            unknown: false,
+        }
+    }
+
+    /// Add a term value to the bus.
+    fn add_term(&mut self, offset: usize, term: Value<F>) {
         assert!(
             offset < self.terms.len(),
             "offset={offset} out of bounds n_rows={}",
@@ -78,7 +101,7 @@ impl<F: FieldExt, M> BusAssigner<F, M> {
     }
 
     /// Return the collected terms.
-    pub fn terms(&self) -> Value<&[F]> {
+    fn terms(&self) -> Value<&[F]> {
         if self.unknown {
             Value::unknown()
         } else {

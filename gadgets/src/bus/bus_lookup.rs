@@ -5,8 +5,9 @@ use crate::util::query_expression;
 use super::{
     bus_builder::BusBuilder,
     bus_codec::BusMessage,
-    bus_port::{BusOp, BusPortChip, PortAssigner, BusOpA},
+    bus_port::{BusOp, BusOpA, BusPortChip},
     util::from_isize,
+    PortAssigner,
 };
 use halo2_proofs::{
     circuit::{Region, Value},
@@ -40,7 +41,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
     }
 
     /// Assign a lookup operation.
-    pub fn assign<M: BusMessage<F>> (
+    pub fn assign<M: BusMessage<F>>(
         &self,
         region: &mut Region<'_, F>,
         port_assigner: &mut PortAssigner<F, M>,

@@ -15,8 +15,13 @@ pub mod bus_lookup;
 /// This module encodes messages into terms.
 pub mod bus_codec;
 
+/// This module helps ports with their assignments.
+mod port_assigner;
+
 /// Utility functions.
 mod util;
 
 #[cfg(test)]
 mod tests;
+
+pub use port_assigner::{BusOpCounter, PortAssigner};

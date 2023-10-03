@@ -29,7 +29,8 @@ use eth_types::{Field, ToLittleEndian};
 use gadgets::{
     bus::{
         bus_builder::{BusAssigner, BusBuilder},
-        bus_port::{BusOp, BusOpCounter, BusPortMulti, PortAssigner},
+        bus_port::{BusOp, BusPortMulti},
+        BusOpCounter, PortAssigner,
     },
     util::not,
 };

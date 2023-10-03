@@ -15,6 +15,7 @@ use super::{
     bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupConfig,
     bus_port::*,
+    PortAssigner,
 };
 
 #[test]
