@@ -200,7 +200,37 @@ impl<F: FieldExt> BusPortChip<F> {
         offset: usize,
         op: BusOpA<M>,
     ) {
-        port_assigner.set_op(offset, self.helper, 0, op);
+        let cmd = Box::new(BPCCmd {
+            offset,
+            column: self.helper,
+            count: op.count(),
+        });
+        let denom = port_assigner.codec().compress(op.message());
+
+        port_assigner.bus_op_counter.set_op(&op);
+        port_assigner.push_command(cmd, denom);
+    }
+}
+
+struct BPCCmd {
+    offset: usize,
+    column: Column<Advice>,
+    count: isize,
+}
+
+impl<F: FieldExt> Command<F> for BPCCmd {
+    fn exec(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F) {
+        region
+            .assign_advice(
+                || "BusPort_helper",
+                self.column,
+                self.offset,
+                || Value::known(helper),
+            )
+            .unwrap();
+
+        let term = from_isize::<F>(self.count) * helper;
+        (self.offset, term)
     }
 }
 
@@ -239,12 +269,16 @@ impl<F: FieldExt> BusPortMulti<F> {
     }
 }
 
-/// PortAssigner computes and assigns terms into helper cells and the bus.
+trait Command<F: FieldExt> {
+    #[must_use = "terms must be added to the bus"]
+    fn exec(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F);
+}
 
+/// PortAssigner computes and assigns terms into helper cells and the bus.
 pub struct PortAssigner<F, M> {
     codec: BusCodecVal<F, M>,
-    batch: HelperBatch<F, (usize, Column<Advice>, isize, isize)>,
     bus_op_counter: BusOpCounter<F, M>,
+    commands: HelperBatch<F, Box<dyn Command<F>>>,
 }
 
 impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
@@ -252,24 +286,18 @@ impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
     pub fn new(codec: BusCodecVal<F, M>) -> Self {
         Self {
             codec,
-            batch: HelperBatch::new(),
             bus_op_counter: BusOpCounter::new(),
+            commands: HelperBatch::new(),
         }
     }
 
-    /// Assign a message.
-    pub fn set_op(
-        &mut self,
-        offset: usize,
-        column: Column<Advice>,
-        rotation: isize,
-        op: BusOpA<M>,
-    ) {
-        self.bus_op_counter.set_op(&op);
+    /// The codec to compress messages on this bus.
+    pub fn codec(&self) -> &BusCodecVal<F, M> {
+        &self.codec
+    }
 
-        let denom = self.codec.compress(op.message());
-        self.batch
-            .add_denom(denom, (offset, column, rotation, op.count()));
+    fn push_command(&mut self, cmd: Box<dyn Command<F>>, denom: Value<F>) {
+        self.commands.add_denom(denom, cmd)
     }
 
     /// Assign the helper cells and report the terms to the bus.
@@ -278,23 +306,14 @@ impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
         region: &mut Region<'_, F>,
         bus_assigner: &mut BusAssigner<F, M>,
     ) -> BusOpCounter<F, M> {
-        self.batch.invert().map(|terms| {
-            // The batch has converted the messages into bus terms.
-            for (term, (offset, column, rotation, count)) in terms {
-                let term = Value::known(term);
-
-                // Set the helper cell.
-                let cell_offset = (offset as isize + rotation) as usize;
-                region
-                    .assign_advice(|| "BusPort_helper", column, cell_offset, || term)
-                    .unwrap();
-
-                // Report the term to the global bus.
-                let global_offset = offset; // region.global_offset(offset);
-                let count = Value::known(from_isize::<F>(count));
-                bus_assigner.add_term(global_offset, count * term);
+        self.commands.invert().map(|commands| {
+            for (helper, command) in commands {
+                let (offset, term) = command.exec(region, helper);
+                bus_assigner.add_term(offset, Value::known(term));
+                // TODO: Ensure this is a global offset (need Halo2 support).
             }
         });
+
         self.bus_op_counter
     }
 }
