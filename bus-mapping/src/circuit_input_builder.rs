@@ -910,10 +910,7 @@ pub fn keccak_inputs_tx_circuit(txs: &[geth_types::Transaction]) -> Result<Vec<V
 }
 
 /// Retrieve the init_code from memory for {CREATE, CREATE2}
-pub fn get_create_init_code(
-    call_ctx: &CallContext,
-    step: &GethExecStep,
-) -> Result<Vec<u8>, Error> {
+pub fn get_create_init_code(call_ctx: &CallContext, step: &GethExecStep) -> Result<Vec<u8>, Error> {
     let offset = step.stack.nth_last(1)?.low_u64() as usize;
     let length = step.stack.nth_last(2)?.as_usize();
 
