@@ -10,8 +10,8 @@ use halo2_proofs::plonk::Expression;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-pub type ByteMsgX<F> = [Expression<F>; 1];
-pub type ByteMsgV<F> = [F; 1];
+pub type ByteMsgX<F> = [Expression<F>; 2];
+pub type ByteMsgV<F> = [F; 2];
 
 #[derive(Clone, Copy, Debug, EnumIter)]
 pub enum FixedTableTag {

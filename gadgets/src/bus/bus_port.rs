@@ -1,5 +1,5 @@
 use super::{
-    bus_builder::{BusBuilder, BusAssigner},
+    bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
     port_assigner::Assigner,

@@ -48,6 +48,7 @@ use witness::Block;
 pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     byte_table: [Column<Fixed>; 1],
+    dual_byte_table: [Column<Fixed>; 2],
     enable_table: Column<Fixed>,
     bus: BusConfig,
     table_to_bus: BusLookupConfig<F>,
@@ -138,12 +139,13 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
         let byte_table = [(); 1].map(|_| meta.fixed_column());
+        let dual_byte_table = [(); 2].map(|_| meta.fixed_column());
         let enable_table = meta.fixed_column();
 
         let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges.lookup_input()));
 
         let table_to_bus =
-            Self::configure_table_to_bus(meta, &mut bus_builder, &byte_table, enable_table);
+            Self::configure_table_to_bus(meta, &mut bus_builder, &dual_byte_table, enable_table);
 
         let execution = Box::new(ExecutionConfig::configure(
             meta,
@@ -185,6 +187,7 @@ impl<F: Field> EvmCircuitConfig<F> {
         Self {
             fixed_table,
             byte_table,
+            dual_byte_table,
             enable_table,
             bus,
             table_to_bus,
@@ -206,12 +209,17 @@ impl<F: Field> EvmCircuitConfig<F> {
     fn configure_table_to_bus(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
-        byte_table: &dyn LookupTable<F>,
+        dual_byte_table: &[Column<Fixed>; 2],
         enabled: Column<Fixed>,
     ) -> BusLookupConfig<F> {
-        let byte_expr = query_expression(meta, |meta| byte_table.table_exprs(meta)[0].clone());
+        let message = query_expression(meta, |meta| {
+            [
+                meta.query_fixed(dual_byte_table[0], Rotation::cur()),
+                meta.query_fixed(dual_byte_table[1], Rotation::cur()),
+            ]
+        });
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        BusLookupConfig::connect(meta, bus_builder, [byte_expr], enabled)
+        BusLookupConfig::connect(meta, bus_builder, message, enabled)
     }
 }
 
@@ -240,7 +248,26 @@ impl<F: Field> EvmCircuitConfig<F> {
     }
 
     /// Load byte table
-    pub fn load_byte_table(
+    pub fn load_byte_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        layouter.assign_region(
+            || "byte table",
+            |mut region| {
+                for offset in 0..256 {
+                    region.assign_fixed(
+                        || "",
+                        self.byte_table[0],
+                        offset,
+                        || Value::known(F::from(offset as u64)),
+                    )?;
+                }
+                Ok(())
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Load dual byte table
+    pub fn load_dual_byte_table(
         &self,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
@@ -256,31 +283,39 @@ impl<F: Field> EvmCircuitConfig<F> {
                     return Ok(());
                 }
 
-                for offset in 0..256 {
-                    let value = F::from(offset as u64);
+                for i in 0..256 {
+                    for j in 0..256 {
+                        let offset = (i * 256 + j) as usize;
+                        let message = [F::from(i), F::from(j)];
 
-                    region.assign_fixed(
-                        || "",
-                        self.byte_table[0],
-                        offset,
-                        || Value::known(value),
-                    )?;
+                        region.assign_fixed(
+                            || "",
+                            self.enable_table,
+                            offset,
+                            || Value::known(F::one()),
+                        )?;
 
-                    region.assign_fixed(
-                        || "",
-                        self.enable_table,
-                        offset,
-                        || Value::known(F::one()),
-                    )?;
+                        region.assign_fixed(
+                            || "",
+                            self.dual_byte_table[0],
+                            offset,
+                            || Value::known(message[0]),
+                        )?;
+                        region.assign_fixed(
+                            || "",
+                            self.dual_byte_table[1],
+                            offset,
+                            || Value::known(message[1]),
+                        )?;
 
-                    let message = [value];
-                    let count = bus_assigner.op_counter().count_takes(&message);
-                    self.table_to_bus.assign(
-                        &mut region,
-                        bus_assigner,
-                        offset,
-                        BusOp::put(message, count),
-                    )?;
+                        let count = bus_assigner.op_counter().count_takes(&message);
+                        self.table_to_bus.assign(
+                            &mut region,
+                            bus_assigner,
+                            offset,
+                            BusOp::put(message, count),
+                        )?;
+                    }
                 }
 
                 bus_assigner.finish_ports(&mut region);
@@ -359,8 +394,9 @@ impl<F: Field> EvmCircuit<F> {
             }
         }
 
-        // It must fit the byte table.
-        num_rows = num_rows.max(256);
+        // It must fit the dual byte table.
+        // TODO: Find a way to make this smaller in tests.
+        num_rows = num_rows.max(256 * 256);
 
         // It must have one row for EndBlock and at least one unused one
         num_rows + 2
@@ -427,7 +463,8 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
                 .assign_block(layouter, &mut bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
 
-        config.load_byte_table(layouter, &mut bus_assigner)?;
+        config.load_byte_table(layouter)?;
+        config.load_dual_byte_table(layouter, &mut bus_assigner)?;
 
         layouter.assign_region(
             || "EVM_Bus",

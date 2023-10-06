@@ -930,11 +930,25 @@ impl<F: Field> ExecutionConfig<F> {
     ) -> BusPortMulti<F> {
         let q_usable = query_expression(meta, |meta| meta.query_selector(q_usable));
 
-        let ops = cell_manager
-            .columns()
-            .iter()
-            .filter(|column| column.cell_type == CellType::LookupByte)
-            .map(|column| BusOp::take([column.expr()], q_usable.clone()))
+        let byte_columns = {
+            let mut cols = cell_manager
+                .columns()
+                .iter()
+                .filter(|column| column.cell_type == CellType::LookupByte)
+                .map(|column| column.expr())
+                .collect::<Vec<_>>();
+            if cols.len() % 2 != 0 {
+                cols.push(0.expr());
+            }
+            cols
+        };
+
+        let ops = byte_columns
+            .chunks(2)
+            .map(|columns| {
+                let message = [columns[0].clone(), columns[1].clone()];
+                BusOp::take(message, q_usable.clone())
+            })
             .collect::<Vec<_>>();
 
         BusPortMulti::connect(meta, bus_builder, ops)
@@ -1316,7 +1330,7 @@ impl<F: Field> ExecutionConfig<F> {
         offset_begin: usize,
         offset_end: usize,
     ) {
-        let column_indexes = self
+        let byte_columns = self
             .step
             .cell_manager
             .columns()
@@ -1326,14 +1340,20 @@ impl<F: Field> ExecutionConfig<F> {
             .collect::<Vec<_>>();
 
         for offset in offset_begin..offset_end {
-            let ops = column_indexes
-                .iter()
-                .map(|column_index| {
-                    let byte = region.get_advice(offset, *column_index, Rotation::cur());
-                    let message = [byte];
+            let ops = byte_columns
+                .chunks(2)
+                .map(|columns| {
+                    let byte_0 = region.get_advice(offset, columns[0], Rotation::cur());
+                    let byte_1 = if columns.len() == 2 {
+                        region.get_advice(offset, columns[1], Rotation::cur())
+                    } else {
+                        F::zero()
+                    };
+                    let message = [byte_0, byte_1];
                     BusOp::take(message, 1)
                 })
                 .collect::<Vec<_>>();
+
             self.bus_port.assign(bus_assigner, offset, ops);
         }
     }
