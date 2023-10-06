@@ -1,5 +1,5 @@
 use super::{
-    bus_builder::BusAssigner, bus_codec::BusMessageF, bus_port::BusOpA, util::HelperBatch, Field,
+    bus_builder::BusAssigner, bus_codec::BusMessageF, bus_port::BusOpF, util::HelperBatch, Field,
 };
 use halo2_proofs::circuit::{Region, Value};
 use std::{
@@ -53,7 +53,7 @@ impl<F: Field, M: BusMessageF<F>> PortAssigner<F, M> {
     }
 }
 
-/// OpCounter tracks the messages taken, to help generating the puts.
+/// OpCounter tracks the messages received, to help generating the corresponding sends.
 #[derive(Clone, Debug)]
 pub struct BusOpCounter<F, M> {
     counts: HashMap<M, isize>,
@@ -69,8 +69,8 @@ impl<F: Field, M: BusMessageF<F>> BusOpCounter<F, M> {
         }
     }
 
-    /// Report an operation.
-    pub fn track_op(&mut self, op: &BusOpA<M>) {
+    /// Record an operation that went on the bus.
+    pub fn track_op(&mut self, op: &BusOpF<M>) {
         if op.count() == 0 {
             return;
         }
@@ -88,17 +88,17 @@ impl<F: Field, M: BusMessageF<F>> BusOpCounter<F, M> {
         };
     }
 
-    /// Count how many times a message was taken (net of puts).
-    pub fn count_takes(&self, message: &M) -> isize {
+    /// Count how many times a message was received (net of sends).
+    pub fn count_receives(&self, message: &M) -> isize {
         (-self.count_ops(message)).max(0)
     }
 
-    /// Count how many times a message was put (net of takes).
-    pub fn count_puts(&self, message: &M) -> isize {
+    /// Count how many times a message was sent (net of receives).
+    pub fn count_sent(&self, message: &M) -> isize {
         self.count_ops(message).max(0)
     }
 
-    /// Count how many times a message was put (net positive) or taken (net negative).
+    /// Count how many times a message was sent (net positive) or received (net negative).
     fn count_ops(&self, message: &M) -> isize {
         *self.counts.get(message).unwrap_or(&0)
     }

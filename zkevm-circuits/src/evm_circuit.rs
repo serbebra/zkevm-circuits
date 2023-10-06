@@ -49,9 +49,9 @@ pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     byte_table: [Column<Fixed>; 1],
     dual_byte_table: [Column<Fixed>; 2],
-    enable_table: Column<Fixed>,
     bus: BusConfig,
-    table_to_bus: BusLookupConfig<F>,
+    bus_lookup: BusLookupConfig<F>,
+    enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
     tx_table: TxTable,
@@ -140,12 +140,12 @@ impl<F: Field> EvmCircuitConfig<F> {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
         let byte_table = [(); 1].map(|_| meta.fixed_column());
         let dual_byte_table = [(); 2].map(|_| meta.fixed_column());
-        let enable_table = meta.fixed_column();
+        let enable_bus_lookup = meta.fixed_column();
 
         let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges.lookup_input()));
 
-        let table_to_bus =
-            Self::configure_table_to_bus(meta, &mut bus_builder, &dual_byte_table, enable_table);
+        let bus_lookup =
+            Self::configure_bus_lookup(meta, &mut bus_builder, &dual_byte_table, enable_bus_lookup);
 
         let execution = Box::new(ExecutionConfig::configure(
             meta,
@@ -188,9 +188,9 @@ impl<F: Field> EvmCircuitConfig<F> {
             fixed_table,
             byte_table,
             dual_byte_table,
-            enable_table,
             bus,
-            table_to_bus,
+            bus_lookup,
+            enable_bus_lookup,
             execution,
             tx_table,
             rw_table,
@@ -206,7 +206,7 @@ impl<F: Field> EvmCircuitConfig<F> {
         }
     }
 
-    fn configure_table_to_bus(
+    fn configure_bus_lookup(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
         dual_byte_table: &[Column<Fixed>; 2],
@@ -290,7 +290,7 @@ impl<F: Field> EvmCircuitConfig<F> {
 
                         region.assign_fixed(
                             || "",
-                            self.enable_table,
+                            self.enable_bus_lookup,
                             offset,
                             || Value::known(F::one()),
                         )?;
@@ -308,12 +308,12 @@ impl<F: Field> EvmCircuitConfig<F> {
                             || Value::known(message[1]),
                         )?;
 
-                        let count = bus_assigner.op_counter().count_takes(&message);
-                        self.table_to_bus.assign(
+                        let count = bus_assigner.op_counter().count_receives(&message);
+                        self.bus_lookup.assign(
                             &mut region,
                             bus_assigner,
                             offset,
-                            BusOp::put(message, count),
+                            BusOp::send_to_lookups(message, count),
                         )?;
                     }
                 }

@@ -9,7 +9,7 @@ impl BusPortDual2 {
     pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        ops: Vec<BusOpX<F, M>>,
+        ops: Vec<BusOpExpr<F, M>>,
         helper: Expression<F>,
     ) {
         let term = Self::create_term(meta, bus_builder.codec(), ops, helper);
@@ -30,7 +30,7 @@ impl BusPortDual2 {
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
-        ops: Vec<BusOpX<F, M>>,
+        ops: Vec<BusOpExpr<F, M>>,
         helper: Expression<F>,
     ) -> BusTerm<F> {
         let denoms = ops
@@ -99,7 +99,7 @@ impl<F: Field> BusPortChip2<F> {
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        ops: Vec<BusOpX<F, M>>,
+        ops: Vec<BusOpExpr<F, M>>,
     ) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));

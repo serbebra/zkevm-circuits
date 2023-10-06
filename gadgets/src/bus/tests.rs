@@ -59,14 +59,15 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
         let message = vec![2.expr()];
 
-        // Circuit 1 puts values dynamically.
+        // Circuit 1 sends values dynamically.
         let bus_lookup =
             BusLookupConfig::connect(cs, &mut bus_builder, message.clone(), enabled_expr.clone());
 
-        // Circuit 2 takes one value per row.
+        // Circuit 2 receives one value per row.
         let count2_expr = enabled_expr * 1.expr();
 
-        let port2 = BusPortChip::connect(cs, &mut bus_builder, BusOp::take(message, count2_expr));
+        let port2 =
+            BusPortChip::connect(cs, &mut bus_builder, BusOp::receive(message, count2_expr));
 
         // Global bus connection.
         let bus_config = BusConfig::new(cs, &bus_builder.build());
@@ -102,7 +103,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
                 let mut bus_assigner = BusAssigner::new(BusCodecVal::new(rand), self.n_rows);
 
-                // Circuit 1 puts a message on some row.
+                // Circuit 1 sends a message on some row.
                 {
                     // Do normal circuit assignment logic, and obtain a message.
                     let message = vec![F::from(2)];
@@ -116,11 +117,11 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                         &mut region,
                         &mut bus_assigner,
                         offset,
-                        BusOp::put(message, count),
+                        BusOp::send_to_lookups(message, count),
                     )?;
                 }
 
-                // Circuit 2 takes one message per row.
+                // Circuit 2 receives one message per row.
                 {
                     // First pass: run circuit steps.
                     for offset in 0..self.n_rows {
@@ -130,7 +131,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                         // Assign an operation to the port of this circuit, and to the shared bus.
                         config
                             .port2
-                            .assign(&mut bus_assigner, offset, BusOp::take(message, 1));
+                            .assign(&mut bus_assigner, offset, BusOp::receive(message, 1));
                     }
                 }
 

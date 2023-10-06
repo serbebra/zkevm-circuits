@@ -15,10 +15,10 @@ use halo2_proofs::{
 use std::{marker::PhantomData, ops::Neg};
 
 /// A bus operation, as expressions for circuit config.
-pub type BusOpX<F, M> = BusOp<M, Expression<F>>;
+pub type BusOpExpr<F, M> = BusOp<M, Expression<F>>;
 
 /// A bus operation, as values for circuit assignment.
-pub type BusOpA<M> = BusOp<M, isize>;
+pub type BusOpF<M> = BusOp<M, isize>;
 
 /// A bus operation.
 #[derive(Clone, Debug)]
@@ -32,22 +32,38 @@ where
     M: Clone,
     C: Clone + Neg<Output = C>,
 {
-    /// Put an item. The expression evaluates to 0 or the number of copies.
-    pub fn put(message: M, count: C) -> Self {
+    /// Receive a message, with the expectation that it carries a true fact. This can be a
+    /// cross-circuit call answered by a `send`, or a lookup query answered by a `send_to_lookups`.
+    /// Enabled must be 0 or 1.
+    pub fn receive(message: M, enabled: C) -> Self {
+        Self {
+            message,
+            count: -enabled,
+        }
+    }
+
+    /// Send a message, with the responsibility to verify that it states a true fact, and the
+    /// expectation that it is received exactly once somewhere else. Enabled must be 0 or 1.
+    pub fn send(message: M, enabled: C) -> Self {
+        Self {
+            message,
+            count: enabled,
+        }
+    }
+
+    /// Expose an entry of a lookup table as a bus message, with the responsibility that it is a
+    /// true fact. It can be received any number of times. This number is the `count`, given as
+    /// advice, or 0 to disable.
+    pub fn send_to_lookups(message: M, count: C) -> Self {
         Self { message, count }
     }
 
-    /// Take an item. The expression evaluates to 0 or 1.
-    pub fn take(message: M, count: C) -> Self {
-        Self::put(message, -count)
-    }
-
-    /// The message to put or take.
+    /// The message to send or receive.
     pub fn message(&self) -> M {
         self.message.clone()
     }
 
-    /// The number of copies of the message to put (if positive) or take (if negative).
+    /// The number of copies of the message to send (if positive) or receive (if negative).
     pub fn count(&self) -> C {
         self.count.clone()
     }
@@ -63,7 +79,7 @@ impl BusPortSingle {
     pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        op: BusOpX<F, M>,
+        op: BusOpExpr<F, M>,
         helper: Expression<F>,
     ) {
         let term = Self::create_term(meta, bus_builder.codec(), op, helper);
@@ -84,7 +100,7 @@ impl BusPortSingle {
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
-        op: BusOpX<F, M>,
+        op: BusOpExpr<F, M>,
         helper: Expression<F>,
     ) -> BusTerm<F> {
         let term = op.count() * helper.clone();
@@ -114,7 +130,7 @@ impl BusPortDual {
     pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        ops: [BusOpX<F, M>; 2],
+        ops: [BusOpExpr<F, M>; 2],
         helper: Expression<F>,
     ) {
         let term = Self::create_term(meta, bus_builder.codec(), ops, helper);
@@ -134,7 +150,7 @@ impl BusPortDual {
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
-        ops: [BusOpX<F, M>; 2],
+        ops: [BusOpExpr<F, M>; 2],
         helper: Expression<F>,
     ) -> BusTerm<F> {
         let denom_0 = codec.compress(ops[0].message());
@@ -181,7 +197,7 @@ impl<F: Field> BusPortChip<F> {
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        op: BusOpX<F, M>,
+        op: BusOpExpr<F, M>,
     ) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
@@ -199,7 +215,7 @@ impl<F: Field> BusPortChip<F> {
         &self,
         bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,
-        op: BusOpA<M>,
+        op: BusOpF<M>,
     ) {
         let cmd = Box::new(BusPortAssigner {
             offset,
@@ -247,7 +263,7 @@ impl<F: Field> BusPortMulti<F> {
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        ops: Vec<BusOpX<F, M>>,
+        ops: Vec<BusOpExpr<F, M>>,
     ) -> Self {
         let ports = ops
             .into_iter()
@@ -261,7 +277,7 @@ impl<F: Field> BusPortMulti<F> {
         &self,
         bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,
-        ops: Vec<BusOpA<M>>,
+        ops: Vec<BusOpF<M>>,
     ) {
         assert_eq!(self.ports.len(), ops.len());
         for (port, op) in self.ports.iter().zip(ops) {

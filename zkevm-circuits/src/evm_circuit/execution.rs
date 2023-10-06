@@ -947,7 +947,7 @@ impl<F: Field> ExecutionConfig<F> {
             .chunks(2)
             .map(|columns| {
                 let message = [columns[0].clone(), columns[1].clone()];
-                BusOp::take(message, q_usable.clone())
+                BusOp::receive(message, q_usable.clone())
             })
             .collect::<Vec<_>>();
 
@@ -1350,7 +1350,7 @@ impl<F: Field> ExecutionConfig<F> {
                         F::zero()
                     };
                     let message = [byte_0, byte_1];
-                    BusOp::take(message, 1)
+                    BusOp::receive(message, 1)
                 })
                 .collect::<Vec<_>>();
 
