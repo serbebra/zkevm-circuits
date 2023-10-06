@@ -1,6 +1,5 @@
 use crate::util::{query_expression, Expr};
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     halo2curves::bn256::Fr,
@@ -15,6 +14,7 @@ use super::{
     bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupConfig,
     bus_port::*,
+    Field,
 };
 
 #[test]
@@ -23,7 +23,7 @@ fn test_bus() {
 }
 
 #[derive(Clone)]
-struct TestCircuitConfig<F: FieldExt> {
+struct TestCircuitConfig<F: Field> {
     enabled: Column<Fixed>,
     bus_config: BusConfig,
     bus_lookup: BusLookupConfig<F>,
@@ -33,12 +33,12 @@ struct TestCircuitConfig<F: FieldExt> {
 }
 
 #[derive(Default, Clone)]
-struct TestCircuit<F: FieldExt> {
+struct TestCircuit<F: Field> {
     n_rows: usize,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> Circuit<F> for TestCircuit<F> {
+impl<F: Field> Circuit<F> for TestCircuit<F> {
     type Config = TestCircuitConfig<F>;
     type FloorPlanner = SimpleFloorPlanner;
 

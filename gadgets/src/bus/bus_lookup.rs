@@ -4,13 +4,13 @@ use crate::util::query_expression;
 
 use super::{
     bus_builder::{BusAssigner, BusBuilder},
-    bus_codec::BusMessage,
+    bus_codec::{BusMessageExpr, BusMessageF},
     bus_port::{BusOp, BusOpA, BusPortChip},
     util::from_isize,
+    Field,
 };
 use halo2_proofs::{
     circuit::{Region, Value},
-    halo2curves::FieldExt,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression},
     poly::Rotation,
 };
@@ -22,9 +22,9 @@ pub struct BusLookupConfig<F> {
     count: Column<Advice>,
 }
 
-impl<F: FieldExt> BusLookupConfig<F> {
+impl<F: Field> BusLookupConfig<F> {
     /// Create and connect a new BusLookup circuit from the expressions of message and count.
-    pub fn connect<M: BusMessage<Expression<F>>>(
+    pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
         message: M,
@@ -40,7 +40,7 @@ impl<F: FieldExt> BusLookupConfig<F> {
     }
 
     /// Assign a lookup operation.
-    pub fn assign<M: BusMessage<F>>(
+    pub fn assign<M: BusMessageF<F>>(
         &self,
         region: &mut Region<'_, F>,
         bus_assigner: &mut BusAssigner<F, M>,

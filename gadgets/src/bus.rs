@@ -23,3 +23,5 @@ mod util;
 
 #[cfg(test)]
 mod tests;
+
+use eth_types::Field;

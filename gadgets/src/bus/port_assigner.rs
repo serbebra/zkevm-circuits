@@ -1,12 +1,17 @@
-use super::{bus_builder::BusAssigner, bus_codec::BusMessage, bus_port::BusOpA, util::HelperBatch};
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::{Region, Value},
+use super::{
+    bus_builder::BusAssigner, bus_codec::BusMessageF, bus_port::BusOpA, util::HelperBatch, Field,
 };
-use std::{collections::HashMap, marker::PhantomData};
+use halo2_proofs::circuit::{Region, Value};
+use std::{
+    collections::{
+        hash_map::Entry::{Occupied, Vacant},
+        HashMap,
+    },
+    marker::PhantomData,
+};
 
 /// Assigners are used to delay the assignment until helper values are computed.
-pub trait Assigner<F: FieldExt> {
+pub trait Assigner<F: Field> {
     /// Given the helper value, assign ports and return (offset, term).
     #[must_use = "terms must be added to the bus"]
     fn assign(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F);
@@ -18,7 +23,7 @@ pub struct PortAssigner<F, M> {
     _marker: PhantomData<M>,
 }
 
-impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
+impl<F: Field, M: BusMessageF<F>> PortAssigner<F, M> {
     /// Create a new PortAssigner.
     pub fn new() -> Self {
         Self {
@@ -51,11 +56,11 @@ impl<F: FieldExt, M: BusMessage<F>> PortAssigner<F, M> {
 /// OpCounter tracks the messages taken, to help generating the puts.
 #[derive(Clone, Debug)]
 pub struct BusOpCounter<F, M> {
-    counts: HashMap<Vec<u8>, isize>,
+    counts: HashMap<M, isize>,
     _marker: PhantomData<(F, M)>,
 }
 
-impl<F: FieldExt, M: BusMessage<F>> BusOpCounter<F, M> {
+impl<F: Field, M: BusMessageF<F>> BusOpCounter<F, M> {
     /// Create a new BusOpCounter.
     pub fn new() -> Self {
         Self {
@@ -66,11 +71,21 @@ impl<F: FieldExt, M: BusMessage<F>> BusOpCounter<F, M> {
 
     /// Report an operation.
     pub fn track_op(&mut self, op: &BusOpA<M>) {
-        let key = Self::to_key(op.message());
-        self.counts
-            .entry(key)
-            .and_modify(|c| *c = *c + op.count())
-            .or_insert_with(|| op.count());
+        if op.count() == 0 {
+            return;
+        }
+        match self.counts.entry(op.message()) {
+            Occupied(mut entry) => {
+                let count = entry.get_mut();
+                *count += op.count();
+                if *count == 0 {
+                    entry.remove();
+                }
+            }
+            Vacant(entry) => {
+                entry.insert(op.count());
+            }
+        };
     }
 
     /// Count how many times a message was taken (net of puts).
@@ -85,15 +100,6 @@ impl<F: FieldExt, M: BusMessage<F>> BusOpCounter<F, M> {
 
     /// Count how many times a message was put (net positive) or taken (net negative).
     fn count_ops(&self, message: &M) -> isize {
-        let key = Self::to_key(message.clone());
-        *self.counts.get(&key).unwrap_or(&0)
-    }
-
-    fn to_key(message: M) -> Vec<u8> {
-        let mut bytes = vec![];
-        for f in message.into_items() {
-            bytes.extend_from_slice(f.to_repr().as_ref());
-        }
-        bytes
+        *self.counts.get(message).unwrap_or(&0)
     }
 }

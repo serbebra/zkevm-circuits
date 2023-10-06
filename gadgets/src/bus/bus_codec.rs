@@ -1,7 +1,7 @@
-use std::marker::PhantomData;
-
+use super::Field;
 use crate::util::Expr;
-use halo2_proofs::{circuit::Value, halo2curves::FieldExt, plonk::Expression};
+use halo2_proofs::{circuit::Value, plonk::Expression};
+use std::{cmp::Eq, hash::Hash, marker::PhantomData};
 
 /// The default message type for expressions.
 pub type DefaultMsgExpr<F> = Vec<Expression<F>>;
@@ -34,8 +34,8 @@ impl<T, M> BusCodec<T, M> {
 
 impl<F, M> BusCodec<Expression<F>, M>
 where
-    F: FieldExt,
-    M: BusMessage<Expression<F>>,
+    F: Field,
+    M: BusMessageExpr<F>,
 {
     /// Compress a message into a field element, such that:
     /// - the map from message to elements is collision-resistant.
@@ -49,7 +49,7 @@ where
 
 impl<F, M> BusCodec<Value<F>, M>
 where
-    F: FieldExt,
+    F: Field,
     M: BusMessage<F>,
 {
     /// Compress a message into a field element, such that:
@@ -63,6 +63,14 @@ where
         })
     }
 }
+
+/// A message as expressions to configure circuits.
+pub trait BusMessageExpr<F>: BusMessage<Expression<F>> {}
+impl<F, M> BusMessageExpr<F> for M where M: BusMessage<Expression<F>> {}
+
+/// A message as values to be assigned.
+pub trait BusMessageF<F>: BusMessage<F> + Eq + Hash {}
+impl<F, M> BusMessageF<F> for M where M: BusMessage<F> + Eq + Hash {}
 
 /// A trait for messages that can be encoded.
 pub trait BusMessage<T>: Clone {
@@ -91,7 +99,7 @@ mod tests {
     use super::*;
     use halo2_proofs::halo2curves::bn256::Fr;
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, Hash)]
     struct TestMessage {
         a: u64,
         b: u64,

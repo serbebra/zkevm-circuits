@@ -1,6 +1,6 @@
+use super::Field;
 use crate::util::Expr;
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, ThirdPhase},
     poly::Rotation,
@@ -17,7 +17,7 @@ impl<F> BusTerm<F> {
     }
 }
 
-impl<F: FieldExt> Expr<F> for BusTerm<F> {
+impl<F: Field> Expr<F> for BusTerm<F> {
     fn expr(&self) -> Expression<F> {
         self.0.clone()
     }
@@ -34,7 +34,7 @@ pub struct BusConfig {
 
 impl BusConfig {
     /// Create a new bus.
-    pub fn new<F: FieldExt>(cs: &mut ConstraintSystem<F>, terms: &[BusTerm<F>]) -> Self {
+    pub fn new<F: Field>(cs: &mut ConstraintSystem<F>, terms: &[BusTerm<F>]) -> Self {
         let enabled = cs.fixed_column();
         let is_first = cs.fixed_column();
         let is_last = cs.fixed_column();
@@ -71,7 +71,7 @@ impl BusConfig {
     }
 
     /// Assign the helper witness.
-    pub fn assign<F: FieldExt>(
+    pub fn assign<F: Field>(
         &self,
         region: &mut Region<'_, F>,
         n_rows: usize,

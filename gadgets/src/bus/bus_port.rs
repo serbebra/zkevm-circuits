@@ -1,13 +1,13 @@
 use super::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
-    bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
+    bus_codec::{BusCodecExpr, BusCodecVal, BusMessageExpr, BusMessageF},
     port_assigner::Assigner,
     util::from_isize,
+    Field,
 };
 use crate::util::query_expression;
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::{Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Expression, ThirdPhase},
     poly::Rotation,
@@ -60,7 +60,7 @@ pub struct BusPortSingle;
 impl BusPortSingle {
     /// Create a new bus port with a single access.
     /// The helper cell can be used for something else if op.count is zero.
-    pub fn connect<F: FieldExt, M: BusMessage<Expression<F>>>(
+    pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
         op: BusOpX<F, M>,
@@ -72,7 +72,7 @@ impl BusPortSingle {
 
     /// Return the witness that must be assigned to the helper cell.
     /// Prefer using BusAssigner instead.
-    pub fn helper_witness<F: FieldExt, M: BusMessage<F>>(
+    pub fn helper_witness<F: Field, M: BusMessageF<F>>(
         codec: &BusCodecVal<F, M>,
         message: M,
     ) -> Value<F> {
@@ -81,7 +81,7 @@ impl BusPortSingle {
             .map(|x| x.invert().unwrap_or(F::zero()))
     }
 
-    fn create_term<F: FieldExt, M: BusMessage<Expression<F>>>(
+    fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
         op: BusOpX<F, M>,
@@ -111,7 +111,7 @@ pub struct BusPortDual;
 
 impl BusPortDual {
     /// Create a new bus port with two accesses.
-    pub fn connect<F: FieldExt, M: BusMessage<Expression<F>>>(
+    pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
         ops: [BusOpX<F, M>; 2],
@@ -123,7 +123,7 @@ impl BusPortDual {
 
     /// Return the witness that must be assigned to the helper cell.
     /// Prefer using BusAssigner instead.
-    pub fn helper_witness<F: FieldExt, M: BusMessage<F>>(
+    pub fn helper_witness<F: Field, M: BusMessageF<F>>(
         codec: &BusCodecVal<F, M>,
         messages: [M; 2],
     ) -> Value<F> {
@@ -131,7 +131,7 @@ impl BusPortDual {
         (codec.compress(m0) * codec.compress(m1)).map(|x| x.invert().unwrap_or(F::zero()))
     }
 
-    fn create_term<F: FieldExt, M: BusMessage<Expression<F>>>(
+    fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
         ops: [BusOpX<F, M>; 2],
@@ -176,9 +176,9 @@ pub struct BusPortChip<F> {
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> BusPortChip<F> {
+impl<F: Field> BusPortChip<F> {
     /// Create a new bus port with a single access.
-    pub fn connect<M: BusMessage<Expression<F>>>(
+    pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
         op: BusOpX<F, M>,
@@ -195,7 +195,7 @@ impl<F: FieldExt> BusPortChip<F> {
     }
 
     /// Assign an operation.
-    pub fn assign<M: BusMessage<F>>(
+    pub fn assign<M: BusMessageF<F>>(
         &self,
         bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,
@@ -219,7 +219,7 @@ struct BusPortAssigner {
     count: isize,
 }
 
-impl<F: FieldExt> Assigner<F> for BusPortAssigner {
+impl<F: Field> Assigner<F> for BusPortAssigner {
     fn assign(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F) {
         region
             .assign_advice(
@@ -242,9 +242,9 @@ pub struct BusPortMulti<F> {
     ports: Vec<BusPortChip<F>>,
 }
 
-impl<F: FieldExt> BusPortMulti<F> {
+impl<F: Field> BusPortMulti<F> {
     /// Create and connect a new bus port with multiple accesses.
-    pub fn connect<M: BusMessage<Expression<F>>>(
+    pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
         ops: Vec<BusOpX<F, M>>,
@@ -257,7 +257,7 @@ impl<F: FieldExt> BusPortMulti<F> {
     }
 
     /// Assign operations.
-    pub fn assign<M: BusMessage<F>>(
+    pub fn assign<M: BusMessageF<F>>(
         &self,
         bus_assigner: &mut BusAssigner<F, M>,
         offset: usize,

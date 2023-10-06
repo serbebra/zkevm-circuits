@@ -1,15 +1,12 @@
 use std::mem;
 
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    circuit::{Region, Value},
-};
-
 use super::{
     bus_chip::BusTerm,
-    bus_codec::{BusCodecExpr, BusCodecVal, BusMessage},
+    bus_codec::{BusCodecExpr, BusCodecVal, BusMessageF},
     port_assigner::{BusOpCounter, PortAssigner},
+    Field,
 };
+use halo2_proofs::circuit::{Region, Value};
 
 /// BusBuilder
 #[derive(Debug)]
@@ -18,7 +15,7 @@ pub struct BusBuilder<F, M> {
     terms: Vec<BusTerm<F>>,
 }
 
-impl<F: FieldExt, M> BusBuilder<F, M> {
+impl<F: Field, M> BusBuilder<F, M> {
     /// Create a new bus.
     pub fn new(codec: BusCodecExpr<F, M>) -> Self {
         Self {
@@ -51,7 +48,7 @@ pub struct BusAssigner<F, M> {
     port_assigner: PortAssigner<F, M>,
 }
 
-impl<F: FieldExt, M: BusMessage<F>> BusAssigner<F, M> {
+impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
     /// Create a new bus assigner with a maximum number of rows.
     pub fn new(codec: BusCodecVal<F, M>, n_rows: usize) -> Self {
         Self {
@@ -103,7 +100,7 @@ struct TermAdder<F> {
     unknown: bool,
 }
 
-impl<F: FieldExt> TermAdder<F> {
+impl<F: Field> TermAdder<F> {
     /// Create a term adder with a maximum number of rows.
     fn new(n_rows: usize) -> Self {
         Self {
