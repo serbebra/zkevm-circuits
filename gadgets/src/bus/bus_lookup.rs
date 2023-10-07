@@ -27,8 +27,8 @@ impl<F: Field> BusLookupConfig<F> {
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
-        message: M,
         enabled: Expression<F>,
+        message: M,
     ) -> Self {
         let count = meta.advice_column();
         let count_expr = query_expression(meta, |meta| meta.query_advice(count, Rotation::cur()));
@@ -36,7 +36,8 @@ impl<F: Field> BusLookupConfig<F> {
         let port = BusPortChip::connect(
             meta,
             bus_builder,
-            BusOp::send_to_lookups(message, enabled * count_expr),
+            enabled,
+            BusOp::send_to_lookups(message, count_expr),
         );
 
         Self { port, count }

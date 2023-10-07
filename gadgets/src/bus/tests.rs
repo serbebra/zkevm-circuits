@@ -61,13 +61,15 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
         // Circuit 1 sends values dynamically.
         let bus_lookup =
-            BusLookupConfig::connect(cs, &mut bus_builder, message.clone(), enabled_expr.clone());
+            BusLookupConfig::connect(cs, &mut bus_builder, enabled_expr.clone(), message.clone());
 
         // Circuit 2 receives one value per row.
-        let count2_expr = enabled_expr * 1.expr();
-
-        let port2 =
-            BusPortChip::connect(cs, &mut bus_builder, BusOp::receive(message, count2_expr));
+        let port2 = BusPortChip::connect(
+            cs,
+            &mut bus_builder,
+            enabled_expr,
+            BusOp::receive(message),
+        );
 
         // Global bus connection.
         let bus_config = BusConfig::new(cs, &bus_builder.build());
@@ -131,7 +133,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                         // Assign an operation to the port of this circuit, and to the shared bus.
                         config
                             .port2
-                            .assign(&mut bus_assigner, offset, BusOp::receive(message, 1));
+                            .assign(&mut bus_assigner, offset, BusOp::receive(message));
                     }
                 }
 

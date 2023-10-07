@@ -12,7 +12,7 @@ use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Expression, ThirdPhase},
     poly::Rotation,
 };
-use std::{marker::PhantomData, ops::Neg};
+use std::marker::PhantomData;
 
 /// A bus operation, as expressions for circuit config.
 pub type BusOpExpr<F, M> = BusOp<M, Expression<F>>;
@@ -30,30 +30,28 @@ pub struct BusOp<M, C> {
 impl<M, C> BusOp<M, C>
 where
     M: Clone,
-    C: Clone + Neg<Output = C>,
+    C: Count,
 {
     /// Receive a message, with the expectation that it carries a true fact. This can be a
     /// cross-circuit call answered by a `send`, or a lookup query answered by a `send_to_lookups`.
-    /// Enabled must be 0 or 1.
-    pub fn receive(message: M, enabled: C) -> Self {
+    pub fn receive(message: M) -> Self {
         Self {
             message,
-            count: -enabled,
+            count: C::neg_one(),
         }
     }
 
     /// Send a message, with the responsibility to verify that it states a true fact, and the
-    /// expectation that it is received exactly once somewhere else. Enabled must be 0 or 1.
-    pub fn send(message: M, enabled: C) -> Self {
+    /// expectation that it is received exactly once somewhere else.
+    pub fn send(message: M) -> Self {
         Self {
             message,
-            count: enabled,
+            count: C::one(),
         }
     }
 
     /// Expose an entry of a lookup table as a bus message, with the responsibility that it is a
-    /// true fact. It can be received any number of times. This number is the `count`, given as
-    /// advice, or 0 to disable.
+    /// true fact. It can be received any number of times. This number is the `count` advice.
     pub fn send_to_lookups(message: M, count: C) -> Self {
         Self { message, count }
     }
@@ -69,51 +67,78 @@ where
     }
 }
 
+/// Trait usable as BusOp count (Expression or isize).
+pub trait Count: Clone {
+    /// 1
+    fn one() -> Self;
+    /// -1
+    fn neg_one() -> Self;
+}
+
+impl<F: Field> Count for Expression<F> {
+    fn one() -> Self {
+        Self::Constant(F::one())
+    }
+    fn neg_one() -> Self {
+        Self::Constant(-F::one())
+    }
+}
+
+impl Count for isize {
+    fn one() -> Self {
+        1
+    }
+    fn neg_one() -> Self {
+        -1
+    }
+}
+
 /// A chip to access to the bus.
 #[derive(Clone, Debug)]
 pub struct BusPortSingle;
 
 impl BusPortSingle {
     /// Create a new bus port with a single access.
-    /// The helper cell can be used for something else if op.count is zero.
+    /// The helper cell can be used for something else when not enabled.
     pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
+        enabled: Expression<F>,
         op: BusOpExpr<F, M>,
         helper: Expression<F>,
     ) {
-        let term = Self::create_term(meta, bus_builder.codec(), op, helper);
+        let term = Self::create_term(meta, bus_builder.codec(), enabled, op, helper);
         bus_builder.add_term(term);
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    /// Prefer using BusAssigner instead.
+    /// Very slow. Prefer `PortAssigner::assign_later` instead.
     pub fn helper_witness<F: Field, M: BusMessageF<F>>(
         codec: &BusCodecVal<F, M>,
-        message: M,
+        op: BusOpF<M>,
     ) -> Value<F> {
         codec
-            .compress(message)
-            .map(|x| x.invert().unwrap_or(F::zero()))
+            .compress(op.message())
+            .map(|denom| from_isize::<F>(op.count()) * denom.invert().unwrap_or(F::zero()))
     }
 
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
         op: BusOpExpr<F, M>,
         helper: Expression<F>,
     ) -> BusTerm<F> {
-        let term = op.count() * helper.clone();
-        let denom = codec.compress(op.message());
+        let term = enabled.clone() * helper.clone();
 
         meta.create_gate("bus access", |_| {
-            // Verify that `term = count / denom`.
+            // Verify that `term = enabled * count / compress(message)`.
             //
-            // With witness: helper = 1 / denom
+            // With witness: helper = count / compress(message)
             //
-            // If `count = 0`, then `term = 0` by definition. In that case, the helper cell is not
+            // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
             // constrained, so it can be used for something else.
-            [term.clone() * denom - op.count()]
+            [term.clone() * codec.compress(op.message()) - enabled * op.count()]
         });
 
         BusTerm::verified(term)
@@ -130,10 +155,11 @@ impl BusPortDual {
     pub fn connect<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
+        enabled: Expression<F>,
         ops: [BusOpExpr<F, M>; 2],
         helper: Expression<F>,
     ) {
-        let term = Self::create_term(meta, bus_builder.codec(), ops, helper);
+        let term = Self::create_term(meta, bus_builder.codec(), enabled, ops, helper);
         bus_builder.add_term(term);
     }
 
@@ -150,9 +176,12 @@ impl BusPortDual {
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
         ops: [BusOpExpr<F, M>; 2],
         helper: Expression<F>,
     ) -> BusTerm<F> {
+        // TODO: no need for the count in the constraint.
+        // TODO: only one constraint for both ops.
         let denom_0 = codec.compress(ops[0].message());
         let denom_1 = codec.compress(ops[1].message());
 
@@ -197,12 +226,13 @@ impl<F: Field> BusPortChip<F> {
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
+        enabled: Expression<F>,
         op: BusOpExpr<F, M>,
     ) -> Self {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
-        BusPortSingle::connect(meta, bus_builder, op, helper_expr);
+        BusPortSingle::connect(meta, bus_builder, enabled, op, helper_expr);
 
         Self {
             helper,
@@ -236,17 +266,18 @@ struct BusPortAssigner {
 }
 
 impl<F: Field> Assigner<F> for BusPortAssigner {
-    fn assign(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F) {
+    fn assign(&self, region: &mut Region<'_, F>, inversed_denom: F) -> (usize, F) {
+        let term = from_isize::<F>(self.count) * inversed_denom;
+
         region
             .assign_advice(
                 || "BusPort_helper",
                 self.column,
                 self.offset,
-                || Value::known(helper),
+                || Value::known(term),
             )
             .unwrap();
 
-        let term = from_isize::<F>(self.count) * helper;
         (self.offset, term)
     }
 }
@@ -263,11 +294,12 @@ impl<F: Field> BusPortMulti<F> {
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, M>,
+        enabled: Expression<F>,
         ops: Vec<BusOpExpr<F, M>>,
     ) -> Self {
         let ports = ops
             .into_iter()
-            .map(|op| BusPortChip::connect(meta, bus_builder, op))
+            .map(|op| BusPortChip::connect(meta, bus_builder, enabled.clone(), op))
             .collect();
         Self { ports }
     }

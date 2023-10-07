@@ -947,11 +947,11 @@ impl<F: Field> ExecutionConfig<F> {
             .chunks(2)
             .map(|columns| {
                 let message = [columns[0].clone(), columns[1].clone()];
-                BusOp::receive(message, q_usable.clone())
+                BusOp::receive(message)
             })
             .collect::<Vec<_>>();
 
-        BusPortMulti::connect(meta, bus_builder, ops)
+        BusPortMulti::connect(meta, bus_builder, q_usable, ops)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1350,7 +1350,7 @@ impl<F: Field> ExecutionConfig<F> {
                         F::zero()
                     };
                     let message = [byte_0, byte_1];
-                    BusOp::receive(message, 1)
+                    BusOp::receive(message)
                 })
                 .collect::<Vec<_>>();
 

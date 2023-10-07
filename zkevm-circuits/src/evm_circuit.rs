@@ -219,7 +219,7 @@ impl<F: Field> EvmCircuitConfig<F> {
             ]
         });
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        BusLookupConfig::connect(meta, bus_builder, message, enabled)
+        BusLookupConfig::connect(meta, bus_builder, enabled, message)
     }
 }
 
