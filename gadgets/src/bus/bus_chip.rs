@@ -28,7 +28,6 @@ impl<F: Field> Expr<F> for BusTerm<F> {
 pub struct BusConfig {
     enabled: Column<Fixed>,
     is_first: Column<Fixed>,
-    is_last: Column<Fixed>,
     acc: Column<Advice>,
 }
 
@@ -37,35 +36,36 @@ impl BusConfig {
     pub fn new<F: Field>(cs: &mut ConstraintSystem<F>, terms: &[BusTerm<F>]) -> Self {
         let enabled = cs.fixed_column();
         let is_first = cs.fixed_column();
-        let is_last = cs.fixed_column();
         let acc = cs.advice_column_in(ThirdPhase);
 
         cs.create_gate("bus sum check", |cs| {
+            let not_last = cs.query_fixed(enabled, Rotation::next());
             let enabled = cs.query_fixed(enabled, Rotation::cur());
             let is_first = cs.query_fixed(is_first, Rotation::cur());
-            let is_last = cs.query_fixed(is_last, Rotation::cur());
 
             let acc_next = cs.query_advice(acc, Rotation::next());
             let acc = cs.query_advice(acc.clone(), Rotation::cur());
 
+            // The sum of terms on the current row.
             let sum = terms
                 .iter()
                 .fold(0.expr(), |acc, term| acc + term.0.clone());
-            let next_or_zero = (1.expr() - is_last) * acc_next;
+            let next_or_zero = not_last * acc_next;
+            let diff_or_zero = enabled * (next_or_zero - acc.clone());
 
             [
                 // If is_first, then initialize: `acc = 0`.
-                is_first * acc.clone(),
-                // If not is_last, then accumulate: `acc_next = acc + ∑terms`
-                // If is_last, then the final sum is zero: `0 = acc + ∑terms`
-                enabled * (next_or_zero - (acc.clone() + sum)),
+                is_first * acc,
+                // If not last, the terms go into accumulator: `∑terms + acc = acc_next`
+                // If last, the final accumulator is zero:     `∑terms + acc = 0`
+                // If not enabled, the terms add up to zero:   `∑terms = 0`
+                sum - diff_or_zero,
             ]
         });
 
         Self {
             enabled,
             is_first,
-            is_last,
             acc,
         }
     }
@@ -87,13 +87,6 @@ impl BusConfig {
             || "Bus_is_first",
             self.is_first,
             0,
-            || Value::known(F::one()),
-        )?;
-
-        region.assign_fixed(
-            || "Bus_is_last",
-            self.is_last,
-            n_rows - 1,
             || Value::known(F::one()),
         )?;
 
