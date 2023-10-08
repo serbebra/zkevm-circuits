@@ -5,7 +5,7 @@ use crate::util::query_expression;
 use super::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_codec::{BusMessageExpr, BusMessageF},
-    bus_port::{BusOp, BusOpF, BusPortChip},
+    bus_port::{BusOp, BusOpF, PortChip},
     util::from_isize,
     Field,
 };
@@ -18,7 +18,7 @@ use halo2_proofs::{
 /// BusLookup exposes a table as a lookup through the bus.
 #[derive(Clone, Debug)]
 pub struct BusLookupConfig<F> {
-    port: BusPortChip<F>,
+    port: PortChip<F>,
     count: Column<Advice>,
 }
 
@@ -33,7 +33,7 @@ impl<F: Field> BusLookupConfig<F> {
         let count = meta.advice_column();
         let count_expr = query_expression(meta, |meta| meta.query_advice(count, Rotation::cur()));
 
-        let port = BusPortChip::connect(
+        let port = PortChip::connect(
             meta,
             bus_builder,
             enabled,

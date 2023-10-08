@@ -27,7 +27,7 @@ struct TestCircuitConfig<F: Field> {
     enabled: Column<Fixed>,
     bus_config: BusConfig,
     bus_lookup: BusLookupConfig<F>,
-    port2: BusPortChip<F>,
+    port2: PortChip<F>,
     rand: Challenge,
     _marker: PhantomData<F>,
 }
@@ -64,7 +64,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
             BusLookupConfig::connect(cs, &mut bus_builder, enabled_expr.clone(), message.clone());
 
         // Circuit 2 receives one value per row.
-        let port2 = BusPortChip::connect(
+        let port2 = PortChip::connect(
             cs,
             &mut bus_builder,
             enabled_expr,

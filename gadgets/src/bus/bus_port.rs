@@ -93,135 +93,14 @@ impl Count for isize {
     }
 }
 
-/// A chip to access to the bus.
-#[derive(Clone, Debug)]
-pub struct BusPortSingle;
-
-impl BusPortSingle {
-    /// Create a new bus port with a single access.
-    /// The helper cell can be used for something else when not enabled.
-    pub fn connect<F: Field, M: BusMessageExpr<F>>(
-        meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F, M>,
-        enabled: Expression<F>,
-        op: BusOpExpr<F, M>,
-        helper: Expression<F>,
-    ) {
-        let term = Self::create_term(meta, bus_builder.codec(), enabled, op, helper);
-        bus_builder.add_term(term);
-    }
-
-    /// Return the witness that must be assigned to the helper cell.
-    /// Very slow. Prefer `PortAssigner::assign_later` instead.
-    pub fn helper_witness<F: Field, M: BusMessageF<F>>(
-        codec: &BusCodecVal<F, M>,
-        op: BusOpF<M>,
-    ) -> Value<F> {
-        codec
-            .compress(op.message())
-            .map(|denom| from_isize::<F>(op.count()) * denom.invert().unwrap_or(F::zero()))
-    }
-
-    fn create_term<F: Field, M: BusMessageExpr<F>>(
-        meta: &mut ConstraintSystem<F>,
-        codec: &BusCodecExpr<F, M>,
-        enabled: Expression<F>,
-        op: BusOpExpr<F, M>,
-        helper: Expression<F>,
-    ) -> BusTerm<F> {
-        let term = enabled.clone() * helper.clone();
-
-        meta.create_gate("bus access", |_| {
-            // Verify that `term = enabled * count / compress(message)`.
-            //
-            // With witness: helper = count / compress(message)
-            //
-            // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
-            // constrained, so it can be used for something else.
-            [term.clone() * codec.compress(op.message()) - enabled * op.count()]
-        });
-
-        BusTerm::verified(term)
-    }
-}
-
-/// A chip with two accesses to the bus. BusPortDual uses only one helper cell, however the
-/// degree of input expressions is more limited than with BusPortSingle.
-/// The helper cell can be used for something else if both op.count are zero.
-pub struct BusPortDual;
-
-impl BusPortDual {
-    /// Create a new bus port with two accesses.
-    pub fn connect<F: Field, M: BusMessageExpr<F>>(
-        meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F, M>,
-        enabled: Expression<F>,
-        ops: [BusOpExpr<F, M>; 2],
-        helper: Expression<F>,
-    ) {
-        let term = Self::create_term(meta, bus_builder.codec(), enabled, ops, helper);
-        bus_builder.add_term(term);
-    }
-
-    /// Return the witness that must be assigned to the helper cell.
-    /// Prefer using BusAssigner instead.
-    pub fn helper_witness<F: Field, M: BusMessageF<F>>(
-        codec: &BusCodecVal<F, M>,
-        messages: [M; 2],
-    ) -> Value<F> {
-        let [m0, m1] = messages;
-        (codec.compress(m0) * codec.compress(m1)).map(|x| x.invert().unwrap_or(F::zero()))
-    }
-
-    fn create_term<F: Field, M: BusMessageExpr<F>>(
-        meta: &mut ConstraintSystem<F>,
-        codec: &BusCodecExpr<F, M>,
-        enabled: Expression<F>,
-        ops: [BusOpExpr<F, M>; 2],
-        helper: Expression<F>,
-    ) -> BusTerm<F> {
-        // TODO: no need for the count in the constraint.
-        // TODO: only one constraint for both ops.
-        let denom_0 = codec.compress(ops[0].message());
-        let denom_1 = codec.compress(ops[1].message());
-
-        // With witness: helper = 1 / (denom_0 * denom_1)
-
-        // term_0 = count_0 * helper * denom_1
-        let count_0 = ops[0].count();
-        let term_0 = count_0.clone() * helper.clone() * denom_1.clone();
-
-        // term_1 = count_1 * helper * denom_0
-        let count_1 = ops[1].count();
-        let term_1 = count_1.clone() * helper.clone() * denom_0.clone();
-
-        // Verify that:
-        //     term_0 == count_0 / denom_0
-        //     term_0 * denom_0 - count_0 == 0
-        //
-        // And the same for term_1.
-        //
-        // In case both count_0 and count_1 are zero, then the helper cell is not constrained, so it
-        // can be used for something else.
-        meta.create_gate("bus access (dual)", |_| {
-            [
-                term_0.clone() * denom_0 - count_0,
-                term_1.clone() * denom_1 - count_1,
-            ]
-        });
-
-        BusTerm::verified(term_0 + term_1)
-    }
-}
-
 /// A chip to access the bus. It manages its own helper column and gives one access per row.
 #[derive(Clone, Debug)]
-pub struct BusPortChip<F> {
+pub struct PortChip<F> {
     helper: Column<Advice>,
     _marker: PhantomData<F>,
 }
 
-impl<F: Field> BusPortChip<F> {
+impl<F: Field> PortChip<F> {
     /// Create a new bus port with a single access.
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
@@ -232,7 +111,7 @@ impl<F: Field> BusPortChip<F> {
         let helper = meta.advice_column_in(ThirdPhase);
         let helper_expr = query_expression(meta, |meta| meta.query_advice(helper, Rotation::cur()));
 
-        BusPortSingle::connect(meta, bus_builder, enabled, op, helper_expr);
+        Port::connect(meta, bus_builder, enabled, op, helper_expr);
 
         Self {
             helper,
@@ -247,9 +126,40 @@ impl<F: Field> BusPortChip<F> {
         offset: usize,
         op: BusOpF<M>,
     ) {
-        let cmd = Box::new(BusPortAssigner {
+        Port::assign(bus_assigner, offset, op, self.helper, 0);
+    }
+}
+
+/// Functions to add an operation to the bus.
+#[derive(Clone, Debug)]
+pub struct Port;
+
+impl Port {
+    /// Create a new bus port with a single operation.
+    /// The helper cell can be used for something else when not enabled.
+    pub fn connect<F: Field, M: BusMessageExpr<F>>(
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F, M>,
+        enabled: Expression<F>,
+        op: BusOpExpr<F, M>,
+        helper: Expression<F>,
+    ) {
+        let term = Self::create_term(meta, bus_builder.codec(), enabled, op, helper);
+        bus_builder.add_term(term);
+    }
+
+    /// Assign an operation.
+    pub fn assign<F: Field, M: BusMessageF<F>>(
+        bus_assigner: &mut BusAssigner<F, M>,
+        offset: usize,
+        op: BusOpF<M>,
+        helper: Column<Advice>,
+        rotation: isize,
+    ) {
+        let cmd = Box::new(PortAssigner {
             offset,
-            column: self.helper,
+            helper,
+            rotation,
             count: op.count(),
         });
         let denom = bus_assigner.codec().compress(op.message());
@@ -257,23 +167,57 @@ impl<F: Field> BusPortChip<F> {
         bus_assigner.op_counter().track_op(&op);
         bus_assigner.port_assigner().assign_later(cmd, denom);
     }
+
+    fn create_term<F: Field, M: BusMessageExpr<F>>(
+        meta: &mut ConstraintSystem<F>,
+        codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
+        op: BusOpExpr<F, M>,
+        helper: Expression<F>,
+    ) -> BusTerm<F> {
+        let term = helper * enabled.clone();
+
+        meta.create_gate("bus access", |_| {
+            // Verify that `term = enabled * count / compress(message)`.
+            //
+            // With witness: helper = count / compress(message)
+            //
+            // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
+            // constrained, so it can be used for something else.
+            [term.clone() * codec.compress(op.message()) - op.count() * enabled]
+        });
+
+        BusTerm::verified(term)
+    }
+
+    /// Return the witness that must be assigned to the helper cell.
+    /// Very slow. Prefer `PortAssigner::assign_later` instead.
+    pub fn helper_witness<F: Field, M: BusMessageF<F>>(
+        codec: &BusCodecVal<F, M>,
+        op: BusOpF<M>,
+    ) -> Value<F> {
+        codec
+            .compress(op.message())
+            .map(|denom| from_isize::<F>(op.count()) * denom.invert().unwrap_or(F::zero()))
+    }
 }
 
-struct BusPortAssigner {
+struct PortAssigner {
     offset: usize,
-    column: Column<Advice>,
+    helper: Column<Advice>,
+    rotation: isize,
     count: isize,
 }
 
-impl<F: Field> Assigner<F> for BusPortAssigner {
+impl<F: Field> Assigner<F> for PortAssigner {
     fn assign(&self, region: &mut Region<'_, F>, inversed_denom: F) -> (usize, F) {
         let term = from_isize::<F>(self.count) * inversed_denom;
 
         region
             .assign_advice(
                 || "BusPort_helper",
-                self.column,
-                self.offset,
+                self.helper,
+                (self.offset as isize + self.rotation) as usize,
                 || Value::known(term),
             )
             .unwrap();
@@ -286,7 +230,7 @@ impl<F: Field> Assigner<F> for BusPortAssigner {
 #[derive(Clone, Debug)]
 pub struct BusPortMulti<F> {
     // TODO: implement with as few helper columns as possible.
-    ports: Vec<BusPortChip<F>>,
+    ports: Vec<PortChip<F>>,
 }
 
 impl<F: Field> BusPortMulti<F> {
@@ -299,7 +243,7 @@ impl<F: Field> BusPortMulti<F> {
     ) -> Self {
         let ports = ops
             .into_iter()
-            .map(|op| BusPortChip::connect(meta, bus_builder, enabled.clone(), op))
+            .map(|op| PortChip::connect(meta, bus_builder, enabled.clone(), op))
             .collect();
         Self { ports }
     }

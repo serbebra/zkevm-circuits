@@ -9,6 +9,9 @@ pub mod bus_builder;
 /// A chip to access the bus.
 pub mod bus_port;
 
+/// A chip to access the bus, with batching.
+pub mod port_multi;
+
 /// A chip to expose a lookup table on a bus.
 pub mod bus_lookup;
 
