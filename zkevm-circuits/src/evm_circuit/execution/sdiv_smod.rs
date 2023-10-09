@@ -13,7 +13,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::Expr,
+    util::{Expr, word::Word32Cell},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToLittleEndian, U256};

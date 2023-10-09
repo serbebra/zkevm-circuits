@@ -21,7 +21,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
-    util::word::{Word, WordCell, WordExpr},
+    util::word::{Word, WordCell, Word32Cell, WordExpr},
 };
 use bus_mapping::{
     circuit_input_builder::CopyDataType,
@@ -30,7 +30,7 @@ use bus_mapping::{
 };
 use eth_types::{
     evm_types::{memory::MemoryWordRange, GAS_STIPEND_CALL_WITH_VALUE},
-    Field, ToAddress, ToBigEndian, ToLittleEndian, ToScalar, U256,
+    Field, ToAddress, ToBigEndian, ToScalar, U256,
 };
 use halo2_proofs::{circuit::Value, plonk::Error};
 use log::trace;
@@ -186,7 +186,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             );
         });
 
-        let caller_balance = cb.query_word_unchecked();
+        let caller_balance = cb.query_word32();
         cb.account_read(
             caller_address.to_word(),
             AccountFieldTag::Balance,
@@ -195,7 +195,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         // rwc_delta = 8 + is_delegatecall * 2 + call_gadget.rw_delta() +
         // callee_reversion_info.rw_delta()
         let is_insufficient_balance =
-            LtWordGadget::construct(cb, &caller_balance.to_word(), &call_gadget.value.to_word());
+            LtWordGadget::construct(cb, &caller_balance, &call_gadget.value);
         // depth < 1025
         let is_depth_ok = LtGadget::construct(cb, depth.expr(), 1025.expr());
 

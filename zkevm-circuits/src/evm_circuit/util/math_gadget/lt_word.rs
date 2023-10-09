@@ -1,6 +1,11 @@
-use crate::evm_circuit::util::{
-    self, constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
-    CachedRegion,
+use std::marker::PhantomData;
+
+use crate::{
+    evm_circuit::util::{
+        constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
+        CachedRegion, Cell
+    }, 
+    util::word::{WordExpr, Word32Cell}
 };
 use eth_types::{Field, Word};
 use halo2_proofs::plonk::{Error, Expression};
@@ -14,20 +19,16 @@ pub struct LtWordGadget<F> {
 }
 
 impl<F: Field> LtWordGadget<F> {
-    pub(crate) fn construct(
-        cb: &mut EVMConstraintBuilder<F>,
-        lhs: &util::Word<F>,
-        rhs: &util::Word<F>,
-    ) -> Self {
+    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, lhs: &Word32Cell<F>, rhs: &Word32Cell<F>) -> Self {
         let comparison_hi = ComparisonGadget::construct(
             cb,
-            from_bytes::expr(&lhs.cells[16..]),
-            from_bytes::expr(&rhs.cells[16..]),
+            from_bytes::expr(&lhs.limbs[16..]),
+            from_bytes::expr(&rhs.limbs[16..]),
         );
         let lt_lo = LtGadget::construct(
             cb,
-            from_bytes::expr(&lhs.cells[..16]),
-            from_bytes::expr(&rhs.cells[..16]),
+            from_bytes::expr(&lhs.limbs[..16]),
+            from_bytes::expr(&rhs.limbs[..16]),
         );
         Self {
             comparison_hi,
@@ -72,7 +73,7 @@ mod tests {
     use super::{test_util::*, *};
     use eth_types::*;
     use halo2_proofs::{halo2curves::bn256::Fr, plonk::Error};
-    use util::word::{Word32Cell, WordExpr};
+    use crate::util::word::{Word32Cell, WordExpr};
 
     #[derive(Clone)]
     /// LtWordTestContainer: require(a < b)
@@ -86,7 +87,7 @@ mod tests {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
             let a = cb.query_word32();
             let b = cb.query_word32();
-            let ltword_gadget = LtWordGadget::<F>::construct(cb, &a.to_word(), &b.to_word());
+            let ltword_gadget = LtWordGadget::<F>::construct(cb, &a, &b);
             cb.require_equal("a < b", ltword_gadget.expr(), 1.expr());
             LtWordTestContainer {
                 ltword_gadget,

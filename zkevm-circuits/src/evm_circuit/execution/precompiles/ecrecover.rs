@@ -5,20 +5,20 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
 };
-
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_WORD},
+        param::N_BYTES_WORD,
         step::ExecutionState,
         util::{
             common_gadget::RestoreContextGadget,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             from_bytes,
             math_gadget::{IsEqualGadget, IsZeroGadget, LtWordGadget, ModGadget},
-            rlc, CachedRegion, Cell, RandomLinearCombination, Word,
+            rlc, CachedRegion, Cell,
         },
     },
+    util::word::{Word32Cell, WordExpr},
     table::CallContextFieldTag,
     witness::{Block, Call, ExecStep, Transaction},
 };
@@ -36,19 +36,19 @@ pub struct EcrecoverGadget<F> {
     sig_v_keccak_rlc: Cell<F>,
     sig_r_keccak_rlc: Cell<F>,
     sig_s_keccak_rlc: Cell<F>,
-    recovered_addr_keccak_rlc: RandomLinearCombination<F, N_BYTES_ACCOUNT_ADDRESS>,
+    recovered_addr_keccak_rlc: Word32Cell<F>,
 
-    msg_hash_raw: Word<F>,
-    msg_hash: Word<F>,
-    fq_modulus: Word<F>,
-    msg_hash_mod: ModGadget<F, true>,
+    msg_hash_raw: Word32Cell<F>,
+    msg_hash: Word32Cell<F>,
+    fq_modulus: Word32Cell<F>,
+    msg_hash_mod: ModGadget<F>,
 
-    sig_r: Word<F>,
+    sig_r: Word32Cell<F>,
     sig_r_canonical: LtWordGadget<F>,
-    sig_s: Word<F>,
+    sig_s: Word32Cell<F>,
     sig_s_canonical: LtWordGadget<F>,
 
-    sig_v: Word<F>,
+    sig_v: Word32Cell<F>,
     sig_v_one_byte: IsZeroGadget<F>,
     sig_v_eq27: IsEqualGadget<F>,
     sig_v_eq28: IsEqualGadget<F>,
@@ -82,26 +82,26 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
-            cb.query_keccak_rlc(),
+            cb.query_word32(),
         );
 
-        let msg_hash_raw = cb.query_word_rlc();
-        let msg_hash = cb.query_word_rlc();
-        let fq_modulus = cb.query_word_rlc();
+        let msg_hash_raw = cb.query_word32();
+        let msg_hash = cb.query_word32();
+        let fq_modulus = cb.query_word32();
         let msg_hash_mod = ModGadget::construct(cb, [&msg_hash_raw, &fq_modulus, &msg_hash]);
 
-        let sig_r = cb.query_word_rlc();
+        let sig_r = cb.query_word32();
         let sig_r_canonical = LtWordGadget::construct(cb, &sig_r, &fq_modulus);
-        let sig_s = cb.query_word_rlc();
+        let sig_s = cb.query_word32();
         let sig_s_canonical = LtWordGadget::construct(cb, &sig_s, &fq_modulus);
         let r_s_canonical = and::expr([sig_r_canonical.expr(), sig_s_canonical.expr()]);
 
         // sig_v is valid if sig_v == 27 || sig_v == 28
-        let sig_v = cb.query_word_rlc();
-        let sig_v_rest_bytes = sum::expr(&sig_v.cells[1..]);
+        let sig_v = cb.query_word32();
+        let sig_v_rest_bytes = sum::expr(&sig_v.limbs[1..]);
         let sig_v_one_byte = IsZeroGadget::construct(cb, sig_v_rest_bytes);
-        let sig_v_eq27 = IsEqualGadget::construct(cb, sig_v.cells[0].expr(), 27.expr());
-        let sig_v_eq28 = IsEqualGadget::construct(cb, sig_v.cells[0].expr(), 28.expr());
+        let sig_v_eq27 = IsEqualGadget::construct(cb, sig_v.limbs[0].expr(), 27.expr());
+        let sig_v_eq28 = IsEqualGadget::construct(cb, sig_v.limbs[0].expr(), 28.expr());
         let sig_v_valid = and::expr([
             or::expr([sig_v_eq27.expr(), sig_v_eq28.expr()]),
             sig_v_one_byte.expr(),
@@ -112,7 +112,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             msg_hash_keccak_rlc.expr(),
             cb.keccak_rlc::<N_BYTES_WORD>(
                 msg_hash_raw
-                    .cells
+                    .limbs
                     .iter()
                     .map(Expr::expr)
                     .collect::<Vec<Expression<F>>>()
@@ -125,7 +125,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             sig_r_keccak_rlc.expr(),
             cb.keccak_rlc::<N_BYTES_WORD>(
                 sig_r
-                    .cells
+                    .limbs
                     .iter()
                     .map(Expr::expr)
                     .collect::<Vec<Expression<F>>>()
@@ -138,7 +138,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             sig_s_keccak_rlc.expr(),
             cb.keccak_rlc::<N_BYTES_WORD>(
                 sig_s
-                    .cells
+                    .limbs
                     .iter()
                     .map(Expr::expr)
                     .collect::<Vec<Expression<F>>>()
@@ -151,7 +151,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             sig_v_keccak_rlc.expr(),
             cb.keccak_rlc::<N_BYTES_WORD>(
                 sig_v
-                    .cells
+                    .limbs
                     .iter()
                     .map(Expr::expr)
                     .collect::<Vec<Expression<F>>>()
@@ -159,9 +159,14 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                     .expect("sig_v is 32 bytes"),
             ),
         );
+        // cb.require_equal(
+        //     "Secp256k1::Fq modulus assigned correctly",
+        //     fq_modulus.expr(),
+        //     cb.word_rlc::<N_BYTES_WORD>(FQ_MODULUS.to_le_bytes().map(|b| b.expr())),
+        // );
         cb.require_equal(
             "Secp256k1::Fq modulus assigned correctly",
-            fq_modulus.expr(),
+            cb.word_rlc::<N_BYTES_WORD>(fq_modulus.limbs.map(|cell| cell.expr())),
             cb.word_rlc::<N_BYTES_WORD>(FQ_MODULUS.to_le_bytes().map(|b| b.expr())),
         );
 
@@ -190,13 +195,13 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             and::expr([r_s_canonical.expr(), sig_v_valid.expr()]),
             |cb| {
                 cb.sig_table_lookup(
-                    msg_hash.expr(),
-                    sig_v.cells[0].expr() - 27.expr(),
-                    sig_r.expr(),
-                    sig_s.expr(),
+                    cb.word_rlc(msg_hash.limbs.map(|cell| cell.expr())),
+                    sig_v.limbs[0].expr() - 27.expr(),
+                    cb.word_rlc(sig_r.limbs.map(|cell| cell.expr())),
+                    cb.word_rlc(sig_s.limbs.map(|cell| cell.expr())),
                     select::expr(
                         recovered.expr(),
-                        from_bytes::expr(&recovered_addr_keccak_rlc.cells),
+                        from_bytes::expr(&recovered_addr_keccak_rlc.limbs),
                         0.expr(),
                     ),
                     recovered.expr(),
@@ -213,9 +218,9 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             cb.require_zero("recovered == false if sig_v != 27 or 28", recovered.expr());
         });
         cb.condition(not::expr(recovered.expr()), |cb| {
-            cb.require_zero(
+            cb.require_zero_word(
                 "address == 0 if address could not be recovered",
-                recovered_addr_keccak_rlc.expr(),
+                recovered_addr_keccak_rlc.to_word()
             );
         });
 
@@ -321,13 +326,13 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                 (&self.sig_s, aux_data.sig_s),
                 (&self.sig_v, aux_data.sig_v),
             ] {
-                word_rlc.assign(region, offset, Some(value.to_le_bytes()))?;
+                word_rlc.assign_u256(region, offset, value)?;
             }
             let (quotient, remainder) = aux_data.msg_hash.div_mod(*FQ_MODULUS);
             self.msg_hash
-                .assign(region, offset, Some(remainder.to_le_bytes()))?;
+                .assign_u256(region, offset, remainder)?;
             self.fq_modulus
-                .assign(region, offset, Some(FQ_MODULUS.to_le_bytes()))?;
+                .assign_u256(region, offset, *FQ_MODULUS)?;
             self.msg_hash_mod.assign(
                 region,
                 offset,
@@ -365,14 +370,14 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                 F::from(aux_data.sig_v.to_le_bytes()[0] as u64),
                 F::from(28),
             )?;
-            self.recovered_addr_keccak_rlc.assign(
+            self.recovered_addr_keccak_rlc.assign_u256(
                 region,
                 offset,
-                Some({
+                U256::from_little_endian({
                     let mut recovered_addr = aux_data.recovered_addr.to_fixed_bytes();
                     recovered_addr.reverse();
-                    recovered_addr
-                }),
+                    &recovered_addr
+                })
             )?;
         } else {
             log::error!("unexpected aux_data {:?} for ecrecover", step.aux_data);

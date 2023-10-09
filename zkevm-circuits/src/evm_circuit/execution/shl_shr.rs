@@ -71,9 +71,9 @@ impl<F: Field> ExecutionGadget<F> for ShlShrGadget<F> {
 
         let mul_add_words =
             MulAddWordsGadget::construct(cb, [&quotient, &divisor, &remainder, &dividend]);
-        let shf_lt256 = IsZeroGadget::construct(cb, sum::expr(&shift.cells[1..32]));
-        let divisor_is_zero = IsZeroGadget::construct(cb, sum::expr(&divisor.cells));
-        let remainder_is_zero = IsZeroGadget::construct(cb, sum::expr(&remainder.cells));
+        let shf_lt256 = IsZeroGadget::construct(cb, sum::expr(&shift.limbs[1..32]));
+        let divisor_is_zero = IsZeroGadget::construct(cb, sum::expr(&divisor.limbs));
+        let remainder_is_zero = IsZeroGadget::construct(cb, sum::expr(&remainder.limbs));
         let remainder_lt_divisor = LtWordGadget::construct(cb, &remainder, &divisor);
 
         // Constrain stack pops and pushes as:
@@ -214,7 +214,7 @@ impl<F: Field> ExecutionGadget<F> for ShlShrGadget<F> {
         self.remainder_is_zero
             .assign(region, offset, Word::from(remainder))?;
         self.remainder_lt_divisor
-            .assign(region, offset, remainder, divisor)?;
+            .assign(region, offset, remainder, divisor)
     }
 }
 
