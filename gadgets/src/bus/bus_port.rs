@@ -168,6 +168,18 @@ impl Port {
         bus_assigner.port_assigner().assign_later(cmd, denom);
     }
 
+    /// Return the degree of the constraints given these inputs.
+    pub fn degree<F: Field, M: BusMessageExpr<F>>(
+        codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
+        op: BusOpExpr<F, M>,
+        helper: Expression<F>,
+    ) -> usize {
+        let term = helper * enabled.clone();
+        let [constraint] = Self::constraint(codec, enabled, op, term);
+        constraint.degree()
+    }
+
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
@@ -178,16 +190,25 @@ impl Port {
         let term = helper * enabled.clone();
 
         meta.create_gate("bus access", |_| {
-            // Verify that `term = enabled * count / compress(message)`.
-            //
-            // With witness: helper = count / compress(message)
-            //
-            // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
-            // constrained, so it can be used for something else.
-            [term.clone() * codec.compress(op.message()) - op.count() * enabled]
+            Self::constraint(codec, enabled, op, term.clone())
         });
 
         BusTerm::verified(term)
+    }
+
+    fn constraint<F: Field, M: BusMessageExpr<F>>(
+        codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
+        op: BusOpExpr<F, M>,
+        term: Expression<F>,
+    ) -> [Expression<F>; 1] {
+        // Verify that `term = enabled * count / compress(message)`.
+        //
+        // With witness: helper = count / compress(message)
+        //
+        // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
+        // constrained, so it can be used for something else.
+        [term * codec.compress(op.message()) - op.count() * enabled]
     }
 
     /// Return the witness that must be assigned to the helper cell.

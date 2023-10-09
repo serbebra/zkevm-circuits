@@ -94,6 +94,18 @@ impl PortBatched {
         bus_assigner.port_assigner().assign_later(cmd, denom);
     }
 
+    /// Return the degree of the constraints given these inputs.
+    pub fn degree<F: Field, M: BusMessageExpr<F>>(
+        codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
+        ops: Vec<BusOpExpr<F, M>>,
+        helper: Expression<F>,
+    ) -> usize {
+        let total_term = helper * enabled.clone();
+        let [constraint] = Self::constraint(codec, enabled, ops, total_term);
+        constraint.degree()
+    }
+
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
@@ -105,34 +117,43 @@ impl PortBatched {
         let total_term = helper * enabled.clone();
 
         meta.create_gate("bus access (multi)", |_| {
-            // denoms[i] = compress(messages[i])
-            let denoms = ops
-                .iter()
-                .map(|op| codec.compress(op.message()))
-                .collect::<Vec<_>>();
-
-            // other_denoms[i] = ∏ denoms[j] for j!=i
-            // all_denoms = ∏ denoms[j] for all j
-            let (other_denoms, all_denoms) = Self::product_of_others(denoms, 1.expr());
-
-            // counts_times_others = ∑ count[i] * other_denoms[i]
-            let counts_times_others = ops
-                .iter()
-                .zip_eq(other_denoms.into_iter())
-                .map(|(op, other)| op.count() * other)
-                .reduce(|acc, term| acc + term)
-                .unwrap_or(0.expr());
-
-            // Verify that: term = enabled * ∑ counts[i] / compress(messages[i])
-            //
-            // With witness: helper = ∑ counts[i] / compress(messages[i])
-            //
-            // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
-            // constrained, so it can be used for something else.
-            [total_term.clone() * all_denoms - counts_times_others * enabled]
+            Self::constraint(codec, enabled, ops, total_term.clone())
         });
 
         BusTerm::verified(total_term)
+    }
+
+    fn constraint<F: Field, M: BusMessageExpr<F>>(
+        codec: &BusCodecExpr<F, M>,
+        enabled: Expression<F>,
+        ops: Vec<BusOpExpr<F, M>>,
+        total_term: Expression<F>,
+    ) -> [Expression<F>; 1] {
+        // denoms[i] = compress(messages[i])
+        let denoms = ops
+            .iter()
+            .map(|op| codec.compress(op.message()))
+            .collect::<Vec<_>>();
+
+        // other_denoms[i] = ∏ denoms[j] for j!=i
+        // all_denoms = ∏ denoms[j] for all j
+        let (other_denoms, all_denoms) = Self::product_of_others(denoms, 1.expr());
+
+        // counts_times_others = ∑ count[i] * other_denoms[i]
+        let counts_times_others = ops
+            .iter()
+            .zip_eq(other_denoms.into_iter())
+            .map(|(op, other)| op.count() * other)
+            .reduce(|acc, term| acc + term)
+            .unwrap_or(0.expr());
+
+        // Verify that: term = enabled * ∑ counts[i] / compress(messages[i])
+        //
+        // With witness: helper = ∑ counts[i] / compress(messages[i])
+        //
+        // If `enabled = 0`, then `term = 0` by definition. In that case, the helper cell is not
+        // constrained, so it can be used for something else.
+        [total_term * all_denoms - counts_times_others * enabled]
     }
 
     /// Return the witness that must be assigned to the helper cell, as (numerator, denominator).
