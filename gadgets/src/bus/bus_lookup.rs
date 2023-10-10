@@ -43,8 +43,20 @@ impl<F: Field> BusLookupChip<F> {
         Self { port, count }
     }
 
-    /// Assign a lookup operation.
+    /// Assign a lookup operation from message. The count is discovered from the BusAssigner.
     pub fn assign<M: BusMessageF<F>>(
+        &self,
+        region: &mut Region<'_, F>,
+        bus_assigner: &mut BusAssigner<F, M>,
+        offset: usize,
+        message: M,
+    ) -> Result<(), Error> {
+        let count = bus_assigner.op_counter().count_receives(&message);
+        self.assign_op(region, bus_assigner, offset, BusOp::send_to_lookups(message, count))
+    }
+
+    /// Assign a lookup operation from message and count.
+    pub fn assign_op<M: BusMessageF<F>>(
         &self,
         region: &mut Region<'_, F>,
         bus_assigner: &mut BusAssigner<F, M>,

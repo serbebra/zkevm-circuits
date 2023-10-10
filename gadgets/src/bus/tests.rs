@@ -64,12 +64,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
             BusLookupChip::connect(cs, &mut bus_builder, enabled_expr.clone(), message.clone());
 
         // Circuit 2 receives one value per row.
-        let port2 = PortChip::connect(
-            cs,
-            &mut bus_builder,
-            enabled_expr,
-            BusOp::receive(message),
-        );
+        let port2 = PortChip::connect(cs, &mut bus_builder, enabled_expr, BusOp::receive(message));
 
         // Global bus connection.
         let bus_config = BusConfig::new(cs, &bus_builder.build());
@@ -105,24 +100,6 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
                 let mut bus_assigner = BusAssigner::new(BusCodecVal::new(rand), self.n_rows);
 
-                // Circuit 1 sends a message on some row.
-                {
-                    // Do normal circuit assignment logic, and obtain a message.
-                    let message = vec![F::from(2)];
-
-                    // Set the `count` of copies of the same message.
-                    let count = self.n_rows as isize;
-                    let offset = 3; // can be anywhere.
-
-                    // Assign an operation to the port of this circuit, and to the shared bus.
-                    config.bus_lookup.assign(
-                        &mut region,
-                        &mut bus_assigner,
-                        offset,
-                        BusOp::send_to_lookups(message, count),
-                    )?;
-                }
-
                 // Circuit 2 receives one message per row.
                 {
                     // First pass: run circuit steps.
@@ -135,6 +112,30 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
                             .port2
                             .assign(&mut bus_assigner, offset, BusOp::receive(message));
                     }
+                }
+
+                // Circuit 1 sends a message on some row.
+                {
+                    // Do normal circuit assignment logic, and obtain a message.
+                    let message = vec![F::from(2)];
+
+                    // The bus assigner counted `n_rows` messages from Circuit 2.
+                    assert_eq!(
+                        bus_assigner.op_counter().count_receives(&message),
+                        self.n_rows as isize,
+                    );
+
+                    // Provide an entry of the table to the bus.
+                    let offset = 3; // can be anywhere.
+                    config.bus_lookup.assign(
+                        &mut region,
+                        &mut bus_assigner,
+                        offset,
+                        message.clone(),
+                    )?;
+
+                    // The bus assigner counted that all lookups were satisfied.
+                    assert_eq!(bus_assigner.op_counter().count_receives(&message), 0,);
                 }
 
                 // Final pass: assign the bus witnesses.

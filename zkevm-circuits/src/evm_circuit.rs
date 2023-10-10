@@ -6,7 +6,6 @@ use gadgets::bus::{
     bus_chip::BusConfig,
     bus_codec::{BusCodecExpr, BusCodecVal},
     bus_lookup::BusLookupChip,
-    bus_port::BusOp,
 };
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
@@ -314,13 +313,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                         )?;
 
                         let message = MsgF::Bytes([b0, b1]);
-                        let count = bus_assigner.op_counter().count_receives(&message);
-                        bus_lookup.assign(
-                            &mut region,
-                            bus_assigner,
-                            offset,
-                            BusOp::send_to_lookups(message, count),
-                        )?;
+                        bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
                     }
                 }
 
