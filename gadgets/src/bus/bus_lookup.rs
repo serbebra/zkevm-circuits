@@ -17,12 +17,12 @@ use halo2_proofs::{
 
 /// BusLookup exposes a table as a lookup through the bus.
 #[derive(Clone, Debug)]
-pub struct BusLookupConfig<F> {
+pub struct BusLookupChip<F> {
     port: PortChip<F>,
     count: Column<Advice>,
 }
 
-impl<F: Field> BusLookupConfig<F> {
+impl<F: Field> BusLookupChip<F> {
     /// Create and connect a new BusLookup circuit from the expressions of message and count.
     pub fn connect<M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,

@@ -139,7 +139,7 @@ impl PortBatched {
         // all_denoms = ∏ denoms[j] for all j
         let (other_denoms, all_denoms) = Self::product_of_others(denoms, 1.expr());
 
-        // counts_times_others = ∑ count[i] * other_denoms[i]
+        // counts_times_others = ∑ counts[i] * other_denoms[i]
         let counts_times_others = ops
             .iter()
             .zip_eq(other_denoms.into_iter())

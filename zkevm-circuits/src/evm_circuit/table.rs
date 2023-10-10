@@ -5,13 +5,50 @@ use crate::{
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
 use eth_types::Field;
-use gadgets::util::Expr;
+use gadgets::{bus::bus_codec::BusMessage, util::Expr};
 use halo2_proofs::plonk::Expression;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-pub type ByteMsgX<F> = [Expression<F>; 2];
-pub type ByteMsgV<F> = [F; 2];
+#[derive(Clone, Debug)]
+pub(crate) enum MsgExpr<F> {
+    Bytes([Expression<F>; 2]),
+    Lookup(Lookup<F>),
+}
+
+impl<F: Field> BusMessage<Expression<F>> for MsgExpr<F> {
+    type IntoIter = std::vec::IntoIter<Expression<F>>;
+
+    fn into_items(self) -> Self::IntoIter {
+        match self {
+            Self::Bytes([byte0, byte1]) => {
+                let tag = 0.expr();
+                vec![tag, byte0, byte1].into_iter()
+            }
+            Self::Lookup(lookup) => {
+                let tag = (1 + (lookup.table() as u64)).expr();
+                let mut inputs = lookup.input_exprs();
+                inputs.insert(0, tag);
+                inputs.into_iter()
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MsgF<F> {
+    Bytes([F; 2]),
+}
+
+impl<F: Field> BusMessage<F> for MsgF<F> {
+    type IntoIter = std::vec::IntoIter<F>;
+
+    fn into_items(self) -> Self::IntoIter {
+        match self {
+            Self::Bytes([b0, b1]) => vec![F::zero(), b0, b1].into_iter(),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, EnumIter)]
 pub enum FixedTableTag {

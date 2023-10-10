@@ -12,7 +12,7 @@ use crate::{
     evm_circuit::{
         param::{EVM_LOOKUP_COLS, MAX_STEP_HEIGHT, N_PHASE2_COLUMNS, STEP_WIDTH},
         step::{ExecutionState, Step},
-        table::{ByteMsgV, ByteMsgX, Table},
+        table::{MsgExpr, MsgF, Table},
         util::{
             constraint_builder::{
                 BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
@@ -377,7 +377,7 @@ impl<F: Field> ExecutionConfig<F> {
     pub(crate) fn configure(
         meta: &mut ConstraintSystem<F>,
         challenges: Challenges<Expression<F>>,
-        bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         fixed_table: &dyn LookupTable<F>,
         tx_table: &dyn LookupTable<F>,
         rw_table: &dyn LookupTable<F>,
@@ -922,7 +922,7 @@ impl<F: Field> ExecutionConfig<F> {
 
     fn configure_bus(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         q_usable: Selector,
         cell_manager: &CellManager<F>,
     ) -> BusPortMulti<F> {
@@ -944,7 +944,7 @@ impl<F: Field> ExecutionConfig<F> {
         let ops = byte_columns
             .chunks(2)
             .map(|columns| {
-                let message = [columns[0].clone(), columns[1].clone()];
+                let message = MsgExpr::Bytes([columns[0].clone(), columns[1].clone()]);
                 BusOp::receive(message)
             })
             .collect::<Vec<_>>();
@@ -1059,7 +1059,7 @@ impl<F: Field> ExecutionConfig<F> {
     pub fn assign_block(
         &self,
         layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
         block: &Block<F>,
         challenges: &Challenges<Value<F>>,
     ) -> Result<EvmCircuitExports<Assigned<F>>, Error> {
@@ -1315,7 +1315,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_bus_ports(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
-        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
         offset_begin: usize,
         offset_end: usize,
     ) {
@@ -1338,7 +1338,7 @@ impl<F: Field> ExecutionConfig<F> {
                     } else {
                         F::zero()
                     };
-                    let message = [byte_0, byte_1];
+                    let message = MsgF::Bytes([byte_0, byte_1]);
                     BusOp::receive(message)
                 })
                 .collect::<Vec<_>>();
@@ -1351,7 +1351,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_same_exec_step_in_range(
         &self,
         region: &mut Region<'_, F>,
-        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
         offset_begin: usize,
         offset_end: usize,
         block: &Block<F>,
@@ -1393,7 +1393,7 @@ impl<F: Field> ExecutionConfig<F> {
     fn assign_exec_step(
         &self,
         region: &mut Region<'_, F>,
-        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
         offset: usize,
         block: &Block<F>,
         transaction: &Transaction,

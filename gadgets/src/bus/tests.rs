@@ -12,7 +12,7 @@ use super::{
     bus_builder::*,
     bus_chip::*,
     bus_codec::{BusCodecExpr, BusCodecVal},
-    bus_lookup::BusLookupConfig,
+    bus_lookup::BusLookupChip,
     bus_port::*,
     Field,
 };
@@ -26,7 +26,7 @@ fn test_bus() {
 struct TestCircuitConfig<F: Field> {
     enabled: Column<Fixed>,
     bus_config: BusConfig,
-    bus_lookup: BusLookupConfig<F>,
+    bus_lookup: BusLookupChip<F>,
     port2: PortChip<F>,
     rand: Challenge,
     _marker: PhantomData<F>,
@@ -61,7 +61,7 @@ impl<F: Field> Circuit<F> for TestCircuit<F> {
 
         // Circuit 1 sends values dynamically.
         let bus_lookup =
-            BusLookupConfig::connect(cs, &mut bus_builder, enabled_expr.clone(), message.clone());
+            BusLookupChip::connect(cs, &mut bus_builder, enabled_expr.clone(), message.clone());
 
         // Circuit 2 receives one value per row.
         let port2 = PortChip::connect(

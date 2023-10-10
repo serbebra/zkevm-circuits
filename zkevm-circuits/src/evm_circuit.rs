@@ -5,7 +5,7 @@ use gadgets::bus::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusConfig,
     bus_codec::{BusCodecExpr, BusCodecVal},
-    bus_lookup::BusLookupConfig,
+    bus_lookup::BusLookupChip,
     bus_port::BusOp,
 };
 use halo2_proofs::{
@@ -40,7 +40,7 @@ use eth_types::Field;
 use execution::ExecutionConfig;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
-use table::{ByteMsgV, ByteMsgX, FixedTableTag};
+use table::{FixedTableTag, Lookup, MsgExpr, MsgF};
 use witness::Block;
 
 /// EvmCircuitConfig implements verification of execution trace of a block.
@@ -49,7 +49,7 @@ pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     dual_byte_table: [Column<Fixed>; 2],
     bus: BusConfig,
-    bus_lookup: BusLookupConfig<F>,
+    bus_lookup: [BusLookupChip<F>; 2],
     enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
@@ -142,8 +142,13 @@ impl<F: Field> EvmCircuitConfig<F> {
 
         let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges.lookup_input()));
 
-        let bus_lookup =
-            Self::configure_bus_lookup(meta, &mut bus_builder, &dual_byte_table, enable_bus_lookup);
+        let bus_lookup = Self::configure_bus_lookup(
+            meta,
+            &mut bus_builder,
+            enable_bus_lookup,
+            &dual_byte_table,
+            &fixed_table,
+        );
 
         let execution = Box::new(ExecutionConfig::configure(
             meta,
@@ -205,18 +210,38 @@ impl<F: Field> EvmCircuitConfig<F> {
 
     fn configure_bus_lookup(
         meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
-        dual_byte_table: &[Column<Fixed>; 2],
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         enabled: Column<Fixed>,
-    ) -> BusLookupConfig<F> {
-        let message = query_expression(meta, |meta| {
-            [
-                meta.query_fixed(dual_byte_table[0], Rotation::cur()),
-                meta.query_fixed(dual_byte_table[1], Rotation::cur()),
-            ]
-        });
+        dual_byte_table: &[Column<Fixed>; 2],
+        fixed_table: &[Column<Fixed>; 4],
+    ) -> [BusLookupChip<F>; 2] {
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-        BusLookupConfig::connect(meta, bus_builder, enabled, message)
+
+        let byte_lookup = {
+            let message = query_expression(meta, |meta| {
+                MsgExpr::Bytes([
+                    meta.query_fixed(dual_byte_table[0], Rotation::cur()),
+                    meta.query_fixed(dual_byte_table[1], Rotation::cur()),
+                ])
+            });
+            BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
+        };
+
+        let fixed_lookup = {
+            let message = query_expression(meta, |meta| {
+                MsgExpr::Lookup(Lookup::Fixed {
+                    tag: meta.query_fixed(fixed_table[0], Rotation::cur()),
+                    values: [
+                        meta.query_fixed(fixed_table[1], Rotation::cur()),
+                        meta.query_fixed(fixed_table[2], Rotation::cur()),
+                        meta.query_fixed(fixed_table[3], Rotation::cur()),
+                    ],
+                })
+            });
+            BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
+        };
+
+        [byte_lookup.clone(), fixed_lookup]
     }
 }
 
@@ -248,7 +273,8 @@ impl<F: Field> EvmCircuitConfig<F> {
     pub fn load_dual_byte_table(
         &self,
         layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F, ByteMsgV<F>>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
+        bus_lookup: &BusLookupChip<F>,
     ) -> Result<(), Error> {
         let mut closure_count = 0;
 
@@ -262,9 +288,10 @@ impl<F: Field> EvmCircuitConfig<F> {
                 }
 
                 for i in 0..256 {
+                    let b0 = F::from(i);
                     for j in 0..256 {
                         let offset = (i * 256 + j) as usize;
-                        let message = [F::from(i), F::from(j)];
+                        let b1 = F::from(j);
 
                         region.assign_fixed(
                             || "",
@@ -277,17 +304,18 @@ impl<F: Field> EvmCircuitConfig<F> {
                             || "",
                             self.dual_byte_table[0],
                             offset,
-                            || Value::known(message[0]),
+                            || Value::known(b0),
                         )?;
                         region.assign_fixed(
                             || "",
                             self.dual_byte_table[1],
                             offset,
-                            || Value::known(message[1]),
+                            || Value::known(b1),
                         )?;
 
+                        let message = MsgF::Bytes([b0, b1]);
                         let count = bus_assigner.op_counter().count_receives(&message);
-                        self.bus_lookup.assign(
+                        bus_lookup.assign(
                             &mut region,
                             bus_assigner,
                             offset,
@@ -441,7 +469,7 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
                 .assign_block(layouter, &mut bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
 
-        config.load_dual_byte_table(layouter, &mut bus_assigner)?;
+        config.load_dual_byte_table(layouter, &mut bus_assigner, &config.bus_lookup[0])?;
 
         layouter.assign_region(
             || "EVM_Bus",
