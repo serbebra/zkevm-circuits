@@ -22,6 +22,7 @@ pub(crate) mod util;
 
 #[cfg(any(feature = "test", test))]
 pub(crate) mod test;
+use self::table::Table;
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 pub use self::EvmCircuit as TestEvmCircuit;
 
@@ -137,7 +138,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
         let dual_byte_table = [(); 2].map(|_| meta.fixed_column());
-        let enable_bus_lookup = meta.fixed_column();
+        let enable_bus_lookup = meta.fixed_column(); // TODO: replace with q_usable, or BusConfig.enabled?
 
         let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges.lookup_input()));
 
@@ -246,9 +247,11 @@ impl<F: Field> EvmCircuitConfig<F> {
 
 impl<F: Field> EvmCircuitConfig<F> {
     /// Load fixed table
-    pub fn load_fixed_table(
+    pub(crate) fn load_fixed_table(
         &self,
         layouter: &mut impl Layouter<F>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
+        bus_lookup: &BusLookupChip<F>,
         fixed_table_tags: Vec<FixedTableTag>,
     ) -> Result<(), Error> {
         layouter.assign_region(
@@ -261,15 +264,26 @@ impl<F: Field> EvmCircuitConfig<F> {
                     for (column, value) in self.fixed_table.iter().zip_eq(row) {
                         region.assign_fixed(|| "", *column, offset, || Value::known(value))?;
                     }
+
+                    region.assign_fixed(
+                        || "",
+                        self.enable_bus_lookup,
+                        offset,
+                        || Value::known(F::one()),
+                    )?;
+
+                    let message = MsgF::Lookup(Table::Fixed, row.to_vec());
+                    bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
                 }
 
+                bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
         )
     }
 
     /// Load dual byte table
-    pub fn load_dual_byte_table(
+    pub(crate) fn load_dual_byte_table(
         &self,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F, MsgF<F>>,
@@ -450,7 +464,6 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         let block = self.block.as_ref().unwrap();
         let num_rows = Self::get_num_rows_required(block);
 
-        config.load_fixed_table(layouter, self.fixed_table_tags.clone())?;
         config.pow_of_rand_table.assign(layouter, challenges)?;
 
         let mut bus_assigner =
@@ -463,6 +476,13 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         self.exports.borrow_mut().replace(export);
 
         config.load_dual_byte_table(layouter, &mut bus_assigner, &config.bus_lookup[0])?;
+
+        config.load_fixed_table(
+            layouter,
+            &mut bus_assigner,
+            &config.bus_lookup[1],
+            self.fixed_table_tags.clone(),
+        )?;
 
         layouter.assign_region(
             || "EVM_Bus",

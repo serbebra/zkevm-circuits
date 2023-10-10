@@ -36,8 +36,9 @@ impl<F: Field> BusMessage<Expression<F>> for MsgExpr<F> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum MsgF<F> {
+pub(crate) enum MsgF<F> {
     Bytes([F; 2]),
+    Lookup(Table, Vec<F>),
 }
 
 impl<F: Field> BusMessage<F> for MsgF<F> {
@@ -46,6 +47,11 @@ impl<F: Field> BusMessage<F> for MsgF<F> {
     fn into_items(self) -> Self::IntoIter {
         match self {
             Self::Bytes([b0, b1]) => vec![F::zero(), b0, b1].into_iter(),
+            MsgF::Lookup(table, mut inputs) => {
+                let tag = F::from(1 + (table as u64));
+                inputs.insert(0, tag);
+                inputs.into_iter()
+            }
         }
     }
 }
