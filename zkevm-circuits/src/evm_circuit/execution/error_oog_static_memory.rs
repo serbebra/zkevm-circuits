@@ -1,38 +1,39 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
+        param::{N_BYTES_GAS, N_BYTES_MEMORY_ADDRESS},
         step::ExecutionState,
         util::{
-            common_gadget::RestoreContextGadget,
-            constraint_builder::{
-                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
-                Transition::{Delta, Same},
-            },
+            common_gadget::CommonErrorGadget,
+            constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             math_gadget::{IsEqualGadget, LtGadget},
             memory_gadget::{
                 CommonMemoryAddressGadget, MemoryExpandedAddressGadget, MemoryExpansionGadget,
             },
-            not, or, select, CachedRegion, Cell,
+            select, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::CallContextFieldTag,
-    util::Expr,
+    util::{word::Word, Expr},
 };
-use eth_types::{evm_types::OpcodeId, Field};
+use eth_types::{evm_types::OpcodeId, Field, ToWord};
+use gadgets::util::or;
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ErrorOOGStaticMemoryGadget<F> {
     opcode: Cell<F>,
-    memory_address: MemoryExpandedAddressGadget<F>,
-    memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
-    insufficient_gas: LtGadget<F, N_BYTES_GAS>,
-    is_mload: IsEqualGadget<F>,
     is_mstore8: IsEqualGadget<F>,
-    rw_counter_end_of_reversion: Cell<F>,
-    restore_context: RestoreContextGadget<F>,
+    // Allow memory size to expand to 5 bytes, because memory address could be
+    // at most 2^40 - 1, after constant division by 32, the memory word size
+    // then could be at most 2^35 - 1.
+    // So generic N_BYTES_MEMORY_WORD_SIZE for MemoryExpansionGadget needs to
+    // be larger by 1 than normal usage (to be 5), to be able to contain
+    // number up to 2^35 - 1.
+    memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_ADDRESS>,
+    memory_address: MemoryExpandedAddressGadget<F>,
+    insufficient_gas: LtGadget<F, N_BYTES_GAS>,
+    common_error_gadget: CommonErrorGadget<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
@@ -43,40 +44,34 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
     // Support other OOG due to pure memory including MSTORE, MSTORE8 and MLOAD
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        cb.require_in_set(
+            "ErrorOutOfGasStaticMemoryExpansion opcode must be MLOAD or MSTORE or MSTORE8",
+            opcode.expr(),
+            vec![
+                OpcodeId::MLOAD.expr(),
+                OpcodeId::MSTORE8.expr(),
+                OpcodeId::MSTORE.expr(),
+            ],
+        );
 
+        // Check if this is an MSTORE8
+        let is_mstore8 = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MSTORE8.expr());
+
+        // pop memory_offset from stack
         let memory_address = MemoryExpandedAddressGadget::construct_self(cb);
         cb.stack_pop(memory_address.offset_word());
 
-        // Check if this is an MSTORE8
-        let is_mload = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MLOAD.expr());
-        let is_mstore8 = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MSTORE8.expr());
-
-        cb.require_equal(
-            "ErrorOutOfGasStaticMemoryExpansion opcode must be MLOAD or MSTORE or MSTORE8",
-            opcode.expr(),
-            select::expr(
-                is_mload.expr(),
-                OpcodeId::MLOAD.expr(),
-                select::expr(
-                    is_mstore8.expr(),
-                    OpcodeId::MSTORE8.expr(),
-                    OpcodeId::MSTORE.expr(),
-                ),
-            ),
-        );
-
-        cb.require_equal(
+        // Get the next memory size, 1 byte if opcode is MSTORE8, otherwise 32 bytes
+        cb.require_equal_word(
             "Memory length must be 32 for MLOAD and MSTORE, and 1 for MSTORE8",
             memory_address.length_word(),
-            select::expr(is_mstore8.expr(), 1.expr(), 32.expr()),
+            Word::from_lo_unchecked(select::expr(is_mstore8.expr(), 1.expr(), 32.expr())),
         );
 
-        // Get the next memory size and the gas cost for this memory access
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.address()]);
 
-        // Check if the amount of gas available is less than the amount of gas
-        // required
+        // Check if the amount of gas available is less than the amount of gas required
+        // constant gas of MSTORE, MSTORE8 and MLOAD are the same
         let insufficient_gas = LtGadget::construct(
             cb,
             cb.curr.state.gas_left.expr(),
@@ -84,51 +79,21 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
         );
 
         cb.require_equal(
-            "Memory address is overflow or gas left is less than cost",
+            "Memory address is overflow or gas left is less than required",
             or::expr([memory_address.overflow(), insufficient_gas.expr()]),
             1.expr(),
         );
 
-        // Current call must fail.
-        cb.call_context_lookup(false.expr(), None, CallContextFieldTag::IsSuccess, 0.expr());
-
-        let rw_counter_end_of_reversion = cb.query_cell();
-        cb.call_context_lookup(
-            false.expr(),
-            None,
-            CallContextFieldTag::RwCounterEndOfReversion,
-            rw_counter_end_of_reversion.expr(),
-        );
-
-        cb.condition(cb.curr.state.is_root.expr(), |cb| {
-            cb.require_step_state_transition(StepStateTransition {
-                call_id: Same,
-                rw_counter: Delta(3.expr() + cb.curr.state.reversible_write_counter.expr()),
-                ..StepStateTransition::any()
-            });
-        });
-
-        let restore_context = cb.condition(not::expr(cb.curr.state.is_root.expr()), |cb| {
-            RestoreContextGadget::construct(
-                cb,
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-                0.expr(),
-            )
-        });
+        let common_error_gadget =
+            CommonErrorGadget::construct(cb, opcode.expr(), cb.rw_counter_offset());
 
         Self {
             opcode,
             memory_address,
             memory_expansion,
             insufficient_gas,
-            is_mload,
             is_mstore8,
-            rw_counter_end_of_reversion,
-            restore_context,
+            common_error_gadget,
         }
     }
 
@@ -141,28 +106,14 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        let opcode = step.opcode.unwrap();
-
-        // Inputs/Outputs
-        let memory_offset = block.rws[step.rw_indices[0]].stack_value();
-
-        // Memory lengths are set to default values for MLOAD, MSTORE and
-        // MSTORE8 in go-ethereum.
-        // <https://github.com/ethereum/go-ethereum/blob/4a9fa31450d3cdcea84735b68cd5a0a8450473f8/core/vm/memory_table.go#L39>
-        let memory_length = match opcode {
-            OpcodeId::MLOAD | OpcodeId::MSTORE => 32,
-            OpcodeId::MSTORE8 => 1,
-            _ => unreachable!(),
-        };
-
+        let opcode = step.opcode().unwrap();
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
-        self.is_mload.assign(
-            region,
-            offset,
-            F::from(opcode.as_u64()),
-            F::from(OpcodeId::MLOAD.as_u64()),
-        )?;
+
+        // Inputs/Outputs
+        let memory_offset = block.get_rws(step, 0).stack_value();
+        self.opcode
+            .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
         self.is_mstore8.assign(
             region,
             offset,
@@ -170,30 +121,31 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
             F::from(OpcodeId::MSTORE8.as_u64()),
         )?;
 
-        let memory_address =
-            self.memory_address
-                .assign(region, offset, memory_offset, memory_length.into())?;
-
-        let memory_expansion_cost = self
-            .memory_expansion
-            .assign(region, offset, step.memory_word_size(), [memory_address])?
-            .1;
+        let length = if opcode == OpcodeId::MSTORE8 {
+            1.to_word()
+        } else {
+            32.to_word()
+        };
+        let expanded_address = self
+            .memory_address
+            .assign(region, offset, memory_offset, length)?;
+        let (_, memory_expansion_gas) = self.memory_expansion.assign(
+            region,
+            offset,
+            step.memory_word_size(),
+            [expanded_address],
+        )?;
 
         // Gas insufficient check
-        // Get `gas_available` variable here once it's available
+        let const_gas = opcode.constant_gas_cost();
         self.insufficient_gas.assign(
             region,
             offset,
             F::from(step.gas_left),
-            F::from(OpcodeId::MLOAD.constant_gas_cost().0 + memory_expansion_cost),
+            F::from(memory_expansion_gas + const_gas),
         )?;
 
-        self.rw_counter_end_of_reversion.assign(
-            region,
-            offset,
-            Value::known(F::from(call.rw_counter_end_of_reversion as u64)),
-        )?;
-        self.restore_context
+        self.common_error_gadget
             .assign(region, offset, block, call, step, 3)?;
 
         Ok(())
@@ -210,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_oog_static_memory_simple() {
-        for code in testing_bytecodes(0xffffffff_u64.into()).iter() {
+        for code in testing_bytecodes(0x40_u64.into()).iter() {
             test_root(code);
             test_internal(code);
         }
@@ -244,13 +196,13 @@ mod tests {
     fn testing_bytecodes(offset: U256) -> Vec<Bytecode> {
         vec![
             bytecode! {
-                PUSH8(0xff)
+                PUSH8(0x14)
                 PUSH32(offset)
                 MSTORE
                 STOP
             },
             bytecode! {
-                PUSH8(0xff)
+                PUSH8(0x14)
                 PUSH32(offset)
                 MSTORE8
                 STOP
@@ -270,7 +222,7 @@ mod tests {
                 txs[0]
                     .from(accs[1].address)
                     .to(accs[0].address)
-                    .gas(word!("0xFFFF"));
+                    .gas(21010.into());
             },
             |block, _tx| block,
         )
@@ -287,8 +239,7 @@ mod tests {
             PUSH32(0x00) // argsOffset
             PUSH1(0x00) // value
             PUSH32(MOCK_ACCOUNTS[1].to_word()) // addr
-            // Decrease expected gas cost (by 1) to trigger out of gas error.
-            PUSH32(0xF) // gas
+            PUSH32(0xA) // gas
             CALL
             STOP
         };

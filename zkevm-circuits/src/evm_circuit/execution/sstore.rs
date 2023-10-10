@@ -4,14 +4,12 @@ use crate::{
         param::N_BYTES_GAS,
         step::ExecutionState,
         util::{
-            common_gadget::{
-                cal_sstore_gas_cost_for_assignment, SameContextGadget, SstoreGasGadget,
-            },
+            common_gadget::{SameContextGadget, SstoreGasGadget},
             constraint_builder::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::Delta,
             },
-            math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
+            math_gadget::{IsEqualWordGadget, IsZeroWordGadget, LtGadget},
             not, CachedRegion, Cell, U64Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -23,7 +21,7 @@ use crate::{
     },
 };
 
-use eth_types::{evm_types::GasCost, Field, ToScalar};
+use eth_types::{evm_types::GasCost, Field};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -139,6 +137,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
             tx_refund_prev.to_word(),
             Some(&mut reversion_info),
         );
+
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(11.expr()),
             program_counter: Delta(1.expr()),
@@ -189,7 +188,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
             call.is_persistent,
         )?;
         self.callee_address
-            .assign_h160(region, offset, call.address)?;
+            .assign_h160(region, offset, call.callee_address)?;
 
         let [key, value] =
             [step.rw_indices[5], step.rw_indices[6]].map(|idx| block.rws[idx].stack_value());
@@ -207,7 +206,7 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
 
         let (tx_refund, tx_refund_prev) = block.rws[step.rw_indices[10]].tx_refund_value_pair();
         self.tx_refund_prev
-            .assign(region, offset, Value::known(F::from(tx_refund_prev)))?;
+            .assign(region, offset, Some(tx_refund_prev.to_le_bytes()))?;
 
         self.sufficient_gas_sentry.assign_value(
             region,
@@ -242,34 +241,32 @@ impl<F: Field> ExecutionGadget<F> for SstoreGadget<F> {
 pub(crate) struct SstoreTxRefundGadget<F> {
     tx_refund_old: U64Cell<F>,
     tx_refund_new: Expression<F>,
-    value: Cell<F>,
-    value_prev: Cell<F>,
-    original_value: Cell<F>,
-    value_prev_is_zero_gadget: IsZeroGadget<F>,
-    value_is_zero_gadget: IsZeroGadget<F>,
-    original_is_zero_gadget: IsZeroGadget<F>,
-    original_eq_value_gadget: IsEqualGadget<F>,
-    prev_eq_value_gadget: IsEqualGadget<F>,
-    original_eq_prev_gadget: IsEqualGadget<F>,
+    value_prev_is_zero_gadget: IsZeroWordGadget<F, Word<Expression<F>>>,
+    value_is_zero_gadget: IsZeroWordGadget<F, Word<Expression<F>>>,
+    original_is_zero_gadget: IsZeroWordGadget<F, Word<Expression<F>>>,
+    original_eq_value_gadget: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
+    prev_eq_value_gadget: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
+    original_eq_prev_gadget: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
 }
 
 impl<F: Field> SstoreTxRefundGadget<F> {
-    pub(crate) fn construct(
+    pub(crate) fn construct<T: WordExpr<F>>(
         cb: &mut EVMConstraintBuilder<F>,
-        tx_refund_old: Cell<F>,
-        value: Cell<F>,
-        value_prev: Cell<F>,
-        original_value: Cell<F>,
+        tx_refund_old: U64Cell<F>,
+        value: T,
+        value_prev: T,
+        original_value: T,
     ) -> Self {
-        let value_prev_is_zero_gadget = IsZeroGadget::construct(cb, value_prev.expr());
-        let value_is_zero_gadget = IsZeroGadget::construct(cb, value.expr());
-        let original_is_zero_gadget = IsZeroGadget::construct(cb, original_value.expr());
+        let value_prev_is_zero_gadget = IsZeroWordGadget::construct(cb, &value_prev.to_word());
+        let value_is_zero_gadget = IsZeroWordGadget::construct(cb, &value.to_word());
+        let original_is_zero_gadget = IsZeroWordGadget::construct(cb, &original_value.to_word());
 
         let original_eq_value_gadget =
-            IsEqualGadget::construct(cb, original_value.expr(), value.expr());
-        let prev_eq_value_gadget = IsEqualGadget::construct(cb, value_prev.expr(), value.expr());
+            IsEqualWordGadget::construct(cb, &original_value.to_word(), &value.to_word());
+        let prev_eq_value_gadget =
+            IsEqualWordGadget::construct(cb, &value_prev.to_word(), &value.to_word());
         let original_eq_prev_gadget =
-            IsEqualGadget::construct(cb, original_value.expr(), value_prev.expr());
+            IsEqualWordGadget::construct(cb, &original_value.to_word(), &value_prev.to_word());
 
         let value_prev_is_zero = value_prev_is_zero_gadget.expr();
         let value_is_zero = value_is_zero_gadget.expr();
@@ -279,21 +276,21 @@ impl<F: Field> SstoreTxRefundGadget<F> {
         let prev_eq_value = prev_eq_value_gadget.expr();
         let original_eq_prev = original_eq_prev_gadget.expr();
 
-        // (value_prev != value) && (original_value != 0) && (value ==
-        // 0)
+        // (value_prev != value) && (original_value != value) && (value ==
+        // Word::from(0))
         let delete_slot =
             not::expr(prev_eq_value.clone()) * not::expr(original_is_zero.clone()) * value_is_zero;
         // (value_prev != value) && (original_value == value) && (original_value !=
-        // 0)
+        // Word::from(0))
         let reset_existing = not::expr(prev_eq_value.clone())
             * original_eq_value.clone()
             * not::expr(original_is_zero.clone());
         // (value_prev != value) && (original_value == value) && (original_value ==
-        // 0)
+        // Word::from(0))
         let reset_inexistent =
             not::expr(prev_eq_value.clone()) * original_eq_value * (original_is_zero);
         // (value_prev != value) && (original_value != value_prev) && (value_prev ==
-        // 0)
+        // Word::from(0))
         let recreate_slot =
             not::expr(prev_eq_value) * not::expr(original_eq_prev) * (value_prev_is_zero);
 
@@ -304,9 +301,6 @@ impl<F: Field> SstoreTxRefundGadget<F> {
             - recreate_slot * (GasCost::SSTORE_CLEARS_SCHEDULE.expr());
 
         Self {
-            value,
-            value_prev,
-            original_value,
             tx_refund_old,
             tx_refund_new,
             value_prev_is_zero_gadget,
@@ -335,38 +329,30 @@ impl<F: Field> SstoreTxRefundGadget<F> {
         original_value: eth_types::Word,
     ) -> Result<(), Error> {
         self.tx_refund_old
-            .assign(region, offset, Value::known(F::from(tx_refund_old)))?;
-        self.value.assign(region, offset, region.word_rlc(value))?;
-        self.value_prev
-            .assign(region, offset, region.word_rlc(value_prev))?;
-        self.original_value
-            .assign(region, offset, region.word_rlc(original_value))?;
+            .assign(region, offset, Some(tx_refund_old.to_le_bytes()))?;
         self.value_prev_is_zero_gadget
-            .assign_value(region, offset, region.word_rlc(value_prev))?;
+            .assign(region, offset, Word::from(value_prev))?;
         self.value_is_zero_gadget
-            .assign_value(region, offset, region.word_rlc(value))?;
-        self.original_is_zero_gadget.assign_value(
+            .assign(region, offset, Word::from(value))?;
+        self.original_is_zero_gadget
+            .assign(region, offset, Word::from(original_value))?;
+        self.original_eq_value_gadget.assign(
             region,
             offset,
-            region.word_rlc(original_value),
+            Word::from(original_value),
+            Word::from(value),
         )?;
-        self.original_eq_value_gadget.assign_value(
+        self.prev_eq_value_gadget.assign(
             region,
             offset,
-            region.word_rlc(original_value),
-            region.word_rlc(value),
+            Word::from(value_prev),
+            Word::from(value),
         )?;
-        self.prev_eq_value_gadget.assign_value(
+        self.original_eq_prev_gadget.assign(
             region,
             offset,
-            region.word_rlc(value_prev),
-            region.word_rlc(value),
-        )?;
-        self.original_eq_prev_gadget.assign_value(
-            region,
-            offset,
-            region.word_rlc(original_value),
-            region.word_rlc(value_prev),
+            Word::from(original_value),
+            Word::from(value_prev),
         )?;
         debug_assert_eq!(
             calc_expected_tx_refund(tx_refund_old, value, value_prev, original_value),

@@ -1,10 +1,3 @@
-use bus_mapping::precompile::PrecompileAuxData;
-use eth_types::{evm_types::GasCost, word, Field, ToLittleEndian, ToScalar, U256};
-use gadgets::util::{and, not, or, select, sum, Expr};
-use halo2_proofs::{
-    circuit::Value,
-    plonk::{Error, Expression},
-};
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
@@ -18,9 +11,16 @@ use crate::{
             rlc, CachedRegion, Cell,
         },
     },
-    util::word::{Word32Cell, WordExpr},
     table::CallContextFieldTag,
+    util::word::{Word32Cell, WordExpr},
     witness::{Block, Call, ExecStep, Transaction},
+};
+use bus_mapping::precompile::PrecompileAuxData;
+use eth_types::{evm_types::GasCost, word, Field, ToLittleEndian, ToScalar, U256};
+use gadgets::util::{and, not, or, select, sum, Expr};
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{Error, Expression},
 };
 
 lazy_static::lazy_static! {
@@ -220,7 +220,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         cb.condition(not::expr(recovered.expr()), |cb| {
             cb.require_zero_word(
                 "address == 0 if address could not be recovered",
-                recovered_addr_keccak_rlc.to_word()
+                recovered_addr_keccak_rlc.to_word(),
             );
         });
 
@@ -329,10 +329,8 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                 word_rlc.assign_u256(region, offset, value)?;
             }
             let (quotient, remainder) = aux_data.msg_hash.div_mod(*FQ_MODULUS);
-            self.msg_hash
-                .assign_u256(region, offset, remainder)?;
-            self.fq_modulus
-                .assign_u256(region, offset, *FQ_MODULUS)?;
+            self.msg_hash.assign_u256(region, offset, remainder)?;
+            self.fq_modulus.assign_u256(region, offset, *FQ_MODULUS)?;
             self.msg_hash_mod.assign(
                 region,
                 offset,
@@ -377,7 +375,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                     let mut recovered_addr = aux_data.recovered_addr.to_fixed_bytes();
                     recovered_addr.reverse();
                     &recovered_addr
-                })
+                }),
             )?;
         } else {
             log::error!("unexpected aux_data {:?} for ecrecover", step.aux_data);

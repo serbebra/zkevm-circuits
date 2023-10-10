@@ -3,9 +3,9 @@ use std::marker::PhantomData;
 use crate::{
     evm_circuit::util::{
         constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
-        CachedRegion, Cell
-    }, 
-    util::word::{WordExpr, Word32Cell}
+        CachedRegion, Cell,
+    },
+    util::word::{Word32Cell, WordExpr},
 };
 use eth_types::{Field, Word};
 use halo2_proofs::plonk::{Error, Expression};
@@ -19,7 +19,11 @@ pub struct LtWordGadget<F> {
 }
 
 impl<F: Field> LtWordGadget<F> {
-    pub(crate) fn construct(cb: &mut EVMConstraintBuilder<F>, lhs: &Word32Cell<F>, rhs: &Word32Cell<F>) -> Self {
+    pub(crate) fn construct(
+        cb: &mut EVMConstraintBuilder<F>,
+        lhs: &Word32Cell<F>,
+        rhs: &Word32Cell<F>,
+    ) -> Self {
         let comparison_hi = ComparisonGadget::construct(
             cb,
             from_bytes::expr(&lhs.limbs[16..]),
@@ -71,9 +75,9 @@ mod tests {
     use crate::evm_circuit::util::constraint_builder::ConstrainBuilderCommon;
 
     use super::{test_util::*, *};
+    use crate::util::word::{Word32Cell, WordExpr};
     use eth_types::*;
     use halo2_proofs::{halo2curves::bn256::Fr, plonk::Error};
-    use crate::util::word::{Word32Cell, WordExpr};
 
     #[derive(Clone)]
     /// LtWordTestContainer: require(a < b)

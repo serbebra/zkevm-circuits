@@ -32,7 +32,7 @@ use itertools::Itertools;
 
 use super::{
     address_word_to_expr, rlc, AccountAddress, CachedRegion, CellType, MemoryAddress,
-    StoredExpression,
+    StoredExpression, U64Cell,
 };
 
 // Max degree allowed in all expressions passing through the ConstraintBuilder.
@@ -504,6 +504,10 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.query_cell_with_type(CellType::StoragePhase1)
     }
 
+    pub(crate) fn query_u64(&mut self) -> U64Cell<F> {
+        U64Cell::new(self.query_bytes())
+    }
+
     #[allow(clippy::let_and_return)]
     pub(crate) fn query_cell_phase2(&mut self) -> Cell<F> {
         let cell = self.query_cell_with_type(CellType::StoragePhase2);
@@ -556,12 +560,19 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.word_rlc(bytes.map(|byte| byte.expr()))
     }
 
-    pub(crate) fn empty_code_hash_rlc(&self) -> Expression<F> {
+    pub(crate) fn empty_code_hash(&self) -> Word<Expression<F>> {
         if cfg!(feature = "poseidon-codehash") {
-            let codehash = POSEIDON_CODE_HASH_EMPTY.to_word().to_scalar().unwrap();
-            Expression::Constant(codehash)
+            //let codehash = POSEIDON_CODE_HASH_EMPTY.to_word().to_scalar().unwrap();
+            Word32::new(
+                POSEIDON_CODE_HASH_EMPTY
+                    .to_word()
+                    .to_le_bytes()
+                    .map(|byte| byte.expr()),
+            )
+            .to_word()
         } else {
-            self.word_rlc((*EMPTY_CODE_HASH_LE).map(|byte| byte.expr()))
+            //self.word_rlc((*EMPTY_CODE_HASH_LE).map(|byte| byte.expr()))
+            Word32::new(EMPTY_CODE_HASH_LE.map(|byte| byte.expr())).to_word()
         }
     }
 
@@ -749,7 +760,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         index: Option<Expression<F>>,
     ) -> Cell<F> {
         let cell = self.query_cell();
-        self.tx_context_lookup(id, field_tag, index, cell.expr());
+        self.tx_context_lookup(id, field_tag, index, Word::from_lo_unchecked(cell.expr()));
         cell
     }
 
@@ -1561,14 +1572,14 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         &mut self,
         input_rlc: Expression<F>,
         input_len: Expression<F>,
-        output_rlc: Expression<F>,
+        output: Word<Expression<F>>,
     ) {
         self.add_lookup(
             "keccak lookup",
             Lookup::KeccakTable {
                 input_rlc,
                 input_len,
-                output_rlc,
+                output,
             },
         );
     }

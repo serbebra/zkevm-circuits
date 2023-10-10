@@ -268,13 +268,24 @@ impl ExecutionState {
             Self::RETURNDATACOPY => vec![OpcodeId::RETURNDATACOPY],
             Self::EXTCODEHASH => vec![OpcodeId::EXTCODEHASH],
             Self::BLOCKHASH => vec![OpcodeId::BLOCKHASH],
-            Self::BLOCKCTXU64 => vec![OpcodeId::TIMESTAMP, OpcodeId::NUMBER, OpcodeId::GASLIMIT],
-            Self::BLOCKCTXU160 => vec![OpcodeId::COINBASE],
-            Self::BLOCKCTXU256 => {
+            Self::BLOCKCTX => {
                 if cfg!(feature = "scroll") {
-                    vec![OpcodeId::DIFFICULTY]
+                    vec![
+                        OpcodeId::TIMESTAMP,
+                        OpcodeId::NUMBER,
+                        OpcodeId::GASLIMIT,
+                        OpcodeId::COINBASE,
+                        OpcodeId::DIFFICULTY,
+                    ]
                 } else {
-                    vec![OpcodeId::DIFFICULTY, OpcodeId::BASEFEE]
+                    vec![
+                        OpcodeId::TIMESTAMP,
+                        OpcodeId::NUMBER,
+                        OpcodeId::GASLIMIT,
+                        OpcodeId::COINBASE,
+                        OpcodeId::DIFFICULTY,
+                        OpcodeId::BASEFEE,
+                    ]
                 }
             }
             Self::CHAINID => vec![OpcodeId::CHAINID],

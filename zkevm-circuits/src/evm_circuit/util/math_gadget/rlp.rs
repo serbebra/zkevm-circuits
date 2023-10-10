@@ -214,7 +214,7 @@ pub struct ContractCreateGadget<F, const IS_CREATE2: bool> {
 
     /// RLC of the init code's hash. The value of this field is feature gated and can be the keccak
     /// or the poseidon hash.
-    code_hash_rlc: Word32Cell<F>,
+    code_hash_rlc: Cell<F>,
     /// Random salt for CREATE2.
     salt: Word32Cell<F>,
 }
@@ -233,6 +233,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
         {
             let word_rlc = cb.word_rlc::<N_BYTES_WORD>(
                 keccak_code_hash
+                    .limbs
                     .iter()
                     .map(Expr::expr)
                     .collect::<Vec<_>>()
@@ -299,7 +300,8 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
 
     /// Caller address' value.
     pub(crate) fn caller_address(&self) -> Word<Expression<F>> {
-        expr_from_bytes(&self.caller_address.cells)
+        //expr_from_bytes(&self.caller_address.limbs)
+        self.caller_address.to_word()
     }
 
     /// Caller nonce's value.
@@ -308,14 +310,21 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     }
 
     /// Dynamic code hash in RLC form.
-    pub(crate) fn code_hash(&self) -> Word<Expression<F>> {
+    pub(crate) fn code_hash(&self) -> Expression<F> {
         self.code_hash_rlc.expr()
     }
+
+    // upstream
+    // Code hash word RLC.
+    //  pub(crate) fn code_hash(&self) -> word::Word<Expression<F>> {
+    //     self.code_hash.to_word()
+    // }
 
     /// Init Code's keccak hash word RLC.
     pub(crate) fn keccak_code_hash_word_rlc(&self, cb: &EVMConstraintBuilder<F>) -> Expression<F> {
         cb.word_rlc::<N_BYTES_WORD>(
             self.keccak_code_hash
+                .limbs
                 .iter()
                 .map(Expr::expr)
                 .collect::<Vec<_>>()
@@ -331,6 +340,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     ) -> Expression<F> {
         cb.keccak_rlc::<N_BYTES_WORD>(
             self.keccak_code_hash
+                .limbs
                 .iter()
                 .map(Expr::expr)
                 .collect::<Vec<_>>()
@@ -347,6 +357,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     pub(crate) fn salt_word_rlc(&self, cb: &EVMConstraintBuilder<F>) -> Expression<F> {
         cb.word_rlc::<N_BYTES_WORD>(
             self.salt
+                .limbs
                 .iter()
                 .map(Expr::expr)
                 .collect::<Vec<_>>()
@@ -359,6 +370,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     pub(crate) fn salt_keccak_rlc(&self, cb: &EVMConstraintBuilder<F>) -> Expression<F> {
         cb.keccak_rlc::<N_BYTES_WORD>(
             self.salt
+                .limbs
                 .iter()
                 .map(Expr::expr)
                 .collect::<Vec<_>>()

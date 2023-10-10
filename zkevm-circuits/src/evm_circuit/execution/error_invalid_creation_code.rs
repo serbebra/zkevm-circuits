@@ -85,8 +85,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
             cb,
             opcode.expr(),
             5.expr(),
-            from_bytes::expr(&offset.cells[..N_BYTES_MEMORY_ADDRESS]),
-            from_bytes::expr(&length.cells[..N_BYTES_MEMORY_ADDRESS]),
+            from_bytes::expr(&offset.limbs[..N_BYTES_MEMORY_ADDRESS]),
+            from_bytes::expr(&length.limbs[..N_BYTES_MEMORY_ADDRESS]),
         );
 
         Self {

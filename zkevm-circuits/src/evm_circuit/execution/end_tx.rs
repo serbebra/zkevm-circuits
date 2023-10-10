@@ -143,7 +143,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 + select::expr(
                     tx_is_l1msg.expr(),
                     0.expr(),
-                    from_bytes::expr(&mul_effective_tip_by_gas_used.product().cells[..16]),
+                    from_bytes::expr(&mul_effective_tip_by_gas_used.product().limbs[..16]),
                 ),
             from_bytes::expr(&effective_fee.limbs[..16]),
         );

@@ -198,7 +198,7 @@ impl<F: Field> ExecutionGadget<F> for SarGadget<F> {
             Lookup::Fixed {
                 tag: FixedTableTag::SignByte.expr(),
                 values: [
-                    a.cells[31].expr(),
+                    a.limbs[31].expr(),
                     select::expr(is_neg.expr(), 255.expr(), 0.expr()),
                     0.expr(),
                 ],

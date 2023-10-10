@@ -8,7 +8,7 @@ use crate::{
         },
     },
     util::{
-        word::{WordCell, WordExpr},
+        word::{Word, WordCell, WordExpr},
         Expr,
     },
 };
@@ -16,7 +16,7 @@ use bus_mapping::{
     circuit_input_builder::{TxL1Fee, TX_L1_COMMIT_EXTRA_COST, TX_L1_FEE_PRECISION},
     l2_predeployed::l1_gas_price_oracle,
 };
-use eth_types::{Field, ToLittleEndian, ToScalar};
+use eth_types::{Field, ToLittleEndian, ToScalar, Word as U256Word};
 use halo2_proofs::plonk::{Error, Expression};
 
 /// Transaction L1 fee gadget for L1GasPriceOracle contract
@@ -63,27 +63,27 @@ impl<F: Field> TxL1FeeGadget<F> {
         cb.account_storage_read(
             l1_fee_address.expr(),
             base_fee_slot,
-            this.base_fee_word.expr(),
+            this.base_fee_word.to_word(),
             tx_id.expr(),
-            this.base_fee_committed.expr(),
+            Word::from_lo_unchecked(this.base_fee_committed.expr()),
         );
 
         // Read L1 fee overhead
         cb.account_storage_read(
             l1_fee_address.expr(),
             overhead_slot,
-            this.fee_overhead_word.expr(),
+            this.fee_overhead_word.to_word(),
             tx_id.expr(),
-            this.fee_overhead_committed.expr(),
+            Word::from_lo_unchecked(this.fee_overhead_committed.expr()),
         );
 
         // Read L1 fee scalar
         cb.account_storage_read(
             l1_fee_address,
             scalar_slot,
-            this.fee_scalar_word.expr(),
+            this.fee_scalar_word.to_word(),
             tx_id,
-            this.fee_scalar_committed.expr(),
+            Word::from_lo_unchecked(this.fee_scalar_committed.expr()),
         );
 
         this
@@ -98,14 +98,16 @@ impl<F: Field> TxL1FeeGadget<F> {
         tx_data_gas_cost: u64,
     ) -> Result<(), Error> {
         let (tx_l1_fee, remainder) = l1_fee.tx_l1_fee(tx_data_gas_cost);
-        self.tx_l1_fee_word.assign_u256(region, offset, tx_l1_fee)?;
-        self.remainder_word.assign_u256(region, offset, remainder)?;
+        self.tx_l1_fee_word
+            .assign_u256(region, offset, U256Word::from(tx_l1_fee))?;
+        self.remainder_word
+            .assign_u256(region, offset, U256Word::from(remainder))?;
         self.base_fee_word
-            .assign_u256(region, offset, l1_fee.base_fee)?;
+            .assign_u256(region, offset, U256Word::from(l1_fee.base_fee))?;
         self.fee_overhead_word
-            .assign_u256(region, offset, l1_fee.fee_overhead)?;
+            .assign_u256(region, offset, U256Word::from(l1_fee.fee_overhead))?;
         self.fee_scalar_word
-            .assign_u256(region, offset, l1_fee.fee_scalar)?;
+            .assign_u256(region, offset, U256Word::from(l1_fee.fee_scalar))?;
         self.base_fee_committed.assign(
             region,
             offset,

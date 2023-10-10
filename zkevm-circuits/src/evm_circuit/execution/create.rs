@@ -212,7 +212,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             create.caller_address(),
         );
 
-        
         let caller_balance = cb.query_word32();
         //let caller_balance = cb.query_word_unchecked();
         cb.account_read(

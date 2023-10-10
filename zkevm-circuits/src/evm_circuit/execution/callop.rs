@@ -21,7 +21,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
-    util::word::{Word, WordCell, Word32Cell, WordExpr},
+    util::word::{Word, Word32Cell, WordExpr},
 };
 use bus_mapping::{
     circuit_input_builder::CopyDataType,

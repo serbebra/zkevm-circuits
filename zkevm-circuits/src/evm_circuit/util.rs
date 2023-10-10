@@ -632,9 +632,10 @@ pub(crate) mod from_bits {
 pub(crate) mod rlc {
     use std::ops::{Add, Mul};
 
-    use crate::util::Expr;
-    use crate::util::word::WordLimbs;
-    use crate::evm_circuit::util::Cell;
+    use crate::{
+        evm_circuit::util::Cell,
+        util::{word::WordLimbs, Expr},
+    };
     use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 
     pub(crate) fn expr<F: FieldExt, E: Expr<F>>(expressions: &[E], randomness: E) -> Expression<F> {

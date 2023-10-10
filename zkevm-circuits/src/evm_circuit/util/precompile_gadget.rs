@@ -4,7 +4,7 @@ use gadgets::util::{not, or, select, Expr};
 use halo2_proofs::{circuit::Value, plonk::Expression};
 
 use crate::evm_circuit::{
-    param::{N_BYTES_WORD, N_BYTES_U64},
+    param::{N_BYTES_U64, N_BYTES_WORD},
     step::{ExecutionState, ExecutionState::ErrorOutOfGasPrecompile},
 };
 
@@ -141,7 +141,7 @@ impl<F: Field> PrecompileGadget<F> {
                 cb.require_equal(
                     "output bytes (RLC) = recovered address",
                     output_bytes_rlc.expr(),
-                    cb.keccak_rlc::<N_BYTES_WORD>(recovered_addr_rlc.limbs.map(|cell| cell.expr()))
+                    cb.keccak_rlc::<N_BYTES_WORD>(recovered_addr_rlc.limbs.map(|cell| cell.expr())),
                 );
                 // If the address was not recovered, RLC(address) == RLC(output) == 0.
                 cb.condition(not::expr(recovered.expr()), |cb| {

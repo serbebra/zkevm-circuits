@@ -7,7 +7,10 @@ use crate::{
         select,
     },
     table::{AccountFieldTag, TxFieldTag::TxType as TxTypeField},
-    util::Expr,
+    util::{
+        word::{Word, WordCell, WordExpr},
+        Expr,
+    },
 };
 use eth_types::{geth_types::TxType, Field, U256};
 use halo2_proofs::{
@@ -55,8 +58,8 @@ impl<F: Field> TxL1MsgGadget<F> {
                 cb.account_write(
                     caller_address.expr(),
                     AccountFieldTag::CodeHash,
-                    cb.empty_code_hash_rlc(),
-                    0.expr(),
+                    cb.empty_code_hash(),
+                    Word::zero(),
                     None,
                 );
                 #[cfg(feature = "scroll")]
@@ -64,7 +67,7 @@ impl<F: Field> TxL1MsgGadget<F> {
                     caller_address.expr(),
                     AccountFieldTag::KeccakCodeHash,
                     cb.empty_keccak_hash_rlc(),
-                    0.expr(),
+                    Word::zero(),
                     None,
                 );
             },

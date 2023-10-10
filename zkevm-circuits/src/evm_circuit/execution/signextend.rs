@@ -75,7 +75,7 @@ impl<F: Field> ExecutionGadget<F> for SignextendGadget<F> {
             let is_selected = and::expr(&[is_byte_selected[idx].expr(), is_msb_sum_zero.expr()]);
 
             // Add the byte to the sum when this byte is selected
-            selected_byte = selected_byte + (is_selected.clone() * value.cells[idx].expr());
+            selected_byte = selected_byte + (is_selected.clone() * value.limbs[idx].expr());
 
             // Verify the selector.
             // Cells are used here to store intermediate results, otherwise
@@ -166,10 +166,13 @@ impl<F: Field> ExecutionGadget<F> for SignextendGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         // Inputs/Outputs
-        let index = block.rws[step.rw_indices[0]].stack_value().to_le_bytes();
-        let value = block.rws[step.rw_indices[1]].stack_value().to_le_bytes();
-        self.index.assign_u256(region, offset, index)?;
-        self.value.assign_u256(region, offset, value)?;
+        let index_word = block.rws[step.rw_indices[0]].stack_value();
+        let value_word = block.rws[step.rw_indices[1]].stack_value();
+
+        let index = index_word.to_le_bytes();
+        let value = value_word.to_le_bytes();
+        self.index.assign_u256(region, offset, index_word)?;
+        self.value.assign_u256(region, offset, value_word)?;
         // Generate the selectors
         let msb_sum_zero =
             self.is_msb_sum_zero

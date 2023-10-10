@@ -87,8 +87,7 @@ impl<F: Field> ModGadget<F> {
         let a_or_zero = if n.is_zero() { U256::zero() } else { a };
 
         self.k.assign_u256(region, offset, k)?;
-        self.a_or_zero
-            .assign_u256(region, offset, a_or_zero)?;
+        self.a_or_zero.assign_u256(region, offset, a_or_zero)?;
         let n_sum = (0..32).fold(0, |acc, idx| acc + n.byte(idx) as u64);
         let a_or_zero_sum = (0..32).fold(0, |acc, idx| acc + a_or_zero.byte(idx) as u64);
         self.n_is_zero.assign(region, offset, F::from(n_sum))?;

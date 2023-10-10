@@ -142,7 +142,7 @@ impl<F: Field> ExecutionGadget<F> for ExponentiationGadget<F> {
         let exponent_byte_size = ByteSizeGadget::construct(
             cb,
             exponent
-                .cells
+                .limbs
                 .iter()
                 .map(Expr::expr)
                 .collect::<Vec<_>>()

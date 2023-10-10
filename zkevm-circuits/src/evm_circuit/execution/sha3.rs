@@ -76,7 +76,12 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             cb.require_zero("copy_rwc_inc == 0 for size = 0", copy_rwc_inc.expr());
             cb.require_zero("rlc_acc == 0 for size = 0", rlc_acc.expr());
         });
-        cb.keccak_table_lookup(rlc_acc.expr(), memory_address.length(), sha3_digest.expr());
+
+        cb.keccak_table_lookup(
+            rlc_acc.expr(),
+            memory_address.length(),
+            sha3_digest.to_word(),
+        );
 
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.address()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(

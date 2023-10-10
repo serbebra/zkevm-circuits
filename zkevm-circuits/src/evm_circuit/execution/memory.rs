@@ -112,7 +112,7 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
 
         cb.condition(is_mstore8.expr(), |cb| {
             // Check the byte that is written.
-            let first_byte = value.cells[0].expr();
+            let first_byte = value.limbs[0].expr();
             mask.require_equal_unaligned_byte(cb, first_byte, &value_left);
         });
 

@@ -478,7 +478,8 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             Value::known(call.caller_id.to_scalar().unwrap()),
         )?;
 
-        self.address.assign_h160(region, offset, call.address)?;
+        self.address
+            .assign_h160(region, offset, call.callee_address)?;
 
         self.reversion_info.assign(
             region,

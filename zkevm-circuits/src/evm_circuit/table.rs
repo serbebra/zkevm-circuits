@@ -228,7 +228,7 @@ pub(crate) enum Lookup<F> {
         /// field_tag is Calldata, otherwise should be set to 0.
         index: Expression<F>,
         /// Value of the field.
-        value: Expression<F>,
+        value: Word<Expression<F>>,
     },
     /// Lookup to read-write table, which contains read-write access records of
     /// time-aware data.
@@ -275,11 +275,11 @@ pub(crate) enum Lookup<F> {
         /// Whether the row is the first row of the copy event.
         is_first: Expression<F>,
         /// The source ID for the copy event.
-        src_id: Expression<F>,
+        src_id: Word<Expression<F>>,
         /// The source tag for the copy event.
         src_tag: Expression<F>,
         /// The destination ID for the copy event.
-        dst_id: Expression<F>,
+        dst_id: Word<Expression<F>>,
         /// The destination tag for the copy event.
         dst_tag: Expression<F>,
         /// The source address where bytes are copied from.
@@ -308,7 +308,7 @@ pub(crate) enum Lookup<F> {
         input_len: Expression<F>,
         /// Output (hash) until this state. This is the RLC representation of
         /// the final output keccak256 hash of the input.
-        output_rlc: Expression<F>,
+        output: Word<Expression<F>>,
     },
     /// Lookup to exponentiation table.
     ExpTable {
