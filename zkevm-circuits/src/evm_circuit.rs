@@ -47,7 +47,6 @@ use witness::Block;
 #[derive(Clone, Debug)]
 pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
-    byte_table: [Column<Fixed>; 1],
     dual_byte_table: [Column<Fixed>; 2],
     bus: BusConfig,
     bus_lookup: BusLookupConfig<F>,
@@ -138,7 +137,6 @@ impl<F: Field> EvmCircuitConfig<F> {
         }: EvmCircuitConfigArgs<F>,
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
-        let byte_table = [(); 1].map(|_| meta.fixed_column());
         let dual_byte_table = [(); 2].map(|_| meta.fixed_column());
         let enable_bus_lookup = meta.fixed_column();
 
@@ -152,7 +150,6 @@ impl<F: Field> EvmCircuitConfig<F> {
             challenges,
             &mut bus_builder,
             &fixed_table,
-            &byte_table,
             &tx_table,
             &rw_table,
             &bytecode_table,
@@ -168,7 +165,8 @@ impl<F: Field> EvmCircuitConfig<F> {
 
         let bus = BusConfig::new(meta, &bus_builder.build());
 
-        meta.annotate_lookup_any_column(byte_table[0], || "byte_range");
+        meta.annotate_lookup_any_column(dual_byte_table[0], || "dual_byte_table_0");
+        meta.annotate_lookup_any_column(dual_byte_table[1], || "dual_byte_table_1");
         fixed_table.iter().enumerate().for_each(|(idx, &col)| {
             meta.annotate_lookup_any_column(col, || format!("fix_table_{idx}"))
         });
@@ -186,7 +184,6 @@ impl<F: Field> EvmCircuitConfig<F> {
 
         Self {
             fixed_table,
-            byte_table,
             dual_byte_table,
             bus,
             bus_lookup,
@@ -245,25 +242,6 @@ impl<F: Field> EvmCircuitConfig<F> {
                 Ok(())
             },
         )
-    }
-
-    /// Load byte table
-    pub fn load_byte_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        layouter.assign_region(
-            || "byte table",
-            |mut region| {
-                for offset in 0..256 {
-                    region.assign_fixed(
-                        || "",
-                        self.byte_table[0],
-                        offset,
-                        || Value::known(F::from(offset as u64)),
-                    )?;
-                }
-                Ok(())
-            },
-        )?;
-        Ok(())
     }
 
     /// Load dual byte table
@@ -463,7 +441,6 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
                 .assign_block(layouter, &mut bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
 
-        config.load_byte_table(layouter)?;
         config.load_dual_byte_table(layouter, &mut bus_assigner)?;
 
         layouter.assign_region(

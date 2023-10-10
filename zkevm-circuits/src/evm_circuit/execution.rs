@@ -379,7 +379,6 @@ impl<F: Field> ExecutionConfig<F> {
         challenges: Challenges<Expression<F>>,
         bus_builder: &mut BusBuilder<F, ByteMsgX<F>>,
         fixed_table: &dyn LookupTable<F>,
-        byte_table: &dyn LookupTable<F>,
         tx_table: &dyn LookupTable<F>,
         rw_table: &dyn LookupTable<F>,
         bytecode_table: &dyn LookupTable<F>,
@@ -660,7 +659,6 @@ impl<F: Field> ExecutionConfig<F> {
         Self::configure_lookup(
             meta,
             fixed_table,
-            byte_table,
             tx_table,
             rw_table,
             bytecode_table,
@@ -958,7 +956,6 @@ impl<F: Field> ExecutionConfig<F> {
     fn configure_lookup(
         meta: &mut ConstraintSystem<F>,
         fixed_table: &dyn LookupTable<F>,
-        byte_table: &dyn LookupTable<F>,
         tx_table: &dyn LookupTable<F>,
         rw_table: &dyn LookupTable<F>,
         bytecode_table: &dyn LookupTable<F>,
@@ -996,14 +993,6 @@ impl<F: Field> ExecutionConfig<F> {
                         column.expr(),
                         rlc::expr(&table_expressions, challenges.lookup_input()),
                     )]
-                });
-            }
-        }
-        for column in cell_manager.columns().iter() {
-            if let CellType::LookupByte = column.cell_type {
-                meta.lookup_any("Byte lookup", |meta| {
-                    let byte_table_expression = byte_table.table_exprs(meta)[0].clone();
-                    vec![(column.expr(), byte_table_expression)]
                 });
             }
         }
