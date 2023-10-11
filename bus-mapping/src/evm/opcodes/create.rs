@@ -98,7 +98,6 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
             tx_id.to_word(),
         )?;
         state.reversion_info_read(&mut exec_step, &caller)?;
-        state.tx_access_list_write(&mut exec_step, address)?;
 
         let depth = caller.depth;
         state.call_context_read(
@@ -147,6 +146,7 @@ impl<const IS_CREATE2: bool> Opcode for Create<IS_CREATE2> {
                     value_prev: caller_nonce.into(),
                 },
             )?;
+            state.tx_access_list_write(&mut exec_step, address)?;
         }
 
         // TODO: look into when this can be pushed. Could it be done in parse call?
