@@ -95,7 +95,7 @@ impl<F: Field> ExecutionGadget<F> for ExtcodecopyGadget<F> {
         let not_exists = IsZeroWordGadget::construct(cb, &code_hash.to_word());
         let exists = not::expr(not_exists.expr());
         cb.condition(exists.expr(), |cb| {
-            cb.bytecode_length(code_hash.expr(), code_size.expr());
+            cb.bytecode_length(code_hash.to_word(), code_size.expr());
         });
         cb.condition(not_exists.expr(), |cb| {
             cb.require_zero("code_size is zero when non_exists", code_size.expr());

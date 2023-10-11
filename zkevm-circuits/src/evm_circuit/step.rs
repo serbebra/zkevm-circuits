@@ -5,7 +5,7 @@ use crate::{
         util::Cell,
         witness::{Block, Call, ExecStep},
     },
-    util::Expr,
+    util::{word::Word, Expr},
     witness::Transaction,
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
@@ -557,7 +557,7 @@ pub(crate) struct StepState<F> {
     /// In the case of a contract creation internal call, this denotes the hash
     /// of the chunk of bytes from caller's memory that represent the
     /// contract init code.
-    pub(crate) code_hash: Cell<F>,
+    pub(crate) code_hash: WordCell<F>,
     /// The program counter
     pub(crate) program_counter: Cell<F>,
     /// The stack pointer

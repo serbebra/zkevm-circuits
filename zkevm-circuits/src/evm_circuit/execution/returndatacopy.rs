@@ -79,7 +79,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         cb.require_equal(
             "size = CommonReturnDataCopyGadget::size",
             size.expr(),
-            check_overflow_gadget.size().expr(),
+            check_overflow_gadget.size(),
         );
         // 1. Pop dest_offset, offset, length from stack
         cb.stack_pop(dest_offset.to_word());

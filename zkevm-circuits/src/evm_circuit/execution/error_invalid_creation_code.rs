@@ -50,9 +50,12 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
         );
         let first_byte = cb.query_cell();
 
-        //let address = cb.query_word_rlc();
+        //let offset = cb.query_word32();
+        let offset = cb.query_memory_address();
 
-        let offset = cb.query_word32();
+        // let offset = cb.query_word_unchecked();
+        // let length = cb.query_memory_address();
+
         let length = cb.query_word32();
         let value_left = cb.query_word32();
 
@@ -118,19 +121,15 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
         self.memory_address
             .assign(region, offset, memory_offset.as_u64())?;
 
-        self.length.assign(
+        self.length.assign_u256(
             region,
             offset,
-            Some(
-                length.to_le_bytes()[..N_BYTES_MEMORY_ADDRESS]
-                    .try_into()
-                    .unwrap(),
-            ),
+            length,
         )?;
 
         let word_left = block.rws[step.rw_indices[2]].memory_word_pair().0;
         self.value_left
-            .assign_u256(region, offset, word_left.to_le_bytes())?;
+            .assign_u256(region, offset, word_left)?;
 
         let mut bytes = word_left.to_le_bytes();
         bytes.reverse();

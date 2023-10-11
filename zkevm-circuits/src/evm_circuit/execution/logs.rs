@@ -126,9 +126,8 @@ impl<F: Field> ExecutionGadget<F> for LogGadget<F> {
         }
 
         // check memory copy
-        let mstart = cb.query_cell_phase2();
-        let memory_address = MemoryAddressGadget::construct(cb, mstart.clone(), msize);
-        cb.require_equal("mstart == mstart_word value", mstart.expr(), mstart.expr());
+        //let mstart = cb.query_cell_phase2();
+        let memory_address = MemoryAddressGadget::construct(cb, mstart, msize);
 
         // Calculate the next memory size and the gas cost for this memory
         // access
@@ -208,7 +207,7 @@ impl<F: Field> ExecutionGadget<F> for LogGadget<F> {
         let [memory_start, msize] =
             [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
 
-        self.mstart_word.assign(region, offset, memory_start)?;
+        //self.mstart_word.assign(region, offset, memory_start)?;
 
         let memory_address = self
             .memory_address
@@ -231,15 +230,15 @@ impl<F: Field> ExecutionGadget<F> for LogGadget<F> {
         };
 
         for i in 0..4 {
-            let mut topic = region.word_rlc(U256::zero());
+            let mut topic = U256::zero();
             if i < topic_count {
-                topic = region.word_rlc(block.rws[topic_stack_entry].stack_value());
+                topic = block.rws[topic_stack_entry].stack_value();
                 self.topic_selectors[i].assign(region, offset, Value::known(F::one()))?;
                 topic_stack_entry.1 += 1;
             } else {
                 self.topic_selectors[i].assign(region, offset, Value::known(F::zero()))?;
             }
-            self.phase2_topics[i].assign(region, offset, topic)?;
+            self.topics[i].assign_u256(region, offset, topic)?;
         }
 
         self.contract_address

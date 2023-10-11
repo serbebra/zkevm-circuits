@@ -72,9 +72,9 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         self.callee_address
-            .assign_h160(region, offset, call.address)?;
+            .assign_h160(region, offset, call.callee_address)?;
 
-        let self_balance = block.get_rws(step, 2).stack_value();
+        let self_balance = block.rws[step.rw_indices[2]].stack_value();
         self.self_balance
             .assign_u256(region, offset, self_balance)?;
 

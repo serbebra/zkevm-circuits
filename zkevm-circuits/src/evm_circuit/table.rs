@@ -248,7 +248,7 @@ pub(crate) enum Lookup<F> {
     /// contract code.
     Bytecode {
         /// Hash to specify which code to read.
-        hash: Expression<F>,
+        hash: Word<Expression<F>>,
         /// Tag to specify whether its the bytecode length or byte value in the
         /// bytecode.
         tag: Expression<F>,
@@ -385,7 +385,8 @@ impl<F: Field> Lookup<F> {
                 id.clone(),
                 field_tag.clone(),
                 index.clone(),
-                value.clone(),
+                value.lo(),
+                value.hi(),
             ],
             Self::Rw {
                 counter,
@@ -401,11 +402,16 @@ impl<F: Field> Lookup<F> {
                     values.id.clone(),
                     values.address.clone(),
                     values.field_tag.clone(),
-                    values.storage_key.clone(),
-                    values.value.clone(),
-                    values.value_prev.clone(),
-                    values.aux1.clone(),
-                    values.aux2.clone(),
+                    values.storage_key.lo(),
+                    values.storage_key.hi(),
+                    values.value.lo(),
+                    values.value.hi(),
+                    values.value_prev.lo(),
+                    values.value_prev.hi(),
+                    values.aux1.lo(),
+                    values.aux1.hi(),
+                    values.aux2.lo(),
+                    values.aux2.hi(),
                 ]
             }
             Self::Bytecode {
@@ -417,7 +423,8 @@ impl<F: Field> Lookup<F> {
             } => {
                 vec![
                     1.expr(), // q_enable
-                    hash.clone(),
+                    hash.lo(),
+                    hash.hi(),
                     tag.clone(),
                     index.clone(),
                     is_code.clone(),
@@ -429,7 +436,7 @@ impl<F: Field> Lookup<F> {
                 number,
                 value,
             } => {
-                vec![field_tag.clone(), number.clone(), value.clone()]
+                vec![field_tag.clone(), number.clone(), value.lo(), value.hi()]
             }
             Self::CopyTable {
                 is_first,
@@ -447,9 +454,11 @@ impl<F: Field> Lookup<F> {
             } => vec![
                 1.expr(),
                 is_first.clone(),
-                src_id.clone(),
+                src_id.lo(),
+                src_id.hi(),
                 src_tag.clone(),
-                dst_id.clone(),
+                dst_id.lo(),
+                dst_id.hi(),
                 dst_tag.clone(),
                 src_addr.clone(),
                 src_addr_end.clone(),
@@ -462,13 +471,14 @@ impl<F: Field> Lookup<F> {
             Self::KeccakTable {
                 input_rlc,
                 input_len,
-                output_rlc,
+                output,
             } => vec![
                 1.expr(), // q_enable
                 1.expr(), // is_final
                 input_rlc.clone(),
                 input_len.clone(),
-                output_rlc.clone(),
+                output.lo(),
+                output.hi(),
             ],
             Self::ExpTable {
                 base_limbs,

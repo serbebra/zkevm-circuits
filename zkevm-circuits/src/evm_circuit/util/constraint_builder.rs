@@ -738,7 +738,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         )
     }
 
-    pub(crate) fn bytecode_length(&mut self, code_hash: Expression<F>, value: Expression<F>) {
+    pub(crate) fn bytecode_length(&mut self, code_hash: Word<Expression<F>>, value: Expression<F>) {
         self.add_lookup(
             "Bytecode (length)",
             Lookup::Bytecode {

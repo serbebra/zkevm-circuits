@@ -380,20 +380,25 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         for (field_tag, value) in [
             (
                 CallContextFieldTag::ProgramCounter,
-                cb.curr.state.program_counter.expr() + 1.expr(),
+                Word::from_lo_unchecked(cb.curr.state.program_counter.expr() + 1.expr()),
             ),
             (
                 CallContextFieldTag::StackPointer,
-                cb.curr.state.stack_pointer.expr() + 2.expr() + IS_CREATE2.expr(),
+                Word::from_lo_unchecked(
+                    cb.curr.state.stack_pointer.expr() + 2.expr() + IS_CREATE2.expr(),
+                ),
             ),
-            (CallContextFieldTag::GasLeft, gas_left.quotient()),
+            (
+                CallContextFieldTag::GasLeft,
+                Word::from_lo_unchecked(gas_left.quotient()),
+            ),
             (
                 CallContextFieldTag::MemorySize,
-                memory_expansion.next_memory_word_size(),
+                Word::from_lo_unchecked(memory_expansion.next_memory_word_size()),
             ),
             (
                 CallContextFieldTag::ReversibleWriteCounter,
-                cb.curr.state.reversible_write_counter.expr() + 2.expr(),
+                Word::from_lo_unchecked(cb.curr.state.reversible_write_counter.expr() + 2.expr()),
             ),
         ] {
             cb.call_context_lookup(true.expr(), None, field_tag, value);
@@ -407,13 +412,13 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                 true.expr(),
                 None,
                 CallContextFieldTag::LastCalleeId,
-                callee_call_id.expr(),
+                Word::from_lo_unchecked(callee_call_id.expr()),
             );
             for field_tag in [
                 CallContextFieldTag::LastCalleeReturnDataOffset,
                 CallContextFieldTag::LastCalleeReturnDataLength,
             ] {
-                cb.call_context_lookup(true.expr(), None, field_tag, 0.expr());
+                cb.call_context_lookup(true.expr(), None, field_tag, Word::zero());
             }
 
             cb.require_step_state_transition(StepStateTransition {
@@ -431,13 +436,22 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         // Proceed to handle the case where precheck is OK.
         cb.condition(is_precheck_ok, |cb| {
             for (field_tag, value) in [
-                (CallContextFieldTag::CallerId, cb.curr.state.call_id.expr()),
-                (CallContextFieldTag::IsSuccess, callee_is_success.expr()),
+                (
+                    CallContextFieldTag::CallerId,
+                    Word::from_lo_unchecked(cb.curr.state.call_id.expr()),
+                ),
+                (
+                    CallContextFieldTag::IsSuccess,
+                    Word::from_lo_unchecked(callee_is_success.expr()),
+                ),
                 (
                     CallContextFieldTag::IsPersistent,
-                    callee_reversion_info.is_persistent(),
+                    Word::from_lo_unchecked(callee_reversion_info.is_persistent()),
                 ),
-                (CallContextFieldTag::TxId, tx_id.expr()),
+                (
+                    CallContextFieldTag::TxId,
+                    Word::from_lo_unchecked(tx_id.expr()),
+                ),
                 (CallContextFieldTag::CallerAddress, create.caller_address()),
                 (CallContextFieldTag::CalleeAddress, new_address),
                 (
@@ -470,7 +484,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                         call_id: To(callee_call_id.expr()),
                         is_root: To(false.expr()),
                         is_create: To(true.expr()),
-                        code_hash: To(create.code_hash_word_rlc()),
+                        code_hash: To(create.code_hash()),
                         gas_left: To(callee_gas_left),
                         reversible_write_counter: To(1.expr() + transfer.reversible_w_delta()),
                         ..StepStateTransition::new_context()
@@ -486,13 +500,13 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                         true.expr(),
                         None,
                         CallContextFieldTag::LastCalleeId,
-                        callee_call_id.expr(),
+                        Word::from_lo_unchecked(callee_call_id.expr()),
                     );
                     for field_tag in [
                         CallContextFieldTag::LastCalleeReturnDataOffset,
                         CallContextFieldTag::LastCalleeReturnDataLength,
                     ] {
-                        cb.call_context_lookup(true.expr(), None, field_tag, 0.expr());
+                        cb.call_context_lookup(true.expr(), None, field_tag, Word::zero());
                     }
                     cb.require_step_state_transition(StepStateTransition {
                         rw_counter: Delta(cb.rw_counter_offset()),
@@ -511,13 +525,13 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                     true.expr(),
                     None,
                     CallContextFieldTag::LastCalleeId,
-                    callee_call_id.expr(),
+                    Word::from_lo_unchecked(callee_call_id.expr()),
                 );
                 for field_tag in [
                     CallContextFieldTag::LastCalleeReturnDataOffset,
                     CallContextFieldTag::LastCalleeReturnDataLength,
                 ] {
-                    cb.call_context_lookup(true.expr(), None, field_tag, 0.expr());
+                    cb.call_context_lookup(true.expr(), None, field_tag, Word::zero());
                 }
 
                 cb.require_step_state_transition(StepStateTransition {
@@ -583,8 +597,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
         rws.next(); // is_static
         let [value, init_code_start, init_code_length] = [(); 3].map(|_| rws.next().stack_value());
-        self.value
-            .assign_u256(region, offset, value.to_le_bytes())?;
+        self.value.assign_u256(region, offset, value)?;
         let salt = if is_create2 {
             rws.next().stack_value()
         } else {

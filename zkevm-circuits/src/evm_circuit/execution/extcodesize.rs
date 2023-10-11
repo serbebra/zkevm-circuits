@@ -73,8 +73,7 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
         let not_exists = IsZeroWordGadget::construct(cb, &code_hash);
         let exists = not::expr(not_exists.expr());
 
-        let code_size = cb.query_word_unchecked();
-        //let code_size = cb.query_u64();
+        let code_size = cb.query_u64();
         cb.condition(exists.expr(), |cb| {
             #[cfg(feature = "scroll")]
             cb.account_read(
@@ -83,14 +82,14 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
                 from_bytes::expr(&code_size.limbs),
             );
             #[cfg(not(feature = "scroll"))]
-            cb.bytecode_length(code_hash.expr(), from_bytes::expr(&code_size.limbs));
+            cb.bytecode_length(code_hash.to_word(), from_bytes::expr(&code_size.limbs));
         });
 
         cb.condition(not_exists.expr(), |cb| {
             cb.require_zero("code_size is zero when non_exists", code_size.expr());
         });
 
-        cb.stack_push(code_size.expr());
+        cb.stack_push(code_size.to_word());
 
         let gas_cost = select::expr(
             is_warm.expr(),
@@ -154,10 +153,10 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
             .assign(region, offset, Value::known(F::from(is_warm)))?;
 
         let code_hash = block.rws[step.rw_indices[5]].account_value_pair().0;
-        self.code_hash
-            .assign(region, offset, region.code_hash(code_hash))?;
+        self.code_hash.assign_u256(region, offset, code_hash)?;
+
         self.not_exists
-            .assign_value(region, offset, region.code_hash(code_hash))?;
+            .assign(region, offset, Word::from(code_hash))?;
 
         let rw_offset = 6;
         #[cfg(feature = "scroll")]
@@ -166,7 +165,7 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
         } else {
             rw_offset + 1
         };
-        let code_size = block.rws[step.rw_indices[rw_offset]].stack_value().as_u64();
+        let code_size = block.rws[step.rw_indices[rw_offset]].stack_value();
         // self.code_size
         //     .assign(region, offset, Some(code_size.to_le_bytes()))?;
         self.code_size.assign_u256(region, offset, code_size)?;

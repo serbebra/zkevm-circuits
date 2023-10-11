@@ -12,7 +12,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{CallContextFieldTag, TxContextFieldTag},
-    util::Expr,
+    util::{word::Word, Expr},
 };
 use bus_mapping::l2_predeployed::message_queue::{
     ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
@@ -67,7 +67,11 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         });
         cb.condition(not::expr(is_empty_block.expr()), |cb| {
             // 1b. total_txs matches the tx_id that corresponds to the final step.
-            cb.call_context_lookup(0.expr(), None, CallContextFieldTag::TxId, total_txs.expr());
+            cb.call_context_lookup_read(
+                None,
+                CallContextFieldTag::TxId,
+                Word::from_lo_unchecked(total_txs.expr()),
+            );
         });
 
         let mut withdraw_trie_root_slot_le = [0u8; 32];
@@ -95,7 +99,7 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
                 total_txs.expr() + 1.expr(),
                 TxContextFieldTag::CallerAddress,
                 None,
-                0.expr(),
+                Word::zero(),
             );
             // Since every tx lookup done in the EVM circuit must succeed
             // and uses a unique tx_id, we know that at

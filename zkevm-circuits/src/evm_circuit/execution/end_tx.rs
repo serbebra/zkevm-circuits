@@ -23,7 +23,7 @@ use crate::{
         TxReceiptFieldTag,
     },
     util::{
-        word::{Word, WordCell, WordExpr},
+        word::{Word, Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };
@@ -42,9 +42,9 @@ pub(crate) struct EndTxGadget<F> {
     max_refund: ConstantDivisionGadget<F, N_BYTES_GAS>,
     refund: Cell<F>,
     effective_refund: MinMaxGadget<F, N_BYTES_GAS>,
-    effective_fee: WordCell<F>,
+    effective_fee: Word32Cell<F>,
     mul_gas_price_by_refund: MulWordByU64Gadget<F>,
-    tx_caller_address: Cell<F>,
+    tx_caller_address: Word32Cell<F>,
     tx_data_gas_cost: Cell<F>,
     gas_fee_refund: UpdateBalanceGadget<F, 2, true>,
     sub_gas_price_by_base_fee: AddWordsGadget<F, 2, true>,
@@ -73,13 +73,13 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let is_persistent = cb.call_context(None, CallContextFieldTag::IsPersistent);
         let tx_l1_fee = cb.call_context(None, CallContextFieldTag::L1Fee);
 
-        let [tx_gas, tx_caller_address, tx_type, tx_data_gas_cost] = [
-            TxContextFieldTag::Gas,
-            TxContextFieldTag::CallerAddress,
-            TxContextFieldTag::TxType,
-            TxContextFieldTag::TxDataGasCost,
-        ]
-        .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
+        let tx_gas = cb.tx_context(tx_id.expr(), TxContextFieldTag::Gas, None);
+        let tx_caller_address =
+            cb.tx_context_as_word(tx_id.expr(), TxContextFieldTag::CallerAddress, None);
+
+        let [tx_type, tx_data_gas_cost] =
+            [TxContextFieldTag::TxType, TxContextFieldTag::TxDataGasCost]
+                .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
         let tx_gas_price = cb.tx_context_as_word(tx_id.expr(), TxContextFieldTag::GasPrice, None);
 
         let tx_is_l1msg =
@@ -93,7 +93,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             MAX_REFUND_QUOTIENT_OF_GAS_USED as u64,
         );
         let refund = cb.query_cell();
-        cb.tx_refund_read(tx_id.expr(), refund.expr());
+        cb.tx_refund_read(tx_id.expr(), Word::from_lo_unchecked(refund.expr()));
         let effective_refund = MinMaxGadget::construct(cb, max_refund.quotient(), refund.expr());
 
         // Add effective_refund * tx_gas_price back to caller's balance
@@ -105,7 +105,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let gas_fee_refund = cb.condition(not::expr(tx_is_l1msg.expr()), |cb| {
             UpdateBalanceGadget::construct(
                 cb,
-                tx_caller_address.expr(),
+                tx_caller_address.to_word(),
                 vec![mul_gas_price_by_refund.product().clone()],
                 None,
             )
@@ -115,10 +115,10 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let coinbase = cb.query_word_unchecked();
         let base_fee = cb.query_word32();
         for (tag, value) in [
-            (BlockContextFieldTag::Coinbase, coinbase.expr()),
-            (BlockContextFieldTag::BaseFee, base_fee.expr()),
+            (BlockContextFieldTag::Coinbase, coinbase.to_word()),
+            (BlockContextFieldTag::BaseFee, base_fee.to_word()),
         ] {
-            cb.block_lookup(tag.expr(), cb.curr.state.block_number.expr(), value);
+            cb.block_lookup(tag.expr(), Some(cb.curr.state.block_number.expr()), value);
         }
         let effective_tip = cb.query_word32();
         let sub_gas_price_by_base_fee =
@@ -149,7 +149,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         );
 
         cb.condition(tx_is_l1msg.expr(), |cb| {
-            cb.require_zero("effective fee is zero for l1 msg", effective_fee.expr());
+            cb.require_zero_word("effective fee is zero for l1 msg", effective_fee.to_word());
         });
 
         let coinbase_codehash = cb.query_word_unchecked();
@@ -226,7 +226,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                     true.expr(),
                     Some(cb.next.state.rw_counter.expr()),
                     CallContextFieldTag::TxId,
-                    tx_id.expr() + 1.expr(),
+                    Word::from_lo_unchecked(tx_id.expr() + 1.expr()),
                 );
 
                 cb.require_step_state_transition(StepStateTransition {
@@ -330,15 +330,9 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             effective_refund + step.gas_left,
             gas_fee_refund,
         )?;
-        self.tx_caller_address.assign(
-            region,
-            offset,
-            Value::known(
-                tx.caller_address
-                    .to_scalar()
-                    .expect("unexpected Address -> Scalar conversion failure"),
-            ),
-        )?;
+        self.tx_caller_address
+            .assign_h160(region, offset, tx.caller_address)?;
+
         if !tx.tx_type.is_l1_msg() {
             let (caller_balance, caller_balance_prev) = rws.next().account_value_pair();
             self.gas_fee_refund.assign(

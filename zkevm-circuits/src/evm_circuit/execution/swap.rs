@@ -79,7 +79,7 @@ impl<F: Field> ExecutionGadget<F> for SwapGadget<F> {
                 .map(|idx| block.rws[idx].stack_value())
                 .iter(),
         ) {
-            cell.assign_u256(region, offset, value)?;
+            cell.assign_u256(region, offset, *value)?;
         }
 
         Ok(())
