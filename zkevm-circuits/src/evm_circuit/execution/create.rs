@@ -189,14 +189,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
-        let was_warm = cb.query_bool();
-        cb.account_access_list_write(
-            tx_id.expr(),
-            new_address.clone(),
-            1.expr(),
-            was_warm.expr(),
-            Some(&mut reversion_info),
-        );
 
         let depth = cb.call_context(None, CallContextFieldTag::Depth);
         let is_depth_in_range = LtGadget::construct(cb, depth.expr(), 1025.expr());
@@ -250,12 +242,20 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             is_nonce_in_range.expr(),
         ]);
 
+        let was_warm = cb.query_bool();
         cb.condition(is_precheck_ok.expr(), |cb| {
             cb.account_write(
                 create.caller_address(),
                 AccountFieldTag::Nonce,
                 caller_nonce.expr() + 1.expr(),
                 caller_nonce,
+                Some(&mut reversion_info),
+            );
+            cb.account_access_list_write(
+                tx_id.expr(),
+                new_address.clone(),
+                1.expr(),
+                was_warm.expr(),
                 Some(&mut reversion_info),
             );
         });
@@ -416,8 +416,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                 program_counter: Delta(1.expr()),
                 stack_pointer: Delta(2.expr() + IS_CREATE2.expr()),
                 memory_word_size: To(memory_expansion.next_memory_word_size()),
-                // - (Reversible) Write TxAccessListAccount (Contract Address)
-                reversible_write_counter: Delta(1.expr()),
                 gas_left: Delta(-gas_cost.expr()),
                 ..StepStateTransition::default()
             });
@@ -634,19 +632,9 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             call.is_persistent,
         )?;
 
-        rws.offset_add(3); // skip call context
-        self.was_warm.assign(
-            region,
-            offset,
-            Value::known(
-                rws.next()
-                    .tx_access_list_value_pair()
-                    .1
-                    .to_scalar()
-                    .unwrap(),
-            ),
-        )?;
-        rws.offset_add(2);
+        rws.offset_add(3); // tx_id and reversion_info
+
+        rws.offset_add(2); // depth, callee address
         let caller_balance = rws.next().account_balance_pair().1;
 
         let caller_nonce = rws.next().account_nonce_pair().1.low_u64();
@@ -655,6 +643,9 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             call.depth < 1025 && caller_balance >= value && caller_nonce < u64::MAX;
         if is_precheck_ok {
             rws.next(); // caller nonce += 1
+            let was_warm = rws.next().tx_access_list_value_pair().1;
+            self.was_warm
+                .assign(region, offset, Value::known(was_warm.to_scalar().unwrap()))?;
         }
         let [callee_rw_counter_end_of_reversion, callee_is_persistent] =
             [(); 2].map(|_| rws.next().call_context_value());
@@ -896,12 +887,17 @@ mod test {
         } else {
             OpcodeId::CREATE
         });
+
         // Add some basic check to make sure rw consistency
         code.append(&bytecode! {
             MSIZE
             GAS
             RETURNDATASIZE
+            // callee address is_warm?
+            PUSH32(word!("0x40e487463307cf170d059cb3f4b3d3603ef74e1e"))
+            BALANCE
         });
+
         if !is_persistent {
             code.append(&bytecode! {
                 PUSH1(0)
