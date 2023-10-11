@@ -5,7 +5,7 @@ use super::{
         N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE1_COLUMNS, POW_OF_RAND_TABLE_LOOKUPS,
         RW_TABLE_LOOKUPS, SIG_TABLE_LOOKUPS, TX_TABLE_LOOKUPS,
     },
-    util::{instrumentation::Instrument, CachedRegion, CellManager, StoredExpression},
+    util::{instrumentation::Instrument, CachedRegion, CellManager, StoredExpression, constraint_builder::StepBusOp},
     EvmCircuitExports,
 };
 use crate::{
@@ -266,9 +266,10 @@ pub(crate) struct ExecutionConfig<F> {
     q_step_last: Selector,
     advices: [Column<Advice>; STEP_WIDTH],
     step: Step<F>,
-    bus_port: BusPortMulti<F>,
+    bytes_port: BusPortMulti<F>,
     pub(crate) height_map: HashMap<ExecutionState, usize>,
     stored_expressions_map: HashMap<ExecutionState, Vec<StoredExpression<F>>>,
+    bus_ops_map: HashMap<ExecutionState, Vec<StepBusOp<F>>>,
     instrument: Instrument,
     // internal state gadgets
     begin_tx_gadget: Box<BeginTxGadget<F>>,
@@ -510,6 +511,7 @@ impl<F: Field> ExecutionConfig<F> {
         });
 
         let mut stored_expressions_map = HashMap::new();
+        let mut bus_ops_map = HashMap::new();
 
         macro_rules! configure_gadget {
             () => {
@@ -531,6 +533,7 @@ impl<F: Field> ExecutionConfig<F> {
                         &step_curr,
                         &mut height_map,
                         &mut stored_expressions_map,
+                        &mut bus_ops_map,
                         &mut instrument,
                     ))
                 })()
@@ -539,7 +542,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         let cell_manager = step_curr.cell_manager.clone();
 
-        let bus_port = Self::configure_bus(meta, bus_builder, q_usable, &cell_manager);
+        let bytes_port = Self::configure_bus(meta, bus_builder, q_usable, &cell_manager);
 
         let config = Self {
             q_usable,
@@ -549,7 +552,7 @@ impl<F: Field> ExecutionConfig<F> {
             num_rows_inv,
             q_step_first,
             q_step_last,
-            bus_port,
+            bytes_port,
             advices,
             // internal states
             begin_tx_gadget: configure_gadget!(),
@@ -653,6 +656,7 @@ impl<F: Field> ExecutionConfig<F> {
             step: step_curr,
             height_map,
             stored_expressions_map,
+            bus_ops_map,
             instrument,
         };
 
@@ -693,6 +697,7 @@ impl<F: Field> ExecutionConfig<F> {
         step_curr: &Step<F>,
         height_map: &mut HashMap<ExecutionState, usize>,
         stored_expressions_map: &mut HashMap<ExecutionState, Vec<StoredExpression<F>>>,
+        bus_ops_map: &mut HashMap<ExecutionState, Vec<StepBusOp<F>>>,
         instrument: &mut Instrument,
     ) -> G {
         // Configure the gadget with the max height first so we can find out the actual
@@ -706,7 +711,7 @@ impl<F: Field> ExecutionConfig<F> {
                 G::EXECUTION_STATE,
             );
             cb.annotation(G::NAME, |cb| G::configure(cb));
-            let (_, _, _, height) = cb.build();
+            let (_, _, _, _, height) = cb.build();
             height
         };
 
@@ -732,6 +737,7 @@ impl<F: Field> ExecutionConfig<F> {
             step_next,
             height_map,
             stored_expressions_map,
+            bus_ops_map,
             instrument,
             G::NAME,
             G::EXECUTION_STATE,
@@ -754,6 +760,7 @@ impl<F: Field> ExecutionConfig<F> {
         step_next: &Step<F>,
         height_map: &mut HashMap<ExecutionState, usize>,
         stored_expressions_map: &mut HashMap<ExecutionState, Vec<StoredExpression<F>>>,
+        bus_ops_map: &mut HashMap<ExecutionState, Vec<StepBusOp<F>>>,
         instrument: &mut Instrument,
         name: &'static str,
         execution_state: ExecutionState,
@@ -772,7 +779,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         instrument.on_gadget_built(execution_state, &cb);
 
-        let (state_selector, constraints, stored_expressions, _) = cb.build();
+        let (state_selector, constraints, stored_expressions, bus_ops, _) = cb.build();
         debug_assert!(
             !height_map.contains_key(&execution_state),
             "execution state already configured"
@@ -784,6 +791,9 @@ impl<F: Field> ExecutionConfig<F> {
             "execution state already configured"
         );
         stored_expressions_map.insert(execution_state, stored_expressions);
+        bus_ops_map.insert(execution_state, bus_ops);
+
+        // TODO: create ports for the bus ops.
 
         // Enforce the logic for this opcode
         let sel_step: &dyn Fn(&mut VirtualCells<F>) -> Expression<F> =
@@ -1344,7 +1354,7 @@ impl<F: Field> ExecutionConfig<F> {
                 })
                 .collect::<Vec<_>>();
 
-            self.bus_port.assign(bus_assigner, offset, ops);
+            self.bytes_port.assign(bus_assigner, offset, ops);
         }
     }
 
@@ -1384,6 +1394,8 @@ impl<F: Field> ExecutionConfig<F> {
             offset_begin + 1,
             offset_end,
         )?;
+
+        // TODO: assign_bus_lookups needed?
 
         self.assign_byte_lookups(region, bus_assigner, offset_begin, offset_end);
 
@@ -1432,6 +1444,8 @@ impl<F: Field> ExecutionConfig<F> {
         }
 
         self.assign_exec_step_int(region, offset, block, transaction, call, step, true)?;
+
+        self.assign_bus_lookups(region, bus_assigner, offset, step)?;
 
         self.assign_byte_lookups(region, bus_assigner, offset, offset + height);
 
@@ -1677,6 +1691,23 @@ impl<F: Field> ExecutionConfig<F> {
             });
         }
         Ok(assigned_stored_expressions)
+    }
+
+    fn assign_bus_lookups(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
+        offset: usize,
+        step: &ExecStep,
+    ) -> Result<(), Error> {
+        for bus_op in self
+            .bus_ops_map
+            .get(&step.execution_state)
+            .unwrap_or_else(|| panic!("Execution state unknown: {:?}", step.execution_state))
+        {
+            // TODO: assign bus op.
+        }
+        Ok(())
     }
 
     fn check_rw_lookup(

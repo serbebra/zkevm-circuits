@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::{
         param::STACK_CAPACITY,
         step::{ExecutionState, Step},
-        table::{FixedTableTag, Lookup, RwValues},
+        table::{FixedTableTag, Lookup, MsgExpr, RwValues, Table},
         util::{Cell, RandomLinearCombination, Word},
     },
     table::{
@@ -16,7 +16,10 @@ use bus_mapping::{
     util::{KECCAK_CODE_HASH_EMPTY, POSEIDON_CODE_HASH_EMPTY},
 };
 use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
-use gadgets::util::{and, not, sum};
+use gadgets::{
+    bus::bus_port::BusOpExpr,
+    util::{and, not, sum},
+};
 use halo2_proofs::{
     circuit::Value,
     plonk::{
@@ -297,6 +300,12 @@ pub(crate) struct Constraints<F> {
     pub(crate) not_step_last: Vec<(&'static str, Expression<F>)>,
 }
 
+#[derive(Clone, Debug)]
+pub struct StepBusOp<F> {
+    op: BusOpExpr<F, MsgExpr<F>>,
+    helper: Cell<F>,
+}
+
 pub(crate) struct EVMConstraintBuilder<'a, F> {
     pub max_degree: usize,
     pub(crate) curr: Step<F>,
@@ -312,6 +321,7 @@ pub(crate) struct EVMConstraintBuilder<'a, F> {
     conditions: Vec<Expression<F>>,
     constraints_location: ConstraintLocation,
     stored_expressions: Vec<StoredExpression<F>>,
+    bus_ops: Vec<StepBusOp<F>>,
     pub(crate) max_inner_degree: (&'static str, usize),
     #[cfg(feature = "debug-annotations")]
     annotations: Vec<String>,
@@ -362,6 +372,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             conditions: Vec::new(),
             constraints_location: ConstraintLocation::Step,
             stored_expressions: Vec::new(),
+            bus_ops: Vec::new(),
             max_inner_degree: ("", 0),
             annotations: Vec::new(),
         }
@@ -376,6 +387,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         Expression<F>,
         Constraints<F>,
         Vec<StoredExpression<F>>,
+        Vec<StepBusOp<F>>,
         usize,
     ) {
         let exec_state_sel = self.curr.execution_state_selector([self.execution_state]);
@@ -383,6 +395,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             exec_state_sel,
             self.constraints,
             self.stored_expressions,
+            self.bus_ops,
             self.curr.cell_manager.get_height(),
         )
     }
@@ -1649,11 +1662,25 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         }
     }
 
+    fn add_bus_lookup(&mut self, lookup: Lookup<F>) {
+        // TODO: support all types.
+        if lookup.table() != Table::Fixed {
+            return;
+        }
+
+        let op = BusOpExpr::receive(MsgExpr::Lookup(lookup));
+        let helper = self.query_cell_phase3();
+        self.bus_ops.push(StepBusOp { op, helper });
+    }
+
     pub(crate) fn add_lookup(&mut self, name: &str, lookup: Lookup<F>) {
         let lookup = match self.condition_expr_opt() {
             Some(condition) => lookup.conditional(condition),
             None => lookup,
         };
+
+        self.add_bus_lookup(lookup.clone());
+
         let compressed_expr = self.split_expression(
             "Lookup compression",
             rlc::expr(&lookup.input_exprs(), self.challenges.lookup_input()),

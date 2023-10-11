@@ -144,7 +144,7 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
             ExecutionState::STOP,
         );
         let math_gadget_container = G::configure_gadget_container(&mut cb);
-        let (state_selector, constraints, stored_expressions, _) = cb.build();
+        let (state_selector, constraints, stored_expressions, bus_ops, _) = cb.build();
 
         if !constraints.step.is_empty() {
             let step_constraints = constraints.step;
