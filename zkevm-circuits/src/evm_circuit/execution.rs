@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     evm_circuit::{
-        param::{EVM_LOOKUP_COLS, MAX_STEP_HEIGHT, N_PHASE2_COLUMNS, STEP_WIDTH},
+        param::{EVM_LOOKUP_COLS, MAX_STEP_HEIGHT, N_PHASE2_COLUMNS, N_PHASE3_COLUMNS, STEP_WIDTH},
         step::{ExecutionState, Step},
         table::{MsgExpr, MsgF, Table},
         util::{
@@ -405,9 +405,9 @@ impl<F: Field> ExecutionConfig<F> {
             .iter()
             .enumerate()
             .map(|(n, _)| {
-                if n < EVM_LOOKUP_COLS {
+                if n < EVM_LOOKUP_COLS + N_PHASE3_COLUMNS {
                     meta.advice_column_in(ThirdPhase)
-                } else if n < EVM_LOOKUP_COLS + N_PHASE2_COLUMNS {
+                } else if n < EVM_LOOKUP_COLS + N_PHASE3_COLUMNS + N_PHASE2_COLUMNS {
                     meta.advice_column_in(SecondPhase)
                 } else {
                     meta.advice_column_in(FirstPhase)
@@ -1290,6 +1290,7 @@ impl<F: Field> ExecutionConfig<F> {
             ("EVM_lookup_ecc", ECC_TABLE_LOOKUPS),
             ("EVM_lookup_pow_of_rand", POW_OF_RAND_TABLE_LOOKUPS),
             ("EVM_adv_phase2", N_PHASE2_COLUMNS),
+            ("EVM_adv_phase3", N_PHASE3_COLUMNS),
             ("EVM_copy", N_COPY_COLUMNS),
             ("EVM_lookup_byte", N_BYTE_LOOKUPS),
             ("EVM_adv_phase1", N_PHASE1_COLUMNS),
@@ -1312,7 +1313,7 @@ impl<F: Field> ExecutionConfig<F> {
         region.name_column(|| "Copy_Constr_const", self.constants);
     }
 
-    fn assign_bus_ports(
+    fn assign_byte_lookups(
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         bus_assigner: &mut BusAssigner<F, MsgF<F>>,
@@ -1384,7 +1385,7 @@ impl<F: Field> ExecutionConfig<F> {
             offset_end,
         )?;
 
-        self.assign_bus_ports(region, bus_assigner, offset_begin, offset_end);
+        self.assign_byte_lookups(region, bus_assigner, offset_begin, offset_end);
 
         Ok(())
     }
@@ -1432,7 +1433,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         self.assign_exec_step_int(region, offset, block, transaction, call, step, true)?;
 
-        self.assign_bus_ports(region, bus_assigner, offset, offset + height);
+        self.assign_byte_lookups(region, bus_assigner, offset, offset + height);
 
         Ok(())
     }

@@ -469,6 +469,17 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         cell
     }
 
+    #[allow(clippy::let_and_return)]
+    fn query_cell_phase3(&mut self) -> Cell<F> {
+        let cell = self.query_cell_with_type(CellType::StoragePhase3);
+        #[cfg(not(feature = "onephase"))]
+        assert_eq!(
+            cell.column.column_type(),
+            &halo2_proofs::plonk::Advice::new(halo2_proofs::plonk::ThirdPhase)
+        );
+        cell
+    }
+
     pub(crate) fn query_copy_cell(&mut self) -> Cell<F> {
         self.query_cell_with_type(CellType::StoragePermutation)
     }

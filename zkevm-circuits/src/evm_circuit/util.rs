@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::{
         param::{
             LOOKUP_CONFIG, N_BYTES_MEMORY_ADDRESS, N_BYTES_U64, N_BYTE_LOOKUPS, N_COPY_COLUMNS,
-            N_PHASE2_COLUMNS, N_PHASE2_COPY_COLUMNS,
+            N_PHASE2_COLUMNS, N_PHASE2_COPY_COLUMNS, N_PHASE3_COLUMNS,
         },
         table::Table,
     },
@@ -290,6 +290,7 @@ impl<F: FieldExt> StoredExpression<F> {
 pub(crate) enum CellType {
     StoragePhase1,
     StoragePhase2,
+    StoragePhase3,
     StoragePermutation,
     StoragePermutationPhase2,
     LookupByte,
@@ -314,6 +315,7 @@ impl CellType {
         match phase {
             0 => CellType::StoragePhase1,
             1 => CellType::StoragePhase2,
+            2 => CellType::StoragePhase3,
             _ => unreachable!(),
         }
     }
@@ -379,6 +381,12 @@ impl<F: FieldExt> CellManager<F> {
                 columns[column_idx].cell_type = CellType::Lookup(table);
                 column_idx += 1;
             }
+        }
+
+        // Mark columns used for Phase3.
+        for _ in 0..N_PHASE3_COLUMNS {
+            columns[column_idx].cell_type = CellType::StoragePhase3;
+            column_idx += 1;
         }
 
         // Mark columns used for copy constraints on phase2
