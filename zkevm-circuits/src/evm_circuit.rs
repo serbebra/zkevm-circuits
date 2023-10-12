@@ -241,7 +241,7 @@ impl<F: Field> EvmCircuitConfig<F> {
             BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
         };
 
-        [byte_lookup.clone(), fixed_lookup]
+        [byte_lookup, fixed_lookup]
     }
 }
 
@@ -254,9 +254,17 @@ impl<F: Field> EvmCircuitConfig<F> {
         bus_lookup: &BusLookupChip<F>,
         fixed_table_tags: Vec<FixedTableTag>,
     ) -> Result<(), Error> {
+        let mut closure_count = 0;
+
         layouter.assign_region(
             || "fixed table",
             |mut region| {
+                // TODO: deal with this some other way.
+                closure_count += 1;
+                if closure_count == 1 {
+                    return Ok(());
+                }
+
                 for (offset, row) in std::iter::once([F::zero(); 4])
                     .chain(fixed_table_tags.iter().flat_map(|tag| tag.build()))
                     .enumerate()
@@ -279,7 +287,9 @@ impl<F: Field> EvmCircuitConfig<F> {
                 bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
-        )
+        )?;
+        assert_eq!(closure_count, 2, "assign_region behavior changed");
+        Ok(())
     }
 
     /// Load dual byte table

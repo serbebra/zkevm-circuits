@@ -11,7 +11,11 @@ use crate::{
     witness::{Block, ExecStep, Rw, RwMap},
 };
 use bus_mapping::state_db::CodeDB;
-use eth_types::{Address, ToLittleEndian, ToWord, U256};
+use eth_types::{Address, Field, ToLittleEndian, ToWord, U256};
+use gadgets::bus::{
+    bus_builder::{BusAssigner, BusBuilder},
+    bus_port::{BusOpExpr, BusOpF, Port},
+};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Region, Value},
@@ -32,6 +36,8 @@ pub(crate) mod memory_gadget;
 pub(crate) mod precompile_gadget;
 
 pub use gadgets::util::{and, not, or, select, sum};
+
+use super::table::{MsgExpr, MsgF};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Cell<F> {
@@ -89,6 +95,69 @@ impl<F: FieldExt> Expr<F> for &Cell<F> {
         self.expression.clone()
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct StepBusOp<F> {
+    op: BusOpExpr<F, MsgExpr<F>>,
+    helper: Cell<F>,
+}
+
+impl<F: Field> StepBusOp<F> {
+    pub(crate) fn connect(
+        self,
+        meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
+        enabled: Expression<F>,
+    ) {
+        Port::connect(meta, bus_builder, enabled, self.op, self.helper.expr());
+    }
+
+    pub(crate) fn assign(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
+        offset: usize,
+    ) {
+        let count = region.eval(offset, self.op.count());
+        if count.is_zero_vartime() {
+            return;
+        }
+        assert_eq!(count, -F::one(), "count must be 0 or -1");
+
+        let message = Self::eval_msg(region, offset, self.op.message());
+
+        Port::assign(
+            bus_assigner,
+            offset,
+            BusOpF::receive(message),
+            self.helper.column,
+            self.helper.rotation as isize,
+        );
+    }
+
+    /// Evaluate a message from expressions of the content of a region.
+    fn eval_msg(
+        region: &mut CachedRegion<'_, '_, F>,
+        offset: usize,
+        message: MsgExpr<F>,
+    ) -> MsgF<F> {
+        match message {
+            MsgExpr::Bytes(exprs) => {
+                let values = exprs.map(|expr| region.eval(offset, expr));
+                MsgF::Bytes(values)
+            }
+            MsgExpr::Lookup(lookup) => {
+                let values = lookup
+                    .input_exprs()
+                    .into_iter()
+                    .map(|expr| region.eval(offset, expr))
+                    .collect();
+                MsgF::Lookup(lookup.table(), values)
+            }
+        }
+    }
+}
+
 pub struct CachedRegion<'r, 'b, F: FieldExt> {
     region: &'r mut Region<'b, F>,
     advice: Vec<Vec<F>>,
@@ -177,6 +246,36 @@ impl<'r, 'b, F: FieldExt> CachedRegion<'r, 'b, F> {
             });
         }
         res
+    }
+
+    pub fn eval(&self, offset: usize, expr: Expression<F>) -> F {
+        let value = expr.evaluate(
+            &|scalar| Value::known(scalar),
+            &|_| unimplemented!("selector column"),
+            &|fixed_query| {
+                Value::known(self.get_fixed(
+                    offset,
+                    fixed_query.column_index(),
+                    fixed_query.rotation(),
+                ))
+            },
+            &|advice_query| {
+                Value::known(self.get_advice(
+                    offset,
+                    advice_query.column_index(),
+                    advice_query.rotation(),
+                ))
+            },
+            &|_| unimplemented!("instance column"),
+            &|challenge| *self.challenges().indexed()[challenge.index()],
+            &|a| -a,
+            &|a, b| a + b,
+            &|a, b| a * b,
+            &|a, scalar| a * Value::known(scalar),
+        );
+        let mut f = F::zero();
+        value.map(|v| f = v);
+        f
     }
 
     pub fn get_fixed(&self, _row_index: usize, _column_index: usize, _rotation: Rotation) -> F {

@@ -5,7 +5,7 @@ use super::{
         N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE1_COLUMNS, POW_OF_RAND_TABLE_LOOKUPS,
         RW_TABLE_LOOKUPS, SIG_TABLE_LOOKUPS, TX_TABLE_LOOKUPS,
     },
-    util::{instrumentation::Instrument, CachedRegion, CellManager, StoredExpression, constraint_builder::StepBusOp},
+    util::{instrumentation::Instrument, CachedRegion, CellManager, StepBusOp, StoredExpression},
     EvmCircuitExports,
 };
 use crate::{
@@ -511,7 +511,7 @@ impl<F: Field> ExecutionConfig<F> {
         });
 
         let mut stored_expressions_map = HashMap::new();
-        let mut bus_ops_map = HashMap::new();
+        let mut bus_ops_map: HashMap<ExecutionState, Vec<StepBusOp<F>>> = HashMap::new();
 
         macro_rules! configure_gadget {
             () => {
@@ -523,6 +523,7 @@ impl<F: Field> ExecutionConfig<F> {
                 (|| {
                     Box::new(Self::configure_gadget(
                         meta,
+                        bus_builder,
                         advices,
                         q_usable,
                         q_step,
@@ -542,7 +543,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         let cell_manager = step_curr.cell_manager.clone();
 
-        let bytes_port = Self::configure_bus(meta, bus_builder, q_usable, &cell_manager);
+        let bytes_port = Self::configure_bytes_port(meta, bus_builder, q_usable, &cell_manager);
 
         let config = Self {
             q_usable,
@@ -687,6 +688,7 @@ impl<F: Field> ExecutionConfig<F> {
     #[allow(clippy::too_many_arguments)]
     fn configure_gadget<G: ExecutionGadget<F>>(
         meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         advices: [Column<Advice>; STEP_WIDTH],
         q_usable: Selector,
         q_step: Column<Advice>,
@@ -728,6 +730,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         Self::configure_gadget_impl(
             meta,
+            bus_builder,
             q_usable,
             q_step,
             num_rows_until_next_step,
@@ -751,6 +754,7 @@ impl<F: Field> ExecutionConfig<F> {
     #[allow(clippy::too_many_arguments)]
     fn configure_gadget_impl(
         meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         q_usable: Selector,
         q_step: Column<Advice>,
         num_rows_until_next_step: Column<Advice>,
@@ -791,9 +795,18 @@ impl<F: Field> ExecutionConfig<F> {
             "execution state already configured"
         );
         stored_expressions_map.insert(execution_state, stored_expressions);
-        bus_ops_map.insert(execution_state, bus_ops);
+        bus_ops_map.insert(execution_state, bus_ops.clone());
 
-        // TODO: create ports for the bus ops.
+        {
+            let step_enabled = query_expression(meta, |meta| {
+                let q_usable = meta.query_selector(q_usable);
+                let q_step = meta.query_advice(q_step, Rotation::cur());
+                q_usable * q_step * state_selector.clone()
+            });
+            for op in bus_ops {
+                op.connect(meta, bus_builder, step_enabled.clone());
+            }
+        }
 
         // Enforce the logic for this opcode
         let sel_step: &dyn Fn(&mut VirtualCells<F>) -> Expression<F> =
@@ -930,7 +943,7 @@ impl<F: Field> ExecutionConfig<F> {
         });
     }
 
-    fn configure_bus(
+    fn configure_bytes_port(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         q_usable: Selector,
@@ -1358,6 +1371,22 @@ impl<F: Field> ExecutionConfig<F> {
         }
     }
 
+    fn assign_bus_lookups(
+        &self,
+        region: &mut CachedRegion<'_, '_, F>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
+        offset: usize,
+        step: &ExecStep,
+    ) {
+        let bus_ops = self
+            .bus_ops_map
+            .get(&step.execution_state)
+            .unwrap_or_else(|| panic!("Execution state unknown: {:?}", step.execution_state));
+        for bus_op in bus_ops {
+            bus_op.assign(region, bus_assigner, offset);
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn assign_same_exec_step_in_range(
         &self,
@@ -1395,9 +1424,12 @@ impl<F: Field> ExecutionConfig<F> {
             offset_end,
         )?;
 
-        // TODO: assign_bus_lookups needed?
-
+        // TODO: accelerate repeated bus assignments.
         self.assign_byte_lookups(region, bus_assigner, offset_begin, offset_end);
+
+        for offset in offset_begin..offset_end {
+            self.assign_bus_lookups(region, bus_assigner, offset, step);
+        }
 
         Ok(())
     }
@@ -1445,9 +1477,9 @@ impl<F: Field> ExecutionConfig<F> {
 
         self.assign_exec_step_int(region, offset, block, transaction, call, step, true)?;
 
-        self.assign_bus_lookups(region, bus_assigner, offset, step)?;
-
         self.assign_byte_lookups(region, bus_assigner, offset, offset + height);
+
+        self.assign_bus_lookups(region, bus_assigner, offset, step);
 
         Ok(())
     }
@@ -1691,23 +1723,6 @@ impl<F: Field> ExecutionConfig<F> {
             });
         }
         Ok(assigned_stored_expressions)
-    }
-
-    fn assign_bus_lookups(
-        &self,
-        region: &mut CachedRegion<'_, '_, F>,
-        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
-        offset: usize,
-        step: &ExecStep,
-    ) -> Result<(), Error> {
-        for bus_op in self
-            .bus_ops_map
-            .get(&step.execution_state)
-            .unwrap_or_else(|| panic!("Execution state unknown: {:?}", step.execution_state))
-        {
-            // TODO: assign bus op.
-        }
-        Ok(())
     }
 
     fn check_rw_lookup(

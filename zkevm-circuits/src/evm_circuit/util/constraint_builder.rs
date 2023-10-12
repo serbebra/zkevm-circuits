@@ -29,7 +29,7 @@ use halo2_proofs::{
 };
 use itertools::Itertools;
 
-use super::{rlc, CachedRegion, CellType, StoredExpression};
+use super::{rlc, CachedRegion, CellType, StepBusOp, StoredExpression};
 
 // Max degree allowed in all expressions passing through the ConstraintBuilder.
 // It aims to cap `extended_k` to 2, which allows constraint degree to 2^2+1,
@@ -298,12 +298,6 @@ pub(crate) struct Constraints<F> {
     pub(crate) step_last: Vec<(&'static str, Expression<F>)>,
     /// Enabled with q_step * not(q_step_last)
     pub(crate) not_step_last: Vec<(&'static str, Expression<F>)>,
-}
-
-#[derive(Clone, Debug)]
-pub struct StepBusOp<F> {
-    op: BusOpExpr<F, MsgExpr<F>>,
-    helper: Cell<F>,
 }
 
 pub(crate) struct EVMConstraintBuilder<'a, F> {

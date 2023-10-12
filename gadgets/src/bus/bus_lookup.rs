@@ -52,7 +52,12 @@ impl<F: Field> BusLookupChip<F> {
         message: M,
     ) -> Result<(), Error> {
         let count = bus_assigner.op_counter().count_receives(&message);
-        self.assign_op(region, bus_assigner, offset, BusOp::send_to_lookups(message, count))
+        self.assign_op(
+            region,
+            bus_assigner,
+            offset,
+            BusOp::send_to_lookups(message, count),
+        )
     }
 
     /// Assign a lookup operation from message and count.
