@@ -5,7 +5,6 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
-            from_bytes,
             math_gadget::{CmpWordsGadget, ComparisonGadget, IsEqualGadget},
             select, CachedRegion, Cell,
         },
@@ -122,7 +121,7 @@ impl<F: Field> ExecutionGadget<F> for ComparatorGadget<F> {
         } else {
             [step.rw_indices[0], step.rw_indices[1]]
         };
-        let [a, b] = indices.map(|idx| block.rws[idx].stack_value().to_le_bytes());
+        let [a, b] = indices.map(|idx| block.rws[idx].stack_value());
         let result = block.rws[step.rw_indices[2]].stack_value();
 
         self.word_comparison.assign(region, offset, a, b)?;

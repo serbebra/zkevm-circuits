@@ -61,7 +61,7 @@ pub(crate) struct StepStateTransition<F: Field> {
     pub(crate) call_id: Transition<Expression<F>>,
     pub(crate) is_root: Transition<Expression<F>>,
     pub(crate) is_create: Transition<Expression<F>>,
-    pub(crate) code_hash: Transition<Expression<F>>,
+    pub(crate) code_hash: Transition<Word<Expression<F>>>,
     pub(crate) program_counter: Transition<Expression<F>>,
     pub(crate) stack_pointer: Transition<Expression<F>>,
     pub(crate) gas_left: Transition<Expression<F>>,
@@ -721,7 +721,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     pub(crate) fn bytecode_lookup(
         &mut self,
-        code_hash: Expression<F>,
+        code_hash: Word<Expression<F>>,
         index: Expression<F>,
         is_code: Expression<F>,
         value: Expression<F>,
@@ -765,6 +765,17 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     }
 
     pub(crate) fn tx_context_as_word(
+        &mut self,
+        id: Expression<F>,
+        field_tag: TxContextFieldTag,
+        index: Option<Expression<F>>,
+    ) -> WordCell<F> {
+        let word = self.query_word32();
+        self.tx_context_lookup(id, field_tag, index, word.to_word());
+        word
+    }
+    
+    pub(crate) fn tx_context_as_word32(
         &mut self,
         id: Expression<F>,
         field_tag: TxContextFieldTag,
@@ -1140,6 +1151,33 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         );
     }
 
+    // this method take use of `account_address` Expression as parameter
+    pub(crate) fn account_storage_read_address(
+        &mut self,
+        account_address: Expression<F>,
+        key: Word<Expression<F>>,
+        value: Word<Expression<F>>,
+        tx_id: Expression<F>,
+        committed_value: Word<Expression<F>>,
+    ) {
+        self.rw_lookup(
+            "account_storage_read",
+            false.expr(),
+            RwTableTag::AccountStorage,
+            RwValues::new(
+                tx_id,
+                account_address,
+                AccountFieldTag::CodeHash.expr(),
+                key,
+                value.clone(),
+                value,
+                Word::zero(),
+                committed_value,
+            ),
+        );
+    }
+
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn account_storage_write(
         &mut self,
@@ -1346,8 +1384,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         &mut self,
         is_write: Expression<F>,
         memory_address: Expression<F>, // slot
-        value: Expression<F>,
-        value_prev: Expression<F>,
+        value: Word<Expression<F>>,
+        value_prev: Word<Expression<F>>,
         call_id: Option<Expression<F>>,
     ) {
         self.rw_lookup(

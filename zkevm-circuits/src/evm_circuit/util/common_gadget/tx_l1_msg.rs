@@ -34,7 +34,7 @@ impl<F: Field> TxL1MsgGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         tx_id: Expression<F>,
-        caller_address: Expression<F>,
+        caller_address: Word<Expression<F>>,
     ) -> Self {
         let tx_type = cb.tx_context(tx_id.expr(), TxTypeField, None);
         let tx_is_l1msg =
@@ -46,7 +46,7 @@ impl<F: Field> TxL1MsgGadget<F> {
 
         cb.condition(tx_is_l1msg.expr(), |cb| {
             cb.account_read(
-                caller_address.expr(),
+                caller_address,
                 AccountFieldTag::CodeHash,
                 caller_codehash.expr(),
             );

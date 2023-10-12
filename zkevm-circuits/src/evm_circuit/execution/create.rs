@@ -462,7 +462,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                 (CallContextFieldTag::IsRoot, false.expr()),
                 (CallContextFieldTag::IsStatic, false.expr()),
                 (CallContextFieldTag::IsCreate, true.expr()),
-                (CallContextFieldTag::CodeHash, create.code_hash_word_rlc()),
+                (CallContextFieldTag::CodeHash, create.code_hash()),
                 (CallContextFieldTag::Value, value.expr()),
             ] {
                 cb.call_context_lookup(true.expr(), Some(callee_call_id.expr()), field_tag, value);

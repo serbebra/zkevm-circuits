@@ -76,10 +76,10 @@ impl<F: Field> ExecutionGadget<F> for ReturnDataCopyGadget<F> {
         let check_overflow_gadget =
             CommonReturnDataCopyGadget::construct(cb, return_data_size.expr(), false.expr());
         // in normal case, size = CommonReturnDataCopyGadget::size
-        cb.require_equal(
+        cb.require_equal_word(
             "size = CommonReturnDataCopyGadget::size",
-            size.expr(),
-            check_overflow_gadget.size(),
+            size.to_word(),
+            check_overflow_gadget.size().to_word(),
         );
         // 1. Pop dest_offset, offset, length from stack
         cb.stack_pop(dest_offset.to_word());

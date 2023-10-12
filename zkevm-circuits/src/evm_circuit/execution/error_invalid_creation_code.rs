@@ -68,8 +68,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
         cb.memory_lookup(
             0.expr(),
             address_word.addr_left(),
-            value_left.expr(),
-            value_left.expr(),
+            value_left.to_word(),
+            value_left.to_word(),
             None,
         );
 

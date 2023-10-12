@@ -105,8 +105,8 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         cb.memory_lookup(
             is_store.clone(),
             address_word.addr_left(),
-            value_left.expr(),
-            value_left_prev.expr(),
+            value_left.to_word(),
+            value_left_prev.to_word(),
             None,
         );
 
@@ -124,8 +124,8 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             cb.memory_lookup(
                 is_store.clone(),
                 address_word.addr_right(),
-                value_right.expr(),
-                value_right_prev.expr(),
+                value_right.to_word(),
+                value_right_prev.to_word(),
                 None,
             );
         });
@@ -180,7 +180,7 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
         let address = address.as_u64();
 
-        self.address.assign_u256(region, offset, address)?;
+        self.address.assign(region, offset, address)?;
         self.value.assign_u256(region, offset, value)?;
 
         // Check if this is an MLOAD
@@ -219,14 +219,14 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         };
 
         self.value_left
-            .assign_u256(region, offset, value_left.to_le_bytes())?;
+            .assign_u256(region, offset, value_left)?;
         self.value_left_prev
-            .assign_u256(region, offset, value_left_prev.to_le_bytes())?;
+            .assign_u256(region, offset, value_left_prev)?;
 
         self.value_right
-            .assign_u256(region, offset, value_right.to_le_bytes())?;
+            .assign_u256(region, offset, value_right)?;
         self.value_right_prev
-            .assign_u256(region, offset, value_right_prev.to_le_bytes())?;
+            .assign_u256(region, offset, value_right_prev)?;
         Ok(())
     }
 }

@@ -5,7 +5,7 @@ use crate::{
         constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
         CachedRegion, Cell,
     },
-    util::word::{Word32Cell, WordExpr},
+    util::word::{self},
 };
 use eth_types::{Field, Word};
 use halo2_proofs::plonk::{Error, Expression};
@@ -19,10 +19,10 @@ pub struct LtWordGadget<F> {
 }
 
 impl<F: Field> LtWordGadget<F> {
-    pub(crate) fn construct(
+    pub(crate) fn construct<T: Expr<F> + Clone>(
         cb: &mut EVMConstraintBuilder<F>,
-        lhs: &Word32Cell<F>,
-        rhs: &Word32Cell<F>,
+        lhs: &word::Word<T>,
+        rhs: &word::Word<T>,
     ) -> Self {
         let comparison_hi = ComparisonGadget::construct(
             cb,

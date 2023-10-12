@@ -433,7 +433,7 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 rws.offset_add(5);
                 let prev_code_hash = rws.next().account_codehash_pair().1;
                 self.prev_code_hash
-                    .assign(region, offset, region.code_hash(prev_code_hash))?;
+                    .assign_u256(region, offset, prev_code_hash)?;
                 #[cfg(feature = "scroll")]
                 {
                     rws.next();

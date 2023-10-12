@@ -5,7 +5,7 @@ use crate::{
         util::Cell,
         witness::{Block, Call, ExecStep},
     },
-    util::{word::Word, Expr},
+    util::{word::Word, word::WordCell, Expr},
     witness::Transaction,
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};

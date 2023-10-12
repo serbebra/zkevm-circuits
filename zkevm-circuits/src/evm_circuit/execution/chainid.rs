@@ -71,7 +71,7 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let chain_id = block.rws[step.rw_indices[0]].stack_value().as_u64();
+        let chain_id = block.rws[step.rw_indices[0]].stack_value();
         self.chain_id.assign_u256(region, offset, chain_id)?;
 
         Ok(())

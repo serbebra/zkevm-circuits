@@ -60,7 +60,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         .map(|slot| cb.word_rlc(slot.to_le_bytes().map(|b| b.expr())));
 
         // Read L1 base fee
-        cb.account_storage_read(
+        cb.account_storage_read_address(
             l1_fee_address.expr(),
             base_fee_slot,
             this.base_fee_word.to_word(),
@@ -69,7 +69,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         );
 
         // Read L1 fee overhead
-        cb.account_storage_read(
+        cb.account_storage_read_address(
             l1_fee_address.expr(),
             overhead_slot,
             this.fee_overhead_word.to_word(),
@@ -78,7 +78,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         );
 
         // Read L1 fee scalar
-        cb.account_storage_read(
+        cb.account_storage_read_address(
             l1_fee_address,
             scalar_slot,
             this.fee_scalar_word.to_word(),

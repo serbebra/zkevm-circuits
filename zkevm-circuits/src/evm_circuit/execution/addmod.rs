@@ -212,10 +212,10 @@ impl<F: Field> ExecutionGadget<F> for AddModGadget<F> {
         self.sum_areduced_b
             .assign(region, offset, [a_reduced, b], a_reduced_plus_b)?;
 
-        self.sum_areduced_b_overflow.assign(
+        self.sum_areduced_b_overflow.assign_u256(
             region,
             offset,
-            Some(a_reduced_plus_b_overflow.to_le_bytes()),
+            a_reduced_plus_b_overflow,
         )?;
         self.muladd_d_n_r.assign(
             region,
