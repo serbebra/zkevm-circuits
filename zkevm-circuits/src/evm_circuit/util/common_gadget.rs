@@ -104,7 +104,7 @@ pub(crate) struct RestoreContextGadget<F> {
     caller_id: Cell<F>,
     caller_is_root: Cell<F>,
     caller_is_create: Cell<F>,
-    caller_code_hash: Cell<F>,
+    caller_code_hash: WordCell<F>,
     caller_program_counter: Cell<F>,
     caller_stack_pointer: Cell<F>,
     caller_gas_left: Cell<F>,
@@ -150,11 +150,16 @@ impl<F: Field> RestoreContextGadget<F> {
     ) -> Self {
         // Read caller's context for restore
         let caller_id = cb.call_context(None, CallContextFieldTag::CallerId);
-        let [caller_is_root, caller_is_create, caller_code_hash, caller_program_counter, caller_stack_pointer, caller_gas_left, caller_memory_word_size, caller_reversible_write_counter] =
+
+        let [caller_is_root, caller_is_create] =
+            [CallContextFieldTag::IsRoot, CallContextFieldTag::IsCreate]
+                .map(|field_tag| cb.call_context(Some(caller_id.expr()), field_tag));
+
+        let caller_code_hash =
+            cb.call_context_read_as_word(Some(caller_id.expr()), CallContextFieldTag::CodeHash);
+
+        let [caller_program_counter, caller_stack_pointer, caller_gas_left, caller_memory_word_size, caller_reversible_write_counter] =
             [
-                CallContextFieldTag::IsRoot,
-                CallContextFieldTag::IsCreate,
-                CallContextFieldTag::CodeHash,
                 CallContextFieldTag::ProgramCounter,
                 CallContextFieldTag::StackPointer,
                 CallContextFieldTag::GasLeft,
@@ -239,7 +244,7 @@ impl<F: Field> RestoreContextGadget<F> {
             call_id: To(caller_id.expr()),
             is_root: To(caller_is_root.expr()),
             is_create: To(caller_is_create.expr()),
-            code_hash: To(caller_code_hash.expr()),
+            code_hash: To(caller_code_hash.to_word()),
             program_counter: To(caller_program_counter.expr()),
             stack_pointer: To(caller_stack_pointer.expr()),
             gas_left: To(gas_left),
@@ -321,7 +326,7 @@ impl<F: Field> RestoreContextGadget<F> {
         }
 
         self.caller_code_hash
-            .assign(region, offset, region.code_hash(caller_code_hash))?;
+            .assign_u256(region, offset, caller_code_hash)?;
 
         Ok(())
     }

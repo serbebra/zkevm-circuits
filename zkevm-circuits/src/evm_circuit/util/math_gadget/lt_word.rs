@@ -91,7 +91,7 @@ mod tests {
         fn configure_gadget_container(cb: &mut EVMConstraintBuilder<F>) -> Self {
             let a = cb.query_word32();
             let b = cb.query_word32();
-            let ltword_gadget = LtWordGadget::<F>::construct(cb, &a, &b);
+            let ltword_gadget = LtWordGadget::<F>::construct(cb, &a.to_word(), &b.to_word());
             cb.require_equal("a < b", ltword_gadget.expr(), 1.expr());
             LtWordTestContainer {
                 ltword_gadget,

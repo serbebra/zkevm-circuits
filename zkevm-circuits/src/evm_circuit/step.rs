@@ -5,11 +5,14 @@ use crate::{
         util::Cell,
         witness::{Block, Call, ExecStep},
     },
-    util::{word::Word, word::WordCell, Expr},
+    util::{
+        word::{Word, WordCell},
+        Expr,
+    },
     witness::Transaction,
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
-use eth_types::evm_types::GasCost;
+use eth_types::{evm_types::GasCost, Field};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::Value,
@@ -604,7 +607,10 @@ impl<F: FieldExt> Step<F> {
                 tx_id: cell_manager.query_cell(CellType::StoragePhase1),
                 is_root: cell_manager.query_cell(CellType::StoragePhase1),
                 is_create: cell_manager.query_cell(CellType::StoragePhase1),
-                code_hash: cell_manager.query_cell(CellType::StoragePhase2),
+                code_hash: Word::new([
+                    cell_manager.query_cell(CellType::StoragePhase1),
+                    cell_manager.query_cell(CellType::StoragePhase1),
+                ]),
                 block_number: cell_manager.query_cell(CellType::StoragePhase1),
                 program_counter: cell_manager.query_cell(CellType::StoragePhase1),
                 stack_pointer: cell_manager.query_cell(CellType::StoragePhase1),
@@ -666,7 +672,7 @@ impl<F: FieldExt> Step<F> {
             .assign(region, offset, Value::known(F::from(step.block_num)))?;
         self.state
             .code_hash
-            .assign(region, offset, region.code_hash(call.code_hash))?;
+            .assign_u256(region, offset, call.code_hash)?;
         self.state.program_counter.assign(
             region,
             offset,

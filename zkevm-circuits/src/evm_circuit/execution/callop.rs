@@ -131,18 +131,18 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             );
         // rwc_delta = 6 + is_delegatecall * 2 + call_gadget.rw_delta()
         cb.condition(not::expr(is_call.expr() + is_callcode.expr()), |cb| {
-            cb.require_zero(
+            cb.require_zero_word(
                 "for non call/call code, value is zero",
                 call_gadget.value.to_word(),
             );
         });
 
-        let caller_address = select::expr(
+        let caller_address = Word::select(
             is_delegatecall.expr(),
             current_caller_address.to_word(),
             current_callee_address.to_word(),
         );
-        let callee_address = select::expr(
+        let callee_address = Word::select(
             is_callcode.expr() + is_delegatecall.expr(),
             current_callee_address.to_word(),
             call_gadget.callee_address(),
@@ -195,7 +195,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         // rwc_delta = 8 + is_delegatecall * 2 + call_gadget.rw_delta() +
         // callee_reversion_info.rw_delta()
         let is_insufficient_balance =
-            LtWordGadget::construct(cb, &caller_balance, &call_gadget.value);
+            LtWordGadget::construct(cb, &caller_balance.to_word(), &call_gadget.value.to_word());
         // depth < 1025
         let is_depth_ok = LtGadget::construct(cb, depth.expr(), 1025.expr());
 
@@ -248,7 +248,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 callee_address.to_word(),
                 not::expr(call_gadget.callee_not_exists.expr()),
                 0.expr(),
-                code_hash_previous.expr(),
+                code_hash_previous.to_word(),
                 #[cfg(feature = "scroll")]
                 keccak_code_hash_previous.expr(),
                 call_gadget.value.clone(),

@@ -1,6 +1,6 @@
 use array_init::array_init;
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian};
+use eth_types::{Field, ToLittleEndian, U256};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},
@@ -174,7 +174,7 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
         let address = cb.query_memory_address();
         cb.require_equal(
             "memory address decomposition",
-            from_bytes::expr(&address.cells),
+            from_bytes::expr(&address.limbs),
             src_addr,
         );
 
@@ -196,27 +196,31 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
                 });
                 cb.require_equal(
                     "calldata equals memory data",
-                    calldata_word.clone(),
+                    cb.word_rlc(calldata_word.limbs),
                     cb.word_rlc(mem_calldata_overlap),
                 );
 
                 // Get the memory word the same way as MLOAD.
                 // Check the bytes that are read from the left and right memory words.
-                mask.require_equal_unaligned_word(cb, value.expr(), &value_left, &value_right);
+                let value_bytes: [Expression<F>; N_BYTES_WORD] =
+                    array_init(|i| value.limbs[i].expr());
+
+                let value_rlc = cb.word_rlc(value_bytes);
+                mask.require_equal_unaligned_word(cb, value_rlc, &value_left, &value_right);
 
                 // Read the left and right words.
                 cb.memory_lookup(
                     0.expr(),
                     address_align.addr_left(),
-                    value_left.expr(),
-                    value_left.expr(),
+                    value_left.to_word(),
+                    value_left.to_word(),
                     Some(src_id.expr()),
                 );
                 cb.memory_lookup(
                     0.expr(),
                     address_align.addr_right(),
-                    value_right.expr(),
-                    value_right.expr(),
+                    value_right.to_word(),
+                    value_right.to_word(),
                     Some(src_id.expr()),
                 );
             },
@@ -335,7 +339,8 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
         let value_bytes =
             MemoryMask::<F>::make_unaligned_word(shift, &value_left_bytes, &value_right_bytes);
         // use assign_u256 for `value` ?
-        self.value.assign(region, offset, Some(value_bytes))?;
+        self.value
+            .assign_u256(region, offset, U256::from(value_bytes))?;
 
         let mut calldata_bytes = vec![0u8; N_BYTES_WORD];
 

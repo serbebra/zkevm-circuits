@@ -10,7 +10,6 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::Delta,
             },
-            from_bytes,
             math_gadget::LtGadget,
             CachedRegion, Cell,
         },
@@ -22,9 +21,9 @@ use crate::{
 use bus_mapping::evm::OpcodeId;
 use eth_types::{
     evm_types::block_utils::{is_valid_block_number, NUM_PREV_BLOCK_ALLOWED},
-    Field, ToScalar,
+    Field, ToScalar, U256,
 };
-use gadgets::util::not;
+use gadgets::util::{not, Expr};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
@@ -46,7 +45,7 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         let current_block_number = cb.query_cell();
         cb.block_lookup(
             BlockContextFieldTag::Number.expr(),
-            cb.curr.state.block_number.expr(),
+            Some(cb.curr.state.block_number.expr()),
             Word::from_lo_unchecked(current_block_number.expr()),
         );
 
@@ -57,7 +56,7 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
 
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
-            cb.curr.state.block_number.expr(),
+            Some(cb.curr.state.block_number.expr()),
             chain_id.to_word(),
         );
 
@@ -173,7 +172,8 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         self.current_block_number
             .assign(region, offset, Value::known(current_block_number))?;
         self.block_hash.assign_u256(region, offset, block_hash)?;
-        self.chain_id.assign_u256(region, offset, chain_id)?;
+        self.chain_id
+            .assign_u256(region, offset, U256::from(chain_id))?;
 
         // Block number overflow should be constrained by WordByteCapGadget.
         let block_number: F = block_number

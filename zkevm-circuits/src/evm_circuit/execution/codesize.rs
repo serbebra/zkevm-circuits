@@ -47,7 +47,6 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
             codesize.expr(),
         );
 
-
         cb.stack_push(codesize_bytes.to_word());
 
         let step_state_transition = StepStateTransition {
@@ -80,10 +79,10 @@ impl<F: Field> ExecutionGadget<F> for CodesizeGadget<F> {
         let codesize = block.rws[step.rw_indices[0]].stack_value().as_u64();
 
         self.codesize_bytes
-        .assign(region, offset, Some(codesize.to_le_bytes()))?;
+            .assign(region, offset, Some(codesize.to_le_bytes()))?;
 
         self.codesize
-        .assign(region, offset, Value::known(F::from(codesize)))?;
+            .assign(region, offset, Value::known(F::from(codesize)))?;
 
         Ok(())
     }

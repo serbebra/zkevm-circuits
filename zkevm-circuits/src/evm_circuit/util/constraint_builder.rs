@@ -20,7 +20,7 @@ use bus_mapping::{
     util::{KECCAK_CODE_HASH_EMPTY, POSEIDON_CODE_HASH_EMPTY},
 };
 use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
-use gadgets::util::{and, not, sum};
+use gadgets::util::{and, expr, not, sum};
 use halo2_proofs::{
     circuit::Value,
     plonk::{
@@ -707,7 +707,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.add_lookup(
             "Opcode lookup",
             Lookup::Bytecode {
-                hash: self.curr.state.code_hash.expr(),
+                hash: self.curr.state.code_hash.to_word(),
                 tag: BytecodeFieldTag::Byte.expr(),
                 index,
                 is_code,
@@ -770,11 +770,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         field_tag: TxContextFieldTag,
         index: Option<Expression<F>>,
     ) -> WordCell<F> {
-        let word = self.query_word32();
+        let word = self.query_word_unchecked();
         self.tx_context_lookup(id, field_tag, index, word.to_word());
         word
     }
-    
+
     pub(crate) fn tx_context_as_word32(
         &mut self,
         id: Expression<F>,
@@ -1176,7 +1176,6 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             ),
         );
     }
-
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn account_storage_write(

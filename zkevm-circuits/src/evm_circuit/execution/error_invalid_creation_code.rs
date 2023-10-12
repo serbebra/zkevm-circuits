@@ -121,15 +121,10 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
         self.memory_address
             .assign(region, offset, memory_offset.as_u64())?;
 
-        self.length.assign_u256(
-            region,
-            offset,
-            length,
-        )?;
+        self.length.assign_u256(region, offset, length)?;
 
         let word_left = block.rws[step.rw_indices[2]].memory_word_pair().0;
-        self.value_left
-            .assign_u256(region, offset, word_left)?;
+        self.value_left.assign_u256(region, offset, word_left)?;
 
         let mut bytes = word_left.to_le_bytes();
         bytes.reverse();

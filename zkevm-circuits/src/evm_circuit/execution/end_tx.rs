@@ -44,7 +44,7 @@ pub(crate) struct EndTxGadget<F> {
     effective_refund: MinMaxGadget<F, N_BYTES_GAS>,
     effective_fee: Word32Cell<F>,
     mul_gas_price_by_refund: MulWordByU64Gadget<F>,
-    tx_caller_address: Word32Cell<F>,
+    tx_caller_address: WordCell<F>,
     tx_data_gas_cost: Cell<F>,
     gas_fee_refund: UpdateBalanceGadget<F, 2, true>,
     sub_gas_price_by_base_fee: AddWordsGadget<F, 2, true>,
@@ -80,7 +80,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let [tx_type, tx_data_gas_cost] =
             [TxContextFieldTag::TxType, TxContextFieldTag::TxDataGasCost]
                 .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
-        let tx_gas_price = cb.tx_context_as_word(tx_id.expr(), TxContextFieldTag::GasPrice, None);
+        let tx_gas_price = cb.tx_context_as_word32(tx_id.expr(), TxContextFieldTag::GasPrice, None);
 
         let tx_is_l1msg =
             IsEqualGadget::construct(cb, tx_type.expr(), (TxType::L1Msg as u64).expr());

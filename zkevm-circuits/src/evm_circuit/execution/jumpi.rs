@@ -20,7 +20,7 @@ use crate::{
     },
 };
 use eth_types::{evm_types::OpcodeId, Field};
-use halo2_proofs::{plonk::Error, circuit::Value};
+use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
 pub(crate) struct JumpiGadget<F> {

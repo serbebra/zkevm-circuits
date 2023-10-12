@@ -104,20 +104,21 @@ impl<F: Field> ExecutionGadget<F> for ByteGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         // Inputs/Outputs
-        let index = block.rws[step.rw_indices[0]].stack_value().to_le_bytes();
-        let value = block.rws[step.rw_indices[1]].stack_value().to_le_bytes();
+        let index = block.rws[step.rw_indices[0]].stack_value();
+        let value = block.rws[step.rw_indices[1]].stack_value();
+        let index_bytes = index.to_le_bytes();
         self.index.assign_u256(region, offset, index)?;
         self.value.assign_u256(region, offset, value)?;
         // Set `is_msb_sum_zero`
         self.is_msb_sum_zero
-            .assign(region, offset, sum::value(&index[1..32]))?;
+            .assign(region, offset, sum::value(&index_bytes[1..32]))?;
 
         // Set `is_byte_selected`
         for i in 0..32 {
             self.is_byte_selected[i].assign(
                 region,
                 offset,
-                F::from(index[0] as u64),
+                F::from(index_bytes[0] as u64),
                 F::from((31 - i) as u64),
             )?;
         }

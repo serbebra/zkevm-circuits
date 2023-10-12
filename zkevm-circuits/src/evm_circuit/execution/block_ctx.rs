@@ -72,8 +72,7 @@ impl<F: Field> ExecutionGadget<F> for BlockCtxGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let value = block.get_rws(step, 0).stack_value();
-
+        let value = block.rws[step.rw_indices[0]].stack_value();
         self.value.assign_u256(region, offset, value)?;
 
         Ok(())

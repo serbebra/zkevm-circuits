@@ -91,9 +91,9 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         let msg_hash_mod = ModGadget::construct(cb, [&msg_hash_raw, &fq_modulus, &msg_hash]);
 
         let sig_r = cb.query_word32();
-        let sig_r_canonical = LtWordGadget::construct(cb, &sig_r, &fq_modulus);
+        let sig_r_canonical = LtWordGadget::construct(cb, &sig_r.to_word(), &fq_modulus.to_word());
         let sig_s = cb.query_word32();
-        let sig_s_canonical = LtWordGadget::construct(cb, &sig_s, &fq_modulus);
+        let sig_s_canonical = LtWordGadget::construct(cb, &sig_s.to_word(), &fq_modulus.to_word());
         let r_s_canonical = and::expr([sig_r_canonical.expr(), sig_s_canonical.expr()]);
 
         // sig_v is valid if sig_v == 27 || sig_v == 28

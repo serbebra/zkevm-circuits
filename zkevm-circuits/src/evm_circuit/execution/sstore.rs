@@ -4,7 +4,9 @@ use crate::{
         param::N_BYTES_GAS,
         step::ExecutionState,
         util::{
-            common_gadget::{SameContextGadget, SstoreGasGadget, cal_sstore_gas_cost_for_assignment},
+            common_gadget::{
+                cal_sstore_gas_cost_for_assignment, SameContextGadget, SstoreGasGadget,
+            },
             constraint_builder::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::Delta,
@@ -21,7 +23,7 @@ use crate::{
     },
 };
 
-use eth_types::{evm_types::GasCost, Field, };
+use eth_types::{evm_types::GasCost, Field};
 use halo2_proofs::{
     circuit::Value,
     plonk::{Error, Expression},

@@ -136,10 +136,8 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
             .assign(region, offset, Value::known(F::from(is_warm)))?;
 
         let code_hash = block.rws[step.rw_indices[5]].account_value_pair().0;
-        self.code_hash
-            .assign_u256(region, offset, code_hash)?;
-        self.not_exists
-            .assign_u256(region, offset, code_hash)?;
+        self.code_hash.assign_u256(region, offset, code_hash)?;
+        self.not_exists.assign_u256(region, offset, code_hash)?;
         let balance = if code_hash.is_zero() {
             eth_types::Word::zero()
         } else {

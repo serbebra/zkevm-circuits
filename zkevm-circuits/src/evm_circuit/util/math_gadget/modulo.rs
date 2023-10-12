@@ -42,7 +42,7 @@ impl<F: Field> ModGadget<F> {
         let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.limbs));
         let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.limbs));
         let mul_add_words = MulAddWordsGadget::construct(cb, [&k, n, r, &a_or_zero]);
-        let lt = LtWordGadget::construct(cb, r, n);
+        let lt = LtWordGadget::construct(cb, &r.to_word(), &n.to_word());
         // Constrain the aux variable a_or_zero to be =a or =0 if n==0:
         cb.require_equal_word(
             "a_or_zero == if n == 0 { 0 } else { a }",

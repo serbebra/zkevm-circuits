@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_MEMORY_WORD_SIZE,
+        param::{N_BYTES_MEMORY_WORD_SIZE, N_BYTES_WORD},
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -22,8 +22,9 @@ use crate::{
     },
 };
 
+use array_init::array_init;
 use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, U256};
-use halo2_proofs::plonk::Error;
+use halo2_proofs::plonk::{Error, Expression};
 
 // MemoryGadget handles mload/mstore/mstore8 op codes gadget
 #[derive(Clone, Debug)]
@@ -58,7 +59,6 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
         // In successful case the address must be in 5 bytes
 
         let address = cb.query_memory_address();
-        let value = cb.query_word32();
         let address_word = MemoryWordAddress::construct(cb, address.clone());
         let value = cb.query_word32();
         let value_left = cb.query_word32();
@@ -115,10 +115,12 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             let first_byte = value.limbs[0].expr();
             mask.require_equal_unaligned_byte(cb, first_byte, &value_left);
         });
+        let value_bytes: [Expression<F>; N_BYTES_WORD] = array_init(|i| value.limbs[i].expr());
 
+        let value_rlc = cb.word_rlc(value_bytes);
         cb.condition(is_not_mstore8, |cb| {
             // Check the bytes that are read or written from the left and right words.
-            mask.require_equal_unaligned_word(cb, value.expr(), &value_left, &value_right);
+            mask.require_equal_unaligned_word(cb, value_rlc, &value_left, &value_right);
 
             // Read or update the right word.
             cb.memory_lookup(
@@ -218,13 +220,11 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             block.rws[step.rw_indices[3]].memory_word_pair()
         };
 
-        self.value_left
-            .assign_u256(region, offset, value_left)?;
+        self.value_left.assign_u256(region, offset, value_left)?;
         self.value_left_prev
             .assign_u256(region, offset, value_left_prev)?;
 
-        self.value_right
-            .assign_u256(region, offset, value_right)?;
+        self.value_right.assign_u256(region, offset, value_right)?;
         self.value_right_prev
             .assign_u256(region, offset, value_right_prev)?;
         Ok(())

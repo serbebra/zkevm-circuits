@@ -72,7 +72,7 @@ impl<F: Field> ExecutionGadget<F> for MulModGadget<F> {
 
         // (r < n ) or n == 0
         let n_is_zero = IsZeroWordGadget::construct(cb, &n);
-        let lt = LtWordGadget::construct(cb, &r, &n);
+        let lt = LtWordGadget::construct(cb, &r.to_word(), &n.to_word());
         cb.add_constraint(
             " (1 - (r < n) - (n==0)) ",
             1.expr() - lt.expr() - n_is_zero.expr(),

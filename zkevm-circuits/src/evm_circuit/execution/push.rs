@@ -54,7 +54,7 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
 
         let code_length = cb.query_cell();
         let code_length_left = code_length.expr() - cb.curr.state.program_counter.expr() - 1.expr();
-        cb.bytecode_length(cb.curr.state.code_hash.expr(), code_length.expr());
+        cb.bytecode_length(cb.curr.state.code_hash.to_word(), code_length.expr());
 
         let num_bytes_needed = opcode.expr() - OpcodeId::PUSH0.expr();
         let is_out_of_bound =

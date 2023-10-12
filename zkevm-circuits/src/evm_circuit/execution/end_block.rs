@@ -78,14 +78,17 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         WITHDRAW_TRIE_ROOT_SLOT.to_little_endian(withdraw_trie_root_slot_le.as_mut_slice());
 
         // 1.1 constraint withdraw_root
-        cb.account_storage_read(
+        cb.account_storage_read_address(
             Expression::Constant(MESSAGE_QUEUE.to_scalar().expect(
                 "unexpected Address for message_queue precompile -> Scalar conversion failure",
             )),
-            cb.word_rlc(withdraw_trie_root_slot_le.map(|byte| byte.expr())),
-            phase2_withdraw_root.expr(),
+            // TODO: check if remove word_rlc and directly use withdraw_trie_root_slot_le as word
+            Word::from_lo_unchecked(
+                cb.word_rlc(withdraw_trie_root_slot_le.map(|byte| byte.expr())),
+            ),
+            Word::from_lo_unchecked(phase2_withdraw_root.expr()),
             total_txs.expr(),
-            phase2_withdraw_root_prev.expr(),
+            Word::from_lo_unchecked(phase2_withdraw_root_prev.expr()),
         );
 
         // 2. If total_txs == max_txs, we know we have covered all txs from the

@@ -15,7 +15,8 @@ use crate::{
             from_bytes,
             math_gadget::{
                 ConstantDivisionGadget, ContractCreateGadget, IsEqualGadget, IsEqualWordGadget,
-                IsZeroGadget, IsZeroWordGadget, LtGadget,LtWordGadget, MulWordByU64Gadget, RangeCheckGadget,
+                IsZeroGadget, IsZeroWordGadget, LtGadget, LtWordGadget, MulWordByU64Gadget,
+                RangeCheckGadget,
             },
             AccountAddress, CachedRegion, Cell, StepRws,
         },
@@ -26,12 +27,12 @@ use crate::{
         TxFieldTag as TxContextFieldTag,
     },
     util::{
-        word::{Word, Word32Cell, WordCell, WordExpr,},
+        word::{Word, Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };
-use bus_mapping::circuit_input_builder::CopyDataType;
-use eth_types::{Address, Field, ToLittleEndian, ToScalar, U256};
+use bus_mapping::{circuit_input_builder::CopyDataType, state_db::CodeDB};
+use eth_types::{Address, Field, ToLittleEndian, ToScalar, ToWord, U256};
 use ethers_core::utils::{get_contract_address, keccak256, rlp::RlpStream};
 use gadgets::util::{expr_from_bytes, not, select};
 use halo2_proofs::{
@@ -75,7 +76,6 @@ pub(crate) struct BeginTxGadget<F> {
     transfer_with_gas_fee: TransferWithGasFeeGadget<F>,
     account_code_hash: WordCell<F>,
     account_code_hash_is_empty: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
-    is_empty_code_hash: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
     account_code_hash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
     #[cfg(feature = "scroll")]
     account_keccak_code_hash: Cell<F>,
@@ -125,6 +125,12 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             ]
             .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
 
+        let [tx_caller_address, tx_callee_address] = [
+            TxContextFieldTag::CallerAddress,
+            TxContextFieldTag::CalleeAddress,
+        ]
+        .map(|field_tag| cb.tx_context_as_word(tx_id.expr(), field_tag, None));
+
         let is_call_data_empty = IsZeroGadget::construct(cb, tx_call_data_length.expr());
 
         let tx_l1_msg = TxL1MsgGadget::construct(cb, tx_id.expr(), tx_caller_address.to_word());
@@ -171,12 +177,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
         let [tx_gas_price, tx_value] = [TxContextFieldTag::GasPrice, TxContextFieldTag::Value]
             .map(|field_tag| cb.tx_context_as_word32(tx_id.expr(), field_tag, None));
-
-        let [tx_caller_address, tx_callee_address] = [
-            TxContextFieldTag::CallerAddress,
-            TxContextFieldTag::CalleeAddress,
-        ]
-        .map(|field_tag| cb.tx_context_as_word(tx_id.expr(), field_tag, None));
 
         let tx_caller_address_is_zero = IsZeroWordGadget::construct(cb, &tx_caller_address);
         cb.require_equal(
@@ -243,7 +243,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         );
 
         // a valid precompile address is: 1 <= addr <= 9 (addr != 0 && addr < 0xA)
-        let is_precompile_lt = LtWordGadget::construct(cb, &tx_callee_address.to_word(), &Word::from_lo_unchecked(0xA.expr()));
+        let is_precompile_lt = LtWordGadget::construct(
+            cb,
+            &tx_callee_address.to_word(),
+            &Word::from_lo_unchecked(0xA.expr()),
+        );
         let is_precompile = and::expr([
             not::expr(tx_callee_address_is_zero.expr()),
             is_precompile_lt.expr(),
@@ -348,7 +352,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
         let call_code_hash = cb.query_word_unchecked();
         let call_code_hash_is_empty =
-            IsEqualWordGadget::construct(cb, &call_code_hash, &cb.empty_code_hash());
+            IsEqualWordGadget::construct(cb, &call_code_hash.to_word(), &cb.empty_code_hash());
         let call_code_hash_is_zero = IsZeroWordGadget::construct(cb, &call_code_hash);
         let call_code_hash_is_empty_or_zero =
             call_code_hash_is_empty.expr() + call_code_hash_is_zero.expr();
@@ -417,7 +421,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             //         .try_into()
             //         .unwrap(),
             // );
-            cb.keccak_table_lookup(create.input_rlc(cb), create.input_length(), caller_nonce_hash_bytes.to_word());
+            cb.keccak_table_lookup(
+                create.input_rlc(cb),
+                create.input_length(),
+                caller_nonce_hash_bytes.to_word(),
+            );
 
             //let keccak_code_hash = cb.query_cell_phase2();
             let keccak_code_hash = cb.query_word_unchecked();
@@ -438,16 +446,16 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             });
             cb.condition(not::expr(is_call_data_empty.expr()), |cb| {
                 cb.copy_table_lookup(
-                    Word::from_lo_unchecked(tx_id.expr()),                    // src_id
-                    CopyDataType::TxCalldata.expr(), // src_tag
-                    cb.curr.state.code_hash.to_word(),  // dst_id
-                    CopyDataType::Bytecode.expr(),   // dst_tag
-                    0.expr(),                        // src_addr
-                    tx_call_data_length.expr(),      // src_addr_end
-                    0.expr(),                        // dst_addr
-                    tx_call_data_length.expr(),      // length
-                    init_code_rlc.expr(),            // rlc_acc
-                    0.expr(),                        // rwc increase
+                    Word::from_lo_unchecked(tx_id.expr()), // src_id
+                    CopyDataType::TxCalldata.expr(),       // src_tag
+                    cb.curr.state.code_hash.to_word(),     // dst_id
+                    CopyDataType::Bytecode.expr(),         // dst_tag
+                    0.expr(),                              // src_addr
+                    tx_call_data_length.expr(),            // src_addr_end
+                    0.expr(),                              // dst_addr
+                    tx_call_data_length.expr(),            // length
+                    init_code_rlc.expr(),                  // rlc_acc
+                    0.expr(),                              // rwc increase
                 )
             });
 
@@ -460,7 +468,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             );
             for (field_tag, value) in [
                 (CallContextFieldTag::Depth, Word::one()),
-                (CallContextFieldTag::CallerAddress, tx_caller_address.to_word()),
+                (
+                    CallContextFieldTag::CallerAddress,
+                    tx_caller_address.to_word(),
+                ),
                 (
                     CallContextFieldTag::CalleeAddress,
                     call_callee_address.to_word(),
@@ -470,8 +481,14 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 (CallContextFieldTag::Value, tx_value.to_word()),
                 (CallContextFieldTag::IsStatic, Word::zero()),
                 (CallContextFieldTag::LastCalleeId, Word::zero()),
-                (CallContextFieldTag::LastCalleeReturnDataOffset, Word::zero()),
-                (CallContextFieldTag::LastCalleeReturnDataLength, Word::zero()),
+                (
+                    CallContextFieldTag::LastCalleeReturnDataOffset,
+                    Word::zero(),
+                ),
+                (
+                    CallContextFieldTag::LastCalleeReturnDataLength,
+                    Word::zero(),
+                ),
                 (CallContextFieldTag::IsRoot, Word::one()),
                 (CallContextFieldTag::IsCreate, Word::one()),
                 (
@@ -640,7 +657,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 // Setup first call's context.
                 for (field_tag, value) in [
                     (CallContextFieldTag::Depth, Word::one()),
-                    (CallContextFieldTag::CallerAddress, tx_caller_address.to_word()),
+                    (
+                        CallContextFieldTag::CallerAddress,
+                        tx_caller_address.to_word(),
+                    ),
                     (
                         CallContextFieldTag::CalleeAddress,
                         call_callee_address.to_word(),
@@ -651,12 +671,21 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                         Word::from_lo_unchecked(tx_call_data_length.expr()),
                     ),
                     (CallContextFieldTag::Value, tx_value.to_word()),
-                    (CallContextFieldTag::IsStatic,  Word::zero()),
-                    (CallContextFieldTag::LastCalleeId,  Word::zero()),
-                    (CallContextFieldTag::LastCalleeReturnDataOffset,  Word::zero()),
-                    (CallContextFieldTag::LastCalleeReturnDataLength,  Word::zero()),
-                    (CallContextFieldTag::IsRoot,  Word::one()),
-                    (CallContextFieldTag::IsCreate, Word::from_lo_unchecked(tx_is_create.expr())),
+                    (CallContextFieldTag::IsStatic, Word::zero()),
+                    (CallContextFieldTag::LastCalleeId, Word::zero()),
+                    (
+                        CallContextFieldTag::LastCalleeReturnDataOffset,
+                        Word::zero(),
+                    ),
+                    (
+                        CallContextFieldTag::LastCalleeReturnDataLength,
+                        Word::zero(),
+                    ),
+                    (CallContextFieldTag::IsRoot, Word::one()),
+                    (
+                        CallContextFieldTag::IsCreate,
+                        Word::from_lo_unchecked(tx_is_create.expr()),
+                    ),
                     (CallContextFieldTag::CodeHash, account_code_hash.to_word()),
                 ] {
                     cb.call_context_lookup(true.expr(), Some(call_id.expr()), field_tag, value);
@@ -852,22 +881,19 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         )?;
 
         let tx_fee = transfer_assign_result.gas_fee.unwrap();
-        self.tx_fee
-            .assign(region, offset, Some(tx_fee.to_le_bytes()))?;
+        self.tx_fee.assign_u256(region, offset, tx_fee)?;
         log::debug!(
             "tx_fee assigned {:?}, gas price {:?}, gas {}",
             tx_fee,
             tx.gas_price,
             tx.gas
         );
-        self.account_code_hash.assign(
+        self.account_code_hash.assign_u256(
             region,
             offset,
-            region.code_hash(
-                transfer_assign_result
-                    .account_code_hash
-                    .unwrap_or(account_code_hash),
-            ),
+            transfer_assign_result
+                .account_code_hash
+                .unwrap_or(account_code_hash),
         )?;
         #[cfg(feature = "scroll")]
         {
@@ -891,9 +917,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         self.tx_gas
             .assign(region, offset, Value::known(F::from(tx.gas)))?;
         self.tx_gas_price
-            .assign(region, offset, Some(tx.gas_price.to_le_bytes()))?;
-        self.tx_value
-            .assign(region, offset, Some(tx.value.to_le_bytes()))?;
+            .assign_u256(region, offset, tx.gas_price)?;
+        self.tx_value.assign_u256(region, offset, tx.value)?;
         self.mul_gas_fee_by_gas.assign(
             region,
             offset,
@@ -901,37 +926,30 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx.gas,
             tx.gas_price * tx.gas,
         )?;
-        let caller_address = tx
-            .caller_address
-            .to_scalar()
-            .expect("unexpected Address -> Scalar conversion failure");
-        let callee_address = tx
-            .callee_address
-            .unwrap_or(Address::zero())
-            .to_scalar()
-            .expect("unexpected Address -> Scalar conversion failure");
+        let caller_address = tx.caller_address;
+        // .to_scalar()
+        // .expect("unexpected Address -> Scalar conversion failure");
+        let callee_address = tx.callee_address.unwrap_or(Address::zero());
+        // .to_scalar()
+        // .expect("unexpected Address -> Scalar conversion failure");
         self.tx_caller_address
-            .assign(region, offset, Value::known(caller_address))?;
+            .assign_h160(region, offset, callee_address)?;
         self.tx_caller_address_is_zero
-            .assign(region, offset, caller_address)?;
+            .assign_u256(region, offset, caller_address.to_word())?;
         self.tx_callee_address
-            .assign(region, offset, Value::known(callee_address))?;
+            .assign_h160(region, offset, callee_address)?;
         self.tx_callee_address_is_zero
-            .assign(region, offset, callee_address)?;
+            .assign_u256(region, offset, callee_address.to_word())?;
         self.is_precompile_lt
-            .assign(region, offset, callee_address, F::from(0xA))?;
-        self.call_callee_address.assign(
+            .assign(region, offset, callee_address.to_word(), U256::from(0xA))?;
+        self.call_callee_address.assign_h160(
             region,
             offset,
-            Value::known(
-                if tx.is_create {
-                    get_contract_address(tx.caller_address, tx.nonce)
-                } else {
-                    tx.callee_address.unwrap_or(Address::zero())
-                }
-                .to_scalar()
-                .expect("unexpected Address -> Scalar conversion failure"),
-            ),
+            if tx.is_create {
+                get_contract_address(tx.caller_address, tx.nonce)
+            } else {
+                tx.callee_address.unwrap_or(Address::zero())
+            },
         )?;
         self.is_caller_callee_equal.assign(
             region,
@@ -967,7 +985,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         self.sufficient_gas_left
             .assign(region, offset, F::from(tx.gas - step.gas_cost))?;
         self.call_code_hash
-            .assign(region, offset, region.code_hash(call.code_hash))?;
+            .assign_u256(region, offset, call.code_hash)?;
         let untrimmed_contract_addr = {
             let mut stream = RlpStream::new();
             stream.begin_list(2);
@@ -976,35 +994,46 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             let rlp_encoding = stream.out().to_vec();
             keccak256(&rlp_encoding)
         };
-        for (c, v) in self
-            .caller_nonce_hash_bytes
-            .iter()
-            .rev()
-            .zip(untrimmed_contract_addr.iter())
-        {
-            c.assign(region, offset, Value::known(F::from(*v as u64)))?;
-        }
-        self.account_code_hash_is_empty.assign_value(
+        // for (c, v) in self
+        //     .caller_nonce_hash_bytes
+        //     .iter()
+        //     .rev()
+        //     .zip(untrimmed_contract_addr.iter())
+        // {
+        //     c.assign(region, offset, Value::known(F::from(*v as u64)))?;
+        // }
+
+        self.caller_nonce_hash_bytes.assign_u256(
             region,
             offset,
-            region.code_hash(account_code_hash),
-            region.empty_code_hash_rlc(),
+            U256::from(untrimmed_contract_addr),
+        );
+        self.account_code_hash_is_empty.assign_u256(
+            region,
+            offset,
+            //region.code_hash(account_code_hash),
+            account_code_hash,
+            //region.empty_code_hash_rlc(),
+            CodeDB::empty_code_hash().to_word(),
         )?;
-        self.account_code_hash_is_zero.assign_value(
+        self.account_code_hash_is_zero.assign_u256(
             region,
             offset,
-            region.code_hash(account_code_hash),
+            //region.code_hash(account_code_hash),
+            account_code_hash,
         )?;
-        self.call_code_hash_is_empty.assign_value(
+        self.call_code_hash_is_empty.assign_u256(
             region,
             offset,
-            region.code_hash(call.code_hash),
-            region.empty_code_hash_rlc(),
+            //region.code_hash(call.code_hash),
+            call.code_hash,
+            CodeDB::empty_code_hash().to_word(),
         )?;
-        self.call_code_hash_is_zero.assign_value(
+        self.call_code_hash_is_zero.assign_u256(
             region,
             offset,
-            region.code_hash(call.code_hash),
+            //region.code_hash(call.code_hash),
+            call.code_hash,
         )?;
 
         let untrimmed_contract_addr = {
@@ -1015,25 +1044,27 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             let rlp_encoding = stream.out().to_vec();
             keccak256(&rlp_encoding)
         };
-        for (c, v) in self
-            .caller_nonce_hash_bytes
-            .iter()
-            .rev()
-            .zip(untrimmed_contract_addr.iter())
-        {
-            c.assign(region, offset, Value::known(F::from(*v as u64)))?;
-        }
-        let (init_code_rlc, keccak_code_hash_rlc) = if tx.is_create {
+
+        self.caller_nonce_hash_bytes.assign_u256(
+            region,
+            offset,
+            U256::from(untrimmed_contract_addr),
+        );
+
+        let (init_code_rlc, keccak_code_hash) = if tx.is_create {
             let init_code_rlc =
                 region.keccak_rlc(&tx.call_data.iter().cloned().rev().collect::<Vec<u8>>());
-            let keccak_code_hash_rlc = region.word_rlc(U256::from(keccak256(&tx.call_data)));
-            (init_code_rlc, keccak_code_hash_rlc)
+            let keccak_code_hash = U256::from(keccak256(&tx.call_data));
+            // keccak_code_hash_rlc: rename to keccak_code_hash for word type, no need to use rlc,
+            // two words can hold 256 bytes codehash now.
+            let keccak_code_hash = U256::from(keccak256(&tx.call_data));
+            (init_code_rlc, keccak_code_hash)
         } else {
-            (Value::known(F::zero()), Value::known(F::zero()))
+            (Value::known(F::zero()), U256::zero())
         };
         self.init_code_rlc.assign(region, offset, init_code_rlc)?;
         self.keccak_code_hash
-            .assign(region, offset, keccak_code_hash_rlc)?;
+            .assign_u256(region, offset, keccak_code_hash)?;
 
         self.create.assign(
             region,
@@ -1045,15 +1076,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             None,
         )?;
 
-        self.coinbase.assign(
+        self.coinbase.assign_h160(
             region,
             offset,
-            Value::known(
-                block.context.ctxs[&tx.block_number]
-                    .coinbase
-                    .to_scalar()
-                    .expect("unexpected Address -> Scalar conversion failure"),
-            ),
+            block.context.ctxs[&tx.block_number].coinbase,
         )?;
         self.is_coinbase_warm
             .assign(region, offset, Value::known(F::from(is_coinbase_warm)))?;

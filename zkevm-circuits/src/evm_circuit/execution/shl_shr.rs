@@ -75,7 +75,7 @@ impl<F: Field> ExecutionGadget<F> for ShlShrGadget<F> {
         let divisor_is_zero = IsZeroWordGadget::construct(cb, &divisor);
         let remainder_is_zero = IsZeroWordGadget::construct(cb, &remainder);
         let remainder_lt_divisor =
-        LtWordGadget::construct(cb, &remainder.to_word(), &divisor.to_word());
+            LtWordGadget::construct(cb, &remainder.to_word(), &divisor.to_word());
         // Constrain stack pops and pushes as:
         // - for SHL, two pops are shift and quotient, and push is dividend.
         // - for SHR, two pops are shift and dividend, and push is quotient.
