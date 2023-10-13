@@ -113,6 +113,8 @@ impl<F: Field> PortChip<F> {
 
         Port::connect(meta, bus_builder, enabled, op, helper_expr);
 
+        meta.annotate_lookup_any_column(helper, || "Port_helper");
+
         Self {
             helper,
             _marker: PhantomData,
@@ -156,6 +158,10 @@ impl Port {
         helper: Column<Advice>,
         rotation: isize,
     ) {
+        if op.count() == 0 {
+            return; // Leave the helper cell at 0.
+        }
+
         let cmd = Box::new(PortAssigner {
             offset,
             helper,

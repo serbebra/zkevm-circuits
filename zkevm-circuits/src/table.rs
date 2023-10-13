@@ -2,12 +2,9 @@
 
 use crate::{
     copy_circuit::util::number_or_hash_to_field,
-    evm_circuit::{
-        table::MsgF,
-        util::{
-            constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
-            rlc,
-        },
+    evm_circuit::util::{
+        constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+        rlc,
     },
     exp_circuit::param::{OFFSET_INCREMENT, ROWS_PER_STEP},
     impl_expr,
@@ -28,7 +25,6 @@ use core::iter::once;
 use eth_types::{sign_types::SignData, Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
 use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
-    bus::bus_builder::BusAssigner,
     util::{and, not, split_u256, split_u256_limb64, Expr},
 };
 use halo2_proofs::{
@@ -663,15 +659,12 @@ impl RwTable {
     ) -> impl Iterator<Item = (usize, RwRow<Value<F>>)> {
         // TODO: we could avoid the copies in table_assignments_prepad and table_assignment.
 
-        let (rows, pad_len) = RwMap::table_assignments_prepad(rws, n_rows);
+        let (rows, _pad_len) = RwMap::table_assignments_prepad(rws, n_rows);
 
-        rows.into_iter()
-            .enumerate()
-            .skip(pad_len)
-            .map(move |(offset, row)| {
-                let row = row.table_assignment(challenge);
-                (offset, row)
-            })
+        rows.into_iter().enumerate().map(move |(offset, row)| {
+            let row = row.table_assignment(challenge);
+            (offset, row)
+        })
     }
 
     /// Assign the `RwTable` from a `RwMap`, following the same

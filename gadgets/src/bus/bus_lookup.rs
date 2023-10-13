@@ -40,6 +40,8 @@ impl<F: Field> BusLookupChip<F> {
             BusOp::send_to_lookups(message, count_expr),
         );
 
+        meta.annotate_lookup_any_column(count, || "BusLookup_count");
+
         Self { port, count }
     }
 

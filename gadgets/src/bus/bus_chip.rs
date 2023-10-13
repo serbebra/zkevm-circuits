@@ -1,7 +1,7 @@
-use super::Field;
+use super::{bus_builder::BusAssigner, bus_codec::BusMessageF, Field};
 use crate::util::Expr;
 use halo2_proofs::{
-    circuit::{Region, Value},
+    circuit::{Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, ThirdPhase},
     poly::Rotation,
 };
@@ -63,6 +63,10 @@ impl BusConfig {
             ]
         });
 
+        cs.annotate_lookup_any_column(enabled, || "Bus_enabled");
+        cs.annotate_lookup_any_column(is_first, || "Bus_is_first");
+        cs.annotate_lookup_any_column(acc, || "Bus_acc");
+
         Self {
             enabled,
             is_first,
@@ -70,7 +74,30 @@ impl BusConfig {
         }
     }
 
-    /// Assign the helper witness.
+    /// Assign the accumulator values from a BusAssigner.
+    pub fn finish_assigner<F: Field, M: BusMessageF<F>>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bus_assigner: BusAssigner<F, M>,
+    ) -> Result<(), Error> {
+        let mut closure_count = 0;
+        layouter.assign_region(
+            || "Bus_accumulator",
+            |mut region| {
+                // TODO: deal with this some other way.
+                closure_count += 1;
+                if closure_count == 1 {
+                    return Ok(());
+                }
+
+                self.assign(&mut region, bus_assigner.n_rows(), bus_assigner.terms())
+            },
+        )?;
+        assert_eq!(closure_count, 2, "assign_region behavior changed");
+        Ok(())
+    }
+
+    /// Assign the accumulator values, from the sum of terms per row.
     pub fn assign<F: Field>(
         &self,
         region: &mut Region<'_, F>,

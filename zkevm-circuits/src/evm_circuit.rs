@@ -26,7 +26,7 @@ pub(crate) mod test;
 pub use self::EvmCircuit as TestEvmCircuit;
 use self::{
     table::{RwValues, Table},
-    witness::{Rw, RwRow},
+    witness::Rw,
 };
 
 pub use crate::witness;
@@ -279,7 +279,7 @@ impl<F: Field> EvmCircuitConfig<F> {
 
 impl<F: Field> EvmCircuitConfig<F> {
     /// Load fixed table
-    pub(crate) fn load_fixed_table(
+    fn load_fixed_table(
         &self,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F, MsgF<F>>,
@@ -325,7 +325,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     }
 
     /// Load dual byte table
-    pub(crate) fn load_dual_byte_table(
+    fn load_dual_byte_table(
         &self,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F, MsgF<F>>,
@@ -382,7 +382,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     }
 
     /// Load RW table
-    pub(crate) fn load_rw_table(
+    fn load_rw_table(
         &self,
         layouter: &mut impl Layouter<F>,
         bus_assigner: &mut BusAssigner<F, MsgF<F>>,
@@ -593,14 +593,11 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
             challenges.evm_word(),
         )?;
 
-        layouter.assign_region(
-            || "EVM_Bus",
-            |mut region| {
-                config
-                    .bus
-                    .assign(&mut region, num_rows, bus_assigner.terms())
-            },
-        )?;
+        if !bus_assigner.op_counter().is_complete() {
+            log::warn!("Incomplete bus assignment.");
+            log::debug!("Missing bus ops: {:?}", bus_assigner.op_counter());
+        }
+        config.bus.finish_assigner(layouter, bus_assigner)?;
 
         Ok(())
     }

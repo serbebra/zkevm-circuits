@@ -36,6 +36,8 @@ impl<F: Field> PortBatchedChip<F> {
 
         PortBatched::connect(meta, bus_builder, enabled, ops, helper_expr);
 
+        meta.annotate_lookup_any_column(helper, || "PortBatched_helper");
+
         Self {
             helper,
             _marker: PhantomData,

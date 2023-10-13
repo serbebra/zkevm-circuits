@@ -102,4 +102,9 @@ impl<F: Field, M: BusMessageF<F>> BusOpCounter<F, M> {
     fn count_ops(&self, message: &M) -> isize {
         *self.counts.get(message).unwrap_or(&0)
     }
+
+    /// Return true if all messages received have been sent.
+    pub fn is_complete(&self) -> bool {
+        self.counts.is_empty()
+    }
 }

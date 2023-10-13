@@ -1661,6 +1661,10 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         if lookup.table() != Table::Fixed && lookup.table() != Table::Rw {
             return;
         }
+        // TODO: support conditional lookups.
+        if matches!(lookup, Lookup::Conditional(_, _)) {
+            return;
+        }
 
         let op = BusOpExpr::receive(MsgExpr::Lookup(lookup));
         let helper = self.query_cell_phase3();
