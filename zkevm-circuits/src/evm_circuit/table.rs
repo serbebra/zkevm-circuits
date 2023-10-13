@@ -408,6 +408,17 @@ impl<F: Field> Lookup<F> {
         }
     }
 
+    /// Return the inner lookup (not Conditional), and the condition (or constant 1).
+    pub(crate) fn unconditional(self) -> (Self, Expression<F>) {
+        match self {
+            Self::Conditional(cond, lookup) => {
+                let (lookup, cond2) = lookup.unconditional();
+                (lookup, cond * cond2)
+            }
+            _ => (self, 1.expr()),
+        }
+    }
+
     pub(crate) fn input_exprs(&self) -> Vec<Expression<F>> {
         match self {
             Self::Fixed { tag, values } => [vec![tag.clone()], values.to_vec()].concat(),

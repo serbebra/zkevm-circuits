@@ -12,7 +12,7 @@ use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Expression, ThirdPhase},
     poly::Rotation,
 };
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Mul};
 
 /// A bus operation, as expressions for circuit config.
 pub type BusOpExpr<F, M> = BusOp<M, Expression<F>>;
@@ -56,6 +56,14 @@ where
         Self { message, count }
     }
 
+    /// Apply a boolean condition to this operation.
+    pub fn conditional(self, condition: C) -> Self {
+        Self {
+            message: self.message,
+            count: self.count * condition,
+        }
+    }
+
     /// The message to send or receive.
     pub fn message(&self) -> M {
         self.message.clone()
@@ -68,7 +76,7 @@ where
 }
 
 /// Trait usable as BusOp count (Expression or isize).
-pub trait Count: Clone {
+pub trait Count: Clone + Mul<Output = Self> {
     /// 1
     fn one() -> Self;
     /// -1
