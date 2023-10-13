@@ -59,6 +59,11 @@ impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
         }
     }
 
+    /// Return the number of rows where the bus must be enabled.
+    pub fn n_rows(&self) -> usize {
+        self.term_adder.terms.len()
+    }
+
     /// Return the codec for messages on this bus.
     pub fn codec(&self) -> &BusCodecVal<F, M> {
         &self.codec

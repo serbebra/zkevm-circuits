@@ -11,7 +11,7 @@ use std::{
 };
 
 /// Assigners are used to delay the assignment until helper values are computed.
-pub trait Assigner<F: Field> {
+pub trait Assigner<F: Field>: Send + Sync {
     /// Given the helper value, assign ports and return (offset, term).
     #[must_use = "terms must be added to the bus"]
     fn assign(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F);

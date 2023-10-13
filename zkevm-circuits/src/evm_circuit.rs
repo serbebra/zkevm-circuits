@@ -22,9 +22,12 @@ pub(crate) mod util;
 
 #[cfg(any(feature = "test", test))]
 pub(crate) mod test;
-use self::table::Table;
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 pub use self::EvmCircuit as TestEvmCircuit;
+use self::{
+    table::{RwValues, Table},
+    witness::{Rw, RwRow},
+};
 
 pub use crate::witness;
 use crate::{
@@ -49,7 +52,7 @@ pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     dual_byte_table: [Column<Fixed>; 2],
     bus: BusConfig,
-    bus_lookup: [BusLookupChip<F>; 2],
+    bus_lookup: [BusLookupChip<F>; 3],
     enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
@@ -148,6 +151,7 @@ impl<F: Field> EvmCircuitConfig<F> {
             enable_bus_lookup,
             &dual_byte_table,
             &fixed_table,
+            &rw_table,
         );
 
         let execution = Box::new(ExecutionConfig::configure(
@@ -214,7 +218,8 @@ impl<F: Field> EvmCircuitConfig<F> {
         enabled: Column<Fixed>,
         dual_byte_table: &[Column<Fixed>; 2],
         fixed_table: &[Column<Fixed>; 4],
-    ) -> [BusLookupChip<F>; 2] {
+        rw_table: &RwTable,
+    ) -> [BusLookupChip<F>; 3] {
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
 
         let byte_lookup = {
@@ -241,7 +246,34 @@ impl<F: Field> EvmCircuitConfig<F> {
             BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
         };
 
-        [byte_lookup, fixed_lookup]
+        let rw_lookup = {
+            let rw_enabled = query_expression(meta, |meta| {
+                meta.query_fixed(rw_table.q_enable, Rotation::cur())
+            });
+
+            let message = query_expression(meta, |meta| {
+                let mut query = |col| meta.query_advice(col, Rotation::cur());
+
+                MsgExpr::Lookup(Lookup::Rw {
+                    counter: query(rw_table.rw_counter),
+                    is_write: query(rw_table.is_write),
+                    tag: query(rw_table.tag),
+                    values: RwValues {
+                        id: query(rw_table.id),
+                        address: query(rw_table.address),
+                        field_tag: query(rw_table.field_tag),
+                        storage_key: query(rw_table.storage_key),
+                        value: query(rw_table.value),
+                        value_prev: query(rw_table.value_prev),
+                        aux1: query(rw_table.aux1),
+                        aux2: query(rw_table.aux2),
+                    },
+                })
+            });
+            BusLookupChip::connect(meta, bus_builder, rw_enabled, message)
+        };
+
+        [byte_lookup, fixed_lookup, rw_lookup]
     }
 }
 
@@ -339,6 +371,64 @@ impl<F: Field> EvmCircuitConfig<F> {
                         let message = MsgF::Bytes([b0, b1]);
                         bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
                     }
+                }
+
+                bus_assigner.finish_ports(&mut region);
+                Ok(())
+            },
+        )?;
+        assert_eq!(closure_count, 2, "assign_region behavior changed");
+        Ok(())
+    }
+
+    /// Load RW table
+    pub(crate) fn load_rw_table(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
+        bus_lookup: &BusLookupChip<F>,
+        rws: &[Rw],
+        rw_n_rows: usize,
+        challenge_evm_word: Value<F>,
+    ) -> Result<(), Error> {
+        let mut closure_count = 0;
+        layouter.assign_region(
+            || "fixed table",
+            |mut region| {
+                // TODO: deal with this some other way.
+                closure_count += 1;
+                if closure_count == 1 {
+                    return Ok(());
+                }
+                // Skip the first phase.
+                if challenge_evm_word.is_none() {
+                    return Ok(());
+                }
+
+                for (offset, row) in RwTable::iter_active_rows(rws, rw_n_rows, challenge_evm_word) {
+                    // Same format as `Lookup::input_exprs()`
+                    let values: [_; 12] = [
+                        Value::known(F::one()), // TODO: can remove the "enabled" field.
+                        row.rw_counter,
+                        row.is_write,
+                        row.tag,
+                        row.id,
+                        row.address,
+                        row.field_tag,
+                        row.storage_key,
+                        row.value,
+                        row.value_prev,
+                        row.aux1,
+                        row.aux2,
+                    ];
+                    let mut inputs = Vec::with_capacity(values.len());
+                    for value in values {
+                        assert!(!value.is_none(), "RW values must be known here");
+                        value.map(|f| inputs.push(f));
+                    }
+
+                    let message = MsgF::Lookup(Table::Rw, inputs);
+                    bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
                 }
 
                 bus_assigner.finish_ports(&mut region);
@@ -492,6 +582,15 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
             &mut bus_assigner,
             &config.bus_lookup[1],
             self.fixed_table_tags.clone(),
+        )?;
+
+        config.load_rw_table(
+            layouter,
+            &mut bus_assigner,
+            &config.bus_lookup[2],
+            &block.rws.table_assignments(),
+            block.circuits_params.max_rws,
+            challenges.evm_word(),
         )?;
 
         layouter.assign_region(

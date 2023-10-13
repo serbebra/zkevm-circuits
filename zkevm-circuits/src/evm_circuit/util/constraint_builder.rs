@@ -1658,7 +1658,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
     fn add_bus_lookup(&mut self, lookup: Lookup<F>) {
         // TODO: support all types.
-        if lookup.table() != Table::Fixed {
+        if lookup.table() != Table::Fixed && lookup.table() != Table::Rw {
             return;
         }
 
