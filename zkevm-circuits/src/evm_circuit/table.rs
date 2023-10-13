@@ -13,7 +13,37 @@ use strum_macros::EnumIter;
 #[derive(Clone, Debug)]
 pub(crate) enum MsgExpr<F> {
     Bytes([Expression<F>; 2]),
-    Lookup(Lookup<F>),
+    Lookup(Table, Vec<Expression<F>>),
+}
+
+impl<F: Field> MsgExpr<F> {
+    pub fn bytes(bytes: [Expression<F>; 2]) -> Self {
+        Self::Bytes(bytes)
+    }
+
+    pub fn lookup(lookup: Lookup<F>) -> Self {
+        Self::Lookup(lookup.table(), lookup.input_exprs())
+    }
+
+    pub fn map_exprs(self, f: impl FnMut(Expression<F>) -> Expression<F>) -> Self {
+        match self {
+            Self::Bytes(bytes) => Self::Bytes(bytes.map(f)),
+            Self::Lookup(table, inputs) => Self::Lookup(table, inputs.into_iter().map(f).collect()),
+        }
+    }
+
+    pub fn map_values(self, f: impl FnMut(Expression<F>) -> F) -> MsgF<F> {
+        match self {
+            Self::Bytes(exprs) => {
+                let values = exprs.map(f);
+                MsgF::Bytes(values)
+            }
+            Self::Lookup(table, exprs) => {
+                let values = exprs.into_iter().map(f).collect();
+                MsgF::Lookup(table, values)
+            }
+        }
+    }
 }
 
 impl<F: Field> BusMessage<Expression<F>> for MsgExpr<F> {
@@ -25,9 +55,8 @@ impl<F: Field> BusMessage<Expression<F>> for MsgExpr<F> {
                 let tag = 0.expr();
                 vec![tag, byte0, byte1].into_iter()
             }
-            Self::Lookup(lookup) => {
-                let tag = (1 + (lookup.table() as u64)).expr();
-                let mut inputs = lookup.input_exprs();
+            Self::Lookup(table, mut inputs) => {
+                let tag = (1 + table as u64).expr();
                 inputs.insert(0, tag);
                 inputs.into_iter()
             }

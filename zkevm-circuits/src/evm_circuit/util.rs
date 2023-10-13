@@ -125,7 +125,8 @@ impl<F: Field> StepBusOp<F> {
         }
         assert_eq!(count, -F::one(), "count must be 0 or -1");
 
-        let message = Self::eval_msg(region, offset, self.op.message());
+        let eval = |expr| region.eval(offset, expr);
+        let message = self.op.message().map_values(eval);
 
         Port::assign(
             bus_assigner,
@@ -134,28 +135,6 @@ impl<F: Field> StepBusOp<F> {
             self.helper.column,
             self.helper.rotation as isize,
         );
-    }
-
-    /// Evaluate a message from expressions of the content of a region.
-    fn eval_msg(
-        region: &mut CachedRegion<'_, '_, F>,
-        offset: usize,
-        message: MsgExpr<F>,
-    ) -> MsgF<F> {
-        match message {
-            MsgExpr::Bytes(exprs) => {
-                let values = exprs.map(|expr| region.eval(offset, expr));
-                MsgF::Bytes(values)
-            }
-            MsgExpr::Lookup(lookup) => {
-                let values = lookup
-                    .input_exprs()
-                    .into_iter()
-                    .map(|expr| region.eval(offset, expr))
-                    .collect();
-                MsgF::Lookup(lookup.table(), values)
-            }
-        }
     }
 }
 

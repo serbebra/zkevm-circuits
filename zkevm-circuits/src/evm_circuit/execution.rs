@@ -970,7 +970,7 @@ impl<F: Field> ExecutionConfig<F> {
         let ops = byte_columns
             .chunks(2)
             .map(|columns| {
-                let message = MsgExpr::Bytes([columns[0].clone(), columns[1].clone()]);
+                let message = MsgExpr::bytes([columns[0].clone(), columns[1].clone()]);
                 BusOp::receive(message)
             })
             .collect::<Vec<_>>();

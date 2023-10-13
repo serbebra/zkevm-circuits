@@ -224,7 +224,7 @@ impl<F: Field> EvmCircuitConfig<F> {
 
         let byte_lookup = {
             let message = query_expression(meta, |meta| {
-                MsgExpr::Bytes([
+                MsgExpr::bytes([
                     meta.query_fixed(dual_byte_table[0], Rotation::cur()),
                     meta.query_fixed(dual_byte_table[1], Rotation::cur()),
                 ])
@@ -234,7 +234,7 @@ impl<F: Field> EvmCircuitConfig<F> {
 
         let fixed_lookup = {
             let message = query_expression(meta, |meta| {
-                MsgExpr::Lookup(Lookup::Fixed {
+                MsgExpr::lookup(Lookup::Fixed {
                     tag: meta.query_fixed(fixed_table[0], Rotation::cur()),
                     values: [
                         meta.query_fixed(fixed_table[1], Rotation::cur()),
@@ -254,7 +254,7 @@ impl<F: Field> EvmCircuitConfig<F> {
             let message = query_expression(meta, |meta| {
                 let mut query = |col| meta.query_advice(col, Rotation::cur());
 
-                MsgExpr::Lookup(Lookup::Rw {
+                MsgExpr::lookup(Lookup::Rw {
                     counter: query(rw_table.rw_counter),
                     is_write: query(rw_table.is_write),
                     tag: query(rw_table.tag),

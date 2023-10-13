@@ -17,7 +17,7 @@ use bus_mapping::{
 };
 use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
 use gadgets::{
-    bus::bus_port::BusOpExpr,
+    bus::bus_port::{BusOpExpr, Port},
     util::{and, not, sum},
 };
 use halo2_proofs::{
@@ -1675,14 +1675,6 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         }
     }
 
-    fn add_bus_lookup(&mut self, lookup: Lookup<F>) {
-        let (lookup, condition) = lookup.unconditional();
-
-        let op = BusOpExpr::receive(MsgExpr::Lookup(lookup)).conditional(condition);
-        let helper = self.query_cell_phase3();
-        self.bus_ops.push(StepBusOp { op, helper });
-    }
-
     pub(crate) fn add_lookup(&mut self, name: &str, lookup: Lookup<F>) {
         let lookup = match self.condition_expr_opt() {
             Some(condition) => lookup.conditional(condition),
@@ -1701,6 +1693,39 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             MAX_DEGREE - IMPLICIT_DEGREE,
         );
         self.store_expression(name, compressed_expr, CellType::Lookup(lookup.table()));
+    }
+
+    fn add_bus_lookup(&mut self, lookup: Lookup<F>) {
+        let (lookup, condition) = lookup.unconditional();
+
+        // Reduce the degree of the inputs and condition.
+        let (msg_degree, count_degree) = Port::max_degrees(MAX_DEGREE, IMPLICIT_DEGREE);
+
+        let message = MsgExpr::lookup(lookup)
+            .map_exprs(|expr| self.store_any_expression("Bus message", expr, msg_degree));
+
+        let condition = self.store_any_expression("Bus count", condition, count_degree);
+
+        // Allocate an operation to an helper cell.
+        let op = BusOpExpr::receive(message).conditional(condition);
+        let helper = self.query_cell_phase3();
+        self.bus_ops.push(StepBusOp { op, helper });
+    }
+
+    /// Reduce the degree of `expr` to `target_degree`. Split and store the expression if needed.
+    fn store_any_expression(
+        &mut self,
+        name: &'static str,
+        expr: Expression<F>,
+        target_degree: usize,
+    ) -> Expression<F> {
+        let expr = self.split_expression(name, expr, MAX_DEGREE - IMPLICIT_DEGREE);
+        if expr.degree() <= target_degree {
+            expr
+        } else {
+            let cell_type = CellType::storage_for_expr(&expr);
+            self.store_expression(name, expr, cell_type)
+        }
     }
 
     pub(crate) fn store_expression(

@@ -194,6 +194,16 @@ impl Port {
         constraint.degree()
     }
 
+    /// Return the maximum (message_degree, count_degree), given the degrees of the constraint
+    /// system and `enabled`.
+    pub fn max_degrees(max_degree: usize, enabled_degree: usize) -> (usize, usize) {
+        let helper_degree = 1;
+        (
+            max_degree - enabled_degree - helper_degree,
+            max_degree - enabled_degree,
+        )
+    }
+
     fn create_term<F: Field, M: BusMessageExpr<F>>(
         meta: &mut ConstraintSystem<F>,
         codec: &BusCodecExpr<F, M>,
