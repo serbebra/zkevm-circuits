@@ -2,6 +2,7 @@ pub use crate::table::TxContextFieldTag;
 use crate::{
     evm_circuit::step::{ExecutionState, ResponsibleOp},
     impl_expr,
+    witness::RwRow,
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
 use eth_types::Field;
@@ -70,14 +71,45 @@ pub(crate) enum MsgF<F> {
     Lookup(Table, Vec<F>),
 }
 
+impl<F: Field> MsgF<F> {
+    pub fn bytes(bytes: [F; 2]) -> Self {
+        Self::Bytes(bytes)
+    }
+
+    pub fn fixed(row: [F; 4]) -> Self {
+        Self::Lookup(Table::Fixed, row.to_vec())
+    }
+
+    pub fn rw(row: RwRow<F>) -> Self {
+        // Same format as `Lookup::input_exprs()`
+        Self::Lookup(
+            Table::Rw,
+            vec![
+                F::one(), // TODO: can remove the "enabled" field.
+                row.rw_counter,
+                row.is_write,
+                row.tag,
+                row.id,
+                row.address,
+                row.field_tag,
+                row.storage_key,
+                row.value,
+                row.value_prev,
+                row.aux1,
+                row.aux2,
+            ],
+        )
+    }
+}
+
 impl<F: Field> BusMessage<F> for MsgF<F> {
     type IntoIter = std::vec::IntoIter<F>;
 
     fn into_items(self) -> Self::IntoIter {
         match self {
             Self::Bytes([b0, b1]) => vec![F::zero(), b0, b1].into_iter(),
-            MsgF::Lookup(table, mut inputs) => {
-                let tag = F::from(1 + (table as u64));
+            Self::Lookup(table, mut inputs) => {
+                let tag = F::from(1 + table as u64);
                 inputs.insert(0, tag);
                 inputs.into_iter()
             }

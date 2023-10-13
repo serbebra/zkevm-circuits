@@ -24,10 +24,7 @@ pub(crate) mod util;
 pub(crate) mod test;
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 pub use self::EvmCircuit as TestEvmCircuit;
-use self::{
-    table::{RwValues, Table},
-    witness::Rw,
-};
+use self::{table::RwValues, witness::Rw};
 
 pub use crate::witness;
 use crate::{
@@ -312,8 +309,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                         || Value::known(F::one()),
                     )?;
 
-                    let message = MsgF::Lookup(Table::Fixed, row.to_vec());
-                    bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
+                    bus_lookup.assign(&mut region, bus_assigner, offset, MsgF::fixed(row))?;
                 }
 
                 bus_assigner.finish_ports(&mut region);
@@ -368,8 +364,12 @@ impl<F: Field> EvmCircuitConfig<F> {
                             || Value::known(b1),
                         )?;
 
-                        let message = MsgF::Bytes([b0, b1]);
-                        bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
+                        bus_lookup.assign(
+                            &mut region,
+                            bus_assigner,
+                            offset,
+                            MsgF::bytes([b0, b1]),
+                        )?;
                     }
                 }
 
@@ -400,38 +400,15 @@ impl<F: Field> EvmCircuitConfig<F> {
                 if closure_count == 1 {
                     return Ok(());
                 }
-                // Skip the first phase.
-                if challenge_evm_word.is_none() {
-                    return Ok(());
-                }
-
-                for (offset, row) in RwTable::iter_active_rows(rws, rw_n_rows, challenge_evm_word) {
-                    // Same format as `Lookup::input_exprs()`
-                    let values: [_; 12] = [
-                        Value::known(F::one()), // TODO: can remove the "enabled" field.
-                        row.rw_counter,
-                        row.is_write,
-                        row.tag,
-                        row.id,
-                        row.address,
-                        row.field_tag,
-                        row.storage_key,
-                        row.value,
-                        row.value_prev,
-                        row.aux1,
-                        row.aux2,
-                    ];
-                    let mut inputs = Vec::with_capacity(values.len());
-                    for value in values {
-                        assert!(!value.is_none(), "RW values must be known here");
-                        value.map(|f| inputs.push(f));
+                // Only in second phase.
+                challenge_evm_word.map(|challenge| {
+                    for (offset, row) in RwTable::iter_table(rws, rw_n_rows, challenge) {
+                        bus_lookup
+                            .assign(&mut region, bus_assigner, offset, MsgF::rw(row))
+                            .unwrap();
                     }
-
-                    let message = MsgF::Lookup(Table::Rw, inputs);
-                    bus_lookup.assign(&mut region, bus_assigner, offset, message)?;
-                }
-
-                bus_assigner.finish_ports(&mut region);
+                    bus_assigner.finish_ports(&mut region);
+                });
                 Ok(())
             },
         )?;

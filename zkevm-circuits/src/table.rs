@@ -651,18 +651,18 @@ impl RwTable {
         Ok(())
     }
 
-    /// Iterate over the active rows of the RwTable: (offset, values).
-    pub(crate) fn iter_active_rows<F: Field>(
+    /// Iterate over the entries of the table, and their position in the circuit: (offset, values).
+    pub(crate) fn iter_table<F: Field>(
         rws: &[Rw],
         n_rows: usize,
-        challenge: Value<F>,
-    ) -> impl Iterator<Item = (usize, RwRow<Value<F>>)> {
+        challenge: F,
+    ) -> impl Iterator<Item = (usize, RwRow<F>)> {
         // TODO: we could avoid the copies in table_assignments_prepad and table_assignment.
 
         let (rows, _pad_len) = RwMap::table_assignments_prepad(rws, n_rows);
 
         rows.into_iter().enumerate().map(move |(offset, row)| {
-            let row = row.table_assignment(challenge);
+            let row = row.table_assignment_aux(challenge);
             (offset, row)
         })
     }

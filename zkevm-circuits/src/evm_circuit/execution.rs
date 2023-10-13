@@ -1364,8 +1364,7 @@ impl<F: Field> ExecutionConfig<F> {
                     } else {
                         F::zero()
                     };
-                    let message = MsgF::Bytes([byte_0, byte_1]);
-                    BusOp::receive(message)
+                    BusOp::receive(MsgF::bytes([byte_0, byte_1]))
                 })
                 .collect::<Vec<_>>();
 
