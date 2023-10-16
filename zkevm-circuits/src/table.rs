@@ -8,7 +8,7 @@ use crate::{
     },
     exp_circuit::param::{OFFSET_INCREMENT, ROWS_PER_STEP},
     impl_expr,
-    util::{build_tx_log_address, Challenges},
+    util::{build_tx_log_address, word, Challenges},
     witness::{
         Block, BlockContexts, Bytecode, MptUpdateRow, MptUpdates, RlpFsmWitnessGen, Rw, RwMap,
         RwRow, Transaction,
@@ -554,15 +554,15 @@ pub struct RwTable {
     /// Key3 (FieldTag)
     pub field_tag: Column<Advice>,
     /// Key3 (StorageKey)
-    pub storage_key: Column<Advice>,
+    pub storage_key: word::Word<Column<Advice>>,
     /// Value
-    pub value: Column<Advice>,
+    pub value: word::Word<Column<Advice>>,
     /// Value Previous
-    pub value_prev: Column<Advice>,
+    pub value_prev: word::Word<Column<Advice>>,
     /// Aux1
-    pub aux1: Column<Advice>,
+    pub aux1: word::Word<Column<Advice>>,
     /// Aux2 (Committed Value)
-    pub aux2: Column<Advice>,
+    pub aux2: word::Word<Column<Advice>>,
 }
 
 impl<F: Field> LookupTable<F> for RwTable {
@@ -575,11 +575,16 @@ impl<F: Field> LookupTable<F> for RwTable {
             self.id.into(),
             self.address.into(),
             self.field_tag.into(),
-            self.storage_key.into(),
-            self.value.into(),
-            self.value_prev.into(),
-            self.aux1.into(),
-            self.aux2.into(),
+            self.storage_key.lo().into(),
+            self.storage_key.hi().into(),
+            self.value.lo().into(),
+            self.value.hi().into(),
+            self.value_prev.lo().into(),
+            self.value_prev.hi().into(),
+            self.aux1.lo().into(),
+            self.aux1.hi().into(),
+            self.aux2.lo().into(),
+            self.aux2.hi().into(),
         ]
     }
 
@@ -592,11 +597,16 @@ impl<F: Field> LookupTable<F> for RwTable {
             String::from("id"),
             String::from("address"),
             String::from("field_tag"),
-            String::from("storage_key"),
-            String::from("value"),
-            String::from("value_prev"),
-            String::from("aux1"),
-            String::from("aux2"),
+            String::from("storage_key_lo"),
+            String::from("storage_key_hi"),
+            String::from("value_lo"),
+            String::from("value_hi"),
+            String::from("value_prev_lo"),
+            String::from("value_prev_hi"),
+            String::from("aux1_lo"),
+            String::from("aux1_hi"),
+            String::from("aux2_lo"),
+            String::from("aux2_hi"),
         ]
     }
 }
@@ -611,13 +621,11 @@ impl RwTable {
             id: meta.advice_column(),
             address: meta.advice_column(),
             field_tag: meta.advice_column(),
-            storage_key: meta.advice_column_in(SecondPhase),
-            value: meta.advice_column_in(SecondPhase),
-            value_prev: meta.advice_column_in(SecondPhase),
-            // It seems that aux1 for the moment is not using randomness
-            // TODO check in a future review
-            aux1: meta.advice_column_in(SecondPhase),
-            aux2: meta.advice_column_in(SecondPhase),
+            storage_key: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            value: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            value_prev: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            aux1: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            aux2: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
     fn assign<F: Field>(
@@ -639,14 +647,25 @@ impl RwTable {
             (self.id, row.id),
             (self.address, row.address),
             (self.field_tag, row.field_tag),
+            // (self.storage_key, row.storage_key),
+            // (self.value, row.value),
+            // (self.value_prev, row.value_prev),
+            // (self.aux1, row.aux1),
+            // (self.aux2, row.aux2),
+        ] {
+            region.assign_advice(|| "assign rw row on rw table", column, offset, || value)?;
+        }
+
+        for (column, value) in [
             (self.storage_key, row.storage_key),
             (self.value, row.value),
             (self.value_prev, row.value_prev),
             (self.aux1, row.aux1),
             (self.aux2, row.aux2),
         ] {
-            region.assign_advice(|| "assign rw row on rw table", column, offset, || value)?;
+            value.assign_advice(region, || "assign rw row on rw table", column, offset)?;
         }
+
         Ok(())
     }
 

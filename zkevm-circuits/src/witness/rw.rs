@@ -14,7 +14,7 @@ use rayon::prelude::{ParallelBridge, ParallelIterator};
 use crate::{
     evm_circuit::util::rlc,
     table::{AccountFieldTag, CallContextFieldTag, RwTableTag, TxLogFieldTag, TxReceiptFieldTag},
-    util::build_tx_log_address,
+    util::{build_tx_log_address, word},
 };
 
 use super::MptUpdates;
@@ -324,11 +324,12 @@ pub struct RwRow<F> {
     pub(crate) id: F,
     pub(crate) address: F,
     pub(crate) field_tag: F,
-    pub(crate) storage_key: F,
-    pub(crate) value: F,
-    pub(crate) value_prev: F,
-    pub(crate) aux1: F,
-    pub(crate) aux2: F,
+    pub(crate) storage_key: word::Word<F>,
+    pub(crate) value: word::Word<F>,
+    pub(crate) value_prev: word::Word<F>,
+    //pub(crate) init_val: word::Word<F>,
+    pub(crate) aux1: word::Word<F>,
+    pub(crate) aux2: word::Word<F>,
 }
 
 impl<F: Field> RwRow<F> {

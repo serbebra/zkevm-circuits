@@ -26,7 +26,7 @@ impl<F: Field> PrecompileGadget<F> {
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         _is_success: Expression<F>,
-        callee_address: Expression<F>,
+        callee_address: Word<Expression<F>>,
         _caller_id: Expression<F>,
         _cd_offset: Expression<F>,
         cd_length: Expression<F>,

@@ -1195,7 +1195,8 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         rd_offset: U256,
         rd_length: U256,
         memory_word_size: u64,
-        phase2_callee_code_hash: U256,
+        // callee_code_hash in phase2
+        callee_code_hash: U256,
     ) -> Result<u64, Error> {
         self.gas.assign_u256(region, offset, gas)?;
         self.callee_address
@@ -1226,18 +1227,18 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         self.value_is_zero
             .assign(region, offset, Word::from(value))?;
         self.callee_code_hash
-            .assign_u256(region, offset, phase2_callee_code_hash)?;
+            .assign_u256(region, offset, callee_code_hash)?;
 
         self.is_empty_code_hash.assign_value(
             region,
             offset,
-            Value::known(Word::from(phase2_callee_code_hash)),
+            Value::known(Word::from(callee_code_hash)),
             Value::known(Word::from(CodeDB::empty_code_hash().to_word())),
         )?;
         self.callee_not_exists.assign_value(
             region,
             offset,
-            Value::known(Word::from(phase2_callee_code_hash)),
+            Value::known(Word::from(callee_code_hash)),
         )?;
 
         Ok(memory_expansion_gas_cost)

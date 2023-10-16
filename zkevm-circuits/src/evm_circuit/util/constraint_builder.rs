@@ -20,7 +20,7 @@ use bus_mapping::{
     util::{KECCAK_CODE_HASH_EMPTY, POSEIDON_CODE_HASH_EMPTY},
 };
 use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
-use gadgets::util::{and, expr, not, sum};
+use gadgets::util::{and, not, sum};
 use halo2_proofs::{
     circuit::Value,
     plonk::{

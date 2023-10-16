@@ -5,7 +5,7 @@ use super::{
 use crate::{
     evm_circuit::{param::N_BYTES_WORD, util::not},
     table::{AccountFieldTag, MPTProofType as ProofType, RwTableTag},
-    util::Expr,
+    util::{Expr, word},
 };
 use eth_types::Field;
 use gadgets::binary_number::BinaryNumberConfig;
@@ -23,9 +23,9 @@ pub struct RwTableQueries<F: Field> {
     pub address: Expression<F>,
     pub prev_address: Expression<F>,
     pub field_tag: Expression<F>,
-    pub storage_key: Expression<F>,
-    pub value: Expression<F>,
-    pub value_prev: Expression<F>, // meta.query(value, Rotation::prev())
+    pub storage_key: word::Word<Expression<F>>,
+    pub value: word::Word<Expression<F>>,
+    pub value_prev: word::Word<Expression<F>>, 
     pub value_prev_column: Expression<F>, /* meta.query(prev_value, Rotation::cur())
                                     * TODO: aux1 and aux2 */
 }
@@ -34,12 +34,12 @@ pub struct RwTableQueries<F: Field> {
 pub struct MptUpdateTableQueries<F: Field> {
     pub q_enable: Expression<F>,
     pub address: Expression<F>,
-    pub storage_key: Expression<F>,
+    pub storage_key: word::Word<Expression<F>>,
     pub proof_type: Expression<F>,
-    pub new_root: Expression<F>,
-    pub old_root: Expression<F>,
-    pub new_value: Expression<F>,
-    pub old_value: Expression<F>,
+    pub new_root: word::Word<Expression<F>>,
+    pub old_root: word::Word<Expression<F>>,
+    pub new_value: word::Word<Expression<F>>,
+    pub old_value: word::Word<Expression<F>>,
 }
 
 #[derive(Clone)]
