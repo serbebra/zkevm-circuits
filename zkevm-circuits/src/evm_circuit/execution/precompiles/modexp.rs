@@ -866,8 +866,7 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
                 };
 
             let garbage_bytes = if call.call_data_length as usize > input_expected_len {
-                let mut bts = Vec::new();
-                bts.resize(input_expected_len - 96, 0); //front prefix zero
+                let mut bts = vec![0; input_expected_len - 96]; // front prefix zero
                 bts.append(&mut Vec::from(&data.input_memory[input_expected_len..]));
                 bts.resize(96, 0); //padding zero
                 bts

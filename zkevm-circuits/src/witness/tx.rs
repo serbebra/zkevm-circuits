@@ -1025,7 +1025,7 @@ mod tests {
 
         let to = eth_tx.to.map_or(Address::zero(), |to| to);
         let data = eth_tx.input.to_vec();
-        let tx_table = vec![
+        let tx_table = [
             rlc(&eth_tx.nonce.to_be_bytes(), evm_word),
             rlc(&eth_tx.gas_price.unwrap().to_be_bytes(), evm_word),
             Fr::from(eth_tx.gas.as_u64()),
@@ -1094,7 +1094,7 @@ mod tests {
 
         let to = eth_tx.to.map_or(Address::zero(), |to| to);
         let data = eth_tx.input.to_vec();
-        let tx_table = vec![
+        let tx_table = [
             rlc(&eth_tx.nonce.to_be_bytes(), evm_word),
             Fr::from(eth_tx.gas.as_u64()),
             to.to_scalar().unwrap(),

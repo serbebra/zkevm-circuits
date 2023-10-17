@@ -2401,7 +2401,7 @@ impl<F: Field> TxCircuit<F> {
             chain_id,
             start_l1_queue_index,
             value_cells: RefCell::new(None),
-            _marker: PhantomData::default(),
+            _marker: PhantomData,
         }
     }
 

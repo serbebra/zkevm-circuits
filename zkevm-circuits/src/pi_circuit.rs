@@ -516,7 +516,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
                     "rpi == dummy_tx_hash",
                     meta.query_advice(rpi, Rotation::cur()),
                     iter::once(1.expr())
-                        .chain(challenges.evm_word_powers_of_randomness::<31>().into_iter())
+                        .chain(challenges.evm_word_powers_of_randomness::<31>())
                         .rev()
                         .zip(
                             get_dummy_tx_hash()
