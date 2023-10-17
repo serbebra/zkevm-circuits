@@ -2653,6 +2653,7 @@ impl ModExpTable {
 
                     for i in 0..3 {
                         for (limbs, &col) in [base_limbs, exp_limbs, modulus_limbs, result_limbs]
+.into_iter()
                             .zip([&self.base, &self.exp, &self.modulus, &self.result])
                         {
                             region.assign_advice(
@@ -2670,7 +2671,7 @@ impl ModExpTable {
                         &event.exponent,
                         &event.modulus,
                         &event.result,
-                    ]
+                    ].into_iter()
                     .zip([&self.base, &self.exp, &self.modulus, &self.result])
                     {
                         region.assign_advice(

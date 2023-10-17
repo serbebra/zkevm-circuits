@@ -16,6 +16,7 @@ use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Expression},
 };
 use std::{fmt::Display, iter};
+use std::marker::ConstParamTy;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -37,6 +38,7 @@ impl From<PrecompileCalls> for ExecutionState {
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
+#[derive(ConstParamTy)]
 pub enum ExecutionState {
     // Internal state
     BeginTx,

@@ -419,7 +419,7 @@ impl<F: Field> ModExpInputs<F> {
             input_limbs.assign(region, offset, val_r)?;
         }
 
-        for (val, input_bytes) in values.zip([&self.base, &self.exp, &self.modulus]) {
+        for (val, input_bytes) in values.into_iter().zip([&self.base, &self.exp, &self.modulus]) {
             assign_word(region, offset, input_bytes, val)?;
         }
 

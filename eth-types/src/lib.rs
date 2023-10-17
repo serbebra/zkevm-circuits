@@ -5,8 +5,11 @@
 #![allow(dead_code)]
 // We want to have UPPERCASE idents sometimes.
 #![allow(non_snake_case)]
+#![allow(incomplete_features)]
 // Catch documentation errors caused by code changes.
 #![deny(rustdoc::broken_intra_doc_links)]
+// GasCost is used as type parameter
+#![feature(adt_const_params)]
 #![deny(missing_docs)]
 //#![deny(unsafe_code)] Allowed now until we find a
 // better way to handle downcasting from Operation into it's variants.

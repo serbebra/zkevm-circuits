@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::marker::ConstParamTy;
 
 pub mod block_utils;
 pub mod gas_utils;
@@ -107,6 +108,7 @@ pub use gas_create::*;
 
 /// Defines the gas consumption.
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(ConstParamTy)]
 pub struct GasCost(pub u64);
 
 impl fmt::Debug for GasCost {

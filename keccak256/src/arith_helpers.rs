@@ -147,7 +147,7 @@ pub fn convert_b13_lane_to_b9(x: Lane13, rot: u32) -> Lane9 {
     // with the special chunk in the middle
     let rotated: Vec<u8> = right
         .iter()
-        .chain(vec![special].iter())
+        .chain([special].iter())
         .chain(left.iter())
         .map(|&x| convert_b13_coef(x))
         .collect_vec();
