@@ -1,6 +1,6 @@
 use super::{
     lookups::Queries as LookupsQueries, multiple_precision_integer::Queries as MpiQueries,
-    param::*, random_linear_combination::Queries as RlcQueries,
+    param::*, // random_linear_combination::Queries as RlcQueries,
 };
 use crate::{
     evm_circuit::{param::N_BYTES_WORD, util::not},
@@ -26,8 +26,7 @@ pub struct RwTableQueries<F: Field> {
     pub storage_key: word::Word<Expression<F>>,
     pub value: word::Word<Expression<F>>,
     pub value_prev: word::Word<Expression<F>>,
-    pub value_prev_column: word::Word<Expression<F>>, /* meta.query(prev_value, Rotation::cur())
-                                                       * TODO: aux1 and aux2 */
+    pub value_prev_column: word::Word<Expression<F>>, /* meta.query(prev_value, Rotation::cur())                                        * TODO: aux1 and aux2 */
 }
 
 #[derive(Clone)]
@@ -55,7 +54,7 @@ pub struct Queries<F: Field> {
     pub address: MpiQueries<F, N_LIMBS_ACCOUNT_ADDRESS>,
     // upstream storage_key: MpiQueries<F, N_LIMBS_WORD>
     // check it later if can take upstream way.
-    pub storage_key: RlcQueries<F, N_BYTES_WORD>,
+    pub storage_key: MpiQueries<F, N_LIMBS_WORD>,
     pub initial_value: word::Word<Expression<F>>,
     pub initial_value_prev: word::Word<Expression<F>>,
     pub is_non_exist: Expression<F>,

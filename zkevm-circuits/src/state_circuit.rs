@@ -21,11 +21,11 @@ use self::{
 use crate::{
     evm_circuit::{param::N_BYTES_WORD, util::rlc},
     table::{AccountFieldTag, LookupTable, MptTable, RwTable, RwTableTag},
-    util::{Challenges, Expr, SubCircuit, SubCircuitConfig},
+    util::{word, Challenges, Expr, SubCircuit, SubCircuitConfig},
     witness::{self, MptUpdates, Rw, RwMap},
 };
 use constraint_builder::{ConstraintBuilder, Queries};
-use eth_types::{Address, Field, ToLittleEndian};
+use eth_types::{Address, Field, ToLittleEndian, Word};
 use gadgets::{
     batched_is_zero::{BatchedIsZeroChip, BatchedIsZeroConfig},
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
@@ -40,7 +40,7 @@ use lexicographic_ordering::Config as LexicographicOrderingConfig;
 use lookups::{Chip as LookupsChip, Config as LookupsConfig, Queries as LookupsQueries};
 use multiple_precision_integer::{Chip as MpiChip, Config as MpiConfig, Queries as MpiQueries};
 use param::*;
-use random_linear_combination::{Chip as RlcChip, Config as RlcConfig, Queries as RlcQueries};
+// use random_linear_combination::{Chip as RlcChip, Config as RlcConfig, Queries as RlcQueries};
 use std::marker::PhantomData;
 
 #[cfg(feature = "onephase")]
@@ -62,14 +62,14 @@ pub struct StateCircuitConfig<F> {
     // Assigned value at the start of the block. For Rw::Account and
     // Rw::AccountStorage rows this is the committed value in the MPT, for
     // others, it is 0.
-    initial_value: Column<Advice>,
+    initial_value: word::Word<Column<Advice>>,
     // For Rw::AccountStorage, identify non-existing if both committed value and
     // new value are zero. Will do lookup for MPTProofType::NonExistingStorageProof if
     // non-existing, otherwise do lookup for MPTProofType::StorageMod.
     is_non_exist: BatchedIsZeroConfig,
     // Intermediary witness used to reduce mpt lookup expression degree
     mpt_proof_type: Column<Advice>,
-    state_root: Column<Advice>,
+    state_root: word::Word<Column<Advice>>,
     lexicographic_ordering: LexicographicOrderingConfig,
     not_first_access: Column<Advice>,
     lookups: LookupsConfig,
@@ -112,12 +112,13 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
         let selector = rw_table.q_enable;
         log::debug!("state circuit selector {:?}", selector);
         let lookups = LookupsChip::configure(meta);
-        let power_of_randomness: [Expression<F>; 31] = challenges.evm_word_powers_of_randomness();
 
         let rw_counter = MpiChip::configure(meta, selector, rw_table.rw_counter, lookups);
         let tag = BinaryNumberChip::configure(meta, selector, Some(rw_table.tag.into()));
         let id = MpiChip::configure(meta, selector, rw_table.id, lookups);
         let address = MpiChip::configure(meta, selector, rw_table.address, lookups);
+        let address = MpiChip::configure(meta, selector, [rw_table.address], lookups);
+
 
         let storage_key = RlcChip::configure(
             meta,
@@ -127,7 +128,7 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
             challenges.evm_word(),
         );
 
-        let initial_value = meta.advice_column_in(SecondPhase);
+        let initial_value = word::Word::new([meta.advice_column(), meta.advice_column()]);
         // If the rw lookup is for an Account with field tag = CodeHash and both values are 0, we
         // actually want to do an mpt lookup for an non-existing account instead of an mpt lookup
         // for the code hash. Similarly, if the rw lookup is for an storage key with both values =
@@ -142,14 +143,17 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
                 [
                     meta.query_advice(rw_table.field_tag, Rotation::cur())
                         - AccountFieldTag::CodeHash.expr(),
-                    meta.query_advice(initial_value, Rotation::cur()),
-                    meta.query_advice(rw_table.value, Rotation::cur()),
+                    meta.query_advice(initial_value.lo(), Rotation::cur()),
+                    meta.query_advice(initial_value.hi(), Rotation::cur()),
+                    meta.query_advice(rw_table.value.lo(), Rotation::cur()),
+                    meta.query_advice(rw_table.value.hi(), Rotation::cur()),
                 ]
             },
         );
         let mpt_proof_type = meta.advice_column_in(SecondPhase);
-        let state_root = meta.advice_column_in(SecondPhase);
-        meta.enable_equality(state_root);
+        let state_root = word::Word::new([meta.advice_column(), meta.advice_column()]);
+        meta.enable_equality(state_root.hi());
+        meta.enable_equality(state_root.lo());
 
         let sort_keys = SortKeysConfig {
             tag,
@@ -390,12 +394,10 @@ impl<F: Field> StateCircuitConfig<F> {
             // State root assignment is at previous row (offset - 1) because the state root
             // changes on the last access row.
             if offset != 0 {
-                let assigned = region.assign_advice(
-                    || "state_root",
-                    self.state_root,
-                    offset - 1,
-                    || state_root,
-                )?;
+                word::Word::<F>::from(state_root)
+                    .into_value()
+                    .assign_advice(region, || "state root", self.state_root, offset - 1)?;
+
                 if start_state_root.is_none() {
                     start_state_root.replace(assigned);
                 }
@@ -493,17 +495,18 @@ impl<F: Field> StateCircuitConfig<F> {
             }
 
             // The initial value can be determined from the mpt updates or is 0.
-            let initial_value = randomness.map(|randomness| {
+            let initial_value = word::Word::<F>::from(
                 updates
                     .get(row)
-                    .map(|u| u.value_assignments(randomness).1)
-                    .unwrap_or_default()
-            });
-            region.assign_advice(
+                    .map(|u| u.value_assignments().1)
+                    .unwrap_or_default(),
+            );
+
+            initial_value.into_value().assign_advice(
+                region,
                 || "initial_value",
                 self.initial_value,
                 offset,
-                || initial_value,
             )?;
 
             // Identify non-existing if both committed value and new value are zero and field tag is
@@ -570,8 +573,10 @@ impl<F: Field> StateCircuitConfig<F> {
     ) -> Result<StateCircuitExports<Assigned<F>>, Error> {
         let rows_len = rows.len();
 
-        let mut state_root =
-            randomness.map(|randomness| rlc::value(&updates.old_root().to_le_bytes(), randomness));
+        // let mut state_root =
+        //     randomness.map(|randomness| rlc::value(&updates.old_root().to_le_bytes(),
+        // randomness));
+        let mut state_root = updates.old_root();
 
         let mut start_state_root: Option<AssignedCell<_, F>> = None;
         let mut end_state_root: Option<AssignedCell<_, F>> = None;
@@ -626,24 +631,20 @@ impl<F: Field> StateCircuitConfig<F> {
                 }
             }
 
-            if offset + 1 == rows_len {
+            if offset == rows_len - 1 {
                 // The last row is always a last access, so we need to handle the case where the
                 // state root changes because of an mpt lookup on the last row.
                 if let Some(update) = updates.get(row) {
-                    state_root = randomness.zip(state_root).map(|(randomness, state_root)| {
-                        let (new_root, old_root) = update.root_assignments(randomness);
-                        if !state_root.is_zero_vartime() {
-                            assert_eq!(state_root, old_root);
-                        }
+                    state_root = {
+                        let (new_root, old_root) = update.root_assignments();
+                        assert_eq!(state_root, old_root);
                         new_root
-                    });
+                    };
                 }
-                let assigned = region.assign_advice(
-                    || "last row state_root",
-                    self.state_root,
-                    offset,
-                    || state_root,
-                )?;
+                word::Word::<F>::from(state_root)
+                    .into_value()
+                    .assign_advice(region, || "last row state_root", self.state_root, offset)?;
+
                 end_state_root.replace(assigned);
             }
         }
@@ -843,7 +844,7 @@ pub struct SortKeysConfig {
     id: MpiConfig<u32, N_LIMBS_ID>,
     address: MpiConfig<Address, N_LIMBS_ACCOUNT_ADDRESS>,
     field_tag: Column<Advice>,
-    storage_key: RlcConfig<N_BYTES_WORD>,
+    storage_key: MpiConfig<Word, N_LIMBS_WORD>,
     rw_counter: MpiConfig<u32, N_LIMBS_RW_COUNTER>,
 }
 
@@ -1038,6 +1039,17 @@ fn queries<F: Field>(meta: &mut VirtualCells<'_, F>, c: &StateCircuitConfig<F>) 
     let final_bits_sum = meta.query_advice(first_different_limb.bits[3], Rotation::cur())
         + meta.query_advice(first_different_limb.bits[4], Rotation::cur());
 
+    let mpt_update_table_expressions = c.mpt_table.table_exprs(meta);
+    assert_eq!(mpt_update_table_expressions.len(), 12);
+
+    let meta_query_word =
+        |metap: &mut VirtualCells<'_, F>, word_column: word::Word<Column<Advice>>, at: Rotation| {
+            word::Word::new([
+                metap.query_advice(word_column.lo(), at),
+                metap.query_advice(word_column.hi(), at),
+            ])
+        };
+
     Queries {
         selector: meta.query_fixed(c.selector, Rotation::cur()),
         // TODO: use LookupTable trait here.
@@ -1051,20 +1063,35 @@ fn queries<F: Field>(meta: &mut VirtualCells<'_, F>, c: &StateCircuitConfig<F>) 
             address: meta.query_advice(c.rw_table.address, Rotation::cur()),
             prev_address: meta.query_advice(c.rw_table.address, Rotation::prev()),
             field_tag: meta.query_advice(c.rw_table.field_tag, Rotation::cur()),
-            storage_key: meta.query_advice(c.rw_table.storage_key, Rotation::cur()),
-            value: meta.query_advice(c.rw_table.value, Rotation::cur()),
-            value_prev: meta.query_advice(c.rw_table.value, Rotation::prev()),
-            value_prev_column: meta.query_advice(c.rw_table.value_prev, Rotation::cur()),
+            storage_key: meta_query_word(meta, c.rw_table.storage_key, Rotation::cur()),
+            value: meta_query_word(meta, c.rw_table.value, Rotation::cur()),
+            value_prev: meta_query_word(meta, c.rw_table.value, Rotation::prev()),
+            value_prev_column: meta_query_word(meta, c.rw_table.value_prev, Rotation::cur()),
         },
         mpt_update_table: MptUpdateTableQueries {
             q_enable: meta.query_fixed(c.mpt_table.q_enable, Rotation::cur()),
             address: meta.query_advice(c.mpt_table.address, Rotation::cur()),
-            storage_key: meta.query_advice(c.mpt_table.storage_key, Rotation::cur()),
+            storage_key: word::Word::new([
+                mpt_update_table_expressions[1].clone(),
+                mpt_update_table_expressions[2].clone(),
+            ]),
             proof_type: meta.query_advice(c.mpt_table.proof_type, Rotation::cur()),
-            new_root: meta.query_advice(c.mpt_table.new_root, Rotation::cur()),
-            old_root: meta.query_advice(c.mpt_table.old_root, Rotation::cur()),
-            new_value: meta.query_advice(c.mpt_table.new_value, Rotation::cur()),
-            old_value: meta.query_advice(c.mpt_table.old_value, Rotation::cur()),
+            new_root: word::Word::new([
+                mpt_update_table_expressions[4].clone(),
+                mpt_update_table_expressions[5].clone(),
+            ]),
+            old_root: word::Word::new([
+                mpt_update_table_expressions[6].clone(),
+                mpt_update_table_expressions[7].clone(),
+            ]),
+            new_value: word::Word::new([
+                mpt_update_table_expressions[8].clone(),
+                mpt_update_table_expressions[9].clone(),
+            ]),
+            old_value: word::Word::new([
+                mpt_update_table_expressions[10].clone(),
+                mpt_update_table_expressions[11].clone(),
+            ]),
         },
         lexicographic_ordering_selector: meta
             .query_fixed(c.lexicographic_ordering.selector, Rotation::cur()),
@@ -1086,8 +1113,8 @@ fn queries<F: Field>(meta: &mut VirtualCells<'_, F>, c: &StateCircuitConfig<F>) 
             + final_bits_sum.clone() * (1.expr() - final_bits_sum),
         address: MpiQueries::new(meta, c.sort_keys.address),
         storage_key: RlcQueries::new(meta, c.sort_keys.storage_key),
-        initial_value: meta.query_advice(c.initial_value, Rotation::cur()),
-        initial_value_prev: meta.query_advice(c.initial_value, Rotation::prev()),
+        initial_value: meta_query_word(meta, c.initial_value, Rotation::cur()),
+        initial_value_prev: meta_query_word(meta, c.initial_value, Rotation::prev()),
         is_non_exist: meta.query_advice(c.is_non_exist.is_zero, Rotation::cur()),
         mpt_proof_type: meta.query_advice(c.mpt_proof_type, Rotation::cur()),
         lookups: LookupsQueries::new(meta, c.lookups),
@@ -1096,8 +1123,8 @@ fn queries<F: Field>(meta: &mut VirtualCells<'_, F>, c: &StateCircuitConfig<F>) 
             .map(|idx| meta.query_advice(first_different_limb.bits[idx], Rotation::cur())),
         not_first_access: meta.query_advice(c.not_first_access, Rotation::cur()),
         last_access: 1.expr() - meta.query_advice(c.not_first_access, Rotation::next()),
-        state_root: meta.query_advice(c.state_root, Rotation::cur()),
-        state_root_prev: meta.query_advice(c.state_root, Rotation::prev()),
+        state_root: meta_query_word(meta, c.state_root, Rotation::cur()),
+        state_root_prev: meta_query_word(meta, c.state_root, Rotation::prev()),
     }
 }
 

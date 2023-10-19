@@ -1,6 +1,7 @@
 use crate::{
     evm_circuit::{util::rlc, witness::Rw},
     table::AccountFieldTag,
+    util::word,
 };
 use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word, U256};
 use halo2_proofs::circuit::Value;
@@ -290,11 +291,8 @@ impl MptUpdate {
         (assign(self.new_value), assign(self.old_value))
     }
 
-    pub(crate) fn root_assignments<F: Field>(&self, word_randomness: F) -> (F, F) {
-        (
-            rlc::value(&self.new_root.to_le_bytes(), word_randomness),
-            rlc::value(&self.old_root.to_le_bytes(), word_randomness),
-        )
+    pub(crate) fn root_assignments(&self) -> (Word, Word) {
+        (self.new_root, self.old_root)
     }
 
     pub(crate) fn table_assignments<F: Field>(
