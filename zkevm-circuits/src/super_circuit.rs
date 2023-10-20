@@ -624,9 +624,19 @@ impl<
         challenges: &crate::util::Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        let mut tx_messages = vec![];
+
+        log::debug!("assigning tx_circuit");
+        self.tx_circuit.synthesize_sub2(
+            &config.tx_circuit,
+            challenges,
+            layouter,
+            |offset, message| tx_messages.push((offset, message)),
+        )?;
+
         log::debug!("assigning evm_circuit");
         self.evm_circuit
-            .synthesize_sub(&config.evm_circuit, challenges, layouter)?;
+            .synthesize_sub2(&config.evm_circuit, challenges, layouter, tx_messages)?;
 
         if !challenges.lookup_input().is_none() {
             let is_mock_prover = format!("{:?}", challenges.lookup_input()) == *"Value { inner: Some(0x207a52ba34e1ed068be1e33b0bc39c8ede030835f549fe5c0dbe91dce97d17d2) }";
@@ -646,9 +656,6 @@ impl<
         log::debug!("assigning bytecode_circuit");
         self.bytecode_circuit
             .synthesize_sub(&config.bytecode_circuit, challenges, layouter)?;
-        log::debug!("assigning tx_circuit");
-        self.tx_circuit
-            .synthesize_sub(&config.tx_circuit, challenges, layouter)?;
         log::debug!("assigning sig_circuit");
         self.sig_circuit
             .synthesize_sub(&config.sig_circuit, challenges, layouter)?;

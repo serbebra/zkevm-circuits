@@ -58,6 +58,7 @@ impl<F: Field> Circuit<F> for CopyCircuit<F> {
             self.external_data.max_calldata,
             0, // chain id
             &challenge_values,
+            |_, _| {},
         )?;
 
         config.0.rw_table.load(

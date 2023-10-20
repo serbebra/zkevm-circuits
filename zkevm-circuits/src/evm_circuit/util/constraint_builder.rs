@@ -1682,7 +1682,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         };
 
         // TODO: support all types.
-        if lookup.table() == Table::Fixed || lookup.table() == Table::Rw {
+        if [Table::Fixed, Table::Rw, Table::Tx].contains(&lookup.table()) {
             self.add_bus_lookup(lookup);
             return;
         }

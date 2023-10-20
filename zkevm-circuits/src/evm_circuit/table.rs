@@ -12,7 +12,7 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 #[derive(Clone, Debug)]
-pub(crate) enum MsgExpr<F> {
+pub enum MsgExpr<F> {
     Bytes([Expression<F>; 2]),
     Lookup(Table, Vec<Expression<F>>),
 }
@@ -66,7 +66,7 @@ impl<F: Field> BusMessage<Expression<F>> for MsgExpr<F> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum MsgF<F> {
+pub enum MsgF<F> {
     Bytes([F; 2]),
     Lookup(Table, Vec<F>),
 }
@@ -99,6 +99,16 @@ impl<F: Field> MsgF<F> {
                 row.aux2,
             ],
         )
+    }
+
+    pub fn tx(id: F, field_tag: F, index: F, value: F) -> Self {
+        Self::Lookup(Table::Tx, vec![
+            F::one(), // TODO: can remove the "enabled" field.
+            id,
+            field_tag,
+            index,
+            value,
+        ])
     }
 }
 
@@ -253,7 +263,7 @@ impl FixedTableTag {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, EnumIter)]
-pub(crate) enum Table {
+pub enum Table {
     Fixed,
     Tx,
     Rw,
@@ -306,7 +316,7 @@ impl<F: Field> RwValues<F> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Lookup<F> {
+pub enum Lookup<F> {
     /// Lookup to fixed table, which contains several pre-built tables such as
     /// range tables or bitwise tables.
     Fixed {

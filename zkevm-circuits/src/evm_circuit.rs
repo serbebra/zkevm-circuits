@@ -28,6 +28,7 @@ use self::{table::RwValues, witness::Rw};
 
 pub use crate::witness;
 use crate::{
+    evm_bus::EVMBus,
     evm_circuit::param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT},
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
@@ -50,6 +51,7 @@ pub struct EvmCircuitConfig<F> {
     dual_byte_table: [Column<Fixed>; 2],
     bus: BusConfig,
     bus_lookup: [BusLookupChip<F>; 3],
+    evm_bus: EVMBus<F>, // TODO: move out to super circuit.
     enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
@@ -151,6 +153,8 @@ impl<F: Field> EvmCircuitConfig<F> {
             &rw_table,
         );
 
+        let evm_bus = EVMBus::configure(meta, &mut bus_builder, tx_table.clone());
+
         let execution = Box::new(ExecutionConfig::configure(
             meta,
             challenges,
@@ -193,6 +197,7 @@ impl<F: Field> EvmCircuitConfig<F> {
             dual_byte_table,
             bus,
             bus_lookup,
+            evm_bus,
             enable_bus_lookup,
             execution,
             tx_table,
@@ -393,7 +398,7 @@ impl<F: Field> EvmCircuitConfig<F> {
     ) -> Result<(), Error> {
         let mut closure_count = 0;
         layouter.assign_region(
-            || "fixed table",
+            || "bus RW table",
             |mut region| {
                 // TODO: deal with this some other way.
                 closure_count += 1;
@@ -531,12 +536,25 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         (num_rows_required_for_execution_steps, total_rows)
     }
 
-    /// Make the assignments to the EvmCircuit
+    // TODO: remove.
     fn synthesize_sub(
         &self,
         config: &Self::Config,
         challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
+    ) -> Result<(), Error> {
+        self.synthesize_sub2(config, challenges, layouter, vec![])
+    }
+}
+
+impl<F: Field> EvmCircuit<F> {
+    /// Make the assignments to the EvmCircuit
+    pub fn synthesize_sub2(
+        &self,
+        config: &EvmCircuitConfig<F>,
+        challenges: &crate::util::Challenges<Value<F>>,
+        layouter: &mut impl Layouter<F>,
+        tx_messages: Vec<(usize, MsgF<F>)>,
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
         let num_rows = Self::get_num_rows_required(block);
@@ -569,6 +587,10 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
             block.circuits_params.max_rws,
             challenges.evm_word(),
         )?;
+
+        config
+            .evm_bus
+            .assign(layouter, &mut bus_assigner, tx_messages)?;
 
         if !bus_assigner.op_counter().is_complete() {
             log::warn!("Incomplete bus assignment.");
@@ -738,6 +760,8 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let (config, challenges) = config;
         let challenges = challenges.values(&layouter);
 
+        let mut tx_messages = vec![];
+
         config.tx_table.load(
             &mut layouter,
             &block.txs,
@@ -745,6 +769,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             block.circuits_params.max_calldata,
             block.chain_id,
             &challenges,
+            |offset, message| tx_messages.push((offset, message)),
         )?;
         block.rws.check_rw_counter_sanity();
         config.rw_table.load(
@@ -781,7 +806,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &challenges,
         )?;
 
-        self.synthesize_sub(&config, &challenges, &mut layouter)
+        self.synthesize_sub2(&config, &challenges, &mut layouter, tx_messages)
     }
 }
 
