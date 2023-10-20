@@ -17,12 +17,12 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct EVMBus<F> {
+pub struct EVMBusLookups<F> {
     rw_lookup: BusLookupChip<F>,
     tx_lookup: BusLookupChip<F>,
 }
 
-impl<F: Field> EVMBus<F> {
+impl<F: Field> EVMBusLookups<F> {
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,

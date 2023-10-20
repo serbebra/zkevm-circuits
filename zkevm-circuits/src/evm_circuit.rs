@@ -27,7 +27,7 @@ pub use self::EvmCircuit as TestEvmCircuit;
 
 pub use crate::witness;
 use crate::{
-    evm_bus::EVMBus,
+    evm_bus::EVMBusLookups,
     evm_circuit::param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT},
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
@@ -48,14 +48,10 @@ use witness::Block;
 pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     dual_byte_table: [Column<Fixed>; 2],
-    bus: BusConfig,
     bus_lookup: [BusLookupChip<F>; 2],
-    evm_bus: EVMBus<F>, // TODO: move out to super circuit.
     enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
     // External tables
-    tx_table: TxTable,
-    rw_table: RwTable,
     bytecode_table: BytecodeTable,
     block_table: BlockTable,
     copy_table: CopyTable,
@@ -71,10 +67,6 @@ pub struct EvmCircuitConfig<F> {
 pub struct EvmCircuitConfigArgs<F: Field> {
     /// Challenge
     pub challenges: crate::util::Challenges<Expression<F>>,
-    /// TxTable
-    pub tx_table: TxTable,
-    /// RwTable
-    pub rw_table: RwTable,
     /// BytecodeTable
     pub bytecode_table: BytecodeTable,
     /// BlockTable
@@ -122,10 +114,9 @@ impl<F: Field> EvmCircuitConfig<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         meta: &mut ConstraintSystem<F>,
+        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         EvmCircuitConfigArgs {
             challenges,
-            tx_table,
-            rw_table,
             bytecode_table,
             block_table,
             copy_table,
@@ -141,25 +132,18 @@ impl<F: Field> EvmCircuitConfig<F> {
         let dual_byte_table = [(); 2].map(|_| meta.fixed_column());
         let enable_bus_lookup = meta.fixed_column(); // TODO: replace with q_usable, or BusConfig.enabled?
 
-        let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges.lookup_input()));
-
         let bus_lookup = Self::configure_bus_lookup(
             meta,
-            &mut bus_builder,
+            bus_builder,
             enable_bus_lookup,
             &dual_byte_table,
             &fixed_table,
         );
 
-        let evm_bus = EVMBus::configure(meta, &mut bus_builder, &rw_table, &tx_table);
-
         let execution = Box::new(ExecutionConfig::configure(
             meta,
             challenges,
-            &mut bus_builder,
-            &fixed_table,
-            &tx_table,
-            &rw_table,
+            bus_builder,
             &bytecode_table,
             &block_table,
             &copy_table,
@@ -171,15 +155,11 @@ impl<F: Field> EvmCircuitConfig<F> {
             &pow_of_rand_table,
         ));
 
-        let bus = BusConfig::new(meta, &bus_builder.build());
-
         meta.annotate_lookup_any_column(dual_byte_table[0], || "dual_byte_table_0");
         meta.annotate_lookup_any_column(dual_byte_table[1], || "dual_byte_table_1");
         fixed_table.iter().enumerate().for_each(|(idx, &col)| {
             meta.annotate_lookup_any_column(col, || format!("fix_table_{idx}"))
         });
-        tx_table.annotate_columns(meta);
-        rw_table.annotate_columns(meta);
         bytecode_table.annotate_columns(meta);
         block_table.annotate_columns(meta);
         copy_table.annotate_columns(meta);
@@ -193,13 +173,9 @@ impl<F: Field> EvmCircuitConfig<F> {
         Self {
             fixed_table,
             dual_byte_table,
-            bus,
             bus_lookup,
-            evm_bus,
             enable_bus_lookup,
             execution,
-            tx_table,
-            rw_table,
             bytecode_table,
             block_table,
             copy_table,
@@ -456,11 +432,11 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
     // TODO: remove.
     fn synthesize_sub(
         &self,
-        config: &Self::Config,
-        challenges: &crate::util::Challenges<Value<F>>,
-        layouter: &mut impl Layouter<F>,
+        _config: &Self::Config,
+        _challenges: &crate::util::Challenges<Value<F>>,
+        _layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
-        self.synthesize_sub2(config, challenges, layouter, vec![], vec![])
+        unimplemented!("use synthesize_sub2")
     }
 }
 
@@ -471,41 +447,25 @@ impl<F: Field> EvmCircuit<F> {
         config: &EvmCircuitConfig<F>,
         challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
-        rw_messages: Vec<(usize, MsgF<F>)>,
-        tx_messages: Vec<(usize, MsgF<F>)>,
+        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
-        let num_rows = Self::get_num_rows_required(block);
 
         config.pow_of_rand_table.assign(layouter, challenges)?;
 
-        let mut bus_assigner =
-            BusAssigner::new(BusCodecVal::new(challenges.lookup_input()), num_rows);
-
-        let export =
-            config
-                .execution
-                .assign_block(layouter, &mut bus_assigner, block, challenges)?;
+        let export = config
+            .execution
+            .assign_block(layouter, bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
 
-        config.load_dual_byte_table(layouter, &mut bus_assigner, &config.bus_lookup[0])?;
+        config.load_dual_byte_table(layouter, bus_assigner, &config.bus_lookup[0])?;
 
         config.load_fixed_table(
             layouter,
-            &mut bus_assigner,
+            bus_assigner,
             &config.bus_lookup[1],
             self.fixed_table_tags.clone(),
         )?;
-
-        config
-            .evm_bus
-            .assign(layouter, &mut bus_assigner, rw_messages, tx_messages)?;
-
-        if !bus_assigner.op_counter().is_complete() {
-            log::warn!("Incomplete bus assignment.");
-            log::debug!("Missing bus ops: {:?}", bus_assigner.op_counter());
-        }
-        config.bus.finish_assigner(layouter, bus_assigner)?;
 
         Ok(())
     }
@@ -615,7 +575,14 @@ use crate::util::Challenges;
 use crate::util::MockChallenges as Challenges;
 
 impl<F: Field> Circuit<F> for EvmCircuit<F> {
-    type Config = (EvmCircuitConfig<F>, Challenges);
+    type Config = (
+        EvmCircuitConfig<F>,
+        BusConfig,
+        EVMBusLookups<F>,
+        Challenges,
+        RwTable,
+        TxTable,
+    );
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -625,8 +592,11 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let challenges = Challenges::construct(meta);
         let challenges_expr = challenges.exprs(meta);
+        let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges_expr.lookup_input()));
         let rw_table = RwTable::construct(meta);
+        rw_table.annotate_columns(meta);
         let tx_table = TxTable::construct(meta);
+        tx_table.annotate_columns(meta);
         let bytecode_table = BytecodeTable::construct(meta);
         let block_table = BlockTable::construct(meta);
         let q_copy_table = meta.fixed_column();
@@ -637,26 +607,25 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let modexp_table = ModExpTable::construct(meta);
         let ecc_table = EccTable::construct(meta);
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
-        (
-            EvmCircuitConfig::new(
-                meta,
-                EvmCircuitConfigArgs {
-                    challenges: challenges_expr,
-                    tx_table,
-                    rw_table,
-                    bytecode_table,
-                    block_table,
-                    copy_table,
-                    keccak_table,
-                    exp_table,
-                    sig_table,
-                    modexp_table,
-                    ecc_table,
-                    pow_of_rand_table,
-                },
-            ),
-            challenges,
-        )
+        let config = EvmCircuitConfig::new(
+            meta,
+            &mut bus_builder,
+            EvmCircuitConfigArgs {
+                challenges: challenges_expr,
+                bytecode_table,
+                block_table,
+                copy_table,
+                keccak_table,
+                exp_table,
+                sig_table,
+                modexp_table,
+                ecc_table,
+                pow_of_rand_table,
+            },
+        );
+        let evm_lookups = EVMBusLookups::configure(meta, &mut bus_builder, &rw_table, &tx_table);
+        let bus = BusConfig::new(meta, &bus_builder.build());
+        (config, bus, evm_lookups, challenges, rw_table, tx_table)
     }
 
     fn synthesize(
@@ -665,12 +634,16 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
+        let num_rows = Self::get_num_rows_required(block);
 
-        let (config, challenges) = config;
+        let (config, bus, evm_lookups, challenges, rw_table, tx_table) = config;
         let challenges = challenges.values(&layouter);
 
+        let mut bus_assigner =
+            BusAssigner::new(BusCodecVal::new(challenges.lookup_input()), num_rows);
+
         let mut tx_messages = vec![];
-        config.tx_table.load(
+        tx_table.load(
             &mut layouter,
             |offset, message| tx_messages.push((offset, message)),
             &block.txs,
@@ -682,7 +655,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
 
         let mut rw_messages = vec![];
         block.rws.check_rw_counter_sanity();
-        config.rw_table.load(
+        rw_table.load(
             &mut layouter,
             |offset, message| rw_messages.push((offset, message)),
             &block.rws.table_assignments(),
@@ -718,13 +691,17 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &challenges,
         )?;
 
-        self.synthesize_sub2(
-            &config,
-            &challenges,
-            &mut layouter,
-            rw_messages,
-            tx_messages,
-        )
+        self.synthesize_sub2(&config, &challenges, &mut layouter, &mut bus_assigner)?;
+
+        evm_lookups.assign(&mut layouter, &mut bus_assigner, rw_messages, tx_messages)?;
+
+        if !bus_assigner.op_counter().is_complete() {
+            log::warn!("Incomplete bus assignment.");
+            log::debug!("Missing bus ops: {:?}", bus_assigner.op_counter());
+        }
+        bus.finish_assigner(&mut layouter, bus_assigner)?;
+
+        Ok(())
     }
 }
 

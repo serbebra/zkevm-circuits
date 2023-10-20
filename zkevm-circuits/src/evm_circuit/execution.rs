@@ -382,9 +382,6 @@ impl<F: Field> ExecutionConfig<F> {
         meta: &mut ConstraintSystem<F>,
         challenges: Challenges<Expression<F>>,
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
-        fixed_table: &dyn LookupTable<F>,
-        tx_table: &dyn LookupTable<F>,
-        rw_table: &dyn LookupTable<F>,
         bytecode_table: &dyn LookupTable<F>,
         block_table: &dyn LookupTable<F>,
         copy_table: &dyn LookupTable<F>,
@@ -666,9 +663,6 @@ impl<F: Field> ExecutionConfig<F> {
 
         Self::configure_lookup(
             meta,
-            fixed_table,
-            tx_table,
-            rw_table,
             bytecode_table,
             block_table,
             copy_table,
@@ -981,9 +975,6 @@ impl<F: Field> ExecutionConfig<F> {
     #[allow(clippy::too_many_arguments)]
     fn configure_lookup(
         meta: &mut ConstraintSystem<F>,
-        fixed_table: &dyn LookupTable<F>,
-        tx_table: &dyn LookupTable<F>,
-        rw_table: &dyn LookupTable<F>,
         bytecode_table: &dyn LookupTable<F>,
         block_table: &dyn LookupTable<F>,
         copy_table: &dyn LookupTable<F>,
@@ -1001,9 +992,9 @@ impl<F: Field> ExecutionConfig<F> {
                 let name = format!("{table:?}");
                 meta.lookup_any(Box::leak(name.into_boxed_str()), |meta| {
                     let table_expressions = match table {
-                        Table::Fixed => fixed_table,
-                        Table::Tx => tx_table,
-                        Table::Rw => rw_table,
+                        Table::Fixed => unreachable!("Fixed table is on the bus"),
+                        Table::Tx => unreachable!("TX table is on the bus"),
+                        Table::Rw => unreachable!("RW table is on the bus"),
                         Table::Bytecode => bytecode_table,
                         Table::Block => block_table,
                         Table::Copy => copy_table,
