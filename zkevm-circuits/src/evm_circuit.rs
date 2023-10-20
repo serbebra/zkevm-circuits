@@ -24,7 +24,6 @@ pub(crate) mod util;
 pub(crate) mod test;
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 pub use self::EvmCircuit as TestEvmCircuit;
-use self::{table::RwValues, witness::Rw};
 
 pub use crate::witness;
 use crate::{
@@ -34,7 +33,7 @@ use crate::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
         ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
     },
-    util::{query_expression, SubCircuit, SubCircuitConfig},
+    util::{assign_global, query_expression, SubCircuit, SubCircuitConfig},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
@@ -50,7 +49,7 @@ pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     dual_byte_table: [Column<Fixed>; 2],
     bus: BusConfig,
-    bus_lookup: [BusLookupChip<F>; 3],
+    bus_lookup: [BusLookupChip<F>; 2],
     evm_bus: EVMBus<F>, // TODO: move out to super circuit.
     enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
@@ -150,10 +149,9 @@ impl<F: Field> EvmCircuitConfig<F> {
             enable_bus_lookup,
             &dual_byte_table,
             &fixed_table,
-            &rw_table,
         );
 
-        let evm_bus = EVMBus::configure(meta, &mut bus_builder, tx_table.clone());
+        let evm_bus = EVMBus::configure(meta, &mut bus_builder, &rw_table, &tx_table);
 
         let execution = Box::new(ExecutionConfig::configure(
             meta,
@@ -220,8 +218,7 @@ impl<F: Field> EvmCircuitConfig<F> {
         enabled: Column<Fixed>,
         dual_byte_table: &[Column<Fixed>; 2],
         fixed_table: &[Column<Fixed>; 4],
-        rw_table: &RwTable,
-    ) -> [BusLookupChip<F>; 3] {
+    ) -> [BusLookupChip<F>; 2] {
         let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
 
         let byte_lookup = {
@@ -248,34 +245,7 @@ impl<F: Field> EvmCircuitConfig<F> {
             BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
         };
 
-        let rw_lookup = {
-            let rw_enabled = query_expression(meta, |meta| {
-                meta.query_fixed(rw_table.q_enable, Rotation::cur())
-            });
-
-            let message = query_expression(meta, |meta| {
-                let mut query = |col| meta.query_advice(col, Rotation::cur());
-
-                MsgExpr::lookup(Lookup::Rw {
-                    counter: query(rw_table.rw_counter),
-                    is_write: query(rw_table.is_write),
-                    tag: query(rw_table.tag),
-                    values: RwValues {
-                        id: query(rw_table.id),
-                        address: query(rw_table.address),
-                        field_tag: query(rw_table.field_tag),
-                        storage_key: query(rw_table.storage_key),
-                        value: query(rw_table.value),
-                        value_prev: query(rw_table.value_prev),
-                        aux1: query(rw_table.aux1),
-                        aux2: query(rw_table.aux2),
-                    },
-                })
-            });
-            BusLookupChip::connect(meta, bus_builder, rw_enabled, message)
-        };
-
-        [byte_lookup, fixed_lookup, rw_lookup]
+        [byte_lookup, fixed_lookup]
     }
 }
 
@@ -288,17 +258,10 @@ impl<F: Field> EvmCircuitConfig<F> {
         bus_lookup: &BusLookupChip<F>,
         fixed_table_tags: Vec<FixedTableTag>,
     ) -> Result<(), Error> {
-        let mut closure_count = 0;
-
-        layouter.assign_region(
+        assign_global(
+            layouter,
             || "fixed table",
             |mut region| {
-                // TODO: deal with this some other way.
-                closure_count += 1;
-                if closure_count == 1 {
-                    return Ok(());
-                }
-
                 for (offset, row) in std::iter::once([F::zero(); 4])
                     .chain(fixed_table_tags.iter().flat_map(|tag| tag.build()))
                     .enumerate()
@@ -320,9 +283,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                 bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
-        )?;
-        assert_eq!(closure_count, 2, "assign_region behavior changed");
-        Ok(())
+        )
     }
 
     /// Load dual byte table
@@ -332,17 +293,10 @@ impl<F: Field> EvmCircuitConfig<F> {
         bus_assigner: &mut BusAssigner<F, MsgF<F>>,
         bus_lookup: &BusLookupChip<F>,
     ) -> Result<(), Error> {
-        let mut closure_count = 0;
-
-        layouter.assign_region(
+        assign_global(
+            layouter,
             || "byte table",
             |mut region| {
-                // TODO: deal with this some other way.
-                closure_count += 1;
-                if closure_count == 1 {
-                    return Ok(());
-                }
-
                 for i in 0..256 {
                     let b0 = F::from(i);
                     for j in 0..256 {
@@ -381,44 +335,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                 bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
-        )?;
-        assert_eq!(closure_count, 2, "assign_region behavior changed");
-        Ok(())
-    }
-
-    /// Load RW table
-    fn load_rw_table(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
-        bus_lookup: &BusLookupChip<F>,
-        rws: &[Rw],
-        rw_n_rows: usize,
-        challenge_evm_word: Value<F>,
-    ) -> Result<(), Error> {
-        let mut closure_count = 0;
-        layouter.assign_region(
-            || "bus RW table",
-            |mut region| {
-                // TODO: deal with this some other way.
-                closure_count += 1;
-                if closure_count == 1 {
-                    return Ok(());
-                }
-                // Only in second phase.
-                challenge_evm_word.map(|challenge| {
-                    for (offset, row) in RwTable::iter_table(rws, rw_n_rows, challenge) {
-                        bus_lookup
-                            .assign(&mut region, bus_assigner, offset, MsgF::rw(row))
-                            .unwrap();
-                    }
-                    bus_assigner.finish_ports(&mut region);
-                });
-                Ok(())
-            },
-        )?;
-        assert_eq!(closure_count, 2, "assign_region behavior changed");
-        Ok(())
+        )
     }
 }
 
@@ -543,7 +460,7 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
         challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
-        self.synthesize_sub2(config, challenges, layouter, vec![])
+        self.synthesize_sub2(config, challenges, layouter, vec![], vec![])
     }
 }
 
@@ -554,6 +471,7 @@ impl<F: Field> EvmCircuit<F> {
         config: &EvmCircuitConfig<F>,
         challenges: &crate::util::Challenges<Value<F>>,
         layouter: &mut impl Layouter<F>,
+        rw_messages: Vec<(usize, MsgF<F>)>,
         tx_messages: Vec<(usize, MsgF<F>)>,
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
@@ -579,18 +497,9 @@ impl<F: Field> EvmCircuit<F> {
             self.fixed_table_tags.clone(),
         )?;
 
-        config.load_rw_table(
-            layouter,
-            &mut bus_assigner,
-            &config.bus_lookup[2],
-            &block.rws.table_assignments(),
-            block.circuits_params.max_rws,
-            challenges.evm_word(),
-        )?;
-
         config
             .evm_bus
-            .assign(layouter, &mut bus_assigner, tx_messages)?;
+            .assign(layouter, &mut bus_assigner, rw_messages, tx_messages)?;
 
         if !bus_assigner.op_counter().is_complete() {
             log::warn!("Incomplete bus assignment.");
@@ -761,23 +670,26 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let challenges = challenges.values(&layouter);
 
         let mut tx_messages = vec![];
-
         config.tx_table.load(
             &mut layouter,
+            |offset, message| tx_messages.push((offset, message)),
             &block.txs,
             block.circuits_params.max_txs,
             block.circuits_params.max_calldata,
             block.chain_id,
             &challenges,
-            |offset, message| tx_messages.push((offset, message)),
         )?;
+
+        let mut rw_messages = vec![];
         block.rws.check_rw_counter_sanity();
         config.rw_table.load(
             &mut layouter,
+            |offset, message| rw_messages.push((offset, message)),
             &block.rws.table_assignments(),
             block.circuits_params.max_rws,
             challenges.evm_word(),
         )?;
+
         config
             .bytecode_table
             .dev_load(&mut layouter, block.bytecodes.values(), &challenges)?;
@@ -806,7 +718,13 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &challenges,
         )?;
 
-        self.synthesize_sub2(&config, &challenges, &mut layouter, tx_messages)
+        self.synthesize_sub2(
+            &config,
+            &challenges,
+            &mut layouter,
+            rw_messages,
+            tx_messages,
+        )
     }
 }
 

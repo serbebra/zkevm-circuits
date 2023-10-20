@@ -624,9 +624,17 @@ impl<
         challenges: &crate::util::Challenges<Value<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let mut tx_messages = vec![];
+        log::debug!("assigning state_circuit");
+        let mut rw_messages = vec![];
+        self.state_circuit.synthesize_sub2(
+            &config.state_circuit,
+            challenges,
+            layouter,
+            |offset, message| rw_messages.push((offset, message)),
+        )?;
 
         log::debug!("assigning tx_circuit");
+        let mut tx_messages = vec![];
         self.tx_circuit.synthesize_sub2(
             &config.tx_circuit,
             challenges,
@@ -635,8 +643,13 @@ impl<
         )?;
 
         log::debug!("assigning evm_circuit");
-        self.evm_circuit
-            .synthesize_sub2(&config.evm_circuit, challenges, layouter, tx_messages)?;
+        self.evm_circuit.synthesize_sub2(
+            &config.evm_circuit,
+            challenges,
+            layouter,
+            rw_messages,
+            tx_messages,
+        )?;
 
         if !challenges.lookup_input().is_none() {
             let is_mock_prover = format!("{:?}", challenges.lookup_input()) == *"Value { inner: Some(0x207a52ba34e1ed068be1e33b0bc39c8ede030835f549fe5c0dbe91dce97d17d2) }";
@@ -665,9 +678,6 @@ impl<
         log::debug!("assigning modexp_circuit");
         self.modexp_circuit
             .synthesize_sub(&config.modexp_circuit, challenges, layouter)?;
-        log::debug!("assigning state_circuit");
-        self.state_circuit
-            .synthesize_sub(&config.state_circuit, challenges, layouter)?;
         log::debug!("assigning copy_circuit");
         self.copy_circuit
             .synthesize_sub(&config.copy_circuit, challenges, layouter)?;

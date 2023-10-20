@@ -3,7 +3,11 @@ use eth_types::{
     evm_types::{GasCost, OpcodeId},
     U256,
 };
-use halo2_proofs::{arithmetic::FieldExt, plonk::{Expression, ConstraintSystem, VirtualCells}};
+use halo2_proofs::{
+    arithmetic::FieldExt,
+    circuit::{Layouter, Region},
+    plonk::{ConstraintSystem, Error, Expression, VirtualCells},
+};
 
 /// Returns the sum of the passed in cells
 pub mod sum {
@@ -233,6 +237,32 @@ pub fn query_expression<F: FieldExt, T>(
         Some(0.expr())
     });
     expr.unwrap()
+}
+
+/// Assign into the global circuit. This is a wrapper around `Layouter::assign_region`, but the
+/// closure is called only once, with a region spanning the entire circuit.
+pub fn assign_global<F, A, AR, N, NR>(
+    layouter: &mut impl Layouter<F>,
+    name: N,
+    mut assignment: A,
+) -> Result<AR, Error>
+where
+    F: FieldExt,
+    AR: Default,
+    A: FnMut(Region<'_, F>) -> Result<AR, Error>,
+    N: Fn() -> NR,
+    NR: Into<String>,
+{
+    let mut closure_count = 0;
+    let ret = layouter.assign_region(name, |region| {
+        closure_count += 1;
+        if closure_count == 1 {
+            return Ok(AR::default());
+        }
+        assignment(region)
+    });
+    assert_eq!(closure_count, 2, "assign_region behavior changed");
+    ret
 }
 
 /// Returns 2**by as FieldExt

@@ -53,16 +53,17 @@ impl<F: Field> Circuit<F> for CopyCircuit<F> {
 
         config.0.tx_table.load(
             &mut layouter,
+            |_, _| {},
             &self.external_data.txs,
             self.external_data.max_txs,
             self.external_data.max_calldata,
             0, // chain id
             &challenge_values,
-            |_, _| {},
         )?;
 
         config.0.rw_table.load(
             &mut layouter,
+            |_, _| {},
             &self.external_data.rws.table_assignments(),
             self.external_data.max_rws,
             challenge_values.evm_word(),

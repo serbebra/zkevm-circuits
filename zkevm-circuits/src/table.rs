@@ -28,7 +28,7 @@ use core::iter::once;
 use eth_types::{sign_types::SignData, Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
 use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
-    util::{and, not, split_u256, split_u256_limb64, Expr},
+    util::{and, assign_global, not, split_u256, split_u256_limb64, Expr},
 };
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -226,12 +226,12 @@ impl TxTable {
     pub fn load<F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,
+        mut provide_msg: impl FnMut(usize, MsgF<F>) -> (), // TODO: use.
         txs: &[Transaction],
         max_txs: usize,
         max_calldata: usize,
         chain_id: u64,
         challenges: &Challenges<Value<F>>,
-        mut provide_msg: impl FnMut(usize, MsgF<F>) -> (),
     ) -> Result<Vec<AssignedCell<F, F>>, Error> {
         assert!(
             txs.len() <= max_txs,
@@ -660,45 +660,42 @@ impl RwTable {
         Ok(())
     }
 
-    /// Iterate over the entries of the table, and their position in the circuit: (offset, values).
-    pub(crate) fn iter_table<F: Field>(
-        rws: &[Rw],
-        n_rows: usize,
-        challenge: F,
-    ) -> impl Iterator<Item = (usize, RwRow<F>)> {
-        // TODO: we could avoid the copies in table_assignments_prepad and table_assignment.
-
-        let (rows, _pad_len) = RwMap::table_assignments_prepad(rws, n_rows);
-
-        rows.into_iter().enumerate().map(move |(offset, row)| {
-            let row = row.table_assignment_aux(challenge);
-            (offset, row)
-        })
-    }
-
     /// Assign the `RwTable` from a `RwMap`, following the same
     /// table layout that the State Circuit uses.
     pub fn load<F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,
+        mut provide_msg: impl FnMut(usize, MsgF<F>) -> (),
         rws: &[Rw],
         n_rows: usize,
         challenges: Value<F>,
     ) -> Result<(), Error> {
-        layouter.assign_region(
+        assign_global(
+            layouter,
             || "rw table",
-            |mut region| self.load_with_region(&mut region, rws, n_rows, challenges),
+            |mut region| {
+                self.load_with_region(&mut region, &mut provide_msg, rws, n_rows, challenges)
+            },
         )
     }
 
     pub(crate) fn load_with_region<F: Field>(
         &self,
         region: &mut Region<'_, F>,
+        provide_msg: &mut impl FnMut(usize, MsgF<F>) -> (),
         rws: &[Rw],
         n_rows: usize,
         challenges: Value<F>,
     ) -> Result<(), Error> {
         let (rows, _) = RwMap::table_assignments_prepad(rws, n_rows);
+
+        challenges.map(|challenge| {
+            // Only in second phase.
+            for (offset, row) in rows.iter().enumerate() {
+                provide_msg(offset, MsgF::rw(row.table_assignment_aux(challenge)));
+            }
+        });
+
         for (offset, row) in rows.iter().enumerate() {
             self.assign(region, offset, &row.table_assignment(challenges))?;
         }

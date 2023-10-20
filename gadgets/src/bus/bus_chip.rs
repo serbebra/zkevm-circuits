@@ -1,5 +1,5 @@
 use super::{bus_builder::BusAssigner, bus_codec::BusMessageF, Field};
-use crate::util::Expr;
+use crate::util::{assign_global, Expr};
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, ThirdPhase},
@@ -80,21 +80,11 @@ impl BusConfig {
         layouter: &mut impl Layouter<F>,
         bus_assigner: BusAssigner<F, M>,
     ) -> Result<(), Error> {
-        let mut closure_count = 0;
-        layouter.assign_region(
+        assign_global(
+            layouter,
             || "Bus_accumulator",
-            |mut region| {
-                // TODO: deal with this some other way.
-                closure_count += 1;
-                if closure_count == 1 {
-                    return Ok(());
-                }
-
-                self.assign(&mut region, bus_assigner.n_rows(), bus_assigner.terms())
-            },
-        )?;
-        assert_eq!(closure_count, 2, "assign_region behavior changed");
-        Ok(())
+            |mut region| self.assign(&mut region, bus_assigner.n_rows(), bus_assigner.terms()),
+        )
     }
 
     /// Assign the accumulator values, from the sum of terms per row.
