@@ -1,5 +1,6 @@
 use super::{
-    lookups::Queries as LookupsQueries, multiple_precision_integer::Queries as MpiQueries,
+    lookups::Queries as LookupsQueries,
+    multiple_precision_integer::Queries as MpiQueries,
     param::*, // random_linear_combination::Queries as RlcQueries,
 };
 use crate::{
@@ -26,7 +27,8 @@ pub struct RwTableQueries<F: Field> {
     pub storage_key: word::Word<Expression<F>>,
     pub value: word::Word<Expression<F>>,
     pub value_prev: word::Word<Expression<F>>,
-    pub value_prev_column: word::Word<Expression<F>>, /* meta.query(prev_value, Rotation::cur())                                        * TODO: aux1 and aux2 */
+    pub value_prev_column: word::Word<Expression<F>>, /* meta.query(prev_value, Rotation::cur())
+                                                       * * TODO: aux1 and aux2 */
 }
 
 #[derive(Clone)]

@@ -1,4 +1,4 @@
-use crate::table::{CallContextFieldTag, LookupTable,  UXTable};
+use crate::table::{CallContextFieldTag, LookupTable, UXTable};
 use eth_types::Field;
 use halo2_proofs::{
     circuit::{Layouter, Value},
@@ -111,7 +111,7 @@ impl<F: Field> Chip<F> {
                 Ok(())
             },
         )?;
-        
+
         Ok(())
     }
 }

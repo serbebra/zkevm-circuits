@@ -669,59 +669,18 @@ impl Rw {
         }
     }
 
-    pub(crate) fn value_assignment<F: Field>(&self, randomness: F) -> F {
+    pub(crate) fn value_assignment(&self) -> Word {
         match self {
-            Self::Start { .. } => F::zero(),
-            Self::CallContext {
-                field_tag, value, ..
-            } => {
-                match field_tag {
-                    // Only these two tags have values that may not fit into a scalar, so we need to
-                    // RLC. (for poseidon hash feature, CodeHash not need rlc)
-                    CallContextFieldTag::CodeHash => {
-                        if cfg!(feature = "poseidon-codehash") {
-                            value.to_scalar().unwrap()
-                        } else {
-                            rlc::value(&value.to_le_bytes(), randomness)
-                        }
-                    }
-                    CallContextFieldTag::Value => rlc::value(&value.to_le_bytes(), randomness),
-                    _ => value.to_scalar().unwrap(),
-                }
-            }
-            Self::Account {
-                value, field_tag, ..
-            } => match field_tag {
-                AccountFieldTag::KeccakCodeHash | AccountFieldTag::Balance => {
-                    rlc::value(&value.to_le_bytes(), randomness)
-                }
-                AccountFieldTag::CodeHash => {
-                    if cfg!(feature = "poseidon-codehash") {
-                        value.to_scalar().unwrap()
-                    } else {
-                        rlc::value(&value.to_le_bytes(), randomness)
-                    }
-                }
-                AccountFieldTag::Nonce
-                | AccountFieldTag::NonExisting
-                | AccountFieldTag::CodeSize => value.to_scalar().unwrap(),
-            },
-            Self::AccountStorage { value, .. } | Self::Stack { value, .. } => {
-                rlc::value(&value.to_le_bytes(), randomness)
-            }
-
-            Self::TxLog {
-                field_tag, value, ..
-            } => match field_tag {
-                TxLogFieldTag::Topic => rlc::value(&value.to_le_bytes(), randomness),
-                TxLogFieldTag::Data => rlc::value(&value.to_le_bytes(), randomness),
-                _ => value.to_scalar().unwrap(),
-            },
-
+            Self::Start { .. } => U256::zero(),
+            Self::CallContext { value, .. }
+            | Self::Account { value, .. }
+            | Self::AccountStorage { value, .. }
+            | Self::Stack { value, .. }
+            | Self::TxLog { value, .. } => *value,
             Self::TxAccessListAccount { is_warm, .. }
-            | Self::TxAccessListAccountStorage { is_warm, .. } => F::from(*is_warm as u64),
-            Self::Memory { value, .. } => rlc::value(&value.to_le_bytes(), randomness),
-            Self::TxRefund { value, .. } | Self::TxReceipt { value, .. } => F::from(*value),
+            | Self::TxAccessListAccountStorage { is_warm, .. } => U256::from(*is_warm as u64),
+            Self::Memory { byte, .. } => U256::from(u64::from(*byte)),
+            Self::TxRefund { value, .. } | Self::TxReceipt { value, .. } => U256::from(*value),
         }
     }
 

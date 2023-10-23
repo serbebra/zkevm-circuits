@@ -109,7 +109,6 @@ where
             .for_each(|(col, ann)| region.name_column(|| format!("{prefix}_{ann}"), *col));
     }
 }
- 
 
 pub struct Chip<F: Field, T, const N_LIMBS: usize, const N_VALUES: usize>
 where

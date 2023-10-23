@@ -943,7 +943,7 @@ fn bad_initial_tx_refund_value() {
         ((AdviceColumn::IsZero, 0), Fr::zero()),
         ((AdviceColumn::NonEmptyWitness, 0), v.invert().unwrap()),
         ((AdviceColumn::InitialValueHi, 0), Fr::zero()),
-        ((AdviceColumn::InitialValueLo, 0), v),    
+        ((AdviceColumn::InitialValueLo, 0), v),
     ]);
 
     assert_error_matches(
