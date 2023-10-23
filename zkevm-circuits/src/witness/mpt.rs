@@ -5,15 +5,16 @@ use crate::{
 use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word, U256};
 use halo2_proofs::circuit::Value;
 use itertools::Itertools;
+#[cfg(test)]
+use mpt_zktrie::state::builder::HASH_SCHEME_DONE;
 use mpt_zktrie::{
     mpt_circuits::{serde::SMTTrace, MPTProofType},
     state,
     state::witness::WitnessGenerator,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
 pub use state::ZktrieState;
+use std::collections::BTreeMap;
 
 /// Used to store withdraw proof
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +28,7 @@ pub struct WithdrawProof {
 }
 
 /// An MPT update whose validity is proved by the MptCircuit
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MptUpdate {
     key: Key,
     old_value: Word,
@@ -35,29 +36,56 @@ pub struct MptUpdate {
     old_root: Word,
     new_root: Word,
     // for debugging
+    #[cfg(debug_assertions)]
     original_rws: Vec<Rw>,
 }
 
 impl MptUpdate {
-    fn proof_type(&self) -> MPTProofType {
-        match self.key {
-            Key::AccountStorage { .. } => {
-                if self.old_value.is_zero() && self.new_value.is_zero() {
-                    MPTProofType::StorageDoesNotExist
+    fn from_rows(
+        key: Key,
+        rows: Vec<Rw>,
+        offset: usize,
+        total_lens: usize,
+        old_root: Word,
+        new_root: Word,
+    ) -> (Key, Self) {
+        let first = &rows[0];
+        let last = rows.iter().last().unwrap_or(first);
+        let key_exists = key;
+        let key = key.set_non_exists(value_prev(first), value(last));
+        (
+            key_exists,
+            MptUpdate {
+                key,
+                old_root: Word::from(offset as u64) + old_root,
+                new_root: if offset + 1 == total_lens {
+                    new_root
                 } else {
-                    MPTProofType::StorageChanged
-                }
-            }
-            Key::Account { field_tag, .. } => {
-                if matches!(field_tag, AccountFieldTag::CodeHash)
-                    && self.old_value.is_zero()
-                    && self.new_value.is_zero()
-                {
-                    MPTProofType::AccountDoesNotExist
-                } else {
-                    field_tag.into()
-                }
-            }
+                    Word::from(offset as u64 + 1) + old_root
+                },
+                old_value: value_prev(first),
+                new_value: value(last),
+                #[cfg(debug_assertions)]
+                original_rws: rows,
+            },
+        )
+    }
+}
+
+// just for convenience
+impl Default for MptUpdate {
+    fn default() -> Self {
+        Self {
+            key: Key::Account {
+                address: Address::zero(),
+                field_tag: AccountFieldTag::Nonce,
+            },
+            old_value: Word::zero(),
+            new_value: Word::zero(),
+            old_root: Word::zero(),
+            new_root: Word::zero(),
+            #[cfg(debug_assertions)]
+            original_rws: Vec::new(),
         }
     }
 }
@@ -102,9 +130,10 @@ impl MptUpdates {
         })
     }
 
-    pub(crate) fn mock_fill_state_roots(&mut self) {
-        // initialize a mock witness generator that is consistent with the old values of
-        // self.updates
+    #[cfg(test)]
+    /// initialize a mock witness generator that is consistent with the old values of self.updates
+    pub fn mock_fill_state_roots(&mut self) {
+        assert!(*HASH_SCHEME_DONE);
         let mut wit_gen = WitnessGenerator::from(&ZktrieState::default());
         for (key, update) in &mut self.updates {
             let key = key.set_non_exists(Word::zero(), update.old_value);
@@ -149,24 +178,39 @@ impl MptUpdates {
                 root_pair2.0,
                 root_pair2.1
             );
-            wit_gen.dump();
+            wit_gen.dump(
+                self.updates
+                    .iter()
+                    .group_by(|(k, _)| match k {
+                        Key::Account { address, .. } | Key::AccountStorage { address, .. } => {
+                            address
+                        }
+                    })
+                    .into_iter()
+                    .map(|(addr, _)| addr),
+            );
         } else {
             log::debug!("roots consistent ({:#x},{:#x})", root_pair.0, root_pair.1);
         }
 
-        // generate withdraw proof
-        let address = *bus_mapping::l2_predeployed::message_queue::ADDRESS;
-        let key = *bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT;
-        let account_proof = wit_gen.account_proof(address);
-        let storage_proof = wit_gen.storage_proof(address, key);
-        // TODO: add withdraw_root to WithdrawProof?
-        let withdraw_proof = WithdrawProof {
-            state_root: self.new_root,
-            account_proof,
-            storage_proof,
-        };
-        log::debug!("withdraw proof {withdraw_proof:?}");
-        self.withdraw_proof = withdraw_proof;
+        let gen_withdraw_proof = false;
+        if gen_withdraw_proof {
+            // generate withdraw proof
+            let address = *bus_mapping::l2_predeployed::message_queue::ADDRESS;
+            let key = *bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT;
+            let account_proof = wit_gen.account_proof(address);
+            let storage_proof = wit_gen.storage_proof(address, key);
+            // TODO: add withdraw_root to WithdrawProof?
+            let withdraw_proof = WithdrawProof {
+                state_root: self.new_root,
+                account_proof,
+                storage_proof,
+            };
+            log::debug!("withdraw proof {withdraw_proof:?}");
+            self.withdraw_proof = withdraw_proof;
+        }
+        log::debug!("fill_state_roots done");
+        self.pretty_print();
     }
 
     fn fill_state_roots_from_generator(
@@ -216,6 +260,41 @@ impl MptUpdates {
         Self::from_rws_with_mock_state_roots(rows, 0xcafeu64.into(), 0xdeadbeefu64.into())
     }
 
+    pub(crate) fn from_unsorted_rws_with_mock_state_roots(
+        rows: &[Rw],
+        old_root: U256,
+        new_root: U256,
+    ) -> Self {
+        log::debug!("mpt update roots (mocking) {:?} {:?}", old_root, new_root);
+        let rows_len = rows.len();
+        let mut updates = BTreeMap::new(); // TODO: preallocate
+        for (key, row) in rows.iter().filter_map(|row| key(row).map(|key| (key, row))) {
+            updates.entry(key).or_insert_with(Vec::new).push(*row); // TODO: preallocate
+        }
+        let updates: BTreeMap<_, _> = updates
+            .into_iter()
+            .enumerate()
+            .map(|(i, (key, rows))| {
+                MptUpdate::from_rows(key, rows, i, rows_len, old_root, new_root)
+            })
+            .collect();
+        let mpt_updates = MptUpdates {
+            updates,
+            old_root,
+            new_root,
+            ..Default::default()
+        };
+        // FIXME: we can remove this assert after the code runs a while and everything is ok?
+        #[cfg(debug_assertions)]
+        {
+            let mut rows = rows.to_vec();
+            rows.sort_by_key(Rw::as_key);
+            let old_updates = Self::from_rws_with_mock_state_roots(&rows, old_root, new_root);
+            assert_eq!(old_updates.updates, mpt_updates.updates);
+        }
+        mpt_updates
+    }
+
     pub(crate) fn from_rws_with_mock_state_roots(
         rows: &[Rw],
         old_root: U256,
@@ -231,25 +310,7 @@ impl MptUpdates {
             .enumerate()
             .map(|(i, (key, rows))| {
                 let rows: Vec<Rw> = rows.copied().collect_vec();
-                let first = &rows[0];
-                let last = rows.iter().last().unwrap_or(first);
-                let key_exists = key;
-                let key = key.set_non_exists(value_prev(first), value(last));
-                (
-                    key_exists,
-                    MptUpdate {
-                        key,
-                        old_root: Word::from(i as u64) + old_root,
-                        new_root: if i + 1 == rows_len {
-                            new_root
-                        } else {
-                            Word::from(i as u64 + 1) + old_root
-                        },
-                        old_value: value_prev(first),
-                        new_value: value(last),
-                        original_rws: rows,
-                    },
-                )
+                MptUpdate::from_rows(key, rows, i, rows_len, old_root, new_root)
             })
             .collect();
         MptUpdates {
@@ -266,28 +327,18 @@ impl MptUpdates {
     ) -> Vec<MptUpdateRow<Value<F>>> {
         self.updates
             .values()
-            .map(|update| {
-                let (new_root, old_root) = randomness
-                    .map(|randomness| update.root_assignments(randomness))
-                    .unzip();
-                let (new_value, old_value) = randomness
-                    .map(|randomness| update.value_assignments(randomness))
-                    .unzip();
-                MptUpdateRow([
-                    Value::known(update.key.address()),
-                    randomness.map(|randomness| update.key.storage_key(randomness)),
-                    Value::known(F::from(update.proof_type() as u64)),
-                    new_root,
-                    old_root,
-                    new_value,
-                    old_value,
-                ])
-            })
+            .map(|update| update.table_assignments(randomness))
             .collect()
     }
 
     fn insert(&mut self, update: MptUpdate) {
         self.updates.insert(update.key, update);
+    }
+
+    pub(crate) fn pretty_print(&self) {
+        for (idx, update) in self.updates.values().enumerate() {
+            log::trace!("mpt_update {idx} {update:?}");
+        }
     }
 }
 
@@ -324,6 +375,48 @@ impl MptUpdate {
             rlc::value(&self.new_root.to_le_bytes(), word_randomness),
             rlc::value(&self.old_root.to_le_bytes(), word_randomness),
         )
+    }
+
+    pub(crate) fn table_assignments<F: Field>(
+        &self,
+        randomness: Value<F>,
+    ) -> MptUpdateRow<Value<F>> {
+        let (new_root, old_root) = randomness
+            .map(|randomness| self.root_assignments(randomness))
+            .unzip();
+        let (new_value, old_value) = randomness
+            .map(|randomness| self.value_assignments(randomness))
+            .unzip();
+        MptUpdateRow([
+            Value::known(self.key.address()),
+            randomness.map(|randomness| self.key.storage_key(randomness)),
+            Value::known(F::from(self.proof_type() as u64)),
+            new_root,
+            old_root,
+            new_value,
+            old_value,
+        ])
+    }
+    fn proof_type(&self) -> MPTProofType {
+        match self.key {
+            Key::AccountStorage { .. } => {
+                if self.old_value.is_zero() && self.new_value.is_zero() {
+                    MPTProofType::StorageDoesNotExist
+                } else {
+                    MPTProofType::StorageChanged
+                }
+            }
+            Key::Account { field_tag, .. } => {
+                if matches!(field_tag, AccountFieldTag::CodeHash)
+                    && self.old_value.is_zero()
+                    && self.new_value.is_zero()
+                {
+                    MPTProofType::AccountDoesNotExist
+                } else {
+                    field_tag.into()
+                }
+            }
+        }
     }
 }
 
@@ -462,11 +555,8 @@ mod test {
         };
         let update = MptUpdate {
             key,
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
             new_root: Word::one(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
 
         let mut updates = MptUpdates::default();
@@ -485,11 +575,8 @@ mod test {
         };
         let update = MptUpdate {
             key,
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
             new_root: Word::one(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
 
         let mut updates = MptUpdates::default();
@@ -508,11 +595,8 @@ mod test {
                 address,
                 field_tag: AccountFieldTag::Nonce,
             },
-            old_value: Word::zero(),
             new_value: Word::one(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -566,11 +650,7 @@ mod test {
                 address,
                 field_tag: AccountFieldTag::NonExisting,
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots(&ZktrieState::default());
@@ -634,11 +714,8 @@ mod test {
                 address,
                 field_tag: AccountFieldTag::Balance,
             },
-            old_value: Word::zero(),
             new_value: Word::from(u64::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -743,11 +820,8 @@ mod test {
                 address,
                 field_tag: AccountFieldTag::CodeSize,
             },
-            old_value: Word::zero(),
             new_value: Word::from(23412341231u64),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
         updates.insert(update);
 
@@ -782,11 +856,8 @@ mod test {
                 address,
                 field_tag: AccountFieldTag::CodeHash,
             },
-            old_value: Word::zero(),
             new_value: Word::from(234123124231231u64),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
         updates.insert(update);
 
@@ -821,11 +892,8 @@ mod test {
                 address,
                 field_tag: AccountFieldTag::KeccakCodeHash,
             },
-            old_value: Word::zero(),
             new_value: U256([u64::MAX; 4]),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
         updates.insert(update);
 
@@ -859,11 +927,8 @@ mod test {
                     exists: false, // true causes an unwraprror?  nope....
                     storage_key: Word::from(i),
                 },
-                old_value: Word::zero(),
                 new_value: Word::from(u32::MAX),
-                old_root: Word::zero(),
-                new_root: Word::zero(),
-                original_rws: Default::default(),
+                ..Default::default()
             });
         }
         updates.insert(MptUpdate {
@@ -873,11 +938,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::from(2431230),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -888,9 +950,7 @@ mod test {
             },
             old_value: Word::from(u32::MAX),
             new_value: Word::MAX - Word::from(u64::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -921,11 +981,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::from(2431230),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -936,9 +993,7 @@ mod test {
             },
             old_value: Word::from(u32::MAX),
             new_value: Word::from(24),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -947,11 +1002,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::from(2431230),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -962,9 +1014,7 @@ mod test {
             },
             old_value: Word::from(u32::MAX),
             new_value: Word::from(24),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1029,11 +1079,7 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::from(u64::MAX),
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
         updates.insert(update);
 
@@ -1064,11 +1110,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::MAX,
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         };
         updates.insert(update);
 
@@ -1099,11 +1142,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::MAX - Word::from(43),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -1112,11 +1152,7 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::MAX,
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1146,11 +1182,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::MAX - Word::from(43),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -1159,11 +1192,8 @@ mod test {
                 exists: false, // true causes an unwraprror?  nope....
                 storage_key: Word::MAX,
             },
-            old_value: Word::zero(),
             new_value: Word::one(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1193,11 +1223,8 @@ mod test {
                 exists: false,
                 storage_key: Word::MAX - Word::from(43),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u32::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -1207,10 +1234,7 @@ mod test {
                 storage_key: Word::MAX - Word::from(43),
             },
             old_value: Word::from(u32::MAX),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1240,11 +1264,8 @@ mod test {
                 exists: false,
                 storage_key: Word::MAX - Word::from(43),
             },
-            old_value: Word::zero(),
             new_value: Word::MAX - Word::from(43),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -1253,11 +1274,8 @@ mod test {
                 exists: false,
                 storage_key: Word::MAX - Word::from(12312),
             },
-            old_value: Word::zero(),
             new_value: Word::from(u64::MAX),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -1267,10 +1285,7 @@ mod test {
                 storage_key: Word::MAX - Word::from(43),
             },
             old_value: Word::MAX - Word::from(43),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1301,11 +1316,8 @@ mod test {
                     exists: false, // true causes an unwraprror?  nope....
                     storage_key: Word::from(1000 * i),
                 },
-                old_value: Word::zero(),
                 new_value: Word::from(u32::MAX),
-                old_root: Word::zero(),
-                new_root: Word::zero(),
-                original_rws: Default::default(),
+                ..Default::default()
             });
         }
         updates.insert(MptUpdate {
@@ -1316,10 +1328,7 @@ mod test {
                 storage_key: Word::from(2000),
             },
             old_value: Word::from(u32::MAX),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1349,11 +1358,7 @@ mod test {
                 exists: false,
                 storage_key: Word::from(2000),
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1383,11 +1388,8 @@ mod test {
                 exists: false,
                 storage_key: Word::from(1000),
             },
-            old_value: Word::zero(),
             new_value: Word::one(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
         updates.insert(MptUpdate {
             key: Key::AccountStorage {
@@ -1396,11 +1398,7 @@ mod test {
                 exists: false,
                 storage_key: Word::from(2000),
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1431,11 +1429,8 @@ mod test {
                     exists: false, // true causes an unwraprror?  nope....
                     storage_key: Word::from(1000 * i),
                 },
-                old_value: Word::zero(),
                 new_value: Word::from(u32::MAX),
-                old_root: Word::zero(),
-                new_root: Word::zero(),
-                original_rws: Default::default(),
+                ..Default::default()
             });
         }
         updates.insert(MptUpdate {
@@ -1445,11 +1440,7 @@ mod test {
                 exists: false,
                 storage_key: Word::from(3),
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1476,11 +1467,8 @@ mod test {
                     exists: false,
                     storage_key: Word::from(3),
                 },
-                old_value: Word::zero(),
                 new_value: Word::one(),
-                old_root: Word::zero(),
-                new_root: Word::zero(),
-                original_rws: Default::default(),
+                ..Default::default()
             });
         }
 
@@ -1492,11 +1480,7 @@ mod test {
                 exists: false,
                 storage_key: Word::from(3),
             },
-            old_value: Word::zero(),
-            new_value: Word::zero(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));
@@ -1523,11 +1507,8 @@ mod test {
                     exists: false,
                     storage_key: Word::from(3),
                 },
-                old_value: Word::zero(),
                 new_value: Word::one(),
-                old_root: Word::zero(),
-                new_root: Word::zero(),
-                original_rws: Default::default(),
+                ..Default::default()
             });
         }
 
@@ -1539,11 +1520,8 @@ mod test {
                 exists: false,
                 storage_key: Word::from(3),
             },
-            old_value: Word::zero(),
             new_value: Word::one(),
-            old_root: Word::zero(),
-            new_root: Word::zero(),
-            original_rws: Default::default(),
+            ..Default::default()
         });
 
         updates.fill_state_roots_from_generator(WitnessGenerator::from(&ZktrieState::default()));

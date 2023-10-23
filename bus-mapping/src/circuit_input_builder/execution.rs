@@ -342,9 +342,6 @@ pub struct CopyStep {
     pub prev_value: u8,
     /// mask indicates this byte won't be copied.
     pub mask: bool,
-    /// Optional field which is enabled only for the source being `bytecode`,
-    /// and represents whether or not the byte is an opcode.
-    pub is_code: Option<bool>,
 }
 
 /// Defines an enum type that can hold either a number or a hash value.
@@ -367,7 +364,7 @@ pub enum NumberOrHash {
 ///
 /// Additionally, when the destination is memory, `bytes_write_prev` holds the memory content
 /// *before* the write.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CopyBytes {
     /// Represents the list of (bytes, is_code, mask) copied during this copy event
     pub bytes: Vec<(u8, bool, bool)>,
