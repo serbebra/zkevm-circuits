@@ -122,12 +122,12 @@ impl RwMap {
                 key(prev_row) != key(row)
             };
             if !row.is_write() {
-                let value = row.value_assignment::<Fr>(mock_rand);
+                let value = row.value_assignment();
                 if is_first {
                     // value == init_value
                     let init_value = updates
                         .get(row)
-                        .map(|u| u.value_assignments(mock_rand).1)
+                        .map(|u| u.value_assignments().1)
                         .unwrap_or_default();
                     if value != init_value {
                         // EIP2930
@@ -137,7 +137,7 @@ impl RwMap {
                     }
                 } else {
                     // value == prev_value
-                    let prev_value = prev_row.value_assignment::<Fr>(mock_rand);
+                    let prev_value = prev_row.value_assignment();
                     if value != prev_value {
                         errs.push((idx, ERR_MSG_NON_FIRST, *row, Some(*prev_row)));
                     }
@@ -333,7 +333,7 @@ pub struct RwRow<F> {
 }
 
 impl<F: Field> RwRow<F> {
-    pub(crate) fn values(&self) -> [F; 11] {
+    pub(crate) fn values(&self) -> [F; 16] {
         [
             self.rw_counter,
             self.is_write,
@@ -341,11 +341,16 @@ impl<F: Field> RwRow<F> {
             self.id,
             self.address,
             self.field_tag,
-            self.storage_key,
-            self.value,
-            self.value_prev,
-            self.aux1,
-            self.aux2,
+            self.storage_key.lo(),
+            self.storage_key.hi(),
+            self.value.lo(),
+            self.value.hi(),
+            self.value_prev.lo(),
+            self.value_prev.hi(),
+            self.aux1.lo(),
+            self.aux1.hi(),
+            self.aux2.lo(),
+            self.aux2.hi(),
         ]
     }
     pub(crate) fn rlc(&self, randomness: F) -> F {
@@ -491,28 +496,7 @@ impl Rw {
 
     // At this moment is a helper for the EVM circuit until EVM challange API is
     // applied
-    pub(crate) fn table_assignment_aux<F: Field>(&self, randomness: F) -> RwRow<F> {
-        RwRow {
-            rw_counter: F::from(self.rw_counter() as u64),
-            is_write: F::from(self.is_write() as u64),
-            tag: F::from(self.tag() as u64),
-            id: F::from(self.id().unwrap_or_default() as u64),
-            address: self.address().unwrap_or_default().to_scalar().unwrap(),
-            field_tag: F::from(self.field_tag().unwrap_or_default()),
-            storage_key: rlc::value(
-                &self.storage_key().unwrap_or_default().to_le_bytes(),
-                randomness,
-            ),
-            value: self.value_assignment(randomness),
-            value_prev: self.value_prev_assignment(randomness).unwrap_or_default(),
-            aux1: F::zero(), // only used for AccountStorage::tx_id, which moved to key1.
-            aux2: self
-                .committed_value_assignment(randomness)
-                .unwrap_or_default(),
-        }
-    }
-
-    pub(crate) fn table_assignment<F: Field>(&self, randomness: Value<F>) -> RwRow<Value<F>> {
+    pub(crate) fn table_assignment_aux<F: Field>(&self) -> RwRow<Value<F>> {
         RwRow {
             rw_counter: Value::known(F::from(self.rw_counter() as u64)),
             is_write: Value::known(F::from(self.is_write() as u64)),
@@ -520,21 +504,31 @@ impl Rw {
             id: Value::known(F::from(self.id().unwrap_or_default() as u64)),
             address: Value::known(self.address().unwrap_or_default().to_scalar().unwrap()),
             field_tag: Value::known(F::from(self.field_tag().unwrap_or_default())),
-            storage_key: randomness.map(|randomness| {
-                rlc::value(
-                    &self.storage_key().unwrap_or_default().to_le_bytes(),
-                    randomness,
-                )
-            }),
-            value: randomness.map(|randomness| self.value_assignment(randomness)),
-            value_prev: randomness
-                .map(|randomness| self.value_prev_assignment(randomness).unwrap_or_default()),
-            aux1: Value::known(F::zero()), /* only used for AccountStorage::tx_id, which moved to
-                                            * key1. */
-            aux2: randomness.map(|randomness| {
-                self.committed_value_assignment(randomness)
-                    .unwrap_or_default()
-            }),
+            storage_key: word::Word::from(self.storage_key().unwrap_or_default()).into_value(),
+            value: word::Word::from(self.value_assignment()).into_value(),
+            value_prev: word::Word::from(self.value_prev_assignment().unwrap_or_default())
+                .into_value(),
+            aux1: word::Word::from(U256::zero()).into_value(),
+            aux2: word::Word::from(self.committed_value_assignment().unwrap_or_default())
+                .into_value(),
+        }
+    }
+
+    pub(crate) fn table_assignment<F: Field>(&self) -> RwRow<Value<F>> {
+        RwRow {
+            rw_counter: Value::known(F::from(self.rw_counter() as u64)),
+            is_write: Value::known(F::from(self.is_write() as u64)),
+            tag: Value::known(F::from(self.tag() as u64)),
+            id: Value::known(F::from(self.id().unwrap_or_default() as u64)),
+            address: Value::known(self.address().unwrap_or_default().to_scalar().unwrap()),
+            field_tag: Value::known(F::from(self.field_tag().unwrap_or_default())),
+            storage_key: word::Word::from(self.storage_key().unwrap_or_default()).into_value(),
+            value: word::Word::from(self.value_assignment()).into_value(),
+            value_prev: word::Word::from(self.value_prev_assignment().unwrap_or_default())
+                .into_value(),
+            aux1: word::Word::from(U256::zero()).into_value(),
+            aux2: word::Word::from(self.committed_value_assignment().unwrap_or_default())
+                .into_value(),
         }
     }
 
@@ -676,10 +670,10 @@ impl Rw {
             | Self::Account { value, .. }
             | Self::AccountStorage { value, .. }
             | Self::Stack { value, .. }
+            | Self::Memory { value, .. }
             | Self::TxLog { value, .. } => *value,
             Self::TxAccessListAccount { is_warm, .. }
             | Self::TxAccessListAccountStorage { is_warm, .. } => U256::from(*is_warm as u64),
-            Self::Memory { byte, .. } => U256::from(u64::from(*byte)),
             Self::TxRefund { value, .. } | Self::TxReceipt { value, .. } => U256::from(*value),
         }
     }
@@ -699,38 +693,18 @@ impl Rw {
         }
     }
 
-    pub(crate) fn value_prev_assignment<F: Field>(&self, randomness: F) -> Option<F> {
+    pub(crate) fn value_prev_assignment(&self) -> Option<Word> {
         match self {
-            Self::Account {
-                value_prev,
-                field_tag,
-                ..
-            } => Some(match field_tag {
-                AccountFieldTag::KeccakCodeHash | AccountFieldTag::Balance => {
-                    rlc::value(&value_prev.to_le_bytes(), randomness)
-                }
-                AccountFieldTag::CodeHash => {
-                    if cfg!(feature = "poseidon-codehash") {
-                        value_prev.to_scalar().unwrap()
-                    } else {
-                        rlc::value(&value_prev.to_le_bytes(), randomness)
-                    }
-                }
-                AccountFieldTag::Nonce
-                | AccountFieldTag::NonExisting
-                | AccountFieldTag::CodeSize => value_prev.to_scalar().unwrap(),
-            }),
-            Self::AccountStorage { value_prev, .. } => {
-                Some(rlc::value(&value_prev.to_le_bytes(), randomness))
-            }
-            Self::Memory { value_prev, .. } => {
-                Some(rlc::value(&value_prev.to_le_bytes(), randomness))
+            Self::Account { value_prev, .. } | Self::AccountStorage { value_prev, .. } => {
+                Some(*value_prev)
             }
             Self::TxAccessListAccount { is_warm_prev, .. }
             | Self::TxAccessListAccountStorage { is_warm_prev, .. } => {
-                Some(F::from(*is_warm_prev as u64))
+                Some(U256::from(*is_warm_prev as u64))
             }
-            Self::TxRefund { value_prev, .. } => Some(F::from(*value_prev)),
+            Self::TxRefund { value_prev, .. } => Some(U256::from(*value_prev)),
+            Self::Memory { value_prev, .. } => Some(*value_prev),
+
             Self::Start { .. }
             | Self::Stack { .. }
             | Self::CallContext { .. }
@@ -739,11 +713,11 @@ impl Rw {
         }
     }
 
-    fn committed_value_assignment<F: Field>(&self, randomness: F) -> Option<F> {
+    fn committed_value_assignment(&self) -> Option<Word> {
         match self {
             Self::AccountStorage {
                 committed_value, ..
-            } => Some(rlc::value(&committed_value.to_le_bytes(), randomness)),
+            } => Some(*committed_value),
             _ => None,
         }
     }

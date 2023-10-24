@@ -54,8 +54,16 @@ pub struct MptUpdates {
 }
 
 /// The field element encoding of an MPT update, which is used by the MptTable
-#[derive(Debug, Clone, Copy)]
-pub struct MptUpdateRow<F>(pub(crate) [F; 7]);
+#[derive(Default, Clone, Copy, Debug)]
+pub struct MptUpdateRow<F: Clone> {
+    pub(crate) address: F,
+    pub(crate) storage_key: word::Word<F>,
+    pub(crate) proof_type: F,
+    pub(crate) new_root: word::Word<F>,
+    pub(crate) old_root: word::Word<F>,
+    pub(crate) new_value: word::Word<F>,
+    pub(crate) old_value: word::Word<F>,
+}
 
 impl MptUpdates {
     pub(crate) fn len(&self) -> usize {
@@ -242,13 +250,22 @@ impl MptUpdates {
         }
     }
 
-    pub(crate) fn table_assignments<F: Field>(
-        &self,
-        randomness: Value<F>,
-    ) -> Vec<MptUpdateRow<Value<F>>> {
+    pub(crate) fn table_assignments<F: Field>(&self) -> Vec<MptUpdateRow<Value<F>>> {
         self.updates
             .values()
-            .map(|update| update.table_assignments(randomness))
+            .map(|update| {
+                let (new_root, old_root) = update.root_assignments();
+                let (new_value, old_value) = update.value_assignments();
+                MptUpdateRow {
+                    address: Value::known(update.key.address().to_scalar().unwrap()),
+                    storage_key: word::Word::<F>::from(update.key.storage_key()).into_value(),
+                    proof_type: Value::known(update.proof_type()),
+                    new_root: word::Word::<F>::from(new_root).into_value(),
+                    old_root: word::Word::<F>::from(old_root).into_value(),
+                    new_value: word::Word::<F>::from(new_value).into_value(),
+                    old_value: word::Word::<F>::from(old_value).into_value(),
+                }
+            })
             .collect()
     }
 
@@ -267,7 +284,6 @@ impl MptUpdate {
     pub(crate) fn values(&self) -> (Word, Word) {
         (self.new_value, self.old_value)
     }
-
     pub(crate) fn value_assignments(&self) -> (Word, Word) {
         (self.new_value, self.old_value)
     }
@@ -278,23 +294,19 @@ impl MptUpdate {
 
     pub(crate) fn table_assignments<F: Field>(
         &self,
-        randomness: Value<F>,
+        //randomness: Value<F>,
     ) -> MptUpdateRow<Value<F>> {
-        let (new_root, old_root) = randomness
-            .map(|randomness| self.root_assignments(randomness))
-            .unzip();
-        let (new_value, old_value) = randomness
-            .map(|randomness| self.value_assignments(randomness))
-            .unzip();
-        MptUpdateRow([
-            Value::known(self.key.address()),
-            randomness.map(|randomness| self.key.storage_key(randomness)),
-            Value::known(F::from(self.proof_type() as u64)),
-            new_root,
-            old_root,
-            new_value,
-            old_value,
-        ])
+        let (new_root, old_root) = update.root_assignments();
+        let (new_value, old_value) = update.value_assignments();
+        MptUpdateRow {
+            address: Value::known(update.key.address().to_scalar().unwrap()),
+            storage_key: word::Word::<F>::from(update.key.storage_key()).into_value(),
+            proof_type: Value::known(update.proof_type()),
+            new_root: word::Word::<F>::from(new_root).into_value(),
+            old_root: word::Word::<F>::from(old_root).into_value(),
+            new_value: word::Word::<F>::from(new_value).into_value(),
+            old_value: word::Word::<F>::from(old_value).into_value(),
+        }
     }
     fn proof_type(&self) -> MPTProofType {
         match self.key {
@@ -366,19 +378,16 @@ impl Key {
             self
         }
     }
-    fn address<F: Field>(&self) -> F {
+    fn address(&self) -> Address {
         match self {
-            Self::Account { address, .. } | Self::AccountStorage { address, .. } => {
-                address.to_scalar().unwrap()
-            }
+            Self::Account { address, .. } | Self::AccountStorage { address, .. } => *address,
         }
     }
-    fn storage_key<F: Field>(&self, randomness: F) -> F {
+
+    fn storage_key(&self) -> Word {
         match self {
-            Self::Account { .. } => F::zero(),
-            Self::AccountStorage { storage_key, .. } => {
-                rlc::value(&storage_key.to_le_bytes(), randomness)
-            }
+            Self::Account { .. } => Word::zero(),
+            Self::AccountStorage { storage_key, .. } => *storage_key,
         }
     }
 }
