@@ -50,8 +50,10 @@ impl<F: Field> ExecutionGadget<F> for PushGadget<F> {
             )),
             ..Default::default()
         };
+
+        let push_rlc = cb.word_rlc(value.limbs.map(|l| l.expr()));
         let same_context =
-            SameContextGadget::construct2(cb, opcode, step_state_transition, value.expr());
+            SameContextGadget::construct2(cb, opcode, step_state_transition, push_rlc);
 
         Self {
             same_context,

@@ -3,7 +3,7 @@ use crate::{
     evm_circuit::util::{
         and,
         constraint_builder::EVMConstraintBuilder,
-        math_gadget::{IsEqualGadget, IsZeroGadget},
+        math_gadget::{IsEqualGadget, IsZeroWordGadget},
         select,
     },
     table::{AccountFieldTag, TxFieldTag::TxType as TxTypeField},
@@ -26,8 +26,9 @@ pub(crate) struct TxL1MsgGadget<F> {
     /// tx type
     tx_type: Cell<F>,
     /// caller is empty
-    is_caller_empty: IsZeroGadget<F>,
-    caller_codehash: Cell<F>,
+    is_caller_empty: IsZeroWordGadget<F, WordCell<F>>,
+    //caller_codehash: Cell<F>,
+    caller_codehash: WordCell<F>,
 }
 
 impl<F: Field> TxL1MsgGadget<F> {
@@ -39,16 +40,16 @@ impl<F: Field> TxL1MsgGadget<F> {
         let tx_type = cb.tx_context(tx_id.expr(), TxTypeField, None);
         let tx_is_l1msg =
             IsEqualGadget::construct(cb, tx_type.expr(), (TxType::L1Msg as u64).expr());
-        let caller_codehash = cb.query_cell_phase2();
+        let caller_codehash = cb.query_word_unchecked();
         let is_caller_empty = cb.annotation("is caller address not existed", |cb| {
-            IsZeroGadget::construct(cb, caller_codehash.expr())
+            IsZeroWordGadget::construct(cb, &caller_codehash)
         });
 
         cb.condition(tx_is_l1msg.expr(), |cb| {
             cb.account_read(
                 caller_address,
                 AccountFieldTag::CodeHash,
-                caller_codehash.expr(),
+                caller_codehash.to_word(),
             );
         });
 
@@ -56,7 +57,7 @@ impl<F: Field> TxL1MsgGadget<F> {
             and::expr([tx_is_l1msg.expr(), is_caller_empty.expr()]),
             |cb| {
                 cb.account_write(
-                    caller_address.expr(),
+                    caller_address.to_word(),
                     AccountFieldTag::CodeHash,
                     cb.empty_code_hash(),
                     Word::zero(),
@@ -96,10 +97,11 @@ impl<F: Field> TxL1MsgGadget<F> {
             F::from(tx_type as u64),
             F::from(TxType::L1Msg as u64),
         )?;
-        let code_hash = region.code_hash(code_hash);
-        self.caller_codehash.assign(region, offset, code_hash)?;
+
+        self.caller_codehash
+            .assign_u256(region, offset, code_hash)?;
         self.is_caller_empty
-            .assign_value(region, offset, code_hash)?;
+            .assign_u256(region, offset, code_hash)?;
 
         Ok(())
     }

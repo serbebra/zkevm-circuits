@@ -13,7 +13,8 @@ use crate::{
                 Transition::{Delta, To},
             },
             math_gadget::{
-                ConstantDivisionGadget, ContractCreateGadget, IsZeroGadget, IsZeroWordGadget,  LtGadget, LtWordGadget,
+                ConstantDivisionGadget, ContractCreateGadget, IsZeroGadget, IsZeroWordGadget,
+                LtGadget, LtWordGadget,
             },
             memory_gadget::{
                 CommonMemoryAddressGadget, MemoryAddressGadget, MemoryExpansionGadget,
@@ -35,7 +36,10 @@ use eth_types::{
 };
 use ethers_core::utils::keccak256;
 use gadgets::util::{and, expr_from_bytes};
-use halo2_proofs::{circuit::Value, plonk::Error, plonk::Expression};
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{Error, Expression},
+};
 use log::trace;
 use std::iter::once;
 
@@ -49,9 +53,9 @@ pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionStat
 
     is_success: Cell<F>,
     was_warm: Cell<F>,
-    value: WordCell<F>,
+    value: Word32Cell<F>,
 
-    caller_balance: WordCell<F>,
+    caller_balance: Word32Cell<F>,
     callee_reversion_info: ReversionInfo<F>,
     callee_nonce: Cell<F>,
     prev_code_hash: WordCell<F>,
@@ -133,7 +137,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         //let contract_addr = expr_from_bytes(&keccak_output.limbs[..N_BYTES_ACCOUNT_ADDRESS]);
 
         // stack operations
-        let value = cb.query_word_unchecked();
+        let value = cb.query_word32();
 
         // let init_code_memory_offset = cb.query_cell_phase2();
         // let init_code_length = cb.query_word_rlc();
@@ -143,8 +147,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         // init_code_memory_offset
         let offset = cb.query_word_unchecked();
 
-        let init_code =
-            MemoryAddressGadget::construct(cb, offset, length);
+        let init_code = MemoryAddressGadget::construct(cb, offset, length);
         let init_code_size_not_overflow =
             LtGadget::construct(cb, init_code.length(), MAX_INIT_CODE_SIZE.expr() + 1.expr());
 
@@ -170,14 +173,14 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             // verify that the associated fields for the copy event.
             let keccak_code_hash = cb.query_word_unchecked();
             let init_code_rlc = cb.query_cell_phase2();
-            
+
             (init_code_rlc, keccak_code_hash)
         });
         cb.condition(not::expr(init_code.has_length()), |cb| {
-            cb.require_equal(
+            cb.require_equal_word(
                 "keccak hash of empty bytes",
-                keccak_code_hash.expr(),
-                cb.empty_keccak_hash_rlc(),
+                keccak_code_hash.to_word(),
+                cb.empty_code_hash(),
             );
             // todo: enable it later
             // cb.require_equal(
@@ -196,7 +199,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
         // read caller's balance and nonce
         let caller_nonce = create.caller_nonce();
-        let caller_balance = cb.query_word_unchecked();
+        let caller_balance = cb.query_word32();
         cb.account_read(
             create.caller_address(),
             AccountFieldTag::Balance,
@@ -210,7 +213,8 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
         // Pre-check: call depth, user's nonce and user's balance
         let is_depth_in_range = LtGadget::construct(cb, depth.expr(), 1025.expr());
-        let is_insufficient_balance = LtWordGadget::construct(cb, &caller_balance, &value);
+        let is_insufficient_balance =
+            LtWordGadget::construct(cb, &caller_balance.to_word(), &value.to_word());
         let is_nonce_in_range = LtGadget::construct(cb, caller_nonce.expr(), u64::MAX.expr());
 
         cb.condition(is_insufficient_balance.expr(), |cb| {
@@ -239,7 +243,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         ]);
 
         // verify gas cost
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [init_code.end_offset()]);
+        let memory_expansion = MemoryExpansionGadget::construct(cb, [init_code.address()]);
         let init_code_word_size = ConstantDivisionGadget::construct(
             cb,
             init_code.length() + (N_BYTES_WORD - 1).expr(),
@@ -284,7 +288,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                     was_warm.expr(),
                     Some(&mut reversion_info),
                 );
-        
+
                 // read contract's previous hash
                 cb.account_read(
                     contract_addr.to_word(),
@@ -311,10 +315,11 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                     IsZeroWordGadget::construct(
                         cb,
                         &Word::from_lo_unchecked(callee_nonce.expr()).add_unchecked(
-                            prev_code_hash_word
-                                .clone()
-                                .mul_unchecked(prev_code_hash_word.sub_unchecked(cb.empty_code_hash())),
-                    ))
+                            prev_code_hash_word.clone().mul_unchecked(
+                                prev_code_hash_word.sub_unchecked(cb.empty_code_hash()),
+                            ),
+                        ),
+                    ),
                 )
             });
 
@@ -457,7 +462,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                             CallContextFieldTag::IsPersistent,
                             Word::from_lo_unchecked(callee_reversion_info.is_persistent()),
                         ),
-                     
                         (
                             CallContextFieldTag::TxId,
                             Word::from_lo_unchecked(tx_id.expr()),
@@ -641,8 +645,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         rws.offset_add(5);
 
         let [value, init_code_start, init_code_length] = [(); 3].map(|_| rws.next().stack_value());
-        self.value
-            .assign_u256(region, offset, value)?;
+        self.value.assign_u256(region, offset, value)?;
         let salt = if is_create2 {
             rws.next().stack_value()
         } else {
@@ -658,7 +661,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             call.depth < 1025 && caller_balance >= value && caller_nonce < u64::MAX;
 
         self.caller_balance
-            .assign_u256(region, offset, Some(caller_balance.to_le_bytes()))?;
+            .assign_u256(region, offset, caller_balance)?;
 
         let (was_warm, callee_prev_code_hash, callee_nonce) = if is_precheck_ok {
             rws.next(); // caller nonce += 1
@@ -694,7 +697,8 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             region,
             offset,
             U256::from(callee_nonce)
-                + callee_prev_code_hash * (callee_prev_code_hash - CodeDB::empty_code_hash().to_word()),
+                + callee_prev_code_hash
+                    * (callee_prev_code_hash - CodeDB::empty_code_hash().to_word()),
         )?;
 
         let shift = init_code_start.low_u64() % 32;
@@ -801,8 +805,11 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             let mut keccak_output = keccak256(keccak_input);
             keccak_output.reverse();
 
-            self.keccak_output
-                .assign_u256(region, offset, keccak_output)?;
+            self.keccak_output.assign_u256(
+                region,
+                offset,
+                U256::from_big_endian(&keccak_output),
+            )?;
 
             self.init_code_rlc.assign(
                 region,
@@ -845,11 +852,8 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             }),
         )?;
 
-        self.keccak_code_hash.assign_u256(
-            region,
-            offset,
-            keccak_code_hash.to_word(),
-        )?;
+        self.keccak_code_hash
+            .assign_u256(region, offset, keccak_code_hash.to_word())?;
 
         self.copy_rw_increase.assign(
             region,

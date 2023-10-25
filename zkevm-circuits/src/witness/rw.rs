@@ -372,6 +372,36 @@ impl<F: Field> RwRow<F> {
     }
 }
 
+impl<F: Field> RwRow<Value<F>> {
+    pub(crate) fn unwrap(self) -> RwRow<F> {
+        let unwrap_f = |f: Value<F>| {
+            let mut inner = None;
+            _ = f.map(|v| {
+                inner = Some(v);
+            });
+            inner.unwrap()
+        };
+        let unwrap_w = |f: word::Word<Value<F>>| {
+            let (lo, hi) = f.into_lo_hi();
+            word::Word::new([unwrap_f(lo), unwrap_f(hi)])
+        };
+
+        RwRow {
+            rw_counter: unwrap_f(self.rw_counter),
+            is_write: unwrap_f(self.is_write),
+            tag: unwrap_f(self.tag),
+            id: unwrap_f(self.id),
+            address: unwrap_f(self.address),
+            field_tag: unwrap_f(self.field_tag),
+            storage_key: unwrap_w(self.storage_key),
+            value: unwrap_w(self.value),
+            value_prev: unwrap_w(self.value_prev),
+            aux1: unwrap_w(self.aux1),
+            aux2: unwrap_w(self.aux2),
+        }
+    }
+}
+
 impl Rw {
     pub fn tx_access_list_value_pair(&self) -> (bool, bool) {
         match self {

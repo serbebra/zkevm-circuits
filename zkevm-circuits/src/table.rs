@@ -693,7 +693,7 @@ impl RwTable {
     ) -> Result<(), Error> {
         let (rows, _) = RwMap::table_assignments_prepad(rws, n_rows);
         for (offset, row) in rows.iter().enumerate() {
-            self.assign(region, offset, &row.table_assignment(challenges))?;
+            self.assign(region, offset, &row.table_assignment())?;
         }
         Ok(())
     }
@@ -705,7 +705,7 @@ impl RwTable {
         challenges: Value<F>,
     ) -> Result<(), Error> {
         for (offset, row) in rws.iter().enumerate() {
-            self.assign(region, offset, &row.table_assignment(challenges))?;
+            self.assign(region, offset, &row.table_assignment())?;
         }
         Ok(())
     }

@@ -620,11 +620,29 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             };
         }
 
+        macro_rules! constrain_word {
+            ($name:tt) => {
+                match step_state_transition.$name {
+                    Transition::Same => self.require_equal_word(
+                        concat!("State transition (same) constraint of ", stringify!($name)),
+                        self.next.state.$name.to_word(),
+                        self.curr.state.$name.to_word(),
+                    ),
+                    Transition::To(to) => self.require_equal_word(
+                        concat!("State transition (to) constraint of ", stringify!($name)),
+                        self.next.state.$name.to_word(),
+                        to,
+                    ),
+                    _ => {}
+                }
+            };
+        }
+
         constrain!(rw_counter);
         constrain!(call_id);
         constrain!(is_root);
         constrain!(is_create);
-        constrain!(code_hash);
+        constrain_word!(code_hash);
         constrain!(program_counter);
         constrain!(stack_pointer);
         constrain!(gas_left);

@@ -1620,7 +1620,7 @@ impl<F: Field> ExecutionConfig<F> {
             .rw_indices
             .iter()
             .map(|rw_idx| block.rws[*rw_idx])
-            .map(|rw| rw.table_assignment_aux().rlc(lookup_randomness))
+            .map(|rw| rw.table_assignment_aux().unwrap().rlc(lookup_randomness))
             .fold(BTreeSet::<F>::new(), |mut set, value| {
                 set.insert(value);
                 set
@@ -1641,7 +1641,8 @@ impl<F: Field> ExecutionConfig<F> {
                     idx,
                     block.rws[*rw_idx],
                     block.rws[*rw_idx]
-                        .table_assignment_aux()
+                        .table_assignment()
+                        .unwrap()
                         .rlc(lookup_randomness)
                 );
             }
@@ -1705,7 +1706,7 @@ impl<F: Field> ExecutionConfig<F> {
             let rw_idx = step.rw_indices[idx];
             let rw = block.rws[rw_idx];
             let table_assignments = rw.table_assignment_aux();
-            let rlc = table_assignments.rlc(lookup_randomness);
+            let rlc = table_assignments.unwrap().rlc(lookup_randomness);
 
             if !rlc_assignments.contains(value) {
                 log_ctx(&assigned_rw_values);

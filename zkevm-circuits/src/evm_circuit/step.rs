@@ -6,13 +6,14 @@ use crate::{
         witness::{Block, Call, ExecStep},
     },
     util::{
+        //cell_manager::{CMFixedWidthStrategy, CellManager},
         word::{Word, WordCell},
         Expr,
     },
     witness::Transaction,
 };
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
-use eth_types::{evm_types::GasCost, Field};
+use eth_types::{evm_types::GasCost, Field, ToWord};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::Value,

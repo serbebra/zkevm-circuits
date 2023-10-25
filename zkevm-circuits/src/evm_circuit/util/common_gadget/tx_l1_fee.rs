@@ -53,16 +53,16 @@ impl<F: Field> TxL1FeeGadget<F> {
         ));
 
         let [base_fee_slot, overhead_slot, scalar_slot] = [
-            &l1_gas_price_oracle::BASE_FEE_SLOT,
-            &l1_gas_price_oracle::OVERHEAD_SLOT,
-            &l1_gas_price_oracle::SCALAR_SLOT,
+            *l1_gas_price_oracle::BASE_FEE_SLOT,
+            *l1_gas_price_oracle::OVERHEAD_SLOT,
+            *l1_gas_price_oracle::SCALAR_SLOT,
         ]
-        .map(|slot| cb.word_rlc(slot.to_le_bytes().map(|b| b.expr())));
+        .map(|slot| slot);
 
         // Read L1 base fee
         cb.account_storage_read_address(
             l1_fee_address.expr(),
-            base_fee_slot,
+            Word::from(base_fee_slot),
             this.base_fee_word.to_word(),
             tx_id.expr(),
             Word::from_lo_unchecked(this.base_fee_committed.expr()),
@@ -71,7 +71,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         // Read L1 fee overhead
         cb.account_storage_read_address(
             l1_fee_address.expr(),
-            overhead_slot,
+            Word::from(overhead_slot).to_word(),
             this.fee_overhead_word.to_word(),
             tx_id.expr(),
             Word::from_lo_unchecked(this.fee_overhead_committed.expr()),
@@ -80,7 +80,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         // Read L1 fee scalar
         cb.account_storage_read_address(
             l1_fee_address,
-            scalar_slot,
+            Word::from(scalar_slot).to_word(),
             this.fee_scalar_word.to_word(),
             tx_id,
             Word::from_lo_unchecked(this.fee_scalar_committed.expr()),
