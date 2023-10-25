@@ -70,7 +70,7 @@ impl MockChallenges {
         Self {
             evm_word: 0x100,
             keccak_input: 0x101,
-            lookup_input: 0x102,
+            lookup_input: 0x100,
         }
     }
     /// ..
@@ -251,8 +251,9 @@ pub trait SubCircuitConfig<F: Field> {
 }
 
 /// Ceiling of log_2(n)
+/// `log2_ceil(0)` returns 0.
 pub fn log2_ceil(n: usize) -> u32 {
-    u32::BITS - (n as u32).leading_zeros() - (n & (n - 1) == 0) as u32
+    (u32::BITS - (n as u32).leading_zeros()) - u32::from(n.is_power_of_two())
 }
 
 pub(crate) fn keccak(msg: &[u8]) -> Word {
@@ -272,9 +273,6 @@ pub(crate) fn get_push_size(byte: u8) -> u64 {
         0u64
     }
 }
-
-/// Using values like this will make it easier to debug...
-pub const DEFAULT_RAND: u128 = 0x10000;
 
 #[derive(Debug)]
 pub(crate) struct CircuitStats {

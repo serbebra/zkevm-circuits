@@ -82,6 +82,10 @@ struct Args {
     #[clap(long)]
     test_ids: Option<String>,
 
+    /// Specify a file excluding test IDs to run these tests
+    #[clap(long)]
+    exclude_test_ids: Option<String>,
+
     /// Verbose
     #[clap(short, long)]
     v: bool,
@@ -161,7 +165,7 @@ fn go() -> Result<()> {
     log::info!("Parsing and compliling tests...");
     let compiler = Compiler::new(true, Some(PathBuf::from(CODEHASH_FILE)))?;
     let suite = config.suite(&args.suite)?.clone();
-    let mut state_tests = load_statetests_suite(&suite.path, config, compiler)?;
+    let mut state_tests = load_statetests_suite(&suite, config, compiler)?;
     log::info!("{} tests collected in {}", state_tests.len(), suite.path);
 
     if args.ls {
@@ -195,6 +199,9 @@ fn go() -> Result<()> {
     // If there is a list, follow list.
     // If not, order by test id.
     if let Some(test_ids_path) = args.test_ids {
+        if args.exclude_test_ids.is_some() {
+            log::warn!("--exclude-test-ids is ignored");
+        }
         let test_ids = read_test_ids(&test_ids_path)?;
         let id_to_test: HashMap<_, _> = state_tests
             .iter()
@@ -209,6 +216,11 @@ fn go() -> Result<()> {
     } else {
         // sorting with reversed id string to prevent similar tests go together, so that
         // computing heavy tests will not trigger OOM.
+        if let Some(exclude_test_ids_path) = args.exclude_test_ids {
+            let buf = std::fs::read_to_string(exclude_test_ids_path)?;
+            let set = buf.lines().map(|s| s.trim()).collect::<HashSet<_>>();
+            state_tests.retain(|t| !set.contains(t.id.as_str()));
+        }
         state_tests.sort_by_key(|t| t.id.chars().rev().collect::<String>());
     }
 

@@ -15,14 +15,14 @@ use std::{
 };
 
 pub fn load_statetests_suite(
-    path: &str,
+    suite: &TestSuite,
     config: Config,
     compiler: Compiler,
 ) -> Result<Vec<StateTest>> {
     let skip_paths: Vec<&String> = config.skip_paths.iter().flat_map(|t| &t.paths).collect();
     let skip_tests: Vec<&String> = config.skip_tests.iter().flat_map(|t| &t.tests).collect();
 
-    let tcs = glob::glob(path)
+    let tcs = glob::glob(&suite.path)
         .context("failed to read glob")?
         .filter_map(|v| v.ok())
         .filter(|f| {
@@ -53,7 +53,7 @@ pub fn load_statetests_suite(
                         }
                     };
 
-                    tcs.retain(|v| !skip_tests.contains(&&v.id));
+                    tcs.retain(|v| !skip_tests.contains(&&v.id) && suite.allowed(&v.id));
                     Ok(tcs)
                 })();
 
@@ -187,7 +187,15 @@ pub fn run_statetests_suite(
     if circuits_config.super_circuit {
         tcs.into_iter().for_each(|ref tc| run_state_test(tc));
     } else {
-        tcs.into_par_iter().for_each(|ref tc| run_state_test(tc));
+        const PARALLELISM: usize = 20;
+        let mut groups =
+            [(); PARALLELISM].map(|_| Vec::with_capacity((tcs.len() / PARALLELISM) + 1));
+        tcs.into_iter().enumerate().for_each(|(i, tc)| {
+            groups[i % PARALLELISM].push(tc);
+        });
+        groups
+            .into_par_iter()
+            .for_each(|chunk| chunk.into_iter().for_each(|ref tc| run_state_test(tc)));
     }
     Ok(())
 }

@@ -44,6 +44,7 @@ mod number;
 mod origin;
 mod precompiles;
 mod push0;
+mod pushn;
 mod return_revert;
 mod returndatacopy;
 mod returndatasize;
@@ -74,7 +75,7 @@ mod memory_expansion_test;
 #[cfg(feature = "test")]
 pub use callop::tests::PrecompileCallArgs;
 
-use self::sha3::Sha3;
+use self::{pushn::PushN, sha3::Sha3};
 
 use address::Address;
 use balance::Balance;
@@ -164,7 +165,7 @@ type FnGenAssociatedOps = fn(
 
 fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
     if opcode_id.is_push_with_data() {
-        return StackOnlyOpcode::<0, 1>::gen_associated_ops;
+        return PushN::gen_associated_ops;
     }
 
     match opcode_id {
@@ -385,6 +386,7 @@ pub fn gen_associated_ops(
     let check_level = if *CHECK_MEM_STRICT { 2 } else { 0 }; // 0: no check, 1: check and log error and fix, 2: check and assert_eq
     if check_level >= 1 {
         let memory_enabled = !geth_steps.iter().all(|s| s.memory.is_empty());
+        assert!(memory_enabled);
         if memory_enabled {
             #[allow(clippy::collapsible_else_if)]
             if state.call_ctx()?.memory != geth_steps[0].memory {

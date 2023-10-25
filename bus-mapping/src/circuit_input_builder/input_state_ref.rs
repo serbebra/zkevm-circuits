@@ -144,11 +144,14 @@ impl<'a> CircuitInputStateRef<'a> {
     /// Check whether rws will overflow circuit limit.
     pub fn check_rw_num_limit(&self) -> Result<(), Error> {
         let max_rws = self.block.circuits_params.max_rws;
-        if max_rws == 0 {
-            return Ok(());
-        }
+        let effective_limit = if max_rws == 0 {
+            // even for dynamic case, we don't want to handle > 1M rows.
+            1_000_000
+        } else {
+            max_rws
+        };
         let rwc = self.block_ctx.rwc.0;
-        if rwc > max_rws {
+        if rwc > effective_limit {
             log::error!("rwc > max_rws, rwc={}, max_rws={}", rwc, max_rws);
             return Err(Error::InternalError("rws not enough"));
         };
@@ -917,6 +920,7 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(address)
     }
 
+    /// read reversion info
     pub(crate) fn reversion_info_read(
         &mut self,
         step: &mut ExecStep,
@@ -930,6 +934,24 @@ impl<'a> CircuitInputStateRef<'a> {
             (CallContextField::IsPersistent, call.is_persistent.to_word()),
         ] {
             self.call_context_read(step, call.call_id, field, value)?;
+        }
+        Ok(())
+    }
+
+    /// write reversion info
+    pub(crate) fn reversion_info_write(
+        &mut self,
+        step: &mut ExecStep,
+        call: &Call,
+    ) -> Result<(), Error> {
+        for (field, value) in [
+            (
+                CallContextField::RwCounterEndOfReversion,
+                call.rw_counter_end_of_reversion.to_word(),
+            ),
+            (CallContextField::IsPersistent, call.is_persistent.to_word()),
+        ] {
+            self.call_context_write(step, call.call_id, field, value)?;
         }
         Ok(())
     }

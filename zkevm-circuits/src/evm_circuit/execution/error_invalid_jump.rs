@@ -27,6 +27,7 @@ pub(crate) struct ErrorInvalidJumpGadget<F> {
     code_len: Cell<F>,
     value: Cell<F>,
     is_code: Cell<F>,
+    push_rlc: Cell<F>,
     is_jump_dest: IsEqualGadget<F>,
     is_jumpi: IsEqualGadget<F>,
     condition: WordCell<F>,
@@ -46,6 +47,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidJumpGadget<F> {
         let opcode = cb.query_cell();
         let value = cb.query_cell();
         let is_code = cb.query_cell();
+        let push_rlc = cb.query_cell_phase2();
         let condition = cb.query_word_unchecked();
 
         cb.require_in_set(
@@ -82,6 +84,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidJumpGadget<F> {
                 dest.valid_value(),
                 is_code.expr(),
                 value.expr(),
+                push_rlc.expr(),
             );
             cb.require_zero(
                 "is_code is false or not JUMPDEST",
@@ -98,6 +101,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidJumpGadget<F> {
             code_len,
             value,
             is_code,
+            push_rlc,
             is_jump_dest,
             is_jumpi,
             condition,
@@ -140,20 +144,21 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidJumpGadget<F> {
 
         // set default value in case can not find value, is_code from bytecode table
         let dest = u64::try_from(dest).unwrap_or(code_len);
-        let mut code_pair = [0u8, 0u8];
+        let mut code_pair = (0u8, false, Value::known(F::zero()));
         if dest < code_len {
             // get real value from bytecode table
-            code_pair = code.get(dest as usize);
+            code_pair = code.get_byte_row(dest as usize, region.challenges());
         }
 
         self.value
-            .assign(region, offset, Value::known(F::from(code_pair[0] as u64)))?;
+            .assign(region, offset, Value::known(F::from(code_pair.0 as u64)))?;
         self.is_code
-            .assign(region, offset, Value::known(F::from(code_pair[1] as u64)))?;
+            .assign(region, offset, Value::known(F::from(code_pair.1)))?;
+        self.push_rlc.assign(region, offset, code_pair.2)?;
         self.is_jump_dest.assign(
             region,
             offset,
-            F::from(code_pair[0] as u64),
+            F::from(code_pair.0 as u64),
             F::from(OpcodeId::JUMPDEST.as_u64()),
         )?;
 

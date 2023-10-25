@@ -210,7 +210,7 @@ pub struct ContractCreateGadget<F, const IS_CREATE2: bool> {
     /// CREATE2 respectively. Instead, we store just the bytes and calculate the
     /// appropriate RLC wherever needed.
     // keccak_code_hash: [Cell<F>; N_BYTES_WORD],
-    keccak_code_hash: Word32Cell<F>,
+    code_hash: Word32Cell<F>,
 
     /// RLC of the init code's hash. The value of this field is feature gated and can be the keccak
     /// or the poseidon hash.
@@ -249,7 +249,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
         Self {
             caller_address,
             nonce,
-            keccak_code_hash,
+            code_hash: keccak_code_hash,
             code_hash_rlc,
             salt,
         }
@@ -289,7 +289,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
             region.code_hash(code_hash.unwrap_or_default()),
         )?;
 
-        self.keccak_code_hash
+        self.code_hash
             .assign_u256(region, offset, code_hash.unwrap_or_default())?;
 
         self.salt
@@ -310,8 +310,8 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     }
 
     /// Dynamic code hash in RLC form.
-    pub(crate) fn code_hash(&self) -> Expression<F> {
-        self.code_hash_rlc.expr()
+    pub(crate) fn code_hash(&self) -> Word<Expression<F>> {
+        self.code_hash.to_word()
     }
 
     // upstream
@@ -323,7 +323,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     /// Init Code's keccak hash word RLC.
     pub(crate) fn keccak_code_hash_word_rlc(&self, cb: &EVMConstraintBuilder<F>) -> Expression<F> {
         cb.word_rlc::<N_BYTES_WORD>(
-            self.keccak_code_hash
+            self.code_hash
                 .limbs
                 .iter()
                 .map(Expr::expr)
@@ -339,7 +339,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
         cb: &EVMConstraintBuilder<F>,
     ) -> Expression<F> {
         cb.keccak_rlc::<N_BYTES_WORD>(
-            self.keccak_code_hash
+            self.code_hash
                 .limbs
                 .iter()
                 .map(Expr::expr)
