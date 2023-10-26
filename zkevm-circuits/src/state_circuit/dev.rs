@@ -2,7 +2,7 @@ pub use super::StateCircuit;
 
 use crate::{
     state_circuit::{StateCircuitConfig, StateCircuitConfigArgs},
-    table::{MptTable, RwTable},
+    table::{MptTable, RwTable, UXTable},
     util::{Challenges, SubCircuit, SubCircuitConfig},
 };
 use eth_types::Field;
@@ -25,6 +25,9 @@ where
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let rw_table = RwTable::construct(meta);
         let mpt_table = MptTable::construct(meta);
+        let u8_table = UXTable::construct(meta);
+        let u10_table = UXTable::construct(meta);
+        let u16_table = UXTable::construct(meta);
         let challenges = Challenges::construct(meta);
 
         let config = {
@@ -34,6 +37,9 @@ where
                 StateCircuitConfigArgs {
                     rw_table,
                     mpt_table,
+                    u8_table,
+                    u10_table,
+                    u16_table,
                     challenges,
                 },
             )

@@ -1091,7 +1091,7 @@ pub struct BytecodeTable {
     /// Is Enabled
     pub q_enable: Column<Fixed>,
     /// Code Hash
-    pub code_hash: Column<Advice>,
+    pub code_hash: word::Word<Column<Advice>>,
     /// Tag
     pub tag: Column<Advice>,
     /// Index
@@ -1109,7 +1109,7 @@ impl BytecodeTable {
     /// Construct a new BytecodeTable
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         let [tag, index, is_code, value] = array::from_fn(|_| meta.advice_column());
-        let code_hash = meta.advice_column_in(SecondPhase);
+        let code_hash = word::Word::new([meta.advice_column(), meta.advice_column()]);
         let push_rlc = meta.advice_column_in(SecondPhase);
         Self {
             q_enable: meta.fixed_column(),
@@ -1164,7 +1164,8 @@ impl BytecodeTable {
     fn columns_mini<F: Field>(&self) -> Vec<Column<Any>> {
         vec![
             self.q_enable.into(),
-            self.code_hash.into(),
+            self.code_hash.lo().into(),
+            self.code_hash.hi().into(),
             self.tag.into(),
             self.index.into(),
             self.value.into(),
@@ -1184,7 +1185,8 @@ impl<F: Field> LookupTable<F> for BytecodeTable {
     fn columns(&self) -> Vec<Column<Any>> {
         vec![
             self.q_enable.into(),
-            self.code_hash.into(),
+            self.code_hash.lo().into(),
+            self.code_hash.hi().into(),
             self.tag.into(),
             self.index.into(),
             self.is_code.into(),
@@ -1196,7 +1198,8 @@ impl<F: Field> LookupTable<F> for BytecodeTable {
     fn annotations(&self) -> Vec<String> {
         vec![
             String::from("q_enable"),
-            String::from("code_hash"),
+            String::from("code_hash_lo"),
+            String::from("code_hash_hi"),
             String::from("tag"),
             String::from("index"),
             String::from("is_code"),
@@ -1350,7 +1353,8 @@ pub struct KeccakTable {
     /// Byte array input length
     pub input_len: Column<Advice>,
     /// RLC of the hash result
-    pub output_rlc: Column<Advice>, // RLC of hash of input bytes
+    // pub output_rlc: Column<Advice>, // RLC of hash of input bytes
+    pub output: word::Word<Column<Advice>>,
 }
 
 impl<F: Field> LookupTable<F> for KeccakTable {
@@ -1360,7 +1364,8 @@ impl<F: Field> LookupTable<F> for KeccakTable {
             self.is_final.into(),
             self.input_rlc.into(),
             self.input_len.into(),
-            self.output_rlc.into(),
+            self.output.lo().into(),
+            self.output.hi().into(),
         ]
     }
 
@@ -1370,7 +1375,8 @@ impl<F: Field> LookupTable<F> for KeccakTable {
             String::from("is_final"),
             String::from("input_rlc"),
             String::from("input_len"),
-            String::from("output_rlc"),
+            String::from("output_lo"),
+            String::from("output_hi"),
         ]
     }
 }
@@ -1383,7 +1389,7 @@ impl KeccakTable {
             is_final: meta.advice_column(),
             input_rlc: meta.advice_column_in(SecondPhase),
             input_len: meta.advice_column(),
-            output_rlc: meta.advice_column_in(SecondPhase),
+            output: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
 
@@ -1392,26 +1398,24 @@ impl KeccakTable {
     pub fn assignments<F: Field>(
         input: &[u8],
         challenges: &Challenges<Value<F>>,
-    ) -> Vec<[Value<F>; 4]> {
+    ) -> Vec<[Value<F>; 6]> {
         let input_rlc = challenges
             .keccak_input()
             .map(|challenge| rlc::value(input.iter().rev(), challenge));
         let input_len = F::from(input.len() as u64);
         let mut keccak = Keccak::default();
-        keccak.update(input);
-        let output = keccak.digest();
-        let output_rlc = challenges.evm_word().map(|challenge| {
-            rlc::value(
-                &Word::from_big_endian(output.as_slice()).to_le_bytes(),
-                challenge,
-            )
-        });
+        //keccak.update(input);
+
+        let output = word::Word::from(keccak(input));
+        // let output = word::Word::from(keccak.digest());
 
         vec![[
             Value::known(F::one()),
             input_rlc,
             Value::known(input_len),
-            output_rlc,
+            Value::known(input_len),
+            Value::known(output.lo()),
+            Value::known(output.hi()),
         ]]
     }
 
@@ -1497,12 +1501,13 @@ impl KeccakTable {
         &self,
         value_rlc: Column<Advice>,
         length: Column<Advice>,
-        code_hash: Column<Advice>,
+        code_hash: word::Word<Column<Advice>>,
     ) -> Vec<(Column<Advice>, Column<Advice>)> {
         vec![
             (value_rlc, self.input_rlc),
             (length, self.input_len),
-            (code_hash, self.output_rlc),
+            (code_hash.lo(), self.output.lo()),
+            (code_hash.hi(), self.output.hi()),
         ]
     }
 }

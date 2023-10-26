@@ -8,7 +8,7 @@ use crate::{
         },
     },
     util::{
-        word::{Word, Word32Cell, WordCell, WordExpr},
+        word::{Word, Word32, Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };
@@ -62,7 +62,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         // Read L1 base fee
         cb.account_storage_read_address(
             l1_fee_address.expr(),
-            Word::from(base_fee_slot),
+            Word32::new(base_fee_slot.to_le_bytes()).to_expr().to_word(),
             this.base_fee_word.to_word(),
             tx_id.expr(),
             Word::from_lo_unchecked(this.base_fee_committed.expr()),
@@ -71,7 +71,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         // Read L1 fee overhead
         cb.account_storage_read_address(
             l1_fee_address.expr(),
-            Word::from(overhead_slot).to_word(),
+            Word32::new(overhead_slot.to_le_bytes()).to_expr().to_word(),
             this.fee_overhead_word.to_word(),
             tx_id.expr(),
             Word::from_lo_unchecked(this.fee_overhead_committed.expr()),
@@ -80,7 +80,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         // Read L1 fee scalar
         cb.account_storage_read_address(
             l1_fee_address,
-            Word::from(scalar_slot).to_word(),
+            Word32::new(scalar_slot.to_le_bytes()).to_expr().to_word(),
             this.fee_scalar_word.to_word(),
             tx_id,
             Word::from_lo_unchecked(this.fee_scalar_committed.expr()),

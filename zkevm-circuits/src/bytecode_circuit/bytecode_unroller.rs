@@ -1,12 +1,20 @@
-use crate::{table::BytecodeFieldTag, util::get_push_size};
+use crate::{
+    table::BytecodeFieldTag,
+    util::{
+        get_push_size,
+        word::{empty_code_hash_word_value, Word, Word32, WordExpr},
+    },
+};
+use halo2_proofs::circuit::{Layouter, Region, Value};
+
 use bus_mapping::state_db::CodeDB;
-use eth_types::{Field, ToWord, Word, U256};
+use eth_types::{Field, ToWord, U256};
 use std::vec;
 
 /// Public data for the bytecode
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct BytecodeRow<F: Field> {
-    pub(crate) code_hash: Word,
+    pub(crate) code_hash: Word<Value<F>>,
     pub(crate) tag: F,
     pub(crate) index: F,
     pub(crate) is_code: F,
@@ -14,7 +22,7 @@ pub(crate) struct BytecodeRow<F: Field> {
 }
 
 /// Unrolled bytecode
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct UnrolledBytecode<F: Field> {
     pub(crate) bytes: Vec<u8>,
     pub(crate) rows: Vec<BytecodeRow<F>>,
