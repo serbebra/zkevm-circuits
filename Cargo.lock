@@ -1589,6 +1589,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "libsecp256k1",
+ "log",
  "num",
  "num-bigint",
  "once_cell",
