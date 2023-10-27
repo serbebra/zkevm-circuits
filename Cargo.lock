@@ -571,7 +571,7 @@ dependencies = [
  "mpt-zktrie",
  "num",
  "once_cell",
- "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=sync-halo2-lib-0.4.0)",
+ "poseidon-circuit",
  "pretty_assertions",
  "rand",
  "revm-precompile 2.0.0",
@@ -1711,7 +1711,7 @@ dependencies = [
  "num",
  "num-bigint",
  "once_cell",
- "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=sync-halo2-lib-0.4.0)",
+ "poseidon-circuit",
  "regex",
  "serde",
  "serde_json",
@@ -1779,7 +1779,7 @@ checksum = "2a58ce802c65cf3d0756dee5a61094a92cde53c1583b246e9ee5b37226c7fc15"
 dependencies = [
  "ethers-addressbook",
  "ethers-contract",
- "ethers-core 2.0.10",
+ "ethers-core 2.0.7",
  "ethers-etherscan",
  "ethers-middleware",
  "ethers-providers",
@@ -1938,7 +1938,7 @@ dependencies = [
  "async-trait",
  "auto_impl",
  "ethers-contract",
- "ethers-core 2.0.10",
+ "ethers-core 2.0.7",
  "ethers-etherscan",
  "ethers-providers",
  "ethers-signers",
@@ -1967,7 +1967,7 @@ dependencies = [
  "base64 0.21.5",
  "bytes",
  "enr",
- "ethers-core 2.0.10",
+ "ethers-core 2.0.7",
  "futures-channel",
  "futures-core",
  "futures-timer",
@@ -2004,7 +2004,7 @@ dependencies = [
  "coins-bip39",
  "elliptic-curve 0.13.6",
  "eth-keystore",
- "ethers-core 2.0.10",
+ "ethers-core 2.0.7",
  "hex",
  "rand",
  "sha2",
@@ -2559,7 +2559,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=sync-halo2-lib-0.4.0)",
+ "poseidon-circuit",
  "rand_chacha",
  "rayon",
  "rustc-hash",
@@ -2624,7 +2624,7 @@ dependencies = [
 [[package]]
 name = "halo2-mpt-circuits"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/mpt-circuit.git?branch=sync-halo2-lib-0.4.0#578c210ceb88d3c143ee2a013ad836d19285d9c1"
+source = "git+https://github.com/scroll-tech/mpt-circuit.git?branch=sync-halo2-lib-0.4.0#d2c87503ffa7f8baa21745373a09243252aeceb7"
 dependencies = [
  "ethers-core 2.0.7",
  "halo2_proofs 0.2.0 (git+https://github.com/scroll-tech/halo2.git?branch=sync-halo2-lib-0.4.0)",
@@ -2634,7 +2634,7 @@ dependencies = [
  "log",
  "num-bigint",
  "num-traits",
- "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=scroll-dev-0901)",
+ "poseidon-circuit",
  "rand",
  "serde",
  "serde_json",
@@ -3481,7 +3481,7 @@ dependencies = [
  "lazy_static",
  "log",
  "num-bigint",
- "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=sync-halo2-lib-0.4.0)",
+ "poseidon-circuit",
  "serde",
  "serde_json",
  "zktrie",
@@ -4092,20 +4092,6 @@ source = "git+https://github.com/scroll-tech/poseidon.git?branch=sync-halo2-lib-
 dependencies = [
  "halo2curves 0.1.0",
  "subtle",
-]
-
-[[package]]
-name = "poseidon-circuit"
-version = "0.1.0"
-source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=scroll-dev-0901#69524f42bdc55c581088c2fe64c2ab9a2921146b"
-dependencies = [
- "bitvec",
- "halo2_proofs 0.2.0 (git+https://github.com/scroll-tech/halo2.git?branch=sync-halo2-lib-0.4.0)",
- "lazy_static",
- "log",
- "rand",
- "rand_xorshift",
- "thiserror",
 ]
 
 [[package]]
@@ -6411,7 +6397,7 @@ dependencies = [
  "num-bigint",
  "once_cell",
  "paste",
- "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=sync-halo2-lib-0.4.0)",
+ "poseidon-circuit",
  "pretty_assertions",
  "rand",
  "rand_chacha",
@@ -6430,7 +6416,7 @@ dependencies = [
 [[package]]
 name = "zktrie"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/zktrie.git?branch=v0.7#a130ea543d291d4b71724f91cb8a49745c593a0c"
+source = "git+https://github.com/scroll-tech/zktrie.git?branch=sync-halo2-lib-0.4.0#684d69ef1886ae8ca9042a7cbc8a8eebc229992d"
 dependencies = [
  "gobuild 0.1.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
