@@ -17,7 +17,7 @@ use eth_types::{Field, Word};
 use gadgets::{
     binary_number::BinaryNumberChip,
     is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
-    util::{not, Expr},
+    util::{not, Expr, or},
 };
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
@@ -47,7 +47,7 @@ use self::copy_gadgets::{
     constrain_address, constrain_bytes_left, constrain_event_rlc_acc, constrain_first_last,
     constrain_forward_parameters, constrain_is_pad, constrain_mask, constrain_masked_value,
     constrain_must_terminate, constrain_non_pad_non_mask, constrain_rw_counter, constrain_tag,
-    constrain_value_rlc, constrain_word_index, constrain_word_rlc,
+    constrain_value_rlc, constrain_word_index, constrain_word_rlc, constrain_id,
 };
 
 /// The current row.
@@ -240,6 +240,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
 
+            constrain_id(cb, meta, is_bytecode, is_tx_log, is_tx_calldata, is_memory, is_pad);
+
             let (is_pad, is_pad_next) = constrain_is_pad(
                 cb,
                 meta,
@@ -354,7 +356,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 meta.query_advice(rw_counter, CURRENT),
                 not::expr(meta.query_selector(q_step)),
                 RwTableTag::Memory.expr(),
-                meta.query_advice(id, CURRENT), // call_id
+                //meta.query_advice(id, CURRENT), // call_id
+                meta.query_advice(id.lo(), Rotation::cur()), // call_id
                 addr_slot,
                 0.expr(),
                 0.expr(),
@@ -381,7 +384,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 meta.query_advice(rw_counter, CURRENT),
                 1.expr(),
                 RwTableTag::TxLog.expr(),
-                meta.query_advice(id, CURRENT), // tx_id
+                //meta.query_advice(id, CURRENT), // tx_id
+                meta.query_advice(id.lo(), CURRENT), // tx_id
                 addr_slot,                      // byte_index || field_tag || log_id
                 0.expr(),
                 0.expr(),
@@ -403,7 +407,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             vec![
                 1.expr(),
-                meta.query_advice(id, CURRENT),
+                meta.query_advice(id.lo(), CURRENT), 
                 BytecodeFieldTag::Byte.expr(),
                 meta.query_advice(addr, CURRENT),
                 meta.query_advice(value, CURRENT),
@@ -421,7 +425,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             vec![
                 1.expr(),
-                meta.query_advice(id, CURRENT),
+                meta.query_advice(id.lo(), CURRENT),
                 TxContextFieldTag::CallData.expr(),
                 meta.query_advice(addr, CURRENT),
                 meta.query_advice(value, CURRENT),
@@ -726,8 +730,14 @@ impl<F: Field> CopyCircuitConfig<F> {
         )?;
         // id
         region.assign_advice(
-            || format!("assign id {}", *offset),
-            self.copy_table.id,
+            || format!("assign id lo {}", *offset),
+            self.copy_table.id.lo(),
+            *offset,
+            || Value::known(F::zero()),
+        )?;
+        region.assign_advice(
+            || format!("assign id hi {}", *offset),
+            self.copy_table.id.hi(),
             *offset,
             || Value::known(F::zero()),
         )?;
