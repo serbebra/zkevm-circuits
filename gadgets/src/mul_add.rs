@@ -416,7 +416,7 @@ impl<F: Field> MulAddChip<F> {
                 || "unused padding row",
                 col,
                 offset + 7,
-                || Value::known(F::zero()),
+                || Value::known(F::ZERO),
             )?;
         }
 
