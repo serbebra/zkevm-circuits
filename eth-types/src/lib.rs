@@ -25,10 +25,7 @@ pub mod sign_types;
 
 pub use bytecode::Bytecode;
 pub use error::Error;
-use halo2_proofs::{
-    arithmetic::{Field as Halo2Field, FieldExt},
-    halo2curves::{bn256::Fr, group::ff::PrimeField},
-};
+use halo2_proofs::halo2curves::{bn256::Fr, group::ff::PrimeField};
 
 use crate::evm_types::{
     memory::Memory, stack::Stack, storage::Storage, Gas, GasCost, OpcodeId, ProgramCounter,
@@ -49,11 +46,7 @@ use std::{collections::HashMap, fmt, str::FromStr};
 /// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
 /// trait and its repr.
 pub trait Field:
-    FieldExt
-    + Halo2Field
-    + PrimeField<Repr = [u8; 32]>
-    + hash_circuit::hash::Hashable
-    + std::convert::From<Fr>
+    PrimeField<Repr = [u8; 32]> + hash_circuit::hash::Hashable + std::convert::From<Fr>
 {
 }
 
