@@ -3,10 +3,10 @@ use crate::{
     circuit_input_builder::{
         CircuitInputStateRef, CopyBytes, CopyDataType, CopyEvent, ExecStep, NumberOrHash,
     },
-    operation::{AccountField, CallContextField, TxAccessListAccountOp},
+    operation::{AccountField, TxAccessListAccountOp},
     Error,
 };
-use eth_types::{Bytecode, GethExecStep, ToAddress, ToWord, H256, U256};
+use eth_types::{Bytecode, GethExecStep, ToAddress, ToWord, H256};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Extcodecopy;
@@ -51,19 +51,7 @@ fn gen_extcodecopy_step(
     state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(2), offset)?;
     state.stack_read(&mut exec_step, geth_step.stack.nth_last_filled(3), length)?;
 
-    for (field, value) in [
-        (CallContextField::TxId, U256::from(state.tx_ctx.id())),
-        (
-            CallContextField::RwCounterEndOfReversion,
-            U256::from(state.call()?.rw_counter_end_of_reversion as u64),
-        ),
-        (
-            CallContextField::IsPersistent,
-            U256::from(state.call()?.is_persistent as u64),
-        ),
-    ] {
-        state.call_context_read(&mut exec_step, state.call()?.call_id, field, value)?;
-    }
+    state.reversion_info_read_current(&mut exec_step, None)?;
 
     let is_warm = state.sdb.check_account_in_access_list(&external_address);
     state.push_op_reversible(

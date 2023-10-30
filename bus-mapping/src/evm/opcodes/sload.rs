@@ -4,7 +4,7 @@ use crate::{
     operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, RW},
     Error,
 };
-use eth_types::{GethExecStep, ToWord, Word};
+use eth_types::{GethExecStep, ToWord};
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::SLOAD`](crate::evm::OpcodeId::SLOAD)
@@ -23,26 +23,7 @@ impl Opcode for Sload {
         let call_id = state.call()?.call_id;
         let contract_addr = state.call()?.address;
 
-        state.call_context_read(
-            &mut exec_step,
-            call_id,
-            CallContextField::TxId,
-            Word::from(state.tx_ctx.id()),
-        )?;
-
-        state.call_context_read(
-            &mut exec_step,
-            call_id,
-            CallContextField::RwCounterEndOfReversion,
-            Word::from(state.call()?.rw_counter_end_of_reversion),
-        )?;
-
-        state.call_context_read(
-            &mut exec_step,
-            call_id,
-            CallContextField::IsPersistent,
-            Word::from(state.call()?.is_persistent as u8),
-        )?;
+        state.reversion_info_read_current(&mut exec_step, None)?;
 
         state.call_context_read(
             &mut exec_step,

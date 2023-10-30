@@ -1,12 +1,10 @@
 use super::Opcode;
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
-    operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, TxRefundOp},
+    operation::{CallContextField, StorageOp, TxAccessListAccountStorageOp, TxRefundOp, RW},
     Error,
 };
-
-use crate::operation::RW;
-use eth_types::{GethExecStep, ToWord, Word};
+use eth_types::{GethExecStep, ToWord};
 
 /// Placeholder structure used to implement [`Opcode`] trait over it
 /// corresponding to the [`OpcodeId::SSTORE`](crate::evm::OpcodeId::SSTORE)
@@ -24,32 +22,7 @@ impl Opcode for Sstore {
 
         let contract_addr = state.call()?.address;
 
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::TxId,
-            Word::from(state.tx_ctx.id()),
-        )?;
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::IsStatic,
-            Word::from(state.call()?.is_static as u8),
-        )?;
-
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::RwCounterEndOfReversion,
-            Word::from(state.call()?.rw_counter_end_of_reversion),
-        )?;
-
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::IsPersistent,
-            Word::from(state.call()?.is_persistent as u8),
-        )?;
+        state.reversion_info_read_current(&mut exec_step, Some(state.call()?.is_static))?;
 
         state.call_context_read(
             &mut exec_step,

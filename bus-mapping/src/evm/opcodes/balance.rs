@@ -4,7 +4,7 @@ use crate::{
     operation::{AccountField, CallContextField, TxAccessListAccountOp},
     Error,
 };
-use eth_types::{GethExecStep, ToAddress, ToWord, H256, U256};
+use eth_types::{GethExecStep, ToAddress, ToWord, H256};
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Balance;
@@ -24,24 +24,7 @@ impl Opcode for Balance {
 
         // Read transaction ID, rw_counter_end_of_reversion, and is_persistent
         // from call context.
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::TxId,
-            U256::from(state.tx_ctx.id()),
-        )?;
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::RwCounterEndOfReversion,
-            U256::from(state.call()?.rw_counter_end_of_reversion as u64),
-        )?;
-        state.call_context_read(
-            &mut exec_step,
-            state.call()?.call_id,
-            CallContextField::IsPersistent,
-            U256::from(state.call()?.is_persistent as u64),
-        )?;
+        state.reversion_info_read_current(&mut exec_step, None)?;
 
         // Update transaction access list for account address.
         let is_warm = state.sdb.check_account_in_access_list(&address);

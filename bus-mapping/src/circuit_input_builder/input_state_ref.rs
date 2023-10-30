@@ -920,6 +920,40 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(address)
     }
 
+    /// Read transaction ID, rw_counter_end_of_reversion, and is_persistent
+    /// from call context.
+    pub(crate) fn reversion_info_read_current(
+        &mut self,
+        step: &mut ExecStep,
+        is_static: Option<bool>,
+    ) -> Result<(), Error> {
+        let (tx_id, call_id, rwc_eor, is_persistent) = {
+            let call = self.call()?;
+            (
+                self.tx_ctx.id().to_word(),
+                call.call_id,
+                call.rw_counter_end_of_reversion.to_word(),
+                call.is_persistent.to_word(),
+            )
+        };
+        self.call_context_read(step, call_id, CallContextField::TxId, tx_id)?;
+        if let Some(is_static) = is_static {
+            self.call_context_read(
+                step,
+                call_id,
+                CallContextField::IsStatic,
+                is_static.to_word(),
+            )?;
+        }
+        for (field, value) in [
+            (CallContextField::RwCounterEndOfReversion, rwc_eor),
+            (CallContextField::IsPersistent, is_persistent),
+        ] {
+            self.call_context_read(step, call_id, field, value)?;
+        }
+        Ok(())
+    }
+
     /// read reversion info
     pub(crate) fn reversion_info_read(
         &mut self,

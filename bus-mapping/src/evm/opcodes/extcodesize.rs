@@ -22,21 +22,7 @@ impl Opcode for Extcodesize {
         let address = address_word.to_address();
         state.stack_read(&mut exec_step, geth_step.stack.last_filled(), address_word)?;
 
-        // Read transaction ID, rw_counter_end_of_reversion, and is_persistent from call
-        // context.
-        for (field, value) in [
-            (CallContextField::TxId, state.tx_ctx.id().to_word()),
-            (
-                CallContextField::RwCounterEndOfReversion,
-                state.call()?.rw_counter_end_of_reversion.to_word(),
-            ),
-            (
-                CallContextField::IsPersistent,
-                state.call()?.is_persistent.to_word(),
-            ),
-        ] {
-            state.call_context_read(&mut exec_step, state.call()?.call_id, field, value)?;
-        }
+        state.reversion_info_read_current(&mut exec_step, None)?;
 
         // Update transaction access list for account address.
         let is_warm = state.sdb.check_account_in_access_list(&address);
