@@ -1,14 +1,7 @@
 use eth_types::Field;
 use halo2_base::{AssignedValue, QuantumCell};
-use halo2_ecc::{
-    bigint::{CRTInteger, ProperCrtUint},
-    ecc::EcPoint,
-    fields::{fp::FpConfig, FieldChip},
-};
-use halo2_proofs::{
-    circuit::Value,
-    halo2curves::secp256k1::{Fp, Fq},
-};
+use halo2_ecc::{bigint::ProperCrtUint, ecc::EcPoint, fields::FieldChip};
+use halo2_proofs::circuit::Value;
 
 // Hard coded parameters.
 // FIXME: allow for a configurable param.
@@ -60,11 +53,6 @@ pub(super) fn calc_required_lookup_advices(num_verif: usize) -> usize {
     panic!("the required lookup advice columns exceeds {LOOKUP_COLUMN_NUM_LIMIT} for {num_verif} signatures");
 }
 
-// /// Chip to handle overflow integers of ECDSA::Fq, the scalar field
-// pub(super) type FqChip<F> = FpConfig<F, Fq>;
-// /// Chip to handle ECDSA::Fp, the base field
-// pub(super) type FpChip<F> = FpConfig<F, Fp>;
-
 pub(crate) struct AssignedECDSA<F: Field, FC: FieldChip<F>> {
     pub(super) pk: EcPoint<F, FC::FieldPoint>,
     pub(super) pk_is_zero: AssignedValue<F>,
@@ -95,5 +83,4 @@ pub(super) struct SignDataDecomposed<F: Field> {
     pub(super) is_address_zero: AssignedValue<F>,
     pub(super) r_cells: Vec<QuantumCell<F>>,
     pub(super) s_cells: Vec<QuantumCell<F>>,
-    //v:  AssignedValue<'v, F>, // bool
 }

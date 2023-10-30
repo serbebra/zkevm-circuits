@@ -50,7 +50,7 @@ mod utils;
 pub(crate) use utils::*;
 
 use halo2_proofs::{
-    circuit::{Layouter, Value},
+    circuit::{Layouter, Region, Value},
     halo2curves::secp256k1::{Fp, Fq, Secp256k1Affine},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
@@ -430,7 +430,8 @@ impl<F: Field> SigCircuit<F> {
     fn enable_keccak_lookup(
         &self,
         config: &SigCircuitConfig<F>,
-        ctx: &mut Context<F>,
+        region: &mut Region<F>,
+        // ctx: &mut Context<F>,
         offset: usize,
         is_address_zero: &AssignedValue<F>,
         pk_rlc: &AssignedValue<F>,
@@ -438,41 +439,52 @@ impl<F: Field> SigCircuit<F> {
     ) -> Result<(), Error> {
         log::trace!("keccak lookup");
 
-        // // Layout:
-        // // | q_keccak |        rlc      |
-        // // | -------- | --------------- |
-        // // |     1    | is_address_zero |
-        // // |          |    pk_rlc       |
-        // // |          |    pk_hash_rlc  |
-        // config.q_keccak.enable(&mut ctx.region, offset)?;
+        // Layout:
+        // | q_keccak |        rlc      |
+        // | -------- | --------------- |
+        // |     1    | is_address_zero |
+        // |          |    pk_rlc       |
+        // |          |    pk_hash_rlc  |
+        config.q_keccak.enable(region, offset)?;
 
-        // // is_address_zero
-        // let tmp_cell = ctx.region.assign_advice(
-        //     || "is_address_zero",
-        //     config.rlc_column,
-        //     offset,
-        //     || is_address_zero.value,
-        // )?;
-        // ctx.region
+        // Layout:
+        // | q_keccak |        rlc      |
+        // | -------- | --------------- |
+        // |     1    | is_address_zero |
+        // |          |    pk_rlc       |
+        // |          |    pk_hash_rlc  |
+        config.q_keccak.enable(region, offset)?;
+
+        // is_address_zero
+        let tmp_cell = region.assign_advice(
+            || "is_address_zero",
+            config.rlc_column,
+            offset,
+            || Value::known(*is_address_zero.value()),
+        )?;
+        // FIXME
+        // region
         //     .constrain_equal(is_address_zero.cell, tmp_cell.cell())?;
 
-        // // pk_rlc
-        // let tmp_cell = ctx.region.assign_advice(
-        //     || "pk_rlc",
-        //     config.rlc_column,
-        //     offset + 1,
-        //     || pk_rlc.value,
-        // )?;
-        // ctx.region.constrain_equal(pk_rlc.cell, tmp_cell.cell())?;
+        // pk_rlc
+        let tmp_cell = region.assign_advice(
+            || "pk_rlc",
+            config.rlc_column,
+            offset + 1,
+            || Value::known(*pk_rlc.value()),
+        )?;
+        // FIXME
+        // region.constrain_equal(pk_rlc.cell, tmp_cell.cell())?;
 
-        // // pk_hash_rlc
-        // let tmp_cell = ctx.region.assign_advice(
-        //     || "pk_hash_rlc",
-        //     config.rlc_column,
-        //     offset + 2,
-        //     || pk_hash_rlc.value,
-        // )?;
-        // ctx.region
+        // pk_hash_rlc
+        let tmp_cell = region.assign_advice(
+            || "pk_hash_rlc",
+            config.rlc_column,
+            offset + 2,
+            || Value::known(*pk_hash_rlc.value()),
+        )?;
+        // FIXME
+        // region
         //     .constrain_equal(pk_hash_rlc.cell, tmp_cell.cell())?;
 
         log::trace!("finished keccak lookup");
@@ -912,53 +924,55 @@ impl<F: Field> SigCircuit<F> {
         byte_repr: &[QuantumCell<F>],
         powers_of_256: &[QuantumCell<F>],
     ) -> Result<(), Error> {
-        // // length of byte representation is 32
-        // assert_eq!(byte_repr.len(), 32);
-        // // need to support decomposition of up to 88 bits
-        // assert!(powers_of_256.len() >= 11);
+        // length of byte representation is 32
+        assert_eq!(byte_repr.len(), 32);
+        // need to support decomposition of up to 88 bits
+        assert!(powers_of_256.len() >= 11);
 
-        // // apply the overriding flag
-        // let limb1_value = crt_int.truncation.limbs[0];
-        // let limb2_value = crt_int.truncation.limbs[1];
-        // let limb3_value = crt_int.truncation.limbs[2];
+        // apply the overriding flag
+        let limbs = crt_int.limbs();
+        let limb1_value = limbs[0];
+        let limb2_value = limbs[1];
+        let limb3_value = limbs[2];
 
-        // // assert the byte_repr is the right decomposition of overflow_int
-        // // overflow_int is an overflowing integer with 3 limbs, of sizes 88, 88, and 80
-        // // we reconstruct the three limbs from the bytes repr, and
-        // // then enforce equality with the CRT integer
-        // let limb1_recover = flex_gate_chip.inner_product(
-        //     ctx,
-        //     byte_repr[0..11].to_vec(),
-        //     powers_of_256[0..11].to_vec(),
-        // );
-        // let limb2_recover = flex_gate_chip.inner_product(
-        //     ctx,
-        //     byte_repr[11..22].to_vec(),
-        //     powers_of_256[0..11].to_vec(),
-        // );
-        // let limb3_recover = flex_gate_chip.inner_product(
-        //     ctx,
-        //     byte_repr[22..].to_vec(),
-        //     powers_of_256[0..10].to_vec(),
-        // );
-        // flex_gate_chip.assert_equal(ctx, &limb1_value, &limb1_recover);
-        // flex_gate_chip.assert_equal(ctx, &limb2_value, &limb2_recover);
-        // flex_gate_chip.assert_equal(ctx, &limb3_value, &limb3_recover);
-        // log::trace!(
-        //     "limb 1 \ninput {:?}\nreconstructed {:?}",
-        //     limb1_value.value(),
-        //     limb1_recover.value()
-        // );
-        // log::trace!(
-        //     "limb 2 \ninput {:?}\nreconstructed {:?}",
-        //     limb2_value.value(),
-        //     limb2_recover.value()
-        // );
-        // log::trace!(
-        //     "limb 3 \ninput {:?}\nreconstructed {:?}",
-        //     limb3_value.value(),
-        //     limb3_recover.value()
-        // );
+        // assert the byte_repr is the right decomposition of overflow_int
+        // overflow_int is an overflowing integer with 3 limbs, of sizes 88, 88, and 80
+        // we reconstruct the three limbs from the bytes repr, and
+        // then enforce equality with the CRT integer
+        let limb1_recover = flex_gate_chip.inner_product(
+            ctx,
+            byte_repr[0..11].to_vec(),
+            powers_of_256[0..11].to_vec(),
+        );
+        let limb2_recover = flex_gate_chip.inner_product(
+            ctx,
+            byte_repr[11..22].to_vec(),
+            powers_of_256[0..11].to_vec(),
+        );
+        let limb3_recover = flex_gate_chip.inner_product(
+            ctx,
+            byte_repr[22..].to_vec(),
+            powers_of_256[0..10].to_vec(),
+        );
+        ctx.constrain_equal(&limb1_value, &limb1_recover);
+        ctx.constrain_equal(&limb2_value, &limb2_recover);
+        ctx.constrain_equal(&limb3_value, &limb3_recover);
+
+        log::trace!(
+            "limb 1 \ninput {:?}\nreconstructed {:?}",
+            limb1_value.value(),
+            limb1_recover.value()
+        );
+        log::trace!(
+            "limb 2 \ninput {:?}\nreconstructed {:?}",
+            limb2_value.value(),
+            limb2_recover.value()
+        );
+        log::trace!(
+            "limb 3 \ninput {:?}\nreconstructed {:?}",
+            limb3_value.value(),
+            limb3_recover.value()
+        );
 
         Ok(())
     }

@@ -3,17 +3,14 @@
 
 use halo2_base::{
     gates::{GateInstructions, RangeInstructions},
-    utils::{fe_to_biguint, modulus, BigPrimeField, CurveAffineExt},
+    utils::{BigPrimeField, CurveAffineExt},
     AssignedValue, Context,
     QuantumCell::{self, Existing},
 };
 use halo2_ecc::{
-    bigint::{big_less_than, CRTInteger, FixedOverflowInteger, ProperCrtUint},
+    bigint::{big_less_than, FixedOverflowInteger, ProperCrtUint},
     ecc::{fixed_base, scalar_multiply, EcPoint, EccChip},
-    fields::{
-        fp::{FpChip, FpConfig},
-        FieldChip, Selectable,
-    },
+    fields::{fp::FpChip, FieldChip, Selectable},
 };
 
 // CF is the coordinate field of GA
@@ -84,16 +81,16 @@ where
     let zero = scalar_chip.load_constant(ctx, SF::ZERO);
     let one = scalar_chip.load_constant(ctx, SF::ONE);
     let base_zero = base_chip.load_constant(ctx, CF::ONE);
-    let point_at_infinity = EcPoint::new(base_zero, base_zero);
+    let point_at_infinity = EcPoint::new(base_zero.clone(), base_zero);
 
     // compute u1 = m * s^{-1} mod n
-    let s_prime = scalar_chip.select(ctx, one, *s, s_is_zero);
+    let s_prime = scalar_chip.select(ctx, one.clone(), s.clone(), s_is_zero);
     let u1 = scalar_chip.divide(ctx, msghash, &s_prime);
-    let u1 = scalar_chip.select(ctx, zero, u1, s_is_zero);
+    let u1 = scalar_chip.select(ctx, zero.clone(), u1, s_is_zero);
 
     // compute u2 = r * s^{-1} mod n
     let u2 = scalar_chip.divide(ctx, r, &s_prime);
-    let u2 = scalar_chip.select(ctx, zero, u2, s_is_zero);
+    let u2 = scalar_chip.select(ctx, zero.clone(), u2, s_is_zero);
 
     // we want to compute u1*G + u2*PK, there are two edge cases
     // 1. either u1 or u2 is 0; we use binary selections to handle the this case
@@ -103,7 +100,7 @@ where
     // case 1:
     // =================================
     let u1_is_zero = scalar_chip.is_zero(ctx, &u1);
-    let u1_prime = scalar_chip.select(ctx, one, u1, u1_is_zero);
+    let u1_prime = scalar_chip.select(ctx, one.clone(), u1.clone(), u1_is_zero);
     let u1_mul = fixed_base::scalar_multiply::<F, _, GA>(
         base_chip,
         ctx,
@@ -112,12 +109,12 @@ where
         base_chip.limb_bits,
         fixed_window_bits,
     );
-    let u1_mul = chip.select(ctx, point_at_infinity, u1_mul, u1_is_zero);
+    let u1_mul = chip.select(ctx, point_at_infinity.clone(), u1_mul, u1_is_zero);
 
     // compute u2 * pubkey
-    let u2_prime = scalar_chip.select(ctx, one, u2, s_is_zero);
+    let u2_prime = scalar_chip.select(ctx, one.clone(), u2.clone(), s_is_zero);
     let pubkey_prime = chip.load_random_point::<GA>(ctx);
-    let pubkey_prime = chip.select(ctx, pubkey_prime, *pubkey, is_pubkey_zero);
+    let pubkey_prime = chip.select(ctx, pubkey_prime, pubkey.clone(), is_pubkey_zero);
     let u2_mul = scalar_multiply::<F, _, GA>(
         base_chip,
         ctx,
@@ -148,7 +145,7 @@ where
             .and(ctx, Existing(u1_is_zero), Existing(u2_is_zero));
     let u1_u2_x_eq = base_chip.is_equal(ctx, u1_mul.x(), u2_mul.x());
     let u1_u2_y_neg = {
-        let u2_y_neg = base_chip.negate(ctx, *u2_mul.y());
+        let u2_y_neg = base_chip.negate(ctx, u2_mul.y().clone());
         base_chip.is_equal(ctx, u1_mul.y(), &u2_y_neg)
     };
     let sum_is_infinity = base_chip.range().gate().or_and(
@@ -176,7 +173,7 @@ where
             let a_val = base_chip.get_assigned_value(&dy);
             let b_val = base_chip.get_assigned_value(&dx);
             let b_inv = b_val.invert().unwrap_or(CF::ZERO);
-            let quot_val = a_val * b_val;
+            let quot_val = a_val * b_inv;
             let quot = base_chip.load_private(ctx, quot_val);
             // constrain quot * b - a = 0 mod p
             let quot_b = base_chip.mul_no_carry(ctx, &quot, &dx);
@@ -194,11 +191,11 @@ where
         let y_3 = base_chip.carry_mod(ctx, y_3_no_carry);
 
         // edge cases
-        let x_3 = base_chip.select(ctx, *u2_mul.x(), x_3, u1_is_zero);
-        let x_3 = base_chip.select(ctx, *u1_mul.x(), x_3, u2_is_zero);
-        let x_3 = base_chip.select(ctx, zero, x_3, sum_is_infinity);
-        let y_3 = base_chip.select(ctx, *u2_mul.y(), y_3, u1_is_zero);
-        let y_3 = base_chip.select(ctx, *u1_mul.y(), y_3, u2_is_zero);
+        let x_3 = base_chip.select(ctx, u2_mul.x().clone(), x_3, u1_is_zero);
+        let x_3 = base_chip.select(ctx, u1_mul.x().clone(), x_3, u2_is_zero);
+        let x_3 = base_chip.select(ctx, zero.clone(), x_3, sum_is_infinity);
+        let y_3 = base_chip.select(ctx, u2_mul.y().clone(), y_3, u1_is_zero);
+        let y_3 = base_chip.select(ctx, u1_mul.y().clone(), y_3, u2_is_zero);
         let y_3 = base_chip.select(ctx, zero, y_3, sum_is_infinity);
 
         (x_3, y_3)
