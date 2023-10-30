@@ -177,6 +177,7 @@ mod tests {
             // commitment which will be provided as public inputs.
             type Config = (WordConfig<F>, Column<Instance>);
             type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
 
             fn without_witnesses(&self) -> Self {
                 Self::default()
