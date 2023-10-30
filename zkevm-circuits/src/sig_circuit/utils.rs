@@ -1,7 +1,7 @@
 use eth_types::Field;
 use halo2_base::{AssignedValue, QuantumCell};
 use halo2_ecc::{
-    bigint::CRTInteger,
+    bigint::{CRTInteger, ProperCrtUint},
     ecc::EcPoint,
     fields::{fp::FpConfig, FieldChip},
 };
@@ -60,17 +60,17 @@ pub(super) fn calc_required_lookup_advices(num_verif: usize) -> usize {
     panic!("the required lookup advice columns exceeds {LOOKUP_COLUMN_NUM_LIMIT} for {num_verif} signatures");
 }
 
-/// Chip to handle overflow integers of ECDSA::Fq, the scalar field
-pub(super) type FqChip<F> = FpConfig<F, Fq>;
-/// Chip to handle ECDSA::Fp, the base field
-pub(super) type FpChip<F> = FpConfig<F, Fp>;
+// /// Chip to handle overflow integers of ECDSA::Fq, the scalar field
+// pub(super) type FqChip<F> = FpConfig<F, Fq>;
+// /// Chip to handle ECDSA::Fp, the base field
+// pub(super) type FpChip<F> = FpConfig<F, Fp>;
 
 pub(crate) struct AssignedECDSA<F: Field, FC: FieldChip<F>> {
     pub(super) pk: EcPoint<F, FC::FieldPoint>,
     pub(super) pk_is_zero: AssignedValue<F>,
-    pub(super) msg_hash: CRTInteger<F>,
-    pub(super) integer_r: CRTInteger<F>,
-    pub(super) integer_s: CRTInteger<F>,
+    pub(super) msg_hash: ProperCrtUint<F>,
+    pub(super) integer_r: ProperCrtUint<F>,
+    pub(super) integer_s: ProperCrtUint<F>,
     pub(super) v: AssignedValue<F>,
     pub(super) sig_is_valid: AssignedValue<F>,
 }

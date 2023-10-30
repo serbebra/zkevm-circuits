@@ -34,7 +34,7 @@ pub mod mpt_circuit;
 pub mod pi_circuit;
 pub mod poseidon_circuit;
 pub mod rlp_circuit_fsm;
-// pub mod sig_circuit;
+pub mod sig_circuit;
 // we don't use this for aggregation
 //pub mod root_circuit;
 pub mod modexp_circuit;
