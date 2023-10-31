@@ -2,7 +2,7 @@ use super::Opcode;
 use crate::{
     circuit_input_builder::CircuitInputStateRef,
     evm::opcodes::ExecStep,
-    operation::{AccountField, CallContextField, TxAccessListAccountOp},
+    operation::{AccountField, TxAccessListAccountOp},
     Error,
 };
 use eth_types::{GethExecStep, ToAddress, ToWord, H256};
@@ -77,7 +77,7 @@ mod extcodehash_tests {
     use crate::{
         circuit_input_builder::ExecState,
         mock::BlockData,
-        operation::{AccountOp, CallContextOp, StackOp, RW},
+        operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
     };
     use eth_types::{
         address, bytecode,

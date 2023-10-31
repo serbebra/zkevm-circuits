@@ -1,7 +1,7 @@
 use crate::{
     circuit_input_builder::{CircuitInputStateRef, ExecStep},
     evm::Opcode,
-    operation::{AccountField, CallContextField, TxAccessListAccountOp},
+    operation::{AccountField, TxAccessListAccountOp},
     Error,
 };
 use eth_types::{GethExecStep, ToAddress, ToWord, H256};
@@ -75,7 +75,7 @@ mod balance_tests {
     use crate::{
         circuit_input_builder::ExecState,
         mock::BlockData,
-        operation::{AccountOp, CallContextOp, StackOp, RW},
+        operation::{AccountOp, CallContextField, CallContextOp, StackOp, RW},
         state_db::CodeDB,
     };
     use eth_types::{
