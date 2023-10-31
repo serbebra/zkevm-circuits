@@ -584,7 +584,7 @@ pub(crate) struct Step<F> {
     pub(crate) cell_manager: CellManager<F>,
 }
 
-impl<F: FieldExt> Step<F> {
+impl<F: Field> Step<F> {
     pub(crate) fn new(
         meta: &mut ConstraintSystem<F>,
         advices: [Column<Advice>; STEP_WIDTH],
@@ -671,9 +671,10 @@ impl<F: FieldExt> Step<F> {
         self.state
             .block_number
             .assign(region, offset, Value::known(F::from(step.block_num)))?;
+
         self.state
             .code_hash
-            .assign_u256(region, offset, call.code_hash)?;
+            .assign_u256(region, offset, call.code_hash.to_word())?;
         self.state.program_counter.assign(
             region,
             offset,

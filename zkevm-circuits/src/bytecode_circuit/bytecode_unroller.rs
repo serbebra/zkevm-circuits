@@ -31,11 +31,16 @@ pub struct UnrolledBytecode<F: Field> {
 /// Get unrolled bytecode from raw bytes
 pub fn unroll<F: Field>(bytes: Vec<u8>) -> UnrolledBytecode<F> {
     let code_hash = CodeDB::hash(&bytes[..]);
-    unroll_with_codehash(code_hash.to_word(), bytes)
+    let code_hash_word = Word::from(code_hash.to_word()).map(Value::known);
+
+    unroll_with_codehash(code_hash_word, bytes)
 }
 
 /// Get unrolled bytecode from raw bytes and codehash
-pub fn unroll_with_codehash<F: Field>(code_hash: U256, bytes: Vec<u8>) -> UnrolledBytecode<F> {
+pub fn unroll_with_codehash<F: Field>(
+    code_hash: Word<Value<F>>,
+    bytes: Vec<u8>,
+) -> UnrolledBytecode<F> {
     let mut rows = vec![BytecodeRow::<F> {
         code_hash,
         tag: F::from(BytecodeFieldTag::Header as u64),

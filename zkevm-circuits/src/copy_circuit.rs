@@ -17,7 +17,7 @@ use eth_types::{Field, Word};
 use gadgets::{
     binary_number::BinaryNumberChip,
     is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
-    util::{not, Expr, or},
+    util::{not, or, Expr},
 };
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
@@ -45,9 +45,10 @@ use crate::{
 
 use self::copy_gadgets::{
     constrain_address, constrain_bytes_left, constrain_event_rlc_acc, constrain_first_last,
-    constrain_forward_parameters, constrain_is_pad, constrain_mask, constrain_masked_value,
-    constrain_must_terminate, constrain_non_pad_non_mask, constrain_rw_counter, constrain_tag,
-    constrain_value_rlc, constrain_word_index, constrain_word_rlc, constrain_id,
+    constrain_forward_parameters, constrain_id, constrain_is_pad, constrain_mask,
+    constrain_masked_value, constrain_must_terminate, constrain_non_pad_non_mask,
+    constrain_rw_counter, constrain_tag, constrain_value_rlc, constrain_word_index,
+    constrain_word_rlc,
 };
 
 /// The current row.
@@ -232,6 +233,17 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             // Detect the rows which process the last byte of a word. The next word starts at
             // NEXT_STEP.
             let is_word_end = is_word_end.expr();
+
+            constrain_id(
+                cb,
+                meta,
+                is_bytecode,
+                is_tx_log,
+                is_tx_calldata,
+                is_memory,
+                is_pad,
+            );
+
             let is_tx_log = meta.query_advice(is_tx_log, CURRENT);
 
             constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
@@ -239,8 +251,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             constrain_must_terminate(cb, meta, q_enable, &tag);
 
             constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
-
-            constrain_id(cb, meta, is_bytecode, is_tx_log, is_tx_calldata, is_memory, is_pad);
 
             let (is_pad, is_pad_next) = constrain_is_pad(
                 cb,
@@ -386,7 +396,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 RwTableTag::TxLog.expr(),
                 //meta.query_advice(id, CURRENT), // tx_id
                 meta.query_advice(id.lo(), CURRENT), // tx_id
-                addr_slot,                      // byte_index || field_tag || log_id
+                addr_slot,                           // byte_index || field_tag || log_id
                 0.expr(),
                 0.expr(),
                 meta.query_advice(value_word_rlc, CURRENT),
@@ -407,7 +417,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             vec![
                 1.expr(),
-                meta.query_advice(id.lo(), CURRENT), 
+                meta.query_advice(id.lo(), CURRENT),
                 BytecodeFieldTag::Byte.expr(),
                 meta.query_advice(addr, CURRENT),
                 meta.query_advice(value, CURRENT),

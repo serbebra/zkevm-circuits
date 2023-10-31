@@ -1353,7 +1353,8 @@ pub struct KeccakTable {
     /// Byte array input length
     pub input_len: Column<Advice>,
     /// RLC of the hash result
-    // pub output_rlc: Column<Advice>, // RLC of hash of input bytes
+    pub output_rlc: Column<Advice>, // RLC of hash of input bytes
+    // TODO: finally remove output_rlc and use Word hi lo
     pub output: word::Word<Column<Advice>>,
 }
 
@@ -1364,6 +1365,7 @@ impl<F: Field> LookupTable<F> for KeccakTable {
             self.is_final.into(),
             self.input_rlc.into(),
             self.input_len.into(),
+            self.output_rlc.into(),
             self.output.lo().into(),
             self.output.hi().into(),
         ]
@@ -1375,6 +1377,7 @@ impl<F: Field> LookupTable<F> for KeccakTable {
             String::from("is_final"),
             String::from("input_rlc"),
             String::from("input_len"),
+            String::from("output_rlc"),
             String::from("output_lo"),
             String::from("output_hi"),
         ]
@@ -1389,6 +1392,7 @@ impl KeccakTable {
             is_final: meta.advice_column(),
             input_rlc: meta.advice_column_in(SecondPhase),
             input_len: meta.advice_column(),
+            output_rlc: meta.advice_column_in(SecondPhase),
             output: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
@@ -1404,18 +1408,23 @@ impl KeccakTable {
             .map(|challenge| rlc::value(input.iter().rev(), challenge));
         let input_len = F::from(input.len() as u64);
         let mut keccak = Keccak::default();
-        //keccak.update(input);
+        keccak.update(input);
+        let output = keccak.digest();
+        let output_word = Word::from_big_endian(output.as_slice());
+        let output_bytes = output_word.to_le_bytes();
+        let output_rlc = challenges
+            .evm_word()
+            .map(|challenge| rlc::value(&output_bytes, challenge));
 
-        let output = word::Word::from(keccak(input));
-        // let output = word::Word::from(keccak.digest());
+        let output_hi_lo = word::Word::from(output_word);
 
         vec![[
             Value::known(F::one()),
             input_rlc,
             Value::known(input_len),
-            Value::known(input_len),
-            Value::known(output.lo()),
-            Value::known(output.hi()),
+            output_rlc,
+            Value::known(output_hi_lo.lo()),
+            Value::known(output_hi_lo.hi()),
         ]]
     }
 
@@ -1501,13 +1510,15 @@ impl KeccakTable {
         &self,
         value_rlc: Column<Advice>,
         length: Column<Advice>,
-        code_hash: word::Word<Column<Advice>>,
+        //code_hash: Column<Advice>,
+        code_hash_word: word::Word<Column<Advice>>,
     ) -> Vec<(Column<Advice>, Column<Advice>)> {
         vec![
             (value_rlc, self.input_rlc),
             (length, self.input_len),
-            (code_hash.lo(), self.output.lo()),
-            (code_hash.hi(), self.output.hi()),
+            //(code_hash, self.output),
+            (code_hash_word.lo(), self.output.lo()),
+            (code_hash_word.hi(), self.output.hi()),
         ]
     }
 }
@@ -1523,9 +1534,9 @@ pub struct CopyTable {
     /// The relevant ID for the read-write row, represented as a random linear
     /// combination. The ID may be one of the below:
     /// 1. Call ID/Caller ID for CopyDataType::Memory
-    /// 2. RLC encoding of bytecode hash for CopyDataType::Bytecode
+    /// 2. The hi/lo limbs of bytecode hash for CopyDataType::Bytecode
     /// 3. Transaction ID for CopyDataType::TxCalldata, CopyDataType::TxLog
-    pub id: Column<Advice>,
+    pub id: word::Word<Column<Advice>>,
     /// The source/destination address for this copy step.  Can be memory
     /// address, byte index in the bytecode, tx call data, and tx log data.
     pub addr: Column<Advice>,
@@ -1576,7 +1587,8 @@ impl CopyTable {
         Self {
             q_enable,
             is_first: meta.advice_column(),
-            id: meta.advice_column_in(SecondPhase),
+            // id: meta.advice_column_in(SecondPhase),
+            id: word::Word::new([meta.advice_column(), meta.advice_column()]),
             tag: BinaryNumberChip::configure(meta, q_enable, None),
             addr: meta.advice_column(),
             src_addr_end: meta.advice_column(),
@@ -1834,7 +1846,9 @@ impl<F: Field> LookupTable<F> for CopyTable {
         vec![
             self.q_enable.into(),
             self.is_first.into(),
-            self.id.into(),
+            //self.id.into(),
+            self.id.lo().into(),
+            self.id.hi().into(),
             self.addr.into(),
             self.src_addr_end.into(),
             self.real_bytes_left.into(),
@@ -1848,7 +1862,9 @@ impl<F: Field> LookupTable<F> for CopyTable {
         vec![
             String::from("q_enable"),
             String::from("is_first"),
-            String::from("id"),
+            //String::from("id"),
+            String::from("id_lo"),
+            String::from("id_hi"),
             String::from("addr"),
             String::from("src_addr_end"),
             String::from("real_bytes_left"),
@@ -1862,15 +1878,19 @@ impl<F: Field> LookupTable<F> for CopyTable {
         vec![
             meta.query_fixed(self.q_enable, Rotation::cur()),
             meta.query_advice(self.is_first, Rotation::cur()),
-            meta.query_advice(self.id, Rotation::cur()), // src_id
-            self.tag.value(Rotation::cur())(meta),       // src_tag
-            meta.query_advice(self.id, Rotation::next()), // dst_id
-            self.tag.value(Rotation::next())(meta),      // dst_tag
-            meta.query_advice(self.addr, Rotation::cur()), // src_addr
+            //meta.query_advice(self.id, Rotation::cur()), // src_id
+            meta.query_advice(self.id.lo(), Rotation::cur()), // src_id
+            meta.query_advice(self.id.hi(), Rotation::cur()), // src_id
+            self.tag.value(Rotation::cur())(meta),            // src_tag
+            //meta.query_advice(self.id, Rotation::next()), // dst_id
+            meta.query_advice(self.id.lo(), Rotation::next()), // dst_id
+            meta.query_advice(self.id.hi(), Rotation::next()), // dst_id
+            self.tag.value(Rotation::next())(meta),            // dst_tag
+            meta.query_advice(self.addr, Rotation::cur()),     // src_addr
             meta.query_advice(self.src_addr_end, Rotation::cur()), // src_addr_end
-            meta.query_advice(self.addr, Rotation::next()), // dst_addr
+            meta.query_advice(self.addr, Rotation::next()),    // dst_addr
             meta.query_advice(self.real_bytes_left, Rotation::cur()), // real_length
-            meta.query_advice(self.rlc_acc, Rotation::cur()), // rlc_acc
+            meta.query_advice(self.rlc_acc, Rotation::cur()),  // rlc_acc
             meta.query_advice(self.rw_counter, Rotation::cur()), // rw_counter
             meta.query_advice(self.rwc_inc_left, Rotation::cur()), // rwc_inc_left
         ]

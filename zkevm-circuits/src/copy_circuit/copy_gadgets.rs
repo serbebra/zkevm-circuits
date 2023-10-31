@@ -4,12 +4,14 @@ use eth_types::Field;
 use gadgets::{
     binary_number::BinaryNumberConfig,
     is_equal::IsEqualConfig,
-    util::{and, not, select, sum, Expr, or},
+    util::{and, not, or, select, sum, Expr},
 };
 use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Expression, Fixed, VirtualCells};
 
-use crate::evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon};
-use crate::util::word;
+use crate::{
+    evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    util::word,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub fn constrain_tag<F: Field>(
@@ -480,16 +482,15 @@ pub fn constrain_address<F: Field>(
     });
 }
 
-
 /// constrain id(src_id, dest_id). id_hi = 0
 pub fn constrain_id<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
-    is_bytecode: Column<Advice>, 
-    is_tx_log: Column<Advice>, 
+    is_bytecode: Column<Advice>,
+    is_tx_log: Column<Advice>,
     is_tx_calldata: Column<Advice>,
     is_memory: Column<Advice>,
-    is_pad: Column<Advice>, 
+    is_pad: Column<Advice>,
 ) {
     let cond = or::expr([
         meta.query_advice(is_bytecode, CURRENT),
