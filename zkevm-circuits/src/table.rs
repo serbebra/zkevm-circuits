@@ -804,7 +804,7 @@ impl MptTable {
         )?;
         let mpt_table_columns = <MptTable as LookupTable<F>>::advice_columns(self);
         for (column, value) in mpt_table_columns.iter().zip_eq(row.values()) {
-            region.assign_advice(|| "assign mpt table row value", *column, offset, || *value)?;
+            region.assign_advice(|| "assign mpt table row value", *column, offset, || value)?;
         }
         Ok(())
     }
@@ -818,7 +818,7 @@ impl MptTable {
     ) -> Result<(), Error> {
         layouter.assign_region(
             || "mpt table zkevm",
-            |mut region| self.load_with_region(&mut region, updates, max_mpt_rows, randomness),
+            |mut region| self.load_with_region(&mut region, updates, max_mpt_rows),
         )
     }
 
@@ -827,9 +827,9 @@ impl MptTable {
         region: &mut Region<'_, F>,
         updates: &MptUpdates,
         max_mpt_rows: usize,
-        randomness: Value<F>,
+        //randomness: Value<F>,
     ) -> Result<(), Error> {
-        let mpt_update_rows = updates.table_assignments(randomness);
+        let mpt_update_rows = updates.table_assignments();
         for (offset, row) in mpt_update_rows
             .into_iter()
             .chain(repeat(MptUpdateRow::padding()))

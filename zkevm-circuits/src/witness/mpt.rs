@@ -339,7 +339,7 @@ impl MptUpdates {
                 MptUpdateRow {
                     address: Value::known(update.key.address().to_scalar().unwrap()),
                     storage_key: word::Word::<F>::from(update.key.storage_key()).into_value(),
-                    proof_type: Value::known(update.proof_type()),
+                    proof_type: Value::known(F::from(update.proof_type() as u64)),
                     new_root: word::Word::<F>::from(new_root).into_value(),
                     old_root: word::Word::<F>::from(old_root).into_value(),
                     new_value: word::Word::<F>::from(new_value).into_value(),
@@ -372,22 +372,24 @@ impl MptUpdate {
         (self.new_root, self.old_root)
     }
 
-    pub(crate) fn table_assignments<F: Field>(
-        &self,
-        //randomness: Value<F>,
-    ) -> MptUpdateRow<Value<F>> {
-        let (new_root, old_root) = update.root_assignments();
-        let (new_value, old_value) = update.value_assignments();
-        MptUpdateRow {
-            address: Value::known(update.key.address().to_scalar().unwrap()),
-            storage_key: word::Word::<F>::from(update.key.storage_key()).into_value(),
-            proof_type: Value::known(update.proof_type()),
-            new_root: word::Word::<F>::from(new_root).into_value(),
-            old_root: word::Word::<F>::from(old_root).into_value(),
-            new_value: word::Word::<F>::from(new_value).into_value(),
-            old_value: word::Word::<F>::from(old_value).into_value(),
-        }
-    }
+    // pub(crate) fn table_assignments<F: Field>(
+    //     &self,
+    //     //randomness: Value<F>,
+    // ) -> MptUpdateRow<Value<F>> {
+
+    //     let (new_root, old_root) = update.root_assignments();
+    //     let (new_value, old_value) = update.value_assignments();
+    //     MptUpdateRow {
+    //         address: Value::known(update.key.address().to_scalar().unwrap()),
+    //         storage_key: word::Word::<F>::from(update.key.storage_key()).into_value(),
+    //         proof_type: Value::known(update.proof_type()),
+    //         new_root: word::Word::<F>::from(new_root).into_value(),
+    //         old_root: word::Word::<F>::from(old_root).into_value(),
+    //         new_value: word::Word::<F>::from(new_value).into_value(),
+    //         old_value: word::Word::<F>::from(old_value).into_value(),
+    //     }
+    // }
+
     fn proof_type(&self) -> MPTProofType {
         match self.key {
             Key::AccountStorage { .. } => {
@@ -475,15 +477,36 @@ impl Key {
 impl<F: Field> MptUpdateRow<Value<F>> {
     /// Corresponds to the padding row the mpt circuit uses to fill its columns.
     pub fn padding() -> Self {
-        let mut values = [F::zero(); 7];
-        values[2] = F::from(MPTProofType::AccountDoesNotExist as u64);
-        Self(values.map(Value::known))
+        let default_word = word::Word::default();
+        let proof_type = F::from(MPTProofType::AccountDoesNotExist as u64);
+        Self {
+            address: Value::known(F::zero()),
+            storage_key: default_word,
+            proof_type: Value::known(proof_type),
+            new_root: default_word,
+            old_root: default_word,
+            new_value: default_word,
+            old_value: default_word,
+        }
     }
 
     /// The individual values of the row, in the column order used by the
     /// MptTable
-    pub fn values(&self) -> impl Iterator<Item = &Value<F>> {
-        self.0.iter()
+    pub fn values(&self) -> [Value<F>; 12] {
+        [
+            self.address.clone(),
+            self.storage_key.lo(),
+            self.storage_key.hi(),
+            self.proof_type.clone(),
+            self.new_root.lo(),
+            self.new_root.hi(),
+            self.old_root.lo(),
+            self.old_root.hi(),
+            self.new_value.lo(),
+            self.new_value.hi(),
+            self.old_value.lo(),
+            self.old_value.hi(),
+        ]
     }
 }
 

@@ -1539,7 +1539,7 @@ impl<F: Field> PiCircuit<F> {
     pub fn connect_export(
         &self,
         layouter: &mut impl Layouter<F>,
-        state_roots: Option<&StateCircuitExports<Assigned<F>, F>>,
+        state_roots: Option<&StateCircuitExports<Assigned<F>>>,
         withdraw_roots: Option<&EvmCircuitExports<Assigned<F>>>,
     ) -> Result<(), Error> {
         let local_conn = self

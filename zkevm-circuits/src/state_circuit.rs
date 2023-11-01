@@ -96,11 +96,14 @@ pub struct StateCircuitConfigArgs<F: Field> {
 
 /// Circuit exported cells after synthesis, used for subcircuit
 #[derive(Clone, Debug)]
-pub struct StateCircuitExports<V, F> {
+//pub struct StateCircuitExports<V, F> {
+pub struct StateCircuitExports<V> {
     /// start state root
-    pub start_state_root: (word::WordCell<F>, word::Word<Value<V>>),
+    //pub start_state_root: (Cell, Value<V>),
+    pub start_state_root: (word::Word<Cell>, word::Word<Value<V>>),
     /// final state root
-    pub end_state_root: (word::WordCell<F>, word::Word<Value<V>>),
+    //pub end_state_root: (Cell, Value<V>),
+    pub end_state_root: (word::Word<Cell>, word::Word<Value<V>>),
 }
 
 impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
@@ -247,7 +250,7 @@ impl<F: Field> StateCircuitConfig<F> {
         updates: &MptUpdates,
         n_rows: usize, /* 0 means dynamically calculated from `rows`.
                         * randomness: Value<F>, */
-    ) -> Result<StateCircuitExports<Assigned<F>, F>, Error> {
+    ) -> Result<StateCircuitExports<Assigned<F>>, Error> {
         let tag_chip = BinaryNumberChip::construct(self.sort_keys.tag);
 
         let (rows, padding_length) = RwMap::table_assignments_prepad(rows, n_rows);
@@ -264,8 +267,10 @@ impl<F: Field> StateCircuitConfig<F> {
         // randomness));
         let mut state_root = updates.old_root();
 
-        let mut start_state_root: Option<word::Word<AssignedCell<_, F>>> = None;
-        let mut end_state_root: Option<word::Word<AssignedCell<_, F>>> = None;
+        let mut start_state_root: Option<word::Word<AssignedCell<F, F>>> = None;
+        let mut end_state_root: Option<word::Word<AssignedCell<F, F>>> = None;
+        //let mut start_state_root: Option<AssignedCell<_, F>> = None;
+        //let mut end_state_root: Option<AssignedCell<_, F>> = None;
         // annotate columns
         self.annotate_circuit_in_region(region);
 
@@ -442,14 +447,26 @@ impl<F: Field> StateCircuitConfig<F> {
         let start_state_root = start_state_root.expect("should be assigned");
         let end_state_root = end_state_root.expect("should be assigned");
 
+        // Ok(StateCircuitExports {
+        //     start_state_root: (start_state_root.cell(), start_state_root.value_field()),
+        //     end_state_root: (end_state_root.cell(), end_state_root.value_field()),
+
         Ok(StateCircuitExports {
             start_state_root: (
-                word::WordCell::from(start_state_root.to_lo_hi()),
-                start_state_root.into_value(),
+                //start_state_root,
+                word::Word::new([start_state_root.hi().cell(), start_state_root.lo().cell()]),
+                word::Word::new([
+                    start_state_root.hi().value_field(),
+                    start_state_root.lo().value_field(),
+                ]),
+                //start_state_root.into_value(),
             ),
             end_state_root: (
-                word::WordCell::from(end_state_root.to_lo_hi()),
-                end_state_root.into_value(),
+                word::Word::new([end_state_root.hi().cell(), end_state_root.lo().cell()]),
+                word::Word::new([
+                    end_state_root.hi().value_field(),
+                    end_state_root.lo().value_field(),
+                ]),
             ),
         })
     }
@@ -609,7 +626,7 @@ impl<F: Field> StateCircuitConfig<F> {
         is_first_access_vec: &[bool],
         updates: &MptUpdates,
         randomness: Value<F>,
-    ) -> Result<StateCircuitExports<Assigned<F>, F>, Error> {
+    ) -> Result<StateCircuitExports<Assigned<F>>, Error> {
         let rows_len = rows.len();
 
         // let mut state_root =
@@ -632,7 +649,8 @@ impl<F: Field> StateCircuitConfig<F> {
 
                 if *is_first_access {
                     // If previous row was a last access, we need to update the state root.
-                    let (new_root, old_root) = updates.root_assignments();
+                    // let (new_root, old_root) = updates.root_assignments();
+                    let (new_root, old_root) = (updates.new_root(), updates.old_root());
                     assert_eq!(state_root, old_root);
                     state_root = new_root;
                     if matches!(row.tag(), RwTableTag::CallContext) && !row.is_write() {
@@ -677,12 +695,18 @@ impl<F: Field> StateCircuitConfig<F> {
 
         Ok(StateCircuitExports {
             start_state_root: (
-                word::WordCell::from(start_state_root.to_lo_hi()),
-                start_state_root.into_value(),
+                word::Word::new([start_state_root.hi().cell(), start_state_root.lo().cell()]),
+                word::Word::new([
+                    start_state_root.hi().value_field(),
+                    start_state_root.lo().value_field(),
+                ]),
             ),
             end_state_root: (
-                word::WordCell::from(end_state_root.to_lo_hi()),
-                end_state_root.into_value(),
+                word::Word::new([start_state_root.hi().cell(), start_state_root.lo().cell()]),
+                word::Word::new([
+                    end_state_root.hi().value_field(),
+                    end_state_root.lo().value_field(),
+                ]),
             ),
         })
     }
@@ -700,7 +724,7 @@ impl<F: Field> StateCircuitConfig<F> {
             (dev::AdviceColumn, isize),
             F,
         >,
-        circuit_exports: &std::cell::RefCell<Option<StateCircuitExports<Assigned<F>, F>>>,
+        circuit_exports: &std::cell::RefCell<Option<StateCircuitExports<Assigned<F>>>>,
     ) -> Result<(), Error> {
         let (rows, padding_length) = RwMap::table_assignments_prepad(rows, n_rows);
         let rows_len = rows.len();
@@ -772,13 +796,20 @@ impl<F: Field> StateCircuitConfig<F> {
                     move |mut region: Region<'_, F>| {
                         if *is_first_time {
                             *is_first_time = false;
-                            region.assign_advice(
+                            word::Word::default().into_value().assign_advice(
+                                &mut region,
                                 || "initial_value",
-                                column,
-                                // indices won't be empty
+                                self.initial_value,
                                 indices.len() - 1,
-                                || Value::known(F::zero()),
                             )?;
+
+                            // region.assign_advice(
+                            //     || "initial_value",
+                            //     column,
+                            //     // indices won't be empty
+                            //     indices.len() - 1,
+                            //     || Value::known(F::zero()),
+                            // )?;
                             return Ok(vec![]);
                         }
 
@@ -900,7 +931,7 @@ pub struct StateCircuit<F> {
     pub rows: Vec<Rw>,
     pub(crate) updates: MptUpdates,
     pub(crate) n_rows: usize,
-    pub(crate) exports: std::cell::RefCell<Option<StateCircuitExports<Assigned<F>, F>>>,
+    pub(crate) exports: std::cell::RefCell<Option<StateCircuitExports<Assigned<F>>>>,
     #[cfg(any(feature = "test", test, feature = "test-circuits"))]
     overrides: HashMap<(dev::AdviceColumn, isize), F>,
     _marker: PhantomData<F>,
