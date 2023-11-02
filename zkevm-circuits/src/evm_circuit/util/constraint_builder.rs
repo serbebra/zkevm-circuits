@@ -1754,8 +1754,32 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                             if expr.degree() > max_degree {
                                 self.split_expression(name, expr, max_degree)
                             } else {
-                                let cell_type = CellType::storage_for_expr(&expr);
-                                self.store_expression(name, expr, cell_type)
+                                let exclude_next_slot = true;
+                                if exclude_next_slot {
+                                    match expr.expr() {
+                                        Expression::Sum(lhs, rhs) => {
+                                            if lhs.degree() == 1 {
+                                                let cell_type = CellType::storage_for_expr(&rhs);
+                                                let rhs = self.store_expression(
+                                                    name,
+                                                    rhs.expr(),
+                                                    cell_type,
+                                                );
+                                                lhs.expr() + rhs
+                                            } else {
+                                                let cell_type = CellType::storage_for_expr(&expr);
+                                                self.store_expression(name, expr, cell_type)
+                                            }
+                                        }
+                                        _ => {
+                                            let cell_type = CellType::storage_for_expr(&expr);
+                                            self.store_expression(name, expr, cell_type)
+                                        }
+                                    }
+                                } else {
+                                    let cell_type = CellType::storage_for_expr(&expr);
+                                    self.store_expression(name, expr, cell_type)
+                                }
                             }
                         };
                         if a.degree() >= b.degree() {
