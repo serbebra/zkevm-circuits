@@ -577,7 +577,7 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
             .as_ref()
             .either(|gadget| gadget.expr(), |expr| expr.clone());
         let sender_sub_fee =
-            UpdateBalanceGadget::construct(cb, sender_address, vec![gas_fee], None);
+            UpdateBalanceGadget::construct(cb, sender_address.clone(), vec![gas_fee], None);
         let sender_sub_value = cb.condition(not::expr(value_is_zero_expr), |cb| {
             UpdateBalanceGadget::construct(
                 cb,
@@ -1106,7 +1106,9 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         cb.stack_pop(callee_address.to_word());
 
         // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
-        cb.condition(is_call + is_callcode, |cb| cb.stack_pop(value.to_word()));
+        cb.condition(is_call.clone() + is_callcode.clone(), |cb| {
+            cb.stack_pop(value.to_word())
+        });
         cb.stack_pop(cd_address.offset_word());
         cb.stack_pop(cd_address.length_word());
         cb.stack_pop(rd_address.offset_word());

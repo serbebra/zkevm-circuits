@@ -78,7 +78,7 @@ use crate::{
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
         MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable,
-        TxTable, U16Table, U8Table,
+        TxTable, U16Table, U8Table, UXTable,
     },
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
@@ -111,6 +111,9 @@ pub struct SuperCircuitConfig<F: Field> {
     poseidon_table: PoseidonTable,
     u8_table: U8Table,
     u16_table: U16Table,
+    ux8_table: UXTable<8>,
+    u10_table: UXTable<10>,
+    ux16_table: UXTable<16>,
     evm_circuit: EvmCircuitConfig<F>,
     state_circuit: StateCircuitConfig<F>,
     tx_circuit: TxCircuitConfig<F>,
@@ -199,9 +202,13 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         log_circuit_info(meta, "power of randomness table");
 
         let u8_table = U8Table::construct(meta);
-        log_circuit_info(meta, "u8 table");
+        // log_circuit_info(meta, "u8 table");
         let u16_table = U16Table::construct(meta);
-        log_circuit_info(meta, "u16 table");
+        // log_circuit_info(meta, "u16 table");
+
+        let ux8_table = UXTable::construct(meta);
+        let u10_table = UXTable::construct(meta);
+        let ux16_table = UXTable::construct(meta);
 
         assert!(get_num_rows_per_round() == 12);
         let keccak_circuit = KeccakCircuitConfig::new(
@@ -312,6 +319,9 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             StateCircuitConfigArgs {
                 rw_table,
                 mpt_table,
+                u8_table: ux8_table,
+                u10_table,
+                u16_table: ux16_table,
                 challenges: challenges_expr.clone(),
             },
         );
@@ -379,7 +389,10 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             rlp_table,
             poseidon_table,
             u8_table,
+            ux8_table,
+            u10_table,
             u16_table,
+            ux16_table,
             evm_circuit,
             state_circuit,
             copy_circuit,

@@ -1354,7 +1354,7 @@ pub struct KeccakTable {
     pub input_len: Column<Advice>,
     /// RLC of the hash result
     pub output_rlc: Column<Advice>, // RLC of hash of input bytes
-    // TODO: finally remove output_rlc and use Word hi lo
+    /// TODO: finally remove output_rlc and use Word hi lo
     pub output: word::Word<Column<Advice>>,
 }
 

@@ -166,7 +166,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         // );
         cb.require_equal(
             "Secp256k1::Fq modulus assigned correctly",
-            cb.word_rlc::<N_BYTES_WORD>(fq_modulus.limbs.map(|cell| cell.expr())),
+            cb.word_rlc::<N_BYTES_WORD>(fq_modulus.clone().limbs.map(|cell| cell.expr())),
             cb.word_rlc::<N_BYTES_WORD>(FQ_MODULUS.to_le_bytes().map(|b| b.expr())),
         );
 
@@ -195,10 +195,10 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             and::expr([r_s_canonical.expr(), sig_v_valid.expr()]),
             |cb| {
                 cb.sig_table_lookup(
-                    cb.word_rlc(msg_hash.limbs.map(|cell| cell.expr())),
+                    cb.word_rlc(msg_hash.clone().limbs.map(|cell| cell.expr())),
                     sig_v.limbs[0].expr() - 27.expr(),
-                    cb.word_rlc(sig_r.limbs.map(|cell| cell.expr())),
-                    cb.word_rlc(sig_s.limbs.map(|cell| cell.expr())),
+                    cb.word_rlc(sig_r.clone().limbs.map(|cell| cell.expr())),
+                    cb.word_rlc(sig_s.clone().limbs.map(|cell| cell.expr())),
                     select::expr(
                         recovered.expr(),
                         from_bytes::expr(&recovered_addr_keccak_rlc.limbs),
@@ -368,14 +368,12 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                 F::from(aux_data.sig_v.to_le_bytes()[0] as u64),
                 F::from(28),
             )?;
+            let mut recovered_addr = aux_data.recovered_addr.to_fixed_bytes();
+            recovered_addr.reverse();
             self.recovered_addr_keccak_rlc.assign_u256(
                 region,
                 offset,
-                U256::from_little_endian({
-                    let mut recovered_addr = aux_data.recovered_addr.to_fixed_bytes();
-                    recovered_addr.reverse();
-                    &recovered_addr
-                }),
+                U256::from_little_endian({ &recovered_addr }),
             )?;
         } else {
             log::error!("unexpected aux_data {:?} for ecrecover", step.aux_data);

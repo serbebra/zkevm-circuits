@@ -41,7 +41,7 @@ use halo2_proofs::{
     plonk::{Error, Expression},
 };
 use log::trace;
-use std::iter::once;
+use std::{clone, iter::once};
 
 /// Gadget for CREATE and CREATE2 opcodes
 #[derive(Clone, Debug)]
@@ -147,7 +147,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         // init_code_memory_offset
         let offset = cb.query_word_unchecked();
 
-        let init_code = MemoryAddressGadget::construct(cb, offset, length);
+        let init_code = MemoryAddressGadget::construct(cb, offset.clone(), length.clone());
         let init_code_size_not_overflow =
             LtGadget::construct(cb, init_code.length(), MAX_INIT_CODE_SIZE.expr() + 1.expr());
 

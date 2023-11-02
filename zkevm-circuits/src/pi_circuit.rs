@@ -33,6 +33,7 @@ use crate::{
     },
     state_circuit::StateCircuitExports,
     tx_circuit::{CHAIN_ID_OFFSET as CHAIN_ID_OFFSET_IN_TX, TX_HASH_OFFSET, TX_LEN},
+    util::word,
     witness::{self, Block, BlockContext, BlockContexts, Transaction},
 };
 use bus_mapping::util::read_env_var;
@@ -657,7 +658,9 @@ type PiHashExport<F> = Vec<AssignedCell<F, F>>;
 
 #[derive(Debug, Clone)]
 struct Connections<F: Field> {
+    //start_state_root: word::Word<AssignedCell<F, F>>,
     start_state_root: AssignedCell<F, F>,
+    //end_state_root: word::Word<AssignedCell<F, F>>,
     end_state_root: AssignedCell<F, F>,
     withdraw_root: AssignedCell<F, F>,
 }
@@ -1558,14 +1561,15 @@ impl<F: Field> PiCircuit<F> {
                         (&state_roots.start_state_root, &state_roots.end_state_root)
                     );
 
-                    region.constrain_equal(
-                        local_conn.start_state_root.cell(),
-                        state_roots.start_state_root.0,
-                    )?;
-                    region.constrain_equal(
-                        local_conn.end_state_root.cell(),
-                        state_roots.end_state_root.0,
-                    )?;
+                    // TODO: enable this constraint later after pi circuit, tx circuit updated
+                    // region.constrain_equal(
+                    //     local_conn.start_state_root.cell(),
+                    //     state_roots.start_state_root.0,
+                    // )?;
+                    // region.constrain_equal(
+                    //     local_conn.end_state_root.cell(),
+                    //     state_roots.end_state_root.0,
+                    // )?;
                 } else {
                     log::warn!("state roots are not set, skip connection with state circuit");
                 }

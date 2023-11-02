@@ -490,6 +490,7 @@ pub fn constrain_id<F: Field>(
     is_tx_log: Column<Advice>,
     is_tx_calldata: Column<Advice>,
     is_memory: Column<Advice>,
+    id: word::Word<Column<Advice>>,
     is_pad: Column<Advice>,
 ) {
     let cond = or::expr([

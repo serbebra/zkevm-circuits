@@ -91,13 +91,14 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
         cb.require_equal(
             "Scalar s (raw 32-bytes) equality",
             scalar_s_raw_rlc.expr(),
-            cb.keccak_rlc::<N_BYTES_WORD>(scalar_s_raw.limbs.map(|cell| cell.expr())),
+            cb.keccak_rlc::<N_BYTES_WORD>(scalar_s_raw.clone().limbs.map(|cell| cell.expr())),
         );
 
         // we know that `scalar_s` fits in the scalar field. So we don't compute an RLC
         // of that value. Instead we use the native value.
         let scalar_s_native = rlc::expr(
             &scalar_s
+                .clone()
                 .limbs
                 .iter()
                 .map(Expr::expr)
@@ -118,7 +119,7 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
         let s_is_zero = cb.annotation("ecMul(s == 0)", |cb| {
             IsZeroGadget::construct(
                 cb,
-                cb.keccak_rlc::<N_BYTES_WORD>(scalar_s.limbs.map(|cell| cell.expr())),
+                cb.keccak_rlc::<N_BYTES_WORD>(scalar_s.clone().limbs.map(|cell| cell.expr())),
             )
         });
         let s_is_fr_mod_minus_1 = cb.annotation("ecMul(s == Fr::MODULUS - 1)", |cb| {
@@ -134,12 +135,12 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
             (cb.query_word32(), cb.query_word32(), cb.query_word32());
         cb.require_equal(
             "ecMul(P_y): equality",
-            cb.keccak_rlc::<N_BYTES_WORD>(point_p_y_raw.limbs.map(|cell| cell.expr())),
+            cb.keccak_rlc::<N_BYTES_WORD>(point_p_y_raw.clone().limbs.map(|cell| cell.expr())),
             point_p_y_rlc.expr(),
         );
         cb.require_equal(
             "ecMul(R_y): equality",
-            cb.keccak_rlc::<N_BYTES_WORD>(point_r_y_raw.limbs.map(|cell| cell.expr())),
+            cb.keccak_rlc::<N_BYTES_WORD>(point_r_y_raw.clone().limbs.map(|cell| cell.expr())),
             point_r_y_rlc.expr(),
         );
 

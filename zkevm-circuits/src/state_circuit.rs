@@ -182,8 +182,12 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
         //let power_of_randomness: [Expression<F>; 31] =
         // challenges.evm_word_powers_of_randomness();
         let power_of_randomness: [Expression<F>; 31] = challenges.keccak_powers_of_randomness();
-        let lexicographic_ordering =
-            LexicographicOrderingConfig::configure(meta, sort_keys, lookups, power_of_randomness);
+        let lexicographic_ordering = LexicographicOrderingConfig::configure(
+            meta,
+            sort_keys,
+            lookups,
+            power_of_randomness.clone(),
+        );
 
         // annotate columns
         rw_table.annotate_columns(meta);

@@ -189,6 +189,7 @@ fn bytecode_push() {
 
 /// Test invalid code_hash data
 #[test]
+//pub fn unroll<F: Field>(bytes: Vec<u8>) -> UnrolledBytecode<F> {
 fn bytecode_invalid_hash_data() {
     let k = 9;
     let bytecode = vec![8u8, 2, 3, 8, 9, 7, 128];
@@ -197,7 +198,9 @@ fn bytecode_invalid_hash_data() {
     // Change the code_hash on the first position (header row)
     {
         let mut invalid = unrolled;
-        invalid.rows[0].code_hash += Word::one();
+        //let code_hash_word = word::Word::from(Fr::one()).map(Value::known);
+        invalid.rows[0].code_hash = word::Word::default();
+        //Word::one();
         log::trace!("bytecode_invalid_hash_data: Change the code_hash on the first position");
         test_bytecode_circuit_unrolled::<Fr>(k, vec![invalid], false);
     }

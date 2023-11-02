@@ -5,12 +5,15 @@ use crate::{
         from_bytes, pow_of_two_expr, split_u256, split_u256_limb64, CachedRegion, Cell,
     },
     util::{
-        word::{self, Word4, WordExpr},
+        word::{self, Word32Cell, Word4, WordExpr},
         Expr,
     },
 };
 use eth_types::{Field, ToLittleEndian, Word};
-use halo2_proofs::{circuit::Value, plonk::Error};
+use halo2_proofs::{
+    circuit::Value,
+    plonk::{Error, Expression},
+};
 
 /// Construct the gadget that checks a * b + c == d * 2**256 + e
 /// where a, b, c, d, e are 256-bit words.
@@ -68,8 +71,8 @@ impl<F: Field> MulAddWords512Gadget<F> {
         // Split input words in limbs
         let mut a_limbs = vec![];
         let mut b_limbs = vec![];
-        let word4_a = words[0].to_word_n();
-        let word4_b = words[1].to_word_n();
+        let word4_a: Word4<Expression<F>> = words[0].to_word_n();
+        let word4_b: Word4<Expression<F>> = words[1].to_word_n();
         for i in 0..4 {
             a_limbs.push(word4_a.limbs[i].expr());
             b_limbs.push(word4_b.limbs[i].expr());

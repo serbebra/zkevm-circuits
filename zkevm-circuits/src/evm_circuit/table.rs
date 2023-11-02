@@ -167,11 +167,11 @@ pub struct RwValues<F> {
     pub id: Expression<F>,
     pub address: Expression<F>,
     pub field_tag: Expression<F>,
-    storage_key: Word<Expression<F>>,
-    value: Word<Expression<F>>,
-    value_prev: Word<Expression<F>>,
-    aux1: Word<Expression<F>>,
-    aux2: Word<Expression<F>>,
+    pub storage_key: Word<Expression<F>>,
+    pub value: Word<Expression<F>>,
+    pub value_prev: Word<Expression<F>>,
+    pub aux1: Word<Expression<F>>,
+    pub aux2: Word<Expression<F>>,
 }
 
 impl<F: Field> RwValues<F> {

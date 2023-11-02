@@ -1007,7 +1007,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             region,
             offset,
             U256::from(untrimmed_contract_addr),
-        );
+        )?;
         self.account_code_hash_is_empty.assign_u256(
             region,
             offset,
@@ -1049,7 +1049,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             region,
             offset,
             U256::from(untrimmed_contract_addr),
-        );
+        )?;
 
         let (init_code_rlc, keccak_code_hash) = if tx.is_create {
             let init_code_rlc =

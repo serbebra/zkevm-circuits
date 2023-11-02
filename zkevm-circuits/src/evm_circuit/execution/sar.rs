@@ -91,7 +91,7 @@ impl<F: Field> ExecutionGadget<F> for SarGadget<F> {
         cb.stack_pop(a.to_word());
         cb.stack_push(b.to_word());
 
-        let a64s = a.to_word_n();
+        let a64s: Word4<Expression<F>> = a.to_word_n();
         let b64s: Word4<Expression<F>> = b.to_word_n();
 
         let a64s_lo = array_init(|_| cb.query_cell());

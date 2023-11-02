@@ -41,7 +41,7 @@ pub(crate) mod precompile_gadget;
 pub use gadgets::util::{and, not, or, select, sum};
 
 #[derive(Clone, Debug)]
-pub(crate) struct Cell<F> {
+pub struct Cell<F> {
     // expression for constraint
     expression: Expression<F>,
     column: Column<Advice>,

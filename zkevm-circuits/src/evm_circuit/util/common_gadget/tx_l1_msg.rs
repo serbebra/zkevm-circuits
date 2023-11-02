@@ -47,7 +47,7 @@ impl<F: Field> TxL1MsgGadget<F> {
 
         cb.condition(tx_is_l1msg.expr(), |cb| {
             cb.account_read(
-                caller_address,
+                caller_address.clone(),
                 AccountFieldTag::CodeHash,
                 caller_codehash.to_word(),
             );

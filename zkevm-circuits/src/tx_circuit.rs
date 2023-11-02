@@ -23,7 +23,7 @@ use crate::{
             CallerAddress, ChainID, Gas, GasPrice, IsCreate, Nonce, SigR, SigS, SigV,
             TxDataGasCost, TxHashLength, TxHashRLC, TxSignHash, TxSignLength, TxSignRLC,
         },
-        TxTable, U16Table, U8Table,
+        TxTable, U16Table, U8Table, UXTable,
     },
     util::{
         is_zero::{IsZeroChip, IsZeroConfig},
@@ -207,6 +207,7 @@ pub struct TxCircuitConfigArgs<F: Field> {
     pub u8_table: U8Table,
     /// Reusable u16 lookup table,
     pub u16_table: U16Table,
+
     /// Challenges
     pub challenges: crate::util::Challenges<Expression<F>>,
 }

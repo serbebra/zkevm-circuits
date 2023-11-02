@@ -241,6 +241,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 is_tx_log,
                 is_tx_calldata,
                 is_memory,
+                id,
                 is_pad,
             );
 

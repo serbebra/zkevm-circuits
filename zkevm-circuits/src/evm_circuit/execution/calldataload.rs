@@ -196,7 +196,7 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
                 });
                 cb.require_equal(
                     "calldata equals memory data",
-                    cb.word_rlc(calldata_word.limbs),
+                    cb.word_rlc(calldata_word.limbs.clone()),
                     cb.word_rlc(mem_calldata_overlap),
                 );
 
@@ -228,12 +228,15 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
 
         // Add a lookup constraint for the 32-bytes that should have been pushed
         // to the stack.
+        //let calldata_word_ref = Word32::new(calldata_word.limbs.clone());
+        cb.stack_push(calldata_word.to_word());
+
         cb.require_zero_word(
             "Stack push result must be 0 if stack pop offset is Uint64 overflow",
             calldata_word.to_word().mul_selector(data_offset.overflow()),
+            // Word::new([calldata_word.to_word().lo() * data_offset.overflow().clone(),
+            //  calldata_word.to_word().hi() * data_offset.overflow()])
         );
-
-        cb.stack_push(calldata_word.to_word());
 
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(cb.rw_counter_offset()),

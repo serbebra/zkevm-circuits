@@ -6,6 +6,7 @@ use halo2_proofs::{circuit::Value, plonk::Expression};
 use crate::evm_circuit::{
     param::{N_BYTES_U64, N_BYTES_WORD},
     step::{ExecutionState, ExecutionState::ErrorOutOfGasPrecompile},
+    util::Word,
 };
 
 use super::{
@@ -40,7 +41,7 @@ impl<F: Field> PrecompileGadget<F> {
         // returned bytes back to caller.
         _return_bytes_rlc: Expression<F>,
     ) -> Self {
-        let address = BinaryNumberGadget::construct(cb, callee_address.expr());
+        let address = BinaryNumberGadget::construct(cb, callee_address.lo().expr());
 
         // input length represents:
         // - 128 bytes for ecrecover/ecAdd
