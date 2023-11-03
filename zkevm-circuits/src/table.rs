@@ -734,43 +734,56 @@ pub struct MptTable {
     /// Address
     pub address: Column<Advice>,
     /// Storage key
-    pub storage_key: Column<Advice>,
+    pub storage_key: word::Word<Column<Advice>>,
     /// Proof type
     pub proof_type: Column<Advice>,
     /// New root
-    pub new_root: Column<Advice>,
+    pub new_root: word::Word<Column<Advice>>,
     /// Old root
-    pub old_root: Column<Advice>,
+    pub old_root: word::Word<Column<Advice>>,
     /// New value
-    pub new_value: Column<Advice>,
+    pub new_value: word::Word<Column<Advice>>,
     /// Old value
-    pub old_value: Column<Advice>,
+    pub old_value: word::Word<Column<Advice>>,
 }
 
 impl<F: Field> LookupTable<F> for MptTable {
     fn columns(&self) -> Vec<Column<Any>> {
         vec![
-            self.q_enable.into(),
-            self.address.into(),
-            self.storage_key.into(),
-            self.proof_type.into(),
-            self.new_root.into(),
-            self.old_root.into(),
-            self.new_value.into(),
-            self.old_value.into(),
+            //self.q_enable,
+            self.address,
+            self.storage_key.lo(),
+            self.storage_key.hi(),
+            self.proof_type,
+            self.new_root.lo(),
+            self.new_root.hi(),
+            self.old_root.lo(),
+            self.old_root.hi(),
+            self.new_value.lo(),
+            self.new_value.hi(),
+            self.old_value.lo(),
+            self.old_value.hi(),
         ]
+        .into_iter()
+        .map(|col| col.into())
+        .collect::<Vec<Column<Any>>>()
     }
 
     fn annotations(&self) -> Vec<String> {
         vec![
             String::from("q_enable"),
             String::from("address"),
-            String::from("storage_key"),
+            String::from("storage_key_lo"),
+            String::from("storage_key_hi"),
             String::from("proof_type"),
-            String::from("new_root"),
-            String::from("old_root"),
-            String::from("new_value"),
-            String::from("old_value"),
+            String::from("new_root_lo"),
+            String::from("new_root_hi"),
+            String::from("old_root_lo"),
+            String::from("old_root_hi"),
+            String::from("new_value_lo"),
+            String::from("new_value_hi"),
+            String::from("old_value_lo"),
+            String::from("old_value_hi"),
         ]
     }
 }
@@ -781,12 +794,12 @@ impl MptTable {
         Self {
             q_enable: meta.fixed_column(),
             address: meta.advice_column(),
-            storage_key: meta.advice_column_in(SecondPhase),
+            storage_key: word::Word::new([meta.advice_column(), meta.advice_column()]),
             proof_type: meta.advice_column(),
-            new_root: meta.advice_column_in(SecondPhase),
-            old_root: meta.advice_column_in(SecondPhase),
-            new_value: meta.advice_column_in(SecondPhase),
-            old_value: meta.advice_column_in(SecondPhase),
+            new_root: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            old_root: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            new_value: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            old_value: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
 
@@ -816,6 +829,7 @@ impl MptTable {
         max_mpt_rows: usize,
         randomness: Value<F>,
     ) -> Result<(), Error> {
+        println!("assign mpt table loading");
         layouter.assign_region(
             || "mpt table zkevm",
             |mut region| self.load_with_region(&mut region, updates, max_mpt_rows),
