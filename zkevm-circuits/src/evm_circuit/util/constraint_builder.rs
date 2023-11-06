@@ -1661,6 +1661,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     }
 
     pub(crate) fn add_lookup(&mut self, name: &str, lookup: Lookup<F>) {
+        log::info!("add lookup begin {name}");
         let lookup = match self.condition_expr_opt() {
             Some(condition) => lookup.conditional(condition),
             None => lookup,
@@ -1670,7 +1671,10 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             rlc::expr(&lookup.input_exprs(), self.challenges.lookup_input()),
             MAX_DEGREE - IMPLICIT_DEGREE,
         );
+        log::info!("store_expression ing {name}");
         self.store_expression(name, compressed_expr, CellType::Lookup(lookup.table()));
+        log::info!("store_expression ing done {name}");
+        log::info!("add lookup done {name}")
     }
 
     fn has_next_slot_access(&self, expr: Expression<F>) -> bool {
@@ -1683,7 +1687,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         expr: Expression<F>,
         cell_type: CellType,
     ) -> Expression<F> {
-        log::info!("store_expression {name} {}", expr.identifier());
+        log::info!("store_expression {name} degree={} {}", expr.degree(), expr.identifier());
         // Check if we already stored the expression somewhere
         let stored_expression = self.find_stored_expression(&expr, cell_type);
 
@@ -1713,7 +1717,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                 let need_next_cell = self.has_next_slot_access(expr.clone());
                 //assert!(!need_next_cell, "{}", name);
                 if need_next_cell {
-                log::error!("next slot {}", name);
+                panic!("next slot {} degree {} cell type {cell_type:?} {}", name, expr.degree(), expr.identifier());
                 }
                 self.stored_expressions.push(StoredExpression {
                     name,
@@ -1740,7 +1744,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
 
 
     /// Reduce expression degree
-    fn split_old(&mut self, 
+    fn split1(&mut self, 
         name: &'static str, max_degree: usize, expr: Expression<F>)-> Expression<F> {
         if expr.degree() > max_degree {
             self.split_expression(name, expr, max_degree)
@@ -1751,8 +1755,42 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         
     }
     /// Reduce expression degree
+    fn split2(&mut self, 
+        name: &'static str, expr: Expression<F>,max_degree: usize,  depth: usize)-> (bool, Expression<F>) {
+        if expr.degree() > max_degree {
+            (false, self.split_expression_impl(name, expr, max_degree, depth + 1))
+        } else {
+            let r = match expr.expr() {
+                Expression::Sum(lhs, rhs) => {
+                    if lhs.degree() == 1 {
+                        let cell_type = CellType::storage_for_expr(&rhs);
+                        let rhs = self.store_expression(
+                            name,
+                            rhs.expr(),
+                            cell_type,
+                            //depth + 1
+                        );
+                        lhs.expr() + rhs
+                    } else {
+                        let cell_type = CellType::storage_for_expr(&expr);
+                        self.store_expression(name, expr, cell_type)
+                    }
+                }
+                _ => {
+                    let cell_type = CellType::storage_for_expr(&expr);
+                    log::info!("here store");
+                    let r = self.store_expression(name, expr, cell_type);
+                    log::info!("here store done");
+                    r
+                }
+            };
+            (false, r)
+            }
+        
+    }
+    /// Reduce expression degree
     /// The first return values is `has_next_slot_access`
-    fn split(&mut self, 
+    fn split3(&mut self, 
         name: &'static str, expr: Expression<F>, max_degree: usize, depth: usize)-> (bool, Expression<F>) {
             let degree = expr.degree();
             let id = expr.identifier();
@@ -1772,11 +1810,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         } else {
                 let new_poly = match expr.expr() {
                     Expression::Negated(poly) => {
-                        let (has_next_slot_access, poly) = self.split(name,  *poly, max_degree, depth + 1);
+                        let (has_next_slot_access, poly) = self.split3(name,  *poly, max_degree, depth + 1);
                         (has_next_slot_access, Expression::Negated(Box::new(poly)))
                     }
                     Expression::Scaled(poly, v) => {
-                        let (has_next_slot_access, poly) = self.split(name, *poly, max_degree, depth + 1);
+                        let (has_next_slot_access, poly) = self.split3(name, *poly, max_degree, depth + 1);
                         
                         (has_next_slot_access, Expression::Scaled(Box::new(poly), v))
                     }
@@ -1784,17 +1822,17 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                         ///let has_next1 = self.has_next_slot_access(*a);
                        // let has_next2 = self.has_next_slot_access(*b);
 
-                        let (has_next1, a)= self.split(name, *a, max_degree, depth + 1);
-                        let (has_next2, b) = self.split(name, *b, max_degree, depth + 1);
+                        let (has_next1, a)= self.split3(name, *a, max_degree, depth + 1);
+                        let (has_next2, b) = self.split3(name, *b, max_degree, depth + 1);
                         (has_next1||has_next2, a + b)
                     }
                     Expression::Product(a, b) => {
 
-                        let (has_next1, a)= self.split(name, *a, max_degree, depth + 1);
-                        let (has_next2, b) = self.split(name, *b, max_degree, depth + 1);
+                        let (has_next1, a)= self.split3(name, *a, max_degree, depth + 1);
+                        let (has_next2, b) = self.split3(name, *b, max_degree, depth + 1);
                         match (has_next1, has_next2) {
                             (false, false  ) => {
-                                unreachable!()
+                                unreachable!("xx");
                                 let cell_type = CellType::storage_for_expr(&expr);
                                 (false, self.store_expression(name, expr, cell_type))
                             }              ,
@@ -1836,9 +1874,9 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         expr: Expression<F>,
         max_degree: usize,
     ) -> Expression<F> {
-        log::trace!("split_expression begin {name} {}", expr.identifier());
+        log::trace!("split_expression begin degree={} {name} {}", expr.degree(), expr.identifier());
         let result = self.split_expression_impl(name, expr, max_degree, 0);
-        log::trace!("split_expression end {name} {}", result.identifier());
+        log::trace!("split_expression end degree={} {name} {}", result.degree(), result.identifier());
         result
     }
 
@@ -1851,7 +1889,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         depth: usize, // for debugging
     ) -> Expression<F> {
         let id = expr.identifier();
-        log::trace!("split_expression {depth} {name} {}", id);
+        log::trace!("split_expression depth={depth} name={name} degree={} id={}", expr.degree(), id);
         if expr.degree() > self.max_inner_degree.1 {
             self.max_inner_degree = (name, expr.degree());
         }
@@ -1872,9 +1910,9 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                     let (mut a, mut b) = (*a, *b);
                     while a.degree() + b.degree() > max_degree {
                         if a.degree() >= b.degree() {
-                            (_, a) = self.split(name, a, max_degree, depth + 1);
+                            (_, a) = self.split2(name, a, max_degree, depth + 1);
                         } else {
-                            (_, b) = self.split(name, b, max_degree, depth + 1);
+                            (_, b) = self.split2(name, b, max_degree, depth + 1);
                         }
                     }
                     a * b

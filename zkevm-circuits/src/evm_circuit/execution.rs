@@ -1331,7 +1331,7 @@ impl<F: Field> ExecutionConfig<F> {
             region,
             challenges,
             self.advices.to_vec(),
-            MAX_STEP_HEIGHT,
+            height,
             offset,
         );
 
