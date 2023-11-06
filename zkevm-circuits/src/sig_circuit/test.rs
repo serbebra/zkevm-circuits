@@ -2,6 +2,7 @@ use eth_types::{
     sign_types::{sign, SignData},
     Field,
 };
+use halo2_base::gates::{circuit::builder::RangeCircuitBuilder, GateChip};
 use halo2_proofs::{
     arithmetic::Field as HaloField,
     dev::MockProver,
@@ -270,6 +271,8 @@ fn sign_with_rng(
 fn run<F: Field>(k: u32, max_verif: usize, signatures: Vec<SignData>) {
     // SignVerifyChip -> ECDSAChip -> MainGate instance column
     let circuit = SigCircuit::<Fr> {
+        builder: RangeCircuitBuilder::new(false),
+        gate_chip: GateChip::new(),
         max_verif,
         signatures,
         _marker: PhantomData,
