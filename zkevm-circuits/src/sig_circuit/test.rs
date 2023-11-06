@@ -271,7 +271,7 @@ fn sign_with_rng(
 fn run<F: Field>(k: u32, max_verif: usize, signatures: Vec<SignData>) {
     // SignVerifyChip -> ECDSAChip -> MainGate instance column
     let circuit = SigCircuit::<Fr> {
-        builder: RangeCircuitBuilder::new(false),
+        builder: RangeCircuitBuilder::new(false).into(),
         gate_chip: GateChip::new(),
         max_verif,
         signatures,

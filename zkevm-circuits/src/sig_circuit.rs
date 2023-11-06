@@ -59,16 +59,16 @@ mod utils;
 pub(crate) use utils::*;
 
 use halo2_proofs::{
-    circuit::{Layouter, Region, Value},
+    circuit::{AssignedCell, Layouter, Region, Value},
     halo2curves::secp256k1::{Fp, Fq, Secp256k1Affine},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Assigned, Circuit, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
 };
 
 use ethers_core::utils::keccak256;
 use itertools::Itertools;
 use log::error;
-use std::{borrow::BorrowMut, iter, marker::PhantomData};
+use std::{borrow::BorrowMut, cell::RefCell, iter, marker::PhantomData};
 
 /// Circuit configuration arguments
 pub struct SigCircuitConfigArgs<F: Field> {
@@ -205,7 +205,7 @@ impl<F: Field> SubCircuitConfig<F> for SigCircuitConfig<F> {
 }
 
 // impl<F: Field> SigCircuitConfig<F> {
-//     pub(crate) fn load_range(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+//     pub(crate) fn load_range(&self, mut layouter: impl Layouter<F>) -> Result<(), Error> {
 //         self.ecdsa_config.range.load_lookup_table(layouter)
 //     }
 // }
@@ -215,8 +215,8 @@ impl<F: Field> SubCircuitConfig<F> for SigCircuitConfig<F> {
 #[derive(Clone, Debug, Default)]
 pub struct SigCircuit<F: Field> {
     /// halo2-lib circuit builder
-    pub builder: RangeCircuitBuilder<F>,
-    // chip used for halo2-lib
+    pub builder: RefCell<RangeCircuitBuilder<F>>,
+    /// chip used for halo2-lib
     pub gate_chip: GateChip<F>,
     /// Max number of verifications
     pub max_verif: usize,
@@ -231,9 +231,9 @@ impl<F: Field> SubCircuit<F> for SigCircuit<F> {
 
     fn new_from_block(block: &crate::witness::Block<F>) -> Self {
         assert!(block.circuits_params.max_txs <= MAX_NUM_SIG);
-
+        let builder = RangeCircuitBuilder::new(false);
         SigCircuit {
-            builder: RangeCircuitBuilder::new(false),
+            builder: RefCell::new(builder),
             gate_chip: GateChip::new(),
             max_verif: MAX_NUM_SIG,
             signatures: block.get_sign_data(true),
@@ -258,7 +258,7 @@ impl<F: Field> SubCircuit<F> for SigCircuit<F> {
         &self,
         config: &Self::Config,
         challenges: &Challenges<Value<F>>,
-        layouter: &mut impl Layouter<F>,
+        mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
         // config.ecdsa_config.range.load_lookup_table(layouter)?;
         self.assign(config, layouter, &self.signatures, challenges)?;
@@ -298,8 +298,9 @@ impl<F: Field> SubCircuit<F> for SigCircuit<F> {
 impl<F: Field> SigCircuit<F> {
     /// Return a new SigCircuit
     pub fn new(max_verif: usize) -> Self {
-        Self {
-            builder: RangeCircuitBuilder::new(false),
+        let builder = RangeCircuitBuilder::new(false);
+        SigCircuit {
+            builder: RefCell::new(builder),
             gate_chip: GateChip::default(),
             max_verif,
             signatures: Vec::new(),
@@ -436,12 +437,11 @@ impl<F: Field> SigCircuit<F> {
         &self,
         config: &SigCircuitConfig<F>,
         region: &mut Region<F>,
-        // ctx: &mut Context<F>,
         offset: usize,
         is_address_zero: &AssignedValue<F>,
         pk_rlc: &AssignedValue<F>,
         pk_hash_rlc: &AssignedValue<F>,
-    ) -> Result<(), Error> {
+    ) -> Result<[AssignedCell<F, F>; 3], Error> {
         log::trace!("keccak lookup");
 
         // Layout:
@@ -461,39 +461,31 @@ impl<F: Field> SigCircuit<F> {
         config.q_keccak.enable(region, offset)?;
 
         // is_address_zero
-        let tmp_cell = region.assign_advice(
+        let is_address_zero = region.assign_advice(
             || "is_address_zero",
             config.rlc_column,
             offset,
             || Value::known(*is_address_zero.value()),
         )?;
-        // FIXME
-        // region
-        //     .constrain_equal(is_address_zero.cell, tmp_cell.cell())?;
 
         // pk_rlc
-        let tmp_cell = region.assign_advice(
+        let pk_rlc = region.assign_advice(
             || "pk_rlc",
             config.rlc_column,
             offset + 1,
             || Value::known(*pk_rlc.value()),
         )?;
-        // FIXME
-        // region.constrain_equal(pk_rlc.cell, tmp_cell.cell())?;
 
         // pk_hash_rlc
-        let tmp_cell = region.assign_advice(
+        let pk_hash_rlc = region.assign_advice(
             || "pk_hash_rlc",
             config.rlc_column,
             offset + 2,
             || Value::known(*pk_hash_rlc.value()),
         )?;
-        // FIXME
-        // region
-        //     .constrain_equal(pk_hash_rlc.cell, tmp_cell.cell())?;
 
         log::trace!("finished keccak lookup");
-        Ok(())
+        Ok([is_address_zero, pk_rlc, pk_hash_rlc])
     }
 
     /// Input the signature data,
@@ -501,12 +493,11 @@ impl<F: Field> SigCircuit<F> {
     fn sign_data_decomposition(
         &self,
         ctx: &mut Context<F>,
-        ecdsa_chip: &EccChip<F, FpChip<F, Fp>>,
-        // flex_gate_chip: &GateChip<F>,
+        ecc_chip: &EccChip<F, FpChip<F, Fp>>,
         sign_data: &SignData,
         assigned_data: &AssignedECDSA<F, FpChip<F, Fp>>,
     ) -> Result<SignDataDecomposed<F>, Error> {
-        let flex_gate_chip = ecdsa_chip.field_chip.gate();
+        let flex_gate_chip = ecc_chip.field_chip.gate();
         let zero = ctx.load_constant(F::ZERO);
 
         // ================================================
@@ -546,7 +537,6 @@ impl<F: Field> SigCircuit<F> {
         // ================================================
         // message hash cells
         // ================================================
-
         let assert_crt = |ctx: &mut Context<F>,
                           bytes: [u8; 32],
                           crt_integer: &ProperCrtUint<F>|
@@ -588,7 +578,7 @@ impl<F: Field> SigCircuit<F> {
             .map(|&y| QuantumCell::Witness(F::from_u128(y as u128)))
             .collect_vec();
         let pk_assigned =
-            ecdsa_chip.load_private::<Secp256k1Affine>(ctx, (sign_data.pk.x, sign_data.pk.y));
+            ecc_chip.load_private::<Secp256k1Affine>(ctx, (sign_data.pk.x, sign_data.pk.y));
 
         self.assert_crt_int_byte_repr(
             ctx,
@@ -731,7 +721,7 @@ impl<F: Field> SigCircuit<F> {
     pub(crate) fn assign(
         &self,
         config: &SigCircuitConfig<F>,
-        layouter: &mut impl Layouter<F>,
+        mut layouter: impl Layouter<F>,
         signatures: &[SignData],
         challenges: &Challenges<Value<F>>,
     ) -> Result<Vec<AssignedSignatureVerify<F>>, Error> {
@@ -743,138 +733,233 @@ impl<F: Field> SigCircuit<F> {
             );
             return Err(Error::Synthesis);
         }
-        let mut first_pass = SKIP_FIRST_PASS;
-        // let ecdsa_chip = &config.ecdsa_config;
 
-        // let break_points = builder.break_points();
-        // let mut builder = RangeCircuitBuilder::prover(config_params.clone(), break_points);
-        // let range = RangeChip::new(self.lookup_bits, builder.lookup_manager().clone());
+        let mut builder = self.builder.borrow_mut();
 
-        // let fq_chip = FpChip::<F, Fp>::new(range, config.limb_bits, config.num_limbs);
-        // let ecdsa_chip = EccChip::<F, FpChip<F, Fp>>::new(&fq_chip);
-        // let base_circuit_builder = self.builder.borrow_mut();
-        // let copy_manager = base_circuit_builder.core().copy_manager;
-        // let lookup_manager = LookupAnyManager::new(false, copy_manager);
-        let range_chip = RangeChip::new(LOG_TOTAL_NUM_ROWS - 1, self.builder.lookup_manager().clone());
-        // let ecc_chip = EccChip::new(range_chip);
+        let range_chip = RangeChip::new(LOG_TOTAL_NUM_ROWS - 1, builder.lookup_manager().clone());
         let fp_chip = FpChip::<F, Fp>::new(&range_chip, 88, 3);
         let ecc_chip = EccChip::new(&fp_chip);
 
-        let assigned_sig_verifs = layouter.assign_region(
-            || "ecdsa chip verification",
-            |region| {
-                if first_pass {
-                    first_pass = false;
-                    return Ok(vec![]);
+        let mut ctx = builder.main(0);
+
+        // ================================================
+        // step 1: assert the signature is valid in circuit
+        // ================================================
+        let assigned_ecdsas = signatures
+            .iter()
+            .chain(std::iter::repeat(&SignData::default()))
+            .take(self.max_verif)
+            .map(|sign_data| self.assign_ecdsa(&mut ctx, &ecc_chip, sign_data))
+            .collect::<Result<Vec<AssignedECDSA<F, FpChip<F, Fp>>>, Error>>()?;
+
+        // ================================================
+        // step 2: decompose the keys and messages
+        // ================================================
+        let sign_data_decomposed = signatures
+            .iter()
+            .chain(std::iter::repeat(&SignData::default()))
+            .take(self.max_verif)
+            .zip_eq(assigned_ecdsas.iter())
+            .map(|(sign_data, assigned_ecdsa)| {
+                self.sign_data_decomposition(&mut ctx, &ecc_chip, sign_data, assigned_ecdsa)
+            })
+            .collect::<Result<Vec<SignDataDecomposed<F>>, Error>>()?;
+
+        // ================================================
+        // step 3: compute RLC of keys and messages
+        // ================================================
+        let (assigned_keccak_values, assigned_sig_values): (
+            Vec<[AssignedValue<F>; 3]>,
+            Vec<AssignedSignatureVerify<F>>,
+        ) = signatures
+            .iter()
+            .chain(std::iter::repeat(&SignData::default()))
+            .take(self.max_verif)
+            .zip_eq(assigned_ecdsas.iter())
+            .zip_eq(sign_data_decomposed.iter())
+            .map(|((sign_data, assigned_ecdsa), sign_data_decomp)| {
+                self.assign_sig_verify(
+                    &mut ctx,
+                    &ecc_chip.field_chip.gate(),
+                    sign_data,
+                    sign_data_decomp,
+                    challenges,
+                    assigned_ecdsa,
+                )
+            })
+            .collect::<Result<Vec<([AssignedValue<F>; 3], AssignedSignatureVerify<F>)>, Error>>()?
+            .into_iter()
+            .unzip();
+
+        // ================================================
+        // step 4: deferred keccak checks
+        // ================================================
+        let deferred_keccaks = layouter.assign_region(
+            || "deferred keccak checks",
+            |mut region| {
+                let mut res = vec![];
+                for (i, [is_address_zero, pk_rlc, pk_hash_rlc]) in
+                    assigned_keccak_values.iter().enumerate()
+                {
+                    let offset = i * 3;
+                    res.push(self.enable_keccak_lookup(
+                        config,
+                        &mut region,
+                        offset,
+                        is_address_zero,
+                        pk_rlc,
+                        pk_hash_rlc,
+                    )?);
                 }
-
-                // let chip = s
-                let mut ctx = self.builder.main(0);
-                // let mut ctx = self.range_chip .new_context(region);
-
-                // ================================================
-                // step 1: assert the signature is valid in circuit
-                // ================================================
-                let assigned_ecdsas = signatures
-                    .iter()
-                    .chain(std::iter::repeat(&SignData::default()))
-                    .take(self.max_verif)
-                    .map(|sign_data| self.assign_ecdsa(&mut ctx, &ecc_chip, sign_data))
-                    .collect::<Result<Vec<AssignedECDSA<F, FpChip<F, Fp>>>, Error>>()?;
-
-                // ================================================
-                // step 2: decompose the keys and messages
-                // ================================================
-                let sign_data_decomposed = signatures
-                    .iter()
-                    .chain(std::iter::repeat(&SignData::default()))
-                    .take(self.max_verif)
-                    .zip_eq(assigned_ecdsas.iter())
-                    .map(|(sign_data, assigned_ecdsa)| {
-                        self.sign_data_decomposition(
-                            &mut ctx,
-                            &ecc_chip,
-                            sign_data,
-                            assigned_ecdsa,
-                        )
-                    })
-                    .collect::<Result<Vec<SignDataDecomposed<F>>, Error>>()?;
-
-                // IMPORTANT: Move to Phase2 before RLC
-                log::info!("before proceeding to the next phase");
-
-                // #[cfg(not(feature = "onephase"))]
-                // {
-                //     // finalize the current lookup table before moving to next phase
-                //     ecdsa_chip.finalize(&mut ctx);
-                //     ctx.print_stats(&["ECDSA context"]);
-                //     ctx.next_phase();
-                // }
-
-                // ================================================
-                // step 3: compute RLC of keys and messages
-                // ================================================
-                let (assigned_keccak_values, assigned_sig_values): (
-                    Vec<[AssignedValue<F>; 3]>,
-                    Vec<AssignedSignatureVerify<F>>,
-                ) = signatures
-                    .iter()
-                    .chain(std::iter::repeat(&SignData::default()))
-                    .take(self.max_verif)
-                    .zip_eq(assigned_ecdsas.iter())
-                    .zip_eq(sign_data_decomposed.iter())
-                    .map(|((sign_data, assigned_ecdsa), sign_data_decomp)| {
-                        self.assign_sig_verify(
-                            &mut ctx,
-                            &ecc_chip.field_chip.gate(),
-                            sign_data,
-                            sign_data_decomp,
-                            challenges,
-                            assigned_ecdsa,
-                        )
-                    })
-                    .collect::<Result<
-                        Vec<([AssignedValue<F>; 3], AssignedSignatureVerify<F>)>,
-                        Error,
-                    >>()?
-                    .into_iter()
-                    .unzip();
-
-                // ================================================
-                // step 4: deferred keccak checks
-                // ================================================
-                // for (i, [is_address_zero, pk_rlc, pk_hash_rlc]) in
-                //     assigned_keccak_values.iter().enumerate()
-                // {
-                //     let offset = i * 3;
-                //     self.enable_keccak_lookup(
-                //         config,
-                //         &mut ctx,
-                //         offset,
-                //         is_address_zero,
-                //         pk_rlc,
-                //         pk_hash_rlc,
-                //     )?;
-                // }
-
-                // // IMPORTANT: this assigns all constants to the fixed columns
-                // // IMPORTANT: this copies cells to the lookup advice column to perform range
-                // // check lookups
-                // // This is not optional.
-                // let lookup_cells = ecdsa_chip.finalize(&mut ctx);
-                // log::info!("total number of lookup cells: {}", lookup_cells);
-
-                // ctx.print_stats(&["ECDSA context"]);
-                Ok(assigned_sig_values)
+                Ok(res)
             },
         )?;
+
+        builder.synthesize(config.range_config, layouter)?;
+
+        let copied_cells = {
+            let mut copy_manager = builder.borrow_mut().core().copy_manager.lock().unwrap();
+
+            let copied_cells = deferred_keccaks
+                .iter()
+                .map(|halo2proof_cells| {
+                    halo2proof_cells
+                        .iter()
+                        .map(|cell| {
+                            let mut value = F::default();
+                            cell.value().map(|f| value = *f);
+                            AssignedValue {
+                                value: Assigned::Trivial(value),
+                                cell: Some(copy_manager.load_external_cell(cell.cell())),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            drop(copy_manager);
+            copied_cells
+        };
+
+        copied_cells.iter().zip(assigned_keccak_values.iter()).map(
+            |(halo2_proof_cells, halo2_lib_cells)| {
+                halo2_proof_cells
+                    .iter()
+                    .zip(halo2_lib_cells.iter())
+                    .for_each(|(a, b)| ctx.constrain_equal(a, b))
+            },
+        );
+
+        // let assigned_sig_verifs = layouter.assign_region(
+        //     || "ecdsa chip verification",
+        //     |region| {
+        //         if first_pass {
+        //             first_pass = false;
+        //             return Ok(vec![]);
+        //         }
+
+        //         // let chip = s
+        //         let mut ctx = self.builder.main(0);
+        //         // let mut ctx = self.range_chip .new_context(region);
+
+        //         // ================================================
+        //         // step 1: assert the signature is valid in circuit
+        //         // ================================================
+        //         let assigned_ecdsas = signatures
+        //             .iter()
+        //             .chain(std::iter::repeat(&SignData::default()))
+        //             .take(self.max_verif)
+        //             .map(|sign_data| self.assign_ecdsa(&mut ctx, &ecc_chip, sign_data))
+        //             .collect::<Result<Vec<AssignedECDSA<F, FpChip<F, Fp>>>, Error>>()?;
+
+        //         // ================================================
+        //         // step 2: decompose the keys and messages
+        //         // ================================================
+        //         let sign_data_decomposed = signatures
+        //             .iter()
+        //             .chain(std::iter::repeat(&SignData::default()))
+        //             .take(self.max_verif)
+        //             .zip_eq(assigned_ecdsas.iter())
+        //             .map(|(sign_data, assigned_ecdsa)| {
+        //                 self.sign_data_decomposition(&mut ctx, &ecc_chip, sign_data,
+        // assigned_ecdsa)             })
+        //             .collect::<Result<Vec<SignDataDecomposed<F>>, Error>>()?;
+
+        //         // IMPORTANT: Move to Phase2 before RLC
+        //         log::info!("before proceeding to the next phase");
+
+        //         // #[cfg(not(feature = "onephase"))]
+        //         // {
+        //         //     // finalize the current lookup table before moving to next phase
+        //         //     ecdsa_chip.finalize(&mut ctx);
+        //         //     ctx.print_stats(&["ECDSA context"]);
+        //         //     ctx.next_phase();
+        //         // }
+
+        //         // ================================================
+        //         // step 3: compute RLC of keys and messages
+        //         // ================================================
+        //         let (assigned_keccak_values, assigned_sig_values): (
+        //             Vec<[AssignedValue<F>; 3]>,
+        //             Vec<AssignedSignatureVerify<F>>,
+        //         ) = signatures
+        //             .iter()
+        //             .chain(std::iter::repeat(&SignData::default()))
+        //             .take(self.max_verif)
+        //             .zip_eq(assigned_ecdsas.iter())
+        //             .zip_eq(sign_data_decomposed.iter())
+        //             .map(|((sign_data, assigned_ecdsa), sign_data_decomp)| {
+        //                 self.assign_sig_verify(
+        //                     &mut ctx,
+        //                     &ecc_chip.field_chip.gate(),
+        //                     sign_data,
+        //                     sign_data_decomp,
+        //                     challenges,
+        //                     assigned_ecdsa,
+        //                 )
+        //             })
+        //             .collect::<Result<
+        //                 Vec<([AssignedValue<F>; 3], AssignedSignatureVerify<F>)>,
+        //                 Error,
+        //             >>()?
+        //             .into_iter()
+        //             .unzip();
+
+        //         // ================================================
+        //         // step 4: deferred keccak checks
+        //         // ================================================
+        //         // for (i, [is_address_zero, pk_rlc, pk_hash_rlc]) in
+        //         //     assigned_keccak_values.iter().enumerate()
+        //         // {
+        //         //     let offset = i * 3;
+        //         //     self.enable_keccak_lookup(
+        //         //         config,
+        //         //         &mut ctx,
+        //         //         offset,
+        //         //         is_address_zero,
+        //         //         pk_rlc,
+        //         //         pk_hash_rlc,
+        //         //     )?;
+        //         // }
+
+        //         // // IMPORTANT: this assigns all constants to the fixed columns
+        //         // // IMPORTANT: this copies cells to the lookup advice column to perform range
+        //         // // check lookups
+        //         // // This is not optional.
+        //         // let lookup_cells = ecdsa_chip.finalize(&mut ctx);
+        //         // log::info!("total number of lookup cells: {}", lookup_cells);
+
+        //         // ctx.print_stats(&["ECDSA context"]);
+        //         Ok(assigned_sig_values)
+        //     },
+        // )?;
 
         // TODO: is this correct?
         layouter.assign_region(
             || "expose sig table",
             |mut region| {
                 // step 5: export as a lookup table
-                for (idx, assigned_sig_verif) in assigned_sig_verifs.iter().enumerate() {
+                for (idx, assigned_sig_verif) in assigned_sig_values.iter().enumerate() {
                     region.assign_fixed(
                         || "assign sig_table selector",
                         config.sig_table.q_enable,
@@ -920,7 +1005,7 @@ impl<F: Field> SigCircuit<F> {
             },
         )?;
 
-        Ok(assigned_sig_verifs)
+        Ok(assigned_sig_values)
     }
 
     /// Assert an CRTInteger's byte representation is correct.
