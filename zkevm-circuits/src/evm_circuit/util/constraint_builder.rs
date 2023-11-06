@@ -1,3 +1,5 @@
+use std::io::BufRead;
+
 use crate::{
     evm_circuit::{
         param::STACK_CAPACITY,
@@ -322,6 +324,7 @@ impl<'a, F: Field> ConstrainBuilderCommon<F> for EVMConstraintBuilder<'a, F> {
         #[cfg(feature = "debug-annotations")]
         let name =
             Box::leak(format!("{}: {}", self.annotations.iter().join(">"), name).into_boxed_str());
+        log::trace!("add_constraint {name}, degree {} {}", self.condition_expr().degree(), constraint.degree());
         let constraint = self.split_expression(
             name,
             constraint * self.condition_expr(),
@@ -1670,12 +1673,17 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.store_expression(name, compressed_expr, CellType::Lookup(lookup.table()));
     }
 
+    fn has_next_slot_access(&self, expr: Expression<F>) -> bool {
+        expr.evaluate(&|_|false,& |_|false, &|_|false, &|q|q.rotation().0 >= self.next.cell_manager.height_offset as i32, &|_|false, &|_|false, &|x| x, &|x, y| x || y, &|x,y| x || y, &|x, _| x)
+                
+    }
     pub(crate) fn store_expression(
         &mut self,
         name: &str,
         expr: Expression<F>,
         cell_type: CellType,
     ) -> Expression<F> {
+        log::info!("store_expression {name} {}", expr.identifier());
         // Check if we already stored the expression somewhere
         let stored_expression = self.find_stored_expression(&expr, cell_type);
 
@@ -1702,6 +1710,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                     cell.expr() - expr.clone(),
                 );
 
+                let need_next_cell = self.has_next_slot_access(expr.clone());
+                //assert!(!need_next_cell, "{}", name);
+                if need_next_cell {
+                log::error!("next slot {}", name);
+                }
                 self.stored_expressions.push(StoredExpression {
                     name,
                     cell: cell.clone(),
@@ -1725,67 +1738,143 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             .find(|&e| e.cell_type == cell_type && e.expr_id == expr_id)
     }
 
+
+    /// Reduce expression degree
+    fn split_old(&mut self, 
+        name: &'static str, max_degree: usize, expr: Expression<F>)-> Expression<F> {
+        if expr.degree() > max_degree {
+            self.split_expression(name, expr, max_degree)
+        } else {
+                let cell_type = CellType::storage_for_expr(&expr);
+                self.store_expression(name, expr, cell_type)
+            }
+        
+    }
+    /// Reduce expression degree
+    /// The first return values is `has_next_slot_access`
+    fn split(&mut self, 
+        name: &'static str, expr: Expression<F>, max_degree: usize, depth: usize)-> (bool, Expression<F>) {
+            let degree = expr.degree();
+            let id = expr.identifier();
+            log::trace!("split {depth} {name} {degree} {}", id);
+        let r = if degree > max_degree {
+            //
+            let poly = self.split_expression_impl(name, expr, max_degree, depth + 1);
+            // TODO: optimize?
+            (self.has_next_slot_access(poly.clone()), poly)
+        } else if degree == 0 {
+
+            (self.has_next_slot_access(expr.clone()), expr)
+        }
+        else if !self.has_next_slot_access(expr.clone()) {
+            let cell_type = CellType::storage_for_expr(&expr);
+            (false, self.store_expression(name, expr, cell_type))
+        } else {
+                let new_poly = match expr.expr() {
+                    Expression::Negated(poly) => {
+                        let (has_next_slot_access, poly) = self.split(name,  *poly, max_degree, depth + 1);
+                        (has_next_slot_access, Expression::Negated(Box::new(poly)))
+                    }
+                    Expression::Scaled(poly, v) => {
+                        let (has_next_slot_access, poly) = self.split(name, *poly, max_degree, depth + 1);
+                        
+                        (has_next_slot_access, Expression::Scaled(Box::new(poly), v))
+                    }
+                    Expression::Sum(a, b) => {
+                        ///let has_next1 = self.has_next_slot_access(*a);
+                       // let has_next2 = self.has_next_slot_access(*b);
+
+                        let (has_next1, a)= self.split(name, *a, max_degree, depth + 1);
+                        let (has_next2, b) = self.split(name, *b, max_degree, depth + 1);
+                        (has_next1||has_next2, a + b)
+                    }
+                    Expression::Product(a, b) => {
+
+                        let (has_next1, a)= self.split(name, *a, max_degree, depth + 1);
+                        let (has_next2, b) = self.split(name, *b, max_degree, depth + 1);
+                        match (has_next1, has_next2) {
+                            (false, false  ) => {
+                                unreachable!()
+                                let cell_type = CellType::storage_for_expr(&expr);
+                                (false, self.store_expression(name, expr, cell_type))
+                            }              ,
+                            (true, true) => {
+                                assert!(a.degree() + b.degree() < degree, "unable to reduce degree {}", name);
+                                (true, a * b)
+                            }          
+                            (true, false) => {
+                                assert!(b.degree() > 1 , "{}", name);
+                                let cell_type = CellType::storage_for_expr(&b);
+                                let new_b = self.store_expression(name, b, cell_type);
+                                (true, a * new_b)
+                            }
+                            (false, true) => {
+
+                                assert!(a.degree() > 1 , "{}", name);
+                                let cell_type = CellType::storage_for_expr(&a);
+                                let new_a = self.store_expression(name, a, cell_type);
+                                (true, new_a * b)
+                            }
+                        }
+                    }
+                    _ => (false, expr.clone())
+                };
+                if degree > 1 {
+                assert!(new_poly.1.degree() < degree, "{} {id} => {}", name, new_poly.1.identifier());
+                }
+                new_poly
+            };
+            log::trace!("split exit {depth} {} ==>> {}", id, r.1.identifier());
+            r
+        
+    }
+
+    /// Reduce expression degree to be less than or equal to max_degree
     fn split_expression(
         &mut self,
         name: &'static str,
         expr: Expression<F>,
         max_degree: usize,
     ) -> Expression<F> {
+        log::trace!("split_expression begin {name} {}", expr.identifier());
+        let result = self.split_expression_impl(name, expr, max_degree, 0);
+        log::trace!("split_expression end {name} {}", result.identifier());
+        result
+    }
+
+        /// Reduce expression degree to be less than or equal to max_degree
+    fn split_expression_impl(
+        &mut self,
+        name: &'static str,
+        expr: Expression<F>,
+        max_degree: usize,
+        depth: usize, // for debugging
+    ) -> Expression<F> {
+        let id = expr.identifier();
+        log::trace!("split_expression {depth} {name} {}", id);
         if expr.degree() > self.max_inner_degree.1 {
             self.max_inner_degree = (name, expr.degree());
         }
-        if expr.degree() > max_degree {
+        let r = if expr.degree() > max_degree {
             match expr {
                 Expression::Negated(poly) => {
-                    Expression::Negated(Box::new(self.split_expression(name, *poly, max_degree)))
+                    Expression::Negated(Box::new(self.split_expression_impl(name, *poly, max_degree, depth + 1)))
                 }
                 Expression::Scaled(poly, v) => {
-                    Expression::Scaled(Box::new(self.split_expression(name, *poly, max_degree)), v)
+                    Expression::Scaled(Box::new(self.split_expression_impl(name, *poly, max_degree, depth + 1)), v)
                 }
                 Expression::Sum(a, b) => {
-                    let a = self.split_expression(name, *a, max_degree);
-                    let b = self.split_expression(name, *b, max_degree);
+                    let a = self.split_expression_impl(name, *a, max_degree,depth + 1);
+                    let b = self.split_expression_impl(name, *b, max_degree, depth + 1);
                     a + b
                 }
                 Expression::Product(a, b) => {
                     let (mut a, mut b) = (*a, *b);
                     while a.degree() + b.degree() > max_degree {
-                        let mut split = |expr: Expression<F>| {
-                            if expr.degree() > max_degree {
-                                self.split_expression(name, expr, max_degree)
-                            } else {
-                                let exclude_next_slot = true;
-                                if exclude_next_slot {
-                                    match expr.expr() {
-                                        Expression::Sum(lhs, rhs) => {
-                                            if lhs.degree() == 1 {
-                                                let cell_type = CellType::storage_for_expr(&rhs);
-                                                let rhs = self.store_expression(
-                                                    name,
-                                                    rhs.expr(),
-                                                    cell_type,
-                                                );
-                                                lhs.expr() + rhs
-                                            } else {
-                                                let cell_type = CellType::storage_for_expr(&expr);
-                                                self.store_expression(name, expr, cell_type)
-                                            }
-                                        }
-                                        _ => {
-                                            let cell_type = CellType::storage_for_expr(&expr);
-                                            self.store_expression(name, expr, cell_type)
-                                        }
-                                    }
-                                } else {
-                                    let cell_type = CellType::storage_for_expr(&expr);
-                                    self.store_expression(name, expr, cell_type)
-                                }
-                            }
-                        };
                         if a.degree() >= b.degree() {
-                            a = split(a);
+                            (_, a) = self.split(name, a, max_degree, depth + 1);
                         } else {
-                            b = split(b);
+                            (_, b) = self.split(name, b, max_degree, depth + 1);
                         }
                     }
                     a * b
@@ -1794,7 +1883,10 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             }
         } else {
             expr.clone()
-        }
+        };
+
+        log::trace!("split_expression exit {depth} {name} {} ==>> {}", id, r.identifier());
+        r
     }
 
     fn condition_expr(&self) -> Expression<F> {
