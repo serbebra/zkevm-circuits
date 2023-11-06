@@ -22,16 +22,17 @@ use halo2_proofs::plonk::{Error, Expression};
 /// Transaction L1 fee gadget for L1GasPriceOracle contract
 #[derive(Clone, Debug)]
 pub(crate) struct TxL1FeeGadget<F> {
+    // TODO: construct Word9 type to replace old U64Word ?
     /// Calculated L1 fee of transaction
-    tx_l1_fee_word: WordCell<F>,
+    tx_l1_fee_word: Word32Cell<F>,
     /// Remainder when calculating L1 fee
-    remainder_word: WordCell<F>,
+    remainder_word: Word32Cell<F>,
     /// Current value of L1 base fee
-    base_fee_word: WordCell<F>,
+    base_fee_word: Word32Cell<F>,
     /// Current value of L1 fee overhead
-    fee_overhead_word: WordCell<F>,
+    fee_overhead_word: Word32Cell<F>,
     /// Current value of L1 fee scalar
-    fee_scalar_word: WordCell<F>,
+    fee_scalar_word: Word32Cell<F>,
     /// Committed value of L1 base fee
     base_fee_committed: Cell<F>,
     /// Committed value of L1 fee overhead
@@ -135,16 +136,16 @@ impl<F: Field> TxL1FeeGadget<F> {
     }
 
     pub(crate) fn tx_l1_fee(&self) -> Expression<F> {
-        from_bytes::expr(&self.tx_l1_fee_word.limbs)
+        from_bytes::expr(&self.tx_l1_fee_word.limbs[..31])
     }
 
     fn raw_construct(cb: &mut EVMConstraintBuilder<F>, tx_data_gas_cost: Expression<F>) -> Self {
-        let tx_l1_fee_word = cb.query_word_unchecked();
-        let remainder_word = cb.query_word_unchecked();
+        let tx_l1_fee_word = cb.query_word32();
+        let remainder_word = cb.query_word32();
 
-        let base_fee_word = cb.query_word_unchecked();
-        let fee_overhead_word = cb.query_word_unchecked();
-        let fee_scalar_word = cb.query_word_unchecked();
+        let base_fee_word = cb.query_word32();
+        let fee_overhead_word = cb.query_word32();
+        let fee_scalar_word = cb.query_word32();
 
         let [tx_l1_fee, remainder, base_fee, fee_overhead, fee_scalar] = [
             &tx_l1_fee_word,

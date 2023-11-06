@@ -1,3 +1,4 @@
+use crate::util::word;
 use bus_mapping::evm::OpcodeId;
 use eth_types::{Field, ToLittleEndian, Word};
 use halo2_proofs::circuit::Value;
@@ -18,7 +19,7 @@ impl Bytecode {
     pub fn table_assignments<F: Field>(
         &self,
         challenges: &Challenges<Value<F>>,
-    ) -> Vec<[Value<F>; 6]> {
+    ) -> Vec<[Value<F>; 7]> {
         let n = 1 + self.bytes.len();
         let mut rows = Vec::with_capacity(n);
         let hash = if cfg!(feature = "poseidon-codehash") {
@@ -32,8 +33,12 @@ impl Bytecode {
                 .map(|challenge| rlc::value(&self.hash.to_le_bytes(), challenge))
         };
 
+        let hash_word: word::Word<Value<F>> = word::Word::<F>::from(self.hash).map(Value::known);
+
         rows.push([
-            hash,
+            hash_word.lo(),
+            hash_word.hi(),
+            // hash
             Value::known(F::from(BytecodeFieldTag::Header as u64)),
             Value::known(F::zero()),
             Value::known(F::zero()),
@@ -61,7 +66,9 @@ impl Bytecode {
             }
 
             rows.push([
-                hash,
+                hash_word.lo(),
+                hash_word.hi(),
+                //hash,
                 Value::known(F::from(BytecodeFieldTag::Byte as u64)),
                 Value::known(F::from(idx as u64)),
                 Value::known(F::from(is_code as u64)),

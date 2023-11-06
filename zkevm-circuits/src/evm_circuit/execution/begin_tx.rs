@@ -930,10 +930,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         // .to_scalar()
         // .expect("unexpected Address -> Scalar conversion failure");
         let callee_address = tx.callee_address.unwrap_or(Address::zero());
+
         // .to_scalar()
         // .expect("unexpected Address -> Scalar conversion failure");
         self.tx_caller_address
-            .assign_h160(region, offset, callee_address)?;
+            .assign_h160(region, offset, caller_address)?;
         self.tx_caller_address_is_zero
             .assign_u256(region, offset, caller_address.to_word())?;
         self.tx_callee_address

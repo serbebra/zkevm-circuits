@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_WORD,
+        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_WORD},
         step::ExecutionState,
         util::{
             common_gadget::RestoreContextGadget,
@@ -201,7 +201,9 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                     cb.word_rlc(sig_s.clone().limbs.map(|cell| cell.expr())),
                     select::expr(
                         recovered.expr(),
-                        from_bytes::expr(&recovered_addr_keccak_rlc.limbs),
+                        from_bytes::expr(
+                            &recovered_addr_keccak_rlc.limbs[..N_BYTES_ACCOUNT_ADDRESS],
+                        ),
                         0.expr(),
                     ),
                     recovered.expr(),
