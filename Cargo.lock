@@ -1705,6 +1705,7 @@ version = "0.1.0"
 dependencies = [
  "ethers-core 2.0.7",
  "ethers-signers",
+ "halo2-base",
  "halo2_proofs",
  "hex",
  "itertools 0.10.5",

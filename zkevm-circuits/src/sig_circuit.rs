@@ -30,7 +30,7 @@ use eth_types::{
     Field,
 };
 use halo2_base::{
-    gates::{range::RangeConfig, GateChip, GateInstructions, RangeChip, RangeInstructions},
+    gates::{range::RangeConfig, GateChip, GateInstructions, RangeChip, RangeInstructions, circuit::builder::BaseCircuitBuilder},
     utils::{modulus, BigPrimeField},
     AssignedValue, Context, QuantumCell, SKIP_FIRST_PASS,
 };
@@ -217,6 +217,8 @@ impl<F: Field> SubCircuitConfig<F> for SigCircuitConfig<F> {
 /// key corresponding to an Ethereum Address.
 #[derive(Clone, Debug, Default)]
 pub struct SigCircuit<F: Field> {
+    /// circuit builder
+    pub builder: BaseCircuitBuilder<F>,
     /// Max number of verifications
     pub max_verif: usize,
     /// Without padding
@@ -262,7 +264,7 @@ impl<F: Field> SubCircuit<F> for SigCircuit<F> {
         Ok(())
     }
 
-    // Since sig circuit / halo2-lib use veticle cell assignment,
+    // Since sig circuit / halo2-lib use vertical cell assignment,
     // so the returned pair is consisted of same values
     fn min_num_rows_block(block: &crate::witness::Block<F>) -> (usize, usize) {
         let row_num = if block.circuits_params.max_vertical_circuit_rows == 0 {
@@ -397,7 +399,7 @@ impl<F: Field> SigCircuit<F> {
 
         // the last 88 bits of y
         let assigned_y_limb = &y_coord.limbs()[0];
-        let mut y_value = *assigned_y_limb.value();
+        let y_value = *assigned_y_limb.value();
 
         // y_tmp = (y_value - y_last_bit)/2
         let y_tmp = (y_value - F::from(*v as u64)) * F::TWO_INV;

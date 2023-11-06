@@ -26,7 +26,7 @@ pub mod sign_types;
 
 pub use bytecode::Bytecode;
 pub use error::Error;
-use halo2_proofs::halo2curves::{bn256::Fr, ff::FromUniformBytes, group::ff::PrimeField};
+use halo2_proofs::halo2curves::{bn256::Fr, ff::FromUniformBytes};
 
 use crate::evm_types::{
     memory::Memory, stack::Stack, storage::Storage, Gas, GasCost, OpcodeId, ProgramCounter,
@@ -39,7 +39,7 @@ pub use ethers_core::{
         Address, Block, Bytes, Signature, H160, H256, H64, U256, U64,
     },
 };
-
+use halo2_base::utils::BigPrimeField;
 use once_cell::sync::Lazy;
 use serde::{de, Deserialize, Serialize};
 use std::{collections::HashMap, fmt, str::FromStr};
@@ -47,11 +47,11 @@ use std::{collections::HashMap, fmt, str::FromStr};
 /// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
 /// trait and its repr.
 pub trait Field:
-    PrimeField<Repr = [u8; 32]>
-    + hash_circuit::hash::Hashable
+    hash_circuit::hash::Hashable
     + std::convert::From<Fr>
     + FromUniformBytes<64>
     + From<bool>
+    + BigPrimeField
 {
     /// Re-expose zero element as a function
     fn zero() -> Self {
@@ -72,10 +72,6 @@ pub trait Field:
 // Impl custom `Field` trait for BN256 Fr to be used and consistent with the
 // rest of the workspace.
 impl Field for Fr {}
-
-// Impl custom `Field` trait for BN256 Fq to be used and consistent with the
-// rest of the workspace.
-// impl Field for Fq {}
 
 /// Trait used to define types that can be converted to a 256 bit scalar value.
 pub trait ToScalar<F> {
