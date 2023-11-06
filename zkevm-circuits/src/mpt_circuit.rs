@@ -138,12 +138,22 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         config.0.assign(layouter, &self.proofs, self.row_limit)?;
-        config.1.load(
-            layouter,
-            &self.mpt_updates,
-            self.row_limit,
-            challenges.evm_word(),
-        )?;
+        let use_par = std::env::var("PARALLEL_SYN").map_or(false, |s| s == *"true");
+        if use_par {
+            config.1.load_par(
+                layouter,
+                &self.mpt_updates,
+                self.row_limit,
+                challenges.evm_word(),
+            )?;
+        } else {
+            config.1.load(
+                layouter,
+                &self.mpt_updates,
+                self.row_limit,
+                challenges.evm_word(),
+            )?;
+        }
         Ok(())
     }
 
