@@ -792,8 +792,8 @@ impl<F: Field> SigCircuit<F> {
                 })
                 .collect::<Result<Vec<SignDataDecomposed<F>>, Error>>()?;
 
-            builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
-            builder.clear();
+            // builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
+            // builder.clear();
             (assigned_ecdsas, sign_data_decomposed)
         };
 
@@ -815,7 +815,7 @@ impl<F: Field> SigCircuit<F> {
             let mut builder = self.phase_1_builder.borrow_mut();
             let gate_chip = GateChip::new();
 
-            let mut ctx = builder.main(1);
+            let mut ctx = builder.main(0);
             let (assigned_keccak_values, assigned_sig_values): (
                 Vec<[AssignedValue<F>; 3]>,
                 Vec<AssignedSignatureVerify<F>>,
@@ -965,7 +965,7 @@ impl<F: Field> SigCircuit<F> {
 
         drop(copy_manager_locked);
 
-        let ctx = builder.main(1);
+        let ctx = builder.main(0);
 
         for (a, b) in t.iter().zip(data.assigned_keccak_values.iter()) {
             for (aa, bb) in a.iter().zip(b.iter()) {
@@ -1039,9 +1039,9 @@ impl<F: Field> SigCircuit<F> {
 
 
         println!("start final assignment");
-        let builder = self.phase_1_builder.borrow_mut();
+        let mut builder = self.phase_1_builder.borrow_mut();
         builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
-
+        builder.clear();
         println!("finished");
 
 
