@@ -343,15 +343,15 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             &mut bus_builder,
             EvmCircuitConfigArgs {
                 challenges: challenges_expr.clone(),
-                bytecode_table,
+                bytecode_table: bytecode_table.clone(),
                 block_table: block_table.clone(),
-                copy_table,
+                copy_table: copy_table.clone(),
                 keccak_table: keccak_table.clone(),
-                exp_table,
-                sig_table,
-                modexp_table,
-                ecc_table,
-                pow_of_rand_table,
+                exp_table: exp_table.clone(),
+                sig_table: sig_table.clone(),
+                modexp_table: modexp_table.clone(),
+                ecc_table: ecc_table.clone(),
+                pow_of_rand_table: pow_of_rand_table.clone(),
             },
         );
         log_circuit_info(meta, "evm circuit");
@@ -362,7 +362,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let sig_circuit = SigCircuitConfig::new(
             meta,
             SigCircuitConfigArgs {
-                keccak_table,
+                keccak_table: keccak_table.clone(),
                 sig_table,
                 challenges: challenges_expr.clone(),
             },
@@ -378,7 +378,21 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         );
         log_circuit_info(meta, "ecc circuit");
 
-        let evm_lookups = EVMBusLookups::configure(meta, &mut bus_builder, &rw_table, &tx_table);
+        let evm_lookups = EVMBusLookups::configure(
+            meta,
+            &mut bus_builder,
+            &rw_table,
+            &tx_table,
+            &bytecode_table,
+            &block_table,
+            &copy_table,
+            &keccak_table,
+            &exp_table,
+            &sig_table,
+            &modexp_table,
+            &ecc_table,
+            &pow_of_rand_table,
+        );
 
         let bus = BusConfig::new(meta, &bus_builder.build());
 
