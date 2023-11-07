@@ -1,7 +1,11 @@
+use std::cell::RefCell;
+
 use eth_types::Field;
-use halo2_base::{AssignedValue, QuantumCell};
+use halo2_base::{AssignedValue, QuantumCell, gates::circuit::builder::RangeCircuitBuilder};
 use halo2_ecc::{bigint::ProperCrtUint, ecc::EcPoint, fields::FieldChip};
-use halo2_proofs::circuit::Value;
+use halo2_proofs::circuit::{Value, AssignedCell, Layouter};
+
+use super::SigCircuitConfig;
 
 // Hard coded parameters.
 // FIXME: allow for a configurable param.
@@ -73,6 +77,31 @@ pub(crate) struct AssignedSignatureVerify<F: Field> {
     pub(crate) s_rlc: AssignedValue<F>,
     pub(crate) v: AssignedValue<F>,
     pub(crate) sig_is_valid: AssignedValue<F>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TransmutedSignatureVerify<F: Field> {
+    pub(crate) address: AssignedCell<F, F>,
+    pub(crate) msg_len: usize,
+    pub(crate) msg_rlc: Value<F>,
+    pub(crate) msg_hash_rlc: AssignedCell<F,F>,
+    pub(crate) r_rlc: AssignedCell<F,F>,
+    pub(crate) s_rlc: AssignedCell<F,F>,
+    pub(crate) v: AssignedCell<F, F>,
+    pub(crate) sig_is_valid: AssignedCell<F,F>,
+}
+
+
+impl<F:Field> TransmutedSignatureVerify<F> {
+
+    fn trasmute_from(
+        builder:  RefCell<RangeCircuitBuilder<F>>,
+        config: &SigCircuitConfig<F>,
+        layouter: &mut impl Layouter<F>,
+        assigned_sig_verif: &AssignedSignatureVerify<F>,
+    )->Self{
+        todo!()
+    }
 }
 
 pub(super) struct SignDataDecomposed<F: Field> {
