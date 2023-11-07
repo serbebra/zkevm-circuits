@@ -636,7 +636,6 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
 
         tx_table.load(
             &mut layouter,
-            |_offset, _message| {},
             &block.txs,
             block.circuits_params.max_txs,
             block.circuits_params.max_calldata,
@@ -647,23 +646,17 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         block.rws.check_rw_counter_sanity();
         rw_table.load(
             &mut layouter,
-            |_offset, _message| {},
             &block.rws.table_assignments(),
             block.circuits_params.max_rws,
             challenges.evm_word(),
         )?;
 
         bytecode_table.dev_load(&mut layouter, block.bytecodes.values(), &challenges)?;
-
         block_table.dev_load(&mut layouter, &block.context, &block.txs, &challenges)?;
-
         copy_table.dev_load(&mut layouter, block, &challenges)?;
-
         keccak_table.dev_load(&mut layouter, &block.sha3_inputs, &challenges)?;
         exp_table.dev_load(&mut layouter, block)?;
-
         sig_table.dev_load(&mut layouter, block, &challenges)?;
-
         modexp_table.dev_load(&mut layouter, &block.get_big_modexp())?;
         ecc_table.dev_load(
             &mut layouter,

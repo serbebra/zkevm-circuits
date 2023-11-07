@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::{
         param::STACK_CAPACITY,
         step::{ExecutionState, Step},
-        table::{FixedTableTag, Lookup, MsgExpr, RwValues, Table},
+        table::{FixedTableTag, Lookup, MsgExpr, RwValues},
         util::{Cell, RandomLinearCombination, Word},
     },
     table::{

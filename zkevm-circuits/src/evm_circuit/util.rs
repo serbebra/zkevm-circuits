@@ -1,10 +1,7 @@
 use crate::{
-    evm_circuit::{
-        param::{
-            N_BYTES_MEMORY_ADDRESS, N_BYTES_U64, N_BYTE_LOOKUPS, N_COPY_COLUMNS,
-            N_PHASE2_COLUMNS, N_PHASE2_COPY_COLUMNS, N_PHASE3_COLUMNS,
-        },
-        table::Table,
+    evm_circuit::param::{
+        N_BYTES_MEMORY_ADDRESS, N_BYTES_U64, N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE2_COLUMNS,
+        N_PHASE2_COPY_COLUMNS, N_PHASE3_COLUMNS,
     },
     table::RwTableTag,
     util::{query_expression, Challenges, Expr},
