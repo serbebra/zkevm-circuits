@@ -1,4 +1,3 @@
-use super::table::Table;
 use crate::evm_circuit::{step::ExecutionState, EvmCircuit};
 use halo2_proofs::{
     halo2curves::bn256::Fr,
@@ -23,7 +22,6 @@ pub const N_PHASE3_COLUMNS: usize = 12;
 
 /// Number of Advice Phase1 columns in the EVM circuit
 pub(crate) const N_PHASE1_COLUMNS: usize = STEP_WIDTH
-    - EVM_LOOKUP_COLS
     - N_PHASE3_COLUMNS
     - N_PHASE2_COLUMNS
     - N_COPY_COLUMNS
@@ -35,71 +33,6 @@ pub(crate) const N_COPY_COLUMNS: usize = 2;
 pub(crate) const N_PHASE2_COPY_COLUMNS: usize = 1;
 
 pub(crate) const N_BYTE_LOOKUPS: usize = 26;
-
-/// Amount of lookup columns in the EVM circuit dedicated to lookups.
-pub(crate) const EVM_LOOKUP_COLS: usize = FIXED_TABLE_LOOKUPS
-    + TX_TABLE_LOOKUPS
-    + RW_TABLE_LOOKUPS
-    + BYTECODE_TABLE_LOOKUPS
-    + BLOCK_TABLE_LOOKUPS
-    + COPY_TABLE_LOOKUPS
-    + KECCAK_TABLE_LOOKUPS
-    + EXP_TABLE_LOOKUPS
-    + SIG_TABLE_LOOKUPS
-    + MODEXP_TABLE_LOOKUPS
-    + ECC_TABLE_LOOKUPS
-    + POW_OF_RAND_TABLE_LOOKUPS;
-
-/// Lookups done per row.
-pub(crate) const LOOKUP_CONFIG: &[(Table, usize)] = &[
-    (Table::Fixed, FIXED_TABLE_LOOKUPS),
-    (Table::Tx, TX_TABLE_LOOKUPS),
-    (Table::Rw, RW_TABLE_LOOKUPS),
-    (Table::Bytecode, BYTECODE_TABLE_LOOKUPS),
-    (Table::Block, BLOCK_TABLE_LOOKUPS),
-    (Table::Copy, COPY_TABLE_LOOKUPS),
-    (Table::Keccak, KECCAK_TABLE_LOOKUPS),
-    (Table::Exp, EXP_TABLE_LOOKUPS),
-    (Table::Sig, SIG_TABLE_LOOKUPS),
-    (Table::ModExp, MODEXP_TABLE_LOOKUPS),
-    (Table::Ecc, ECC_TABLE_LOOKUPS),
-    (Table::PowOfRand, POW_OF_RAND_TABLE_LOOKUPS),
-];
-
-/// Fixed Table lookups done in EVMCircuit
-pub const FIXED_TABLE_LOOKUPS: usize = 0;
-
-/// Tx Table lookups done in EVMCircuit
-pub const TX_TABLE_LOOKUPS: usize = 0;
-
-/// Rw Table lookups done in EVMCircuit
-pub const RW_TABLE_LOOKUPS: usize = 0;
-
-/// Bytecode Table lookups done in EVMCircuit
-pub const BYTECODE_TABLE_LOOKUPS: usize = 1;
-
-/// Block Table lookups done in EVMCircuit
-pub const BLOCK_TABLE_LOOKUPS: usize = 1;
-
-/// Copy Table lookups done in EVMCircuit
-pub const COPY_TABLE_LOOKUPS: usize = 1;
-
-/// Keccak Table lookups done in EVMCircuit
-pub const KECCAK_TABLE_LOOKUPS: usize = 1;
-
-/// Exp Table lookups done in EVMCircuit
-pub const EXP_TABLE_LOOKUPS: usize = 1;
-
-/// Sig Table lookups done in EVMCircuit
-pub const SIG_TABLE_LOOKUPS: usize = 1;
-
-/// ModExp Table lookups done in EVMCircuit
-pub const MODEXP_TABLE_LOOKUPS: usize = 1;
-/// Ecc Table lookups done in EVMCircuit
-pub const ECC_TABLE_LOOKUPS: usize = 1;
-
-/// Power of Randomness lookups done from EVM Circuit.
-pub const POW_OF_RAND_TABLE_LOOKUPS: usize = 1;
 
 /// Maximum number of bytes that an integer can fit in field without wrapping
 /// around.

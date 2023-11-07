@@ -48,41 +48,16 @@ use witness::Block;
 pub struct EvmCircuitConfig<F> {
     fixed_table: [Column<Fixed>; 4],
     dual_byte_table: [Column<Fixed>; 2],
+    pow_of_rand_table: PowOfRandTable,
     bus_lookup: [BusLookupChip<F>; 2],
     enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
-    // External tables
-    bytecode_table: BytecodeTable,
-    block_table: BlockTable,
-    copy_table: CopyTable,
-    keccak_table: KeccakTable,
-    exp_table: ExpTable,
-    sig_table: SigTable,
-    modexp_table: ModExpTable,
-    ecc_table: EccTable,
-    pow_of_rand_table: PowOfRandTable,
 }
 
 /// Circuit configuration arguments
 pub struct EvmCircuitConfigArgs<F: Field> {
     /// Challenge
     pub challenges: crate::util::Challenges<Expression<F>>,
-    /// BytecodeTable
-    pub bytecode_table: BytecodeTable,
-    /// BlockTable
-    pub block_table: BlockTable,
-    /// CopyTable
-    pub copy_table: CopyTable,
-    /// KeccakTable
-    pub keccak_table: KeccakTable,
-    /// ExpTable
-    pub exp_table: ExpTable,
-    /// SigTable
-    pub sig_table: SigTable,
-    /// ModExpTable
-    pub modexp_table: ModExpTable,
-    /// Ecc Table.
-    pub ecc_table: EccTable,
     // Power of Randomness Table.
     pub pow_of_rand_table: PowOfRandTable,
 }
@@ -117,14 +92,6 @@ impl<F: Field> EvmCircuitConfig<F> {
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         EvmCircuitConfigArgs {
             challenges,
-            bytecode_table,
-            block_table,
-            copy_table,
-            keccak_table,
-            exp_table,
-            sig_table,
-            modexp_table,
-            ecc_table,
             pow_of_rand_table,
         }: EvmCircuitConfigArgs<F>,
     ) -> Self {
@@ -140,35 +107,13 @@ impl<F: Field> EvmCircuitConfig<F> {
             &fixed_table,
         );
 
-        let execution = Box::new(ExecutionConfig::configure(
-            meta,
-            challenges,
-            bus_builder,
-            &bytecode_table,
-            &block_table,
-            &copy_table,
-            &keccak_table,
-            &exp_table,
-            &sig_table,
-            &modexp_table,
-            &ecc_table,
-            &pow_of_rand_table,
-        ));
+        let execution = Box::new(ExecutionConfig::configure(meta, challenges, bus_builder));
 
         meta.annotate_lookup_any_column(dual_byte_table[0], || "dual_byte_table_0");
         meta.annotate_lookup_any_column(dual_byte_table[1], || "dual_byte_table_1");
         fixed_table.iter().enumerate().for_each(|(idx, &col)| {
             meta.annotate_lookup_any_column(col, || format!("fix_table_{idx}"))
         });
-        bytecode_table.annotate_columns(meta);
-        block_table.annotate_columns(meta);
-        copy_table.annotate_columns(meta);
-        keccak_table.annotate_columns(meta);
-        exp_table.annotate_columns(meta);
-        sig_table.annotate_columns(meta);
-        modexp_table.annotate_columns(meta);
-        ecc_table.annotate_columns(meta);
-        pow_of_rand_table.annotate_columns(meta);
 
         Self {
             fixed_table,
@@ -176,14 +121,6 @@ impl<F: Field> EvmCircuitConfig<F> {
             bus_lookup,
             enable_bus_lookup,
             execution,
-            bytecode_table,
-            block_table,
-            copy_table,
-            keccak_table,
-            exp_table,
-            sig_table,
-            modexp_table,
-            ecc_table,
             pow_of_rand_table,
         }
     }
@@ -582,6 +519,14 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         Challenges,
         RwTable,
         TxTable,
+        BytecodeTable,
+        BlockTable,
+        CopyTable,
+        KeccakTable,
+        ExpTable,
+        SigTable,
+        ModExpTable,
+        EccTable,
     );
     type FloorPlanner = SimpleFloorPlanner;
 
@@ -607,19 +552,22 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let modexp_table = ModExpTable::construct(meta);
         let ecc_table = EccTable::construct(meta);
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
+
+        bytecode_table.annotate_columns(meta);
+        block_table.annotate_columns(meta);
+        copy_table.annotate_columns(meta);
+        keccak_table.annotate_columns(meta);
+        exp_table.annotate_columns(meta);
+        sig_table.annotate_columns(meta);
+        modexp_table.annotate_columns(meta);
+        ecc_table.annotate_columns(meta);
+        pow_of_rand_table.annotate_columns(meta);
+
         let config = EvmCircuitConfig::new(
             meta,
             &mut bus_builder,
             EvmCircuitConfigArgs {
                 challenges: challenges_expr,
-                bytecode_table: bytecode_table.clone(),
-                block_table: block_table.clone(),
-                copy_table: copy_table.clone(),
-                keccak_table: keccak_table.clone(),
-                exp_table: exp_table.clone(),
-                sig_table: sig_table.clone(),
-                modexp_table: modexp_table.clone(),
-                ecc_table: ecc_table.clone(),
                 pow_of_rand_table: pow_of_rand_table.clone(),
             },
         );
@@ -639,7 +587,22 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &pow_of_rand_table,
         );
         let bus = BusConfig::new(meta, &bus_builder.build());
-        (config, bus, evm_lookups, challenges, rw_table, tx_table)
+        (
+            config,
+            bus,
+            evm_lookups,
+            challenges,
+            rw_table,
+            tx_table,
+            bytecode_table,
+            block_table,
+            copy_table,
+            keccak_table,
+            exp_table,
+            sig_table,
+            modexp_table,
+            ecc_table,
+        )
     }
 
     fn synthesize(
@@ -650,7 +613,22 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let block = self.block.as_ref().unwrap();
         let num_rows = Self::get_num_rows_required(block);
 
-        let (config, bus, evm_lookups, challenges, rw_table, tx_table) = config;
+        let (
+            config,
+            bus,
+            evm_lookups,
+            challenges,
+            rw_table,
+            tx_table,
+            bytecode_table,
+            block_table,
+            copy_table,
+            keccak_table,
+            exp_table,
+            sig_table,
+            modexp_table,
+            ecc_table,
+        ) = config;
         let challenges = challenges.values(&layouter);
 
         let mut bus_assigner =
@@ -675,26 +653,19 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             challenges.evm_word(),
         )?;
 
-        config
-            .bytecode_table
-            .dev_load(&mut layouter, block.bytecodes.values(), &challenges)?;
-        config
-            .block_table
-            .dev_load(&mut layouter, &block.context, &block.txs, &challenges)?;
-        config
-            .copy_table
-            .dev_load(&mut layouter, block, &challenges)?;
-        config
-            .keccak_table
-            .dev_load(&mut layouter, &block.sha3_inputs, &challenges)?;
-        config.exp_table.dev_load(&mut layouter, block)?;
-        config
-            .sig_table
-            .dev_load(&mut layouter, block, &challenges)?;
-        config
-            .modexp_table
-            .dev_load(&mut layouter, &block.get_big_modexp())?;
-        config.ecc_table.dev_load(
+        bytecode_table.dev_load(&mut layouter, block.bytecodes.values(), &challenges)?;
+
+        block_table.dev_load(&mut layouter, &block.context, &block.txs, &challenges)?;
+
+        copy_table.dev_load(&mut layouter, block, &challenges)?;
+
+        keccak_table.dev_load(&mut layouter, &block.sha3_inputs, &challenges)?;
+        exp_table.dev_load(&mut layouter, block)?;
+
+        sig_table.dev_load(&mut layouter, block, &challenges)?;
+
+        modexp_table.dev_load(&mut layouter, &block.get_big_modexp())?;
+        ecc_table.dev_load(
             &mut layouter,
             block.circuits_params.max_ec_ops,
             &block.get_ec_add_ops(),
@@ -722,7 +693,7 @@ mod evm_circuit_stats {
     use crate::{
         evm_circuit::{
             param::{
-                LOOKUP_CONFIG, N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE1_COLUMNS, N_PHASE2_COLUMNS,
+                N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE1_COLUMNS, N_PHASE2_COLUMNS,
                 N_PHASE2_COPY_COLUMNS, N_PHASE3_COLUMNS,
             },
             step::ExecutionState,
@@ -913,29 +884,7 @@ mod evm_circuit_stats {
             storage_perm_2,
             N_PHASE2_COPY_COLUMNS,
             byte_lookup,
-            N_BYTE_LOOKUPS,
-            fixed_table,
-            LOOKUP_CONFIG[0].1,
-            tx_table,
-            LOOKUP_CONFIG[1].1,
-            rw_table,
-            LOOKUP_CONFIG[2].1,
-            bytecode_table,
-            LOOKUP_CONFIG[3].1,
-            block_table,
-            LOOKUP_CONFIG[4].1,
-            copy_table,
-            LOOKUP_CONFIG[5].1,
-            keccak_table,
-            LOOKUP_CONFIG[6].1,
-            exp_table,
-            LOOKUP_CONFIG[7].1,
-            sig_table,
-            LOOKUP_CONFIG[8].1,
-            ecc_table,
-            LOOKUP_CONFIG[9].1,
-            pow_of_rand_table,
-            LOOKUP_CONFIG[10].1
+            N_BYTE_LOOKUPS
         );
     }
 

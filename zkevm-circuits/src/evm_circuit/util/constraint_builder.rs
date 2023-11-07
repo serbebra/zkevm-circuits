@@ -1675,41 +1675,12 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         }
     }
 
-    pub(crate) fn add_lookup(&mut self, name: &str, lookup: Lookup<F>) {
+    pub(crate) fn add_lookup(&mut self, _name: &str, lookup: Lookup<F>) {
         let lookup = match self.condition_expr_opt() {
             Some(condition) => lookup.conditional(condition),
             None => lookup,
         };
-
-        // TODO: support all types.
-        if [
-            Table::Fixed,
-            Table::Rw,
-            Table::Tx,
-            Table::Bytecode,
-            Table::Block,
-            Table::Copy,
-            Table::Keccak,
-            Table::Exp,
-            Table::Sig,
-            Table::ModExp,
-            Table::Ecc,
-            Table::PowOfRand,
-        ]
-        .contains(&lookup.table())
-        {
-            self.add_bus_lookup(lookup);
-            return;
-        }
-
-        unreachable!("All lookups are implement by bus.");
-
-        let compressed_expr = self.split_expression(
-            "Lookup compression",
-            rlc::expr(&lookup.input_exprs(), self.challenges.lookup_input()),
-            MAX_DEGREE - IMPLICIT_DEGREE,
-        );
-        self.store_expression(name, compressed_expr, CellType::Lookup(lookup.table()));
+        self.add_bus_lookup(lookup);
     }
 
     fn add_bus_lookup(&mut self, lookup: Lookup<F>) {
@@ -1755,13 +1726,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         let stored_expression = self.find_stored_expression(&expr, cell_type);
 
         match stored_expression {
-            Some(stored_expression) => {
-                debug_assert!(
-                    !matches!(cell_type, CellType::Lookup(_)),
-                    "The same lookup is done multiple times",
-                );
-                stored_expression.cell.expr()
-            }
+            Some(stored_expression) => stored_expression.cell.expr(),
             None => {
                 // Even if we're building expressions for the next step,
                 // these intermediate values need to be stored in the current step.

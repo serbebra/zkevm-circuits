@@ -1,10 +1,5 @@
 use super::{
-    param::{
-        BLOCK_TABLE_LOOKUPS, BYTECODE_TABLE_LOOKUPS, COPY_TABLE_LOOKUPS, ECC_TABLE_LOOKUPS,
-        EXP_TABLE_LOOKUPS, FIXED_TABLE_LOOKUPS, KECCAK_TABLE_LOOKUPS, MODEXP_TABLE_LOOKUPS,
-        N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE1_COLUMNS, POW_OF_RAND_TABLE_LOOKUPS,
-        RW_TABLE_LOOKUPS, SIG_TABLE_LOOKUPS, TX_TABLE_LOOKUPS,
-    },
+    param::{N_BYTE_LOOKUPS, N_COPY_COLUMNS, N_PHASE1_COLUMNS},
     util::{
         instrumentation::Instrument, CachedRegion, CellManager, Inverter, StepBusOp,
         StoredExpression,
@@ -13,9 +8,9 @@ use super::{
 };
 use crate::{
     evm_circuit::{
-        param::{EVM_LOOKUP_COLS, MAX_STEP_HEIGHT, N_PHASE2_COLUMNS, N_PHASE3_COLUMNS, STEP_WIDTH},
+        param::{MAX_STEP_HEIGHT, N_PHASE2_COLUMNS, N_PHASE3_COLUMNS, STEP_WIDTH},
         step::{ExecutionState, Step},
-        table::{MsgExpr, MsgF, Table},
+        table::{MsgExpr, MsgF},
         util::{
             constraint_builder::{
                 BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
@@ -24,7 +19,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::{LookupTable, RwTableTag, TxReceiptFieldTag},
+    table::{RwTableTag, TxReceiptFieldTag},
     util::{query_expression, Challenges, Expr},
 };
 use bus_mapping::util::read_env_var;
@@ -376,21 +371,11 @@ pub(crate) struct ExecutionConfig<F> {
 }
 
 impl<F: Field> ExecutionConfig<F> {
-    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::redundant_closure_call)]
     pub(crate) fn configure(
         meta: &mut ConstraintSystem<F>,
         challenges: Challenges<Expression<F>>,
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
-        bytecode_table: &dyn LookupTable<F>,
-        block_table: &dyn LookupTable<F>,
-        copy_table: &dyn LookupTable<F>,
-        keccak_table: &dyn LookupTable<F>,
-        exp_table: &dyn LookupTable<F>,
-        sig_table: &dyn LookupTable<F>,
-        modexp_table: &dyn LookupTable<F>,
-        ecc_table: &dyn LookupTable<F>,
-        pow_of_rand_table: &dyn LookupTable<F>,
     ) -> Self {
         let mut instrument = Instrument::default();
         let q_usable = meta.complex_selector();
@@ -406,9 +391,9 @@ impl<F: Field> ExecutionConfig<F> {
             .iter()
             .enumerate()
             .map(|(n, _)| {
-                if n < EVM_LOOKUP_COLS + N_PHASE3_COLUMNS {
+                if n < N_PHASE3_COLUMNS {
                     meta.advice_column_in(ThirdPhase)
-                } else if n < EVM_LOOKUP_COLS + N_PHASE3_COLUMNS + N_PHASE2_COLUMNS {
+                } else if n < N_PHASE3_COLUMNS + N_PHASE2_COLUMNS {
                     meta.advice_column_in(SecondPhase)
                 } else {
                     meta.advice_column_in(FirstPhase)
@@ -661,20 +646,6 @@ impl<F: Field> ExecutionConfig<F> {
             instrument,
         };
 
-        Self::configure_lookup(
-            meta,
-            bytecode_table,
-            block_table,
-            copy_table,
-            keccak_table,
-            exp_table,
-            sig_table,
-            modexp_table,
-            ecc_table,
-            pow_of_rand_table,
-            &challenges,
-            &cell_manager,
-        );
         config
     }
 
@@ -972,49 +943,6 @@ impl<F: Field> ExecutionConfig<F> {
         BusPortMulti::connect(meta, bus_builder, q_usable, ops)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn configure_lookup(
-        meta: &mut ConstraintSystem<F>,
-        bytecode_table: &dyn LookupTable<F>,
-        block_table: &dyn LookupTable<F>,
-        copy_table: &dyn LookupTable<F>,
-        keccak_table: &dyn LookupTable<F>,
-        exp_table: &dyn LookupTable<F>,
-        sig_table: &dyn LookupTable<F>,
-        modexp_table: &dyn LookupTable<F>,
-        ecc_table: &dyn LookupTable<F>,
-        pow_of_rand_table: &dyn LookupTable<F>,
-        challenges: &Challenges<Expression<F>>,
-        cell_manager: &CellManager<F>,
-    ) {
-        for column in cell_manager.columns().iter() {
-            if let CellType::Lookup(table) = column.cell_type {
-                let name = format!("{table:?}");
-                meta.lookup_any(Box::leak(name.into_boxed_str()), |meta| {
-                    let table_expressions = match table {
-                        Table::Fixed => unreachable!("Fixed table is on the bus"),
-                        Table::Tx => unreachable!("TX table is on the bus"),
-                        Table::Rw => unreachable!("RW table is on the bus"),
-                        Table::Bytecode => bytecode_table,
-                        Table::Block => block_table,
-                        Table::Copy => copy_table,
-                        Table::Keccak => keccak_table,
-                        Table::Exp => exp_table,
-                        Table::Sig => sig_table,
-                        Table::ModExp => modexp_table,
-                        Table::Ecc => ecc_table,
-                        Table::PowOfRand => pow_of_rand_table,
-                    }
-                    .table_exprs(meta);
-                    vec![(
-                        column.expr(),
-                        rlc::expr(&table_expressions, challenges.lookup_input()),
-                    )]
-                });
-            }
-        }
-    }
-
     pub fn get_num_rows_required(&self, block: &Block<F>) -> usize {
         // Start at 1 so we can be sure there is an unused `next` row available
         let mut num_rows = 1;
@@ -1293,18 +1221,6 @@ impl<F: Field> ExecutionConfig<F> {
 
     fn annotate_circuit(&self, region: &mut Region<F>) {
         let groups = [
-            ("EVM_lookup_fixed", FIXED_TABLE_LOOKUPS),
-            ("EVM_lookup_tx", TX_TABLE_LOOKUPS),
-            ("EVM_lookup_rw", RW_TABLE_LOOKUPS),
-            ("EVM_lookup_bytecode", BYTECODE_TABLE_LOOKUPS),
-            ("EVM_lookup_block", BLOCK_TABLE_LOOKUPS),
-            ("EVM_lookup_copy", COPY_TABLE_LOOKUPS),
-            ("EVM_lookup_keccak", KECCAK_TABLE_LOOKUPS),
-            ("EVM_lookup_exp", EXP_TABLE_LOOKUPS),
-            ("EVM_lookup_sig", SIG_TABLE_LOOKUPS),
-            ("EVM_lookup_modexp", MODEXP_TABLE_LOOKUPS),
-            ("EVM_lookup_ecc", ECC_TABLE_LOOKUPS),
-            ("EVM_lookup_pow_of_rand", POW_OF_RAND_TABLE_LOOKUPS),
             ("EVM_adv_phase2", N_PHASE2_COLUMNS),
             ("EVM_adv_phase3", N_PHASE3_COLUMNS),
             ("EVM_copy", N_COPY_COLUMNS),

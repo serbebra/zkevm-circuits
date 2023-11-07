@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         param::{
-            LOOKUP_CONFIG, N_BYTES_MEMORY_ADDRESS, N_BYTES_U64, N_BYTE_LOOKUPS, N_COPY_COLUMNS,
+            N_BYTES_MEMORY_ADDRESS, N_BYTES_U64, N_BYTE_LOOKUPS, N_COPY_COLUMNS,
             N_PHASE2_COLUMNS, N_PHASE2_COPY_COLUMNS, N_PHASE3_COLUMNS,
         },
         table::Table,
@@ -373,7 +373,6 @@ pub(crate) enum CellType {
     StoragePermutation,
     StoragePermutationPhase2,
     LookupByte,
-    Lookup(Table),
 }
 
 impl CellType {
@@ -453,14 +452,6 @@ impl<F: FieldExt> CellManager<F> {
         });
 
         let mut column_idx = 0;
-
-        // Mark columns used for lookups in Phase3
-        for &(table, count) in LOOKUP_CONFIG {
-            for _ in 0usize..count {
-                columns[column_idx].cell_type = CellType::Lookup(table);
-                column_idx += 1;
-            }
-        }
 
         // Mark columns used for Phase3.
         for _ in 0..N_PHASE3_COLUMNS {

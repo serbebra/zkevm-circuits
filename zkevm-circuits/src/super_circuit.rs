@@ -209,11 +209,22 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         log_circuit_info(meta, "ecc table");
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
         log_circuit_info(meta, "power of randomness table");
+        // TODO: move pow_of_rand_table to EVMCircuit.
 
         let u8_table = U8Table::construct(meta);
         log_circuit_info(meta, "u8 table");
         let u16_table = U16Table::construct(meta);
         log_circuit_info(meta, "u16 table");
+
+        bytecode_table.annotate_columns(meta);
+        block_table.annotate_columns(meta);
+        copy_table.annotate_columns(meta);
+        keccak_table.annotate_columns(meta);
+        exp_table.annotate_columns(meta);
+        sig_table.annotate_columns(meta);
+        modexp_table.annotate_columns(meta);
+        ecc_table.annotate_columns(meta);
+        pow_of_rand_table.annotate_columns(meta);
 
         assert!(get_num_rows_per_round() == 12);
         let keccak_circuit = KeccakCircuitConfig::new(
@@ -343,14 +354,6 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             &mut bus_builder,
             EvmCircuitConfigArgs {
                 challenges: challenges_expr.clone(),
-                bytecode_table: bytecode_table.clone(),
-                block_table: block_table.clone(),
-                copy_table: copy_table.clone(),
-                keccak_table: keccak_table.clone(),
-                exp_table: exp_table.clone(),
-                sig_table: sig_table.clone(),
-                modexp_table: modexp_table.clone(),
-                ecc_table: ecc_table.clone(),
                 pow_of_rand_table: pow_of_rand_table.clone(),
             },
         );

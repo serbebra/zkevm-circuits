@@ -9,7 +9,7 @@ use crate::{
         table::{FixedTableTag, Table},
         util::{
             constraint_builder::EVMConstraintBuilder, rlc, CachedRegion, CellType, Expr,
-            StoredExpression, LOOKUP_CONFIG,
+            StoredExpression,
         },
         Advice, Column, Fixed,
     },
@@ -118,14 +118,13 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
         let q_usable = meta.selector();
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
 
-        let lookup_column_count: usize = LOOKUP_CONFIG.iter().map(|(_, count)| *count).sum();
         let advices = [(); STEP_WIDTH]
             .iter()
             .enumerate()
             .map(|(n, _)| {
-                if n < lookup_column_count + N_PHASE3_COLUMNS {
+                if n < N_PHASE3_COLUMNS {
                     meta.advice_column_in(ThirdPhase)
-                } else if n < lookup_column_count + N_PHASE3_COLUMNS + N_PHASE2_COLUMNS {
+                } else if n < N_PHASE3_COLUMNS + N_PHASE2_COLUMNS {
                     meta.advice_column_in(SecondPhase)
                 } else {
                     meta.advice_column_in(FirstPhase)
@@ -154,22 +153,6 @@ impl<F: Field, G: MathGadgetContainer<F>> Circuit<F> for UnitTestMathGadgetBaseC
                     (name, q_usable.clone() * state_selector.clone() * constraint)
                 })
             });
-        }
-
-        let cell_manager = step_curr.cell_manager.clone();
-        for column in cell_manager.columns().iter() {
-            if let CellType::Lookup(table) = column.cell_type {
-                if table == Table::Fixed {
-                    let name = format!("{table:?}");
-                    meta.lookup_any(Box::leak(name.into_boxed_str()), |meta| {
-                        let table_expressions = fixed_table.table_exprs(meta);
-                        vec![(
-                            column.expr(),
-                            rlc::expr(&table_expressions, challenges_exprs.lookup_input()),
-                        )]
-                    });
-                }
-            }
         }
 
         (
