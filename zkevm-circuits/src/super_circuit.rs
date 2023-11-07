@@ -77,9 +77,9 @@ use crate::{
     sig_circuit::{SigCircuit, SigCircuitConfig, SigCircuitConfigArgs},
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
-        MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable,
-        TxTable, U16Table, U8Table, LookupTable,
+        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
+        ModExpTable, MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable,
+        SigTable, TxTable, U16Table, U8Table,
     },
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
@@ -649,22 +649,12 @@ impl<
             BusAssigner::new(BusCodecVal::new(challenges.lookup_input()), self.num_rows);
 
         log::debug!("assigning state_circuit");
-        let mut rw_messages = vec![];
-        self.state_circuit.synthesize_sub2(
-            &config.state_circuit,
-            challenges,
-            layouter,
-            |offset, message| rw_messages.push((offset, message)),
-        )?;
+        self.state_circuit
+            .synthesize_sub(&config.state_circuit, challenges, layouter)?;
 
         log::debug!("assigning tx_circuit");
-        let mut tx_messages = vec![];
-        self.tx_circuit.synthesize_sub2(
-            &config.tx_circuit,
-            challenges,
-            layouter,
-            |offset, message| tx_messages.push((offset, message)),
-        )?;
+        self.tx_circuit
+            .synthesize_sub(&config.tx_circuit, challenges, layouter)?;
 
         log::debug!("assigning evm_circuit");
         self.evm_circuit.synthesize_sub2(
@@ -731,9 +721,7 @@ impl<
                 .synthesize_sub(&config.mpt_circuit, challenges, layouter)?;
         }
 
-        config
-            .evm_lookups
-            .assign(layouter, &mut bus_assigner, rw_messages, tx_messages)?;
+        config.evm_lookups.assign(layouter, &mut bus_assigner)?;
 
         if !bus_assigner.op_counter().is_complete() {
             log::warn!("Incomplete bus assignment.");

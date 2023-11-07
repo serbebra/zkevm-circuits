@@ -226,7 +226,7 @@ impl TxTable {
     pub fn load<F: Field>(
         &self,
         layouter: &mut impl Layouter<F>,
-        mut provide_msg: impl FnMut(usize, MsgF<F>) -> (), // TODO: use.
+        mut provide_msg: impl FnMut(usize, MsgF<F>) -> (),
         txs: &[Transaction],
         max_txs: usize,
         max_calldata: usize,

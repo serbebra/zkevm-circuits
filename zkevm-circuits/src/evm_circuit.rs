@@ -642,10 +642,9 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let mut bus_assigner =
             BusAssigner::new(BusCodecVal::new(challenges.lookup_input()), num_rows);
 
-        let mut tx_messages = vec![];
         tx_table.load(
             &mut layouter,
-            |offset, message| tx_messages.push((offset, message)),
+            |_offset, _message| {},
             &block.txs,
             block.circuits_params.max_txs,
             block.circuits_params.max_calldata,
@@ -653,11 +652,10 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &challenges,
         )?;
 
-        let mut rw_messages = vec![];
         block.rws.check_rw_counter_sanity();
         rw_table.load(
             &mut layouter,
-            |offset, message| rw_messages.push((offset, message)),
+            |_offset, _message| {},
             &block.rws.table_assignments(),
             block.circuits_params.max_rws,
             challenges.evm_word(),
@@ -693,7 +691,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
 
         self.synthesize_sub2(&config, &challenges, &mut layouter, &mut bus_assigner)?;
 
-        evm_lookups.assign(&mut layouter, &mut bus_assigner, rw_messages, tx_messages)?;
+        evm_lookups.assign(&mut layouter, &mut bus_assigner)?;
 
         if !bus_assigner.op_counter().is_complete() {
             log::warn!("Incomplete bus assignment.");
