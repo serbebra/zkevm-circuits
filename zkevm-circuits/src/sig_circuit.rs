@@ -150,7 +150,7 @@ impl<F: Field> SubCircuitConfig<F> for SigCircuitConfig<F> {
             BaseCircuitBuilder::configure_with_params(meta, range_circuit_param);
         let base_circuit_param = BaseCircuitParams {
             k: 10,
-            num_advice_per_phase: vec![0,1],
+            num_advice_per_phase: vec![0, 1],
             num_fixed: 1,
             num_lookup_advice_per_phase: vec![],
             lookup_bits: None,
@@ -758,10 +758,12 @@ impl<F: Field> SigCircuit<F> {
         layouter: &mut impl Layouter<F>,
         signatures: &[SignData],
         challenges: &Challenges<Value<F>>,
-    ) -> Result<TransmuteData<F>, Error> {
+    ) -> Result<(), Error> {
+        // ) -> Result<TransmuteData<F>, Error> {
         let (assigned_ecdsas, sign_data_decomposed) = {
             let mut builder = self.phase_1_builder.borrow_mut();
             let lookup_manager = builder.lookup_manager().clone();
+
             let range_chip = RangeChip::new(LOG_TOTAL_NUM_ROWS - 1, lookup_manager);
             let fp_chip = FpChip::<F, Fp>::new(&range_chip, 88, 3);
             let ecc_chip = EccChip::new(&fp_chip);
@@ -792,8 +794,10 @@ impl<F: Field> SigCircuit<F> {
                 })
                 .collect::<Result<Vec<SignDataDecomposed<F>>, Error>>()?;
 
-            // builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
-            // builder.clear();
+            builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
+            println!("{:?}", builder.statistics());
+            builder.clear();
+
             (assigned_ecdsas, sign_data_decomposed)
         };
 
@@ -806,16 +810,17 @@ impl<F: Field> SigCircuit<F> {
             // assigned_keccak_cells,
             assigned_sig_values,
         ) = {
-            // let lookup_manager = builder.lookup_manager().clone();
-            // let range_chip = RangeChip::new(LOG_TOTAL_NUM_ROWS - 1, lookup_manager);
+            let mut builder = self.phase_1_builder.borrow_mut();
+            let lookup_manager = builder.lookup_manager().clone();
+            let range_chip = RangeChip::new(LOG_TOTAL_NUM_ROWS - 1, lookup_manager);
             // let fp_chip = FpChip::<F, Fp>::new(&range_chip, 88, 3);
-            // let mut ctx = builder.main(1);
+            let mut ctx = builder.main(1);
 
             // let mut builder = self.phase_2_builder.borrow_mut();
-            let mut builder = self.phase_1_builder.borrow_mut();
-            let gate_chip = GateChip::new();
+            // let mut builder = self.phase_1_builder.borrow_mut();
+            // let gate_chip = GateChip::new();
 
-            let mut ctx = builder.main(0);
+            // let mut ctx = builder.main(1);
             let (assigned_keccak_values, assigned_sig_values): (
                 Vec<[AssignedValue<F>; 3]>,
                 Vec<AssignedSignatureVerify<F>>,
@@ -828,7 +833,7 @@ impl<F: Field> SigCircuit<F> {
                 .map(|((sign_data, assigned_ecdsa), sign_data_decomp)| {
                     self.assign_sig_verify(
                         &mut ctx,
-                        &gate_chip,
+                        &range_chip.gate,
                         sign_data,
                         sign_data_decomp,
                         challenges,
@@ -840,17 +845,18 @@ impl<F: Field> SigCircuit<F> {
                 .into_iter()
                 .unzip();
 
+            println!("{:?}", builder.statistics());
 
-                // println!("start synthesize1");
-        // builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
-        // builder.clear();
+            // println!("start synthesize1");
+            // builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
+            // builder.clear();
             (
                 assigned_keccak_values,
                 // assigned_keccak_cells,
                 assigned_sig_values,
             )
         };
-        
+
         // ================================================
         // finalize the virtual cells and get their indexes
         // ================================================
@@ -861,58 +867,57 @@ impl<F: Field> SigCircuit<F> {
 
         // println!("hash map size: {:?}", hash_map.len());
 
+        //  // TODO: is this correct?
+        //         layouter.assign_region(
+        //             || "expose sig table",
+        //             |mut region| {
+        //                 // step 5: export as a lookup table
+        //                 for (idx, assigned_sig_verif) in assigned_sig_values.iter().enumerate() {
+        //                     region.assign_fixed(
+        //                         || "assign sig_table selector",
+        //                         config.sig_table.q_enable,
+        //                         idx,
+        //                         || Value::known(F::one()),
+        //                     )?;
 
- // TODO: is this correct?
-        layouter.assign_region(
-            || "expose sig table",
-            |mut region| {
-                // step 5: export as a lookup table
-                for (idx, assigned_sig_verif) in assigned_sig_values.iter().enumerate() {
-                    region.assign_fixed(
-                        || "assign sig_table selector",
-                        config.sig_table.q_enable,
-                        idx,
-                        || Value::known(F::one()),
-                    )?;
+        //                     // assigned_sig_verif
+        //                     //     .v
+        //                     //     .copy_advice(&mut region, config.sig_table.sig_v, idx);
 
-                    // assigned_sig_verif
-                    //     .v
-                    //     .copy_advice(&mut region, config.sig_table.sig_v, idx);
+        //                     // assigned_sig_verif.r_rlc.copy_advice(
+        //                     //     &mut region,
+        //                     //     config.sig_table.sig_r_rlc,
+        //                     //     idx,
+        //                     // );
 
-                    // assigned_sig_verif.r_rlc.copy_advice(
-                    //     &mut region,
-                    //     config.sig_table.sig_r_rlc,
-                    //     idx,
-                    // );
+        //                     // assigned_sig_verif.s_rlc.copy_advice(
+        //                     //     &mut region,
+        //                     //     config.sig_table.sig_s_rlc,
+        //                     //     idx,
+        //                     // );
 
-                    // assigned_sig_verif.s_rlc.copy_advice(
-                    //     &mut region,
-                    //     config.sig_table.sig_s_rlc,
-                    //     idx,
-                    // );
+        //                     // assigned_sig_verif.address.copy_advice(
+        //                     //     &mut region,
+        //                     //     config.sig_table.recovered_addr,
+        //                     //     idx,
+        //                     // );
 
-                    // assigned_sig_verif.address.copy_advice(
-                    //     &mut region,
-                    //     config.sig_table.recovered_addr,
-                    //     idx,
-                    // );
+        //                     // assigned_sig_verif.sig_is_valid.copy_advice(
+        //                     //     &mut region,
+        //                     //     config.sig_table.is_valid,
+        //                     //     idx,
+        //                     // );
 
-                    // assigned_sig_verif.sig_is_valid.copy_advice(
-                    //     &mut region,
-                    //     config.sig_table.is_valid,
-                    //     idx,
-                    // );
-
-                    // assigned_sig_verif.msg_hash_rlc.copy_advice(
-                    //     &mut region,
-                    //     config.sig_table.msg_hash_rlc,
-                    //     idx,
-                    // );
-                }
-                Ok(())
-            },
-        )?;
-        // todo!()
+        //                     // assigned_sig_verif.msg_hash_rlc.copy_advice(
+        //                     //     &mut region,
+        //                     //     config.sig_table.msg_hash_rlc,
+        //                     //     idx,
+        //                     // );
+        //                 }
+        //                 Ok(())
+        //             },
+        //         )?;
+        //         // todo!()
 
         // let assigned_keccak_cells = assigned_keccak_values
         //     .iter()
@@ -930,12 +935,13 @@ impl<F: Field> SigCircuit<F> {
         // drop(copy_manager);
         // builder.clear();
 
-        Ok(TransmuteData {
-            assigned_keccak_values,
-            // assigned_keccak_cells,
-            assigned_sig_values,
-            // assigned_sig_values,
-        })
+        Ok(())
+        // Ok(TransmuteData {
+        //     assigned_keccak_values,
+        //     // assigned_keccak_cells,
+        //     assigned_sig_values,
+        //     // assigned_sig_values,
+        // })
     }
 
     fn equality_constraints(
@@ -965,7 +971,7 @@ impl<F: Field> SigCircuit<F> {
 
         drop(copy_manager_locked);
 
-        let ctx = builder.main(0);
+        let ctx = builder.main(1);
 
         for (a, b) in t.iter().zip(data.assigned_keccak_values.iter()) {
             for (aa, bb) in a.iter().zip(b.iter()) {
@@ -1002,48 +1008,52 @@ impl<F: Field> SigCircuit<F> {
         let transmute_data =
             self.extract_transmute_data(config, layouter, signatures, challenges)?;
 
-        // ================================================
-        // step 4: deferred keccak checks
-        // ================================================
+        // // ================================================
+        // // step 4: deferred keccak checks
+        // // ================================================
 
-        let mut first_pass = halo2_base::SKIP_FIRST_PASS;
+        // let mut first_pass = halo2_base::SKIP_FIRST_PASS;
 
-        let deferred_keccak_cells = layouter.assign_region(
-            || "deferred keccak checks",
-            |mut region| {
-                // if first_pass {
-                //     first_pass = false;
-                //     return Ok(vec![]);
-                // }
+        // let deferred_keccak_cells = layouter.assign_region(
+        //     || "deferred keccak checks",
+        //     |mut region| {
+        //         // if first_pass {
+        //         //     first_pass = false;
+        //         //     return Ok(vec![]);
+        //         // }
 
-                let mut res = vec![];
-                for (i, [is_address_zero, pk_rlc, pk_hash_rlc]) in
-                    transmute_data.assigned_keccak_values.iter().enumerate()
-                {
-                    let offset = i * 3;
-                    let cells = self.enable_keccak_lookup(
-                        config,
-                        &mut region,
-                        offset,
-                        is_address_zero,
-                        pk_rlc,
-                        pk_hash_rlc,
-                    )?;
-                    res.push(cells);
-                }
-                Ok(res)
-            },
-        )?;
+        //         let mut res = vec![];
+        //         for (i, [is_address_zero, pk_rlc, pk_hash_rlc]) in
+        //             transmute_data.assigned_keccak_values.iter().enumerate()
+        //         {
+        //             let offset = i * 3;
+        //             let cells = self.enable_keccak_lookup(
+        //                 config,
+        //                 &mut region,
+        //                 offset,
+        //                 is_address_zero,
+        //                 pk_rlc,
+        //                 pk_hash_rlc,
+        //             )?;
+        //             res.push(cells);
+        //         }
+        //         Ok(res)
+        //     },
+        // )?;
 
-        self.equality_constraints(config, layouter, &transmute_data, &deferred_keccak_cells)?;
-
+        // println!("{:?}", self.phase_1_builder. statistics());
+        // self.equality_constraints(config, layouter, &transmute_data, &deferred_keccak_cells)?;
 
         println!("start final assignment");
         let mut builder = self.phase_1_builder.borrow_mut();
-        builder.synthesize_ref_layouter(config.range_config.clone(), layouter)?;
-        builder.clear();
+
+        // let ctx = builder.main(1);
+        println!("{:?}", builder.statistics());
+
+        builder.synthesize_ref_layouter_second_phase(config.range_config.clone(), layouter)?;
         println!("finished");
 
+        // builder.clear();
 
         // ========================================
         // ========================================
