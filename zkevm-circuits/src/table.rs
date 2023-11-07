@@ -1255,6 +1255,8 @@ impl From<BlockContextFieldTag> for usize {
 /// Table with Block header fields
 #[derive(Clone, Debug)]
 pub struct BlockTable {
+    /// Enabled. It is equivalent to tag != Null.
+    pub q_enable: Column<Fixed>,
     /// Tag
     pub tag: Column<Fixed>,
     /// Index
@@ -1267,6 +1269,7 @@ impl BlockTable {
     /// Construct a new BlockTable
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         Self {
+            q_enable: meta.fixed_column(),
             tag: meta.fixed_column(),
             index: meta.advice_column(),
             value: meta.advice_column_in(SecondPhase),
@@ -1304,6 +1307,12 @@ impl BlockTable {
                         .count();
                     cum_num_txs += num_txs;
                     for row in block_ctx.table_assignments(num_txs, cum_num_txs, 0, challenges) {
+                        region.assign_fixed(
+                            || format!("block table enabled {offset}"),
+                            self.q_enable,
+                            offset,
+                            || Value::known(F::one()),
+                        )?;
                         region.assign_fixed(
                             || format!("block table row {offset}"),
                             self.tag,
@@ -2374,6 +2383,8 @@ impl<F: Field> LookupTable<F> for SigTable {
 ///    - output1_rlc <- success {0, 1}
 #[derive(Clone, Copy, Debug)]
 pub struct EccTable {
+    /// Enabled. It is equivalent to op_type != 0.
+    pub q_enable: Column<Fixed>,
     /// Since the current design of the ECC circuit reserves fixed number of rows for EcAdd, EcMul
     /// and EcPairing ops respectively, we already know the `op_type` for each row.
     pub op_type: Column<Fixed>,
@@ -2443,6 +2454,7 @@ impl EccTable {
     /// Construct the ECC table.
     pub(crate) fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         Self {
+            q_enable: meta.fixed_column(),
             op_type: meta.fixed_column(),
             is_valid: meta.advice_column(),
             arg1_rlc: meta.advice_column_in(SecondPhase),
@@ -2545,6 +2557,12 @@ impl EccTable {
             || "ecc table dev load",
             |mut region| {
                 for (i, row) in assignments.iter().enumerate() {
+                    region.assign_fixed(
+                        || format!("ecc table row = {i}, enabled"),
+                        self.q_enable,
+                        i,
+                        || Value::known(F::one()),
+                    )?;
                     region.assign_fixed(
                         || format!("ecc table row = {i}, op_type"),
                         self.op_type,

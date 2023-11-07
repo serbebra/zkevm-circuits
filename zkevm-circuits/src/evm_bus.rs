@@ -7,12 +7,9 @@ use crate::{
     util::{assign_global, query_expression},
 };
 use eth_types::Field;
-use gadgets::{
-    bus::{
-        bus_builder::{BusAssigner, BusBuilder},
-        bus_lookup::BusLookupChip,
-    },
-    util::Expr,
+use gadgets::bus::{
+    bus_builder::{BusAssigner, BusBuilder},
+    bus_lookup::BusLookupChip,
 };
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
@@ -226,9 +223,8 @@ impl<F: Field> QueryTable<F> for BytecodeTable {
 }
 
 impl<F: Field> QueryTable<F> for BlockTable {
-    fn enabled(&self, _meta: &mut VirtualCells<F>) -> Expression<F> {
-        // TODO: may need an enabled selector. Cannot use tag because it is not boolean.
-        1.expr()
+    fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
+        meta.query_fixed(self.q_enable, Rotation::cur())
     }
 
     fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
@@ -243,12 +239,11 @@ impl<F: Field> QueryTable<F> for BlockTable {
 impl<F: Field> QueryTable<F> for CopyTable {
     fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
         meta.query_fixed(self.q_enable, Rotation::cur())
-            * meta.query_advice(self.is_first, Rotation::cur())
     }
 
     fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
         MsgExpr::lookup(Lookup::CopyTable {
-            is_first: meta.query_advice(self.is_first, Rotation::cur()), // TODO: can be removed.
+            is_first: meta.query_advice(self.is_first, Rotation::cur()),
             src_id: meta.query_advice(self.id, Rotation::cur()),
             src_tag: self.tag.value(Rotation::cur())(meta),
             dst_id: meta.query_advice(self.id, Rotation::next()),
@@ -266,6 +261,7 @@ impl<F: Field> QueryTable<F> for CopyTable {
 
 impl<F: Field> QueryTable<F> for KeccakTable {
     fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
+        // This is a boolean because of constraint "boolean is_final".
         meta.query_fixed(self.q_enable, Rotation::cur())
             * meta.query_advice(self.is_final, Rotation::cur())
     }
@@ -281,9 +277,8 @@ impl<F: Field> QueryTable<F> for KeccakTable {
 
 impl<F: Field> QueryTable<F> for ExpTable {
     fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
-        // TODO: only is_step?
-        meta.query_fixed(self.q_enable, Rotation::cur())
-            * meta.query_fixed(self.is_step, Rotation::cur())
+        // is_step implies q_enable by fixed assignment.
+        meta.query_fixed(self.is_step, Rotation::cur())
     }
 
     fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
@@ -357,9 +352,8 @@ impl<F: Field> QueryTable<F> for ModExpTable {
 }
 
 impl<F: Field> QueryTable<F> for EccTable {
-    fn enabled(&self, _meta: &mut VirtualCells<F>) -> Expression<F> {
-        // TODO: may need an enabled selector. Cannot use op_type because it is not boolean.
-        1.expr()
+    fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
+        meta.query_fixed(self.q_enable, Rotation::cur())
     }
 
     fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {

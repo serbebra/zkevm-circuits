@@ -1687,13 +1687,13 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             Table::Rw,
             Table::Tx,
             Table::Bytecode,
-            //Table::Block, // TODO: enabled selector
+            Table::Block,
             Table::Copy,
             Table::Keccak,
             Table::Exp,
             Table::Sig,
             Table::ModExp,
-            //Table::Ecc, // TODO: enabled selector
+            Table::Ecc,
             Table::PowOfRand,
         ]
         .contains(&lookup.table())
@@ -1701,6 +1701,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             self.add_bus_lookup(lookup);
             return;
         }
+
+        unreachable!("All lookups are implement by bus.");
 
         let compressed_expr = self.split_expression(
             "Lookup compression",
