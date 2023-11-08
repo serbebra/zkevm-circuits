@@ -157,8 +157,8 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
             |meta| meta.query_fixed(selector, Rotation::cur()),
             |meta| {
                 [
-                    meta.query_advice(rw_table.field_tag, Rotation::cur())
-                        - AccountFieldTag::CodeHash.expr(),
+                    //  meta.query_advice(rw_table.field_tag, Rotation::cur())
+                    //      - AccountFieldTag::CodeHash.expr(),
                     meta.query_advice(initial_value.lo(), Rotation::cur()),
                     meta.query_advice(initial_value.hi(), Rotation::cur()),
                     meta.query_advice(rw_table.value.lo(), Rotation::cur()),
@@ -376,11 +376,11 @@ impl<F: Field> StateCircuitConfig<F> {
                     word::Word::<F>::from(value),
                 )
             };
-
             BatchedIsZeroChip::construct(self.is_non_exist.clone()).assign(
                 region,
                 offset,
                 Value::known([
+                    //F::from(row.field_tag().unwrap() - (AccountFieldTag::CodeHash as u64)),
                     committed_value.lo(),
                     committed_value.hi(),
                     value.lo(),
@@ -582,6 +582,8 @@ impl<F: Field> StateCircuitConfig<F> {
                 region,
                 offset,
                 Value::known([
+                    //F::from(row.field_tag().unwrap_or_default()) -
+                    // F::from(AccountFieldTag::CodeHash as u64),
                     committed_value.lo(),
                     committed_value.hi(),
                     value.lo(),
@@ -654,9 +656,11 @@ impl<F: Field> StateCircuitConfig<F> {
                 if *is_first_access {
                     // If previous row was a last access, we need to update the state root.
                     // let (new_root, old_root) = updates.root_assignments();
-                    let (new_root, old_root) = (updates.new_root(), updates.old_root());
-                    assert_eq!(state_root, old_root);
-                    state_root = new_root;
+                    if let Some(update) = updates.get(prev_row) {
+                        let (new_root, old_root) = update.root_assignments();
+                        assert_eq!(state_root, old_root);
+                        state_root = new_root;
+                    }
                     if matches!(row.tag(), RwTableTag::CallContext) && !row.is_write() {
                         assert_eq!(row.value_assignment(), 0.into(), "{:?}", row);
                     }
@@ -1137,6 +1141,7 @@ fn queries<F: Field>(meta: &mut VirtualCells<'_, F>, c: &StateCircuitConfig<F>) 
         mpt_update_table: MptUpdateTableQueries {
             q_enable: meta.query_fixed(c.mpt_table.q_enable, Rotation::cur()),
             address: meta.query_advice(c.mpt_table.address, Rotation::cur()),
+            //address:mpt_update_table_expressions[0].clone(),
             storage_key: word::Word::new([
                 mpt_update_table_expressions[1].clone(),
                 mpt_update_table_expressions[2].clone(),
