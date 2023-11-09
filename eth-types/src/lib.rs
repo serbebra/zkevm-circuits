@@ -26,7 +26,8 @@ pub mod sign_types;
 
 pub use bytecode::Bytecode;
 pub use error::Error;
-use halo2_proofs::halo2curves::{bn256::Fr, ff::FromUniformBytes, group::ff::PrimeField};
+use halo2_base::utils::ScalarField;
+use halo2_proofs::halo2curves::{bn256::Fr, group::ff::PrimeField};
 
 use crate::evm_types::{
     memory::Memory, stack::Stack, storage::Storage, Gas, GasCost, OpcodeId, ProgramCounter,
@@ -47,11 +48,7 @@ use std::{collections::HashMap, fmt, str::FromStr};
 /// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
 /// trait and its repr.
 pub trait Field:
-    PrimeField<Repr = [u8; 32]>
-    + hash_circuit::hash::Hashable
-    + std::convert::From<Fr>
-    + FromUniformBytes<64>
-    + From<bool>
+    PrimeField<Repr = [u8; 32]> + hash_circuit::hash::Hashable + std::convert::From<Fr> + ScalarField
 {
     /// Re-expose zero element as a function
     fn zero() -> Self {
