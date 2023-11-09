@@ -419,6 +419,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             vec![
                 1.expr(),
                 meta.query_advice(id.lo(), CURRENT),
+                meta.query_advice(id.hi(), CURRENT),
                 BytecodeFieldTag::Byte.expr(),
                 meta.query_advice(addr, CURRENT),
                 meta.query_advice(value, CURRENT),

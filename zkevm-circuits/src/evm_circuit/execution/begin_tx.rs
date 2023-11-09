@@ -93,7 +93,8 @@ pub(crate) struct BeginTxGadget<F> {
     create: ContractCreateGadget<F, false>,
     is_caller_callee_equal: Cell<F>,
     // EIP-3651 (Warm COINBASE) for Shanghai
-    coinbase: WordCell<F>,
+    //coinbase: WordCell<F>,
+    coinbase: Cell<F>,
     // Caller, callee and a list addresses are added to the access list before
     // coinbase, and may be duplicate.
     // <https://github.com/ethereum/go-ethereum/blob/604e215d1bb070dff98fb76aa965064c74e3633f/core/state/statedb.go#LL1119C9-L1119C9>
@@ -125,11 +126,13 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             ]
             .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
 
-        let [tx_caller_address, tx_callee_address] = [
-            TxContextFieldTag::CallerAddress,
-            TxContextFieldTag::CalleeAddress,
-        ]
-        .map(|field_tag| cb.tx_context_as_word(tx_id.expr(), field_tag, None));
+        // let [tx_caller_address, tx_callee_address] = [
+        //     TxContextFieldTag::CallerAddress,
+        //     TxContextFieldTag::CalleeAddress,
+        // ]
+        // .map(|field_tag| cb.tx_context_as_word(tx_id.expr(), field_tag, None));
+        let [tx_caller_address, tx_callee_address] =
+            [cb.query_word_unchecked(), cb.query_word_unchecked()];
 
         let is_call_data_empty = IsZeroGadget::construct(cb, tx_call_data_length.expr());
 
@@ -175,9 +178,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             Word::from_lo_unchecked(reversion_info.is_persistent()),
         ); // rwc_delta += 1
 
-        let [tx_gas_price, tx_value] = [TxContextFieldTag::GasPrice, TxContextFieldTag::Value]
-            .map(|field_tag| cb.tx_context_as_word32(tx_id.expr(), field_tag, None));
+        // let [tx_gas_price, tx_value] = [TxContextFieldTag::GasPrice, TxContextFieldTag::Value]
+        //     .map(|field_tag| cb.tx_context_as_word32(tx_id.expr(), field_tag, None));
 
+        let [tx_gas_price, tx_value] = [cb.query_word32(), cb.query_word32()];
         let tx_caller_address_is_zero = IsZeroWordGadget::construct(cb, &tx_caller_address);
         cb.require_equal(
             "CallerAddress != 0 (not a padding tx)",
@@ -322,18 +326,19 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         ); // rwc_delta += 1
 
         // Query coinbase address for Shanghai.
-        let coinbase = cb.query_word_unchecked();
+        let coinbase = cb.query_cell();
         let is_coinbase_warm = cb.query_bool();
         cb.block_lookup(
             BlockContextFieldTag::Coinbase.expr(),
             Some(cb.curr.state.block_number.expr()),
-            coinbase.to_word(),
+            //coinbase.to_word(),
+            coinbase.expr(),
         );
 
         #[cfg(feature = "shanghai")]
         cb.account_access_list_write_unchecked(
             tx_id.expr(),
-            coinbase.to_word(),
+            Word::from_lo_unchecked(coinbase.expr()),
             1.expr(),
             is_coinbase_warm.expr(),
             None,
@@ -791,6 +796,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        println!("offset in begin_tx {}", offset);
         /*
         for (i, idx) in step.rw_indices.iter().copied().enumerate() {
             log::trace!("begin_tx assign rw: #{i} {:?}", block.rws[idx]);
@@ -1077,10 +1083,15 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             None,
         )?;
 
-        self.coinbase.assign_h160(
+        self.coinbase.assign(
             region,
             offset,
-            block.context.ctxs[&tx.block_number].coinbase,
+            Value::known(
+                block.context.ctxs[&tx.block_number]
+                    .coinbase
+                    .to_scalar()
+                    .expect("unexpected Address -> Scalar conversion failure"),
+            ),
         )?;
         self.is_coinbase_warm
             .assign(region, offset, Value::known(F::from(is_coinbase_warm)))?;

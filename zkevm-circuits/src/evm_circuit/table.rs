@@ -228,7 +228,8 @@ pub(crate) enum Lookup<F> {
         /// field_tag is Calldata, otherwise should be set to 0.
         index: Expression<F>,
         /// Value of the field.
-        value: Word<Expression<F>>,
+        // value: Word<Expression<F>>,
+        value: Expression<F>,
     },
     /// Lookup to read-write table, which contains read-write access records of
     /// time-aware data.
@@ -271,7 +272,8 @@ pub(crate) enum Lookup<F> {
         /// indicates a parent block number.
         number: Expression<F>,
         /// Value of the field.
-        value: Word<Expression<F>>,
+        value: Expression<F>,
+        // value: Word<Expression<F>>,
     },
     /// Lookup to copy table.
     CopyTable {
@@ -388,8 +390,9 @@ impl<F: Field> Lookup<F> {
                 id.clone(),
                 field_tag.clone(),
                 index.clone(),
-                value.lo(),
-                value.hi(),
+                // value.lo(),
+                // value.hi(),
+                value.clone(),
             ],
             Self::Rw {
                 counter,
@@ -441,7 +444,8 @@ impl<F: Field> Lookup<F> {
                 number,
                 value,
             } => {
-                vec![field_tag.clone(), number.clone(), value.lo(), value.hi()]
+                //vec![field_tag.clone(), number.clone(), value.lo(), value.hi()]
+                vec![field_tag.clone(), number.clone(), value.clone()]
             }
             Self::CopyTable {
                 is_first,

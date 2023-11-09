@@ -829,7 +829,6 @@ impl MptTable {
         max_mpt_rows: usize,
         randomness: Value<F>,
     ) -> Result<(), Error> {
-        println!("assign mpt table loading");
         layouter.assign_region(
             || "mpt table zkevm",
             |mut region| self.load_with_region(&mut region, updates, max_mpt_rows),
@@ -1274,6 +1273,7 @@ pub struct BlockTable {
     pub index: Column<Advice>,
     /// Value
     pub value: Column<Advice>,
+    //pub value: word::Word<Column<Advice>>,
 }
 
 impl BlockTable {
@@ -1283,6 +1283,7 @@ impl BlockTable {
             tag: meta.fixed_column(),
             index: meta.advice_column(),
             value: meta.advice_column_in(SecondPhase),
+            //value: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
 

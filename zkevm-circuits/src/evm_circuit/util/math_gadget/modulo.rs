@@ -27,8 +27,8 @@ pub(crate) struct ModGadget<F> {
     k: Word32Cell<F>,
     a_or_zero: Word32Cell<F>,
     mul_add_words: MulAddWordsGadget<F>,
-    n_is_zero: IsZeroGadget<F>,
-    a_or_is_zero: IsZeroGadget<F>,
+    n_is_zero: IsZeroWordGadget<F, Word32Cell<F>>,
+    a_or_is_zero: IsZeroWordGadget<F, Word32Cell<F>>,
     lt: LtWordGadget<F>,
 }
 impl<F: Field> ModGadget<F> {
@@ -36,11 +36,9 @@ impl<F: Field> ModGadget<F> {
         let (a, n, r) = (words[0], words[1], words[2]);
         let k = cb.query_word32();
         let a_or_zero = cb.query_word32();
-        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.limbs));
-        let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.limbs));
+        let n_is_zero = IsZeroWordGadget::construct(cb, n);
+        let a_or_is_zero = IsZeroWordGadget::construct(cb, &a_or_zero);
 
-        let n_is_zero = IsZeroGadget::construct(cb, sum::expr(&n.limbs));
-        let a_or_is_zero = IsZeroGadget::construct(cb, sum::expr(&a_or_zero.limbs));
         let mul_add_words = MulAddWordsGadget::construct(cb, [&k, n, r, &a_or_zero]);
         let lt = LtWordGadget::construct(cb, &r.to_word(), &n.to_word());
         // Constrain the aux variable a_or_zero to be =a or =0 if n==0:
@@ -88,11 +86,14 @@ impl<F: Field> ModGadget<F> {
 
         self.k.assign_u256(region, offset, k)?;
         self.a_or_zero.assign_u256(region, offset, a_or_zero)?;
-        let n_sum = (0..32).fold(0, |acc, idx| acc + n.byte(idx) as u64);
-        let a_or_zero_sum = (0..32).fold(0, |acc, idx| acc + a_or_zero.byte(idx) as u64);
-        self.n_is_zero.assign(region, offset, F::from(n_sum))?;
+        //let n_sum = (0..32).fold(0, |acc, idx| acc + n.byte(idx) as u64);
+        //let a_or_zero_sum = (0..32).fold(0, |acc, idx| acc + a_or_zero.byte(idx) as u64);
+        //self.n_is_zero.assign(region, offset, F::from(n_sum))?;
+        self.n_is_zero.assign(region, offset, word::Word::from(n))?;
+        // self.a_or_is_zero
+        //     .assign(region, offset, F::from(a_or_zero_sum))?;
         self.a_or_is_zero
-            .assign(region, offset, F::from(a_or_zero_sum))?;
+            .assign(region, offset, word::Word::from(a_or_zero))?;
         self.mul_add_words
             .assign(region, offset, [k, n, r, a_or_zero])?;
         self.lt.assign(region, offset, r, n)?;

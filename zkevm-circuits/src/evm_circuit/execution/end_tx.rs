@@ -49,7 +49,8 @@ pub(crate) struct EndTxGadget<F> {
     gas_fee_refund: UpdateBalanceGadget<F, 2, true>,
     sub_gas_price_by_base_fee: AddWordsGadget<F, 2, true>,
     mul_effective_tip_by_gas_used: MulWordByU64Gadget<F>,
-    coinbase: WordCell<F>,
+    //coinbase: WordCell<F>,
+    coinbase: Cell<F>,
     coinbase_codehash: WordCell<F>,
     #[cfg(feature = "scroll")]
     coinbase_keccak_codehash: Cell<F>,
@@ -74,13 +75,16 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let tx_l1_fee = cb.call_context(None, CallContextFieldTag::L1Fee);
 
         let tx_gas = cb.tx_context(tx_id.expr(), TxContextFieldTag::Gas, None);
-        let tx_caller_address =
-            cb.tx_context_as_word(tx_id.expr(), TxContextFieldTag::CallerAddress, None);
+        // let tx_caller_address =
+        //     cb.tx_context_as_word(tx_id.expr(), TxContextFieldTag::CallerAddress, None);
+        let tx_caller_address = cb.query_word_unchecked();
 
         let [tx_type, tx_data_gas_cost] =
             [TxContextFieldTag::TxType, TxContextFieldTag::TxDataGasCost]
                 .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
-        let tx_gas_price = cb.tx_context_as_word32(tx_id.expr(), TxContextFieldTag::GasPrice, None);
+        //let tx_gas_price = cb.tx_context_as_word32(tx_id.expr(), TxContextFieldTag::GasPrice,
+        // None);
+        let tx_gas_price = cb.query_word32();
 
         let tx_is_l1msg =
             IsEqualGadget::construct(cb, tx_type.expr(), (TxType::L1Msg as u64).expr());
@@ -112,11 +116,13 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         });
 
         // Add gas_used * effective_tip to coinbase's balance
-        let coinbase = cb.query_word_unchecked();
+        let coinbase = cb.query_cell();
         let base_fee = cb.query_word32();
+        let base_fee_rlc = cb.word_rlc(base_fee.limbs.clone().map(|l| l.expr()));
         for (tag, value) in [
-            (BlockContextFieldTag::Coinbase, coinbase.to_word()),
-            (BlockContextFieldTag::BaseFee, base_fee.to_word()),
+            // (BlockContextFieldTag::BaseFee, base_fee.to_word()),
+            (BlockContextFieldTag::Coinbase, coinbase.expr()),
+            (BlockContextFieldTag::BaseFee, base_fee_rlc),
         ] {
             cb.block_lookup(tag.expr(), Some(cb.curr.state.block_number.expr()), value);
         }
@@ -159,7 +165,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let coinbase_keccak_codehash = cb.query_cell_phase2();
 
         cb.account_read(
-            coinbase.to_word(),
+            Word::from_lo_unchecked(coinbase.expr()),
             AccountFieldTag::CodeHash,
             coinbase_codehash.to_word(),
         );
@@ -168,7 +174,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let coinbase_transfer = cb.condition(not::expr(tx_is_l1msg.expr()), |cb| {
             TransferToGadget::construct(
                 cb,
-                coinbase.to_word(),
+                Word::from_lo_unchecked(coinbase.expr()),
                 not::expr(coinbase_codehash_is_zero.expr()),
                 false.expr(),
                 coinbase_codehash.to_word(),
@@ -292,6 +298,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        println!("offset in end_tx {}", offset);
         let mut rws = StepRws::new(block, step);
         rws.offset_add(3);
 
@@ -373,8 +380,16 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             )?;
         }
 
-        self.coinbase
-            .assign_h160(region, offset, context.coinbase)?;
+        self.coinbase.assign(
+            region,
+            offset,
+            Value::known(
+                context
+                    .coinbase
+                    .to_scalar()
+                    .expect("unexpected Address -> Scalar conversion failure"),
+            ),
+        )?;
 
         let tx_l1_fee = if tx.tx_type.is_l1_msg() {
             log::trace!("tx is l1msg and l1 fee is 0");

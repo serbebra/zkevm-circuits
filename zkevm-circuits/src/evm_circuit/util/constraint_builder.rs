@@ -797,38 +797,41 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         index: Option<Expression<F>>,
     ) -> Cell<F> {
         let cell = self.query_cell();
-        self.tx_context_lookup(id, field_tag, index, Word::from_lo_unchecked(cell.expr()));
+        //self.tx_context_lookup(id, field_tag, index, Word::from_lo_unchecked(cell.expr()));
+        self.tx_context_lookup(id, field_tag, index, cell.expr());
         cell
     }
 
-    pub(crate) fn tx_context_as_word(
-        &mut self,
-        id: Expression<F>,
-        field_tag: TxContextFieldTag,
-        index: Option<Expression<F>>,
-    ) -> WordCell<F> {
-        let word = self.query_word_unchecked();
-        self.tx_context_lookup(id, field_tag, index, word.to_word());
-        word
-    }
+    // TODO: enable tx_context_as_word in word hi lo stage2
+    // pub(crate) fn tx_context_as_word(
+    //     &mut self,
+    //     id: Expression<F>,
+    //     field_tag: TxContextFieldTag,
+    //     index: Option<Expression<F>>,
+    // ) -> WordCell<F> {
+    //     let word = self.query_word_unchecked();
+    //     self.tx_context_lookup(id, field_tag, index, word.to_word());
+    //     word
+    // }
 
-    pub(crate) fn tx_context_as_word32(
-        &mut self,
-        id: Expression<F>,
-        field_tag: TxContextFieldTag,
-        index: Option<Expression<F>>,
-    ) -> Word32Cell<F> {
-        let word = self.query_word32();
-        self.tx_context_lookup(id, field_tag, index, word.to_word());
-        word
-    }
+    // pub(crate) fn tx_context_as_word32(
+    //     &mut self,
+    //     id: Expression<F>,
+    //     field_tag: TxContextFieldTag,
+    //     index: Option<Expression<F>>,
+    // ) -> Word32Cell<F> {
+    //     let word = self.query_word32();
+    //     self.tx_context_lookup(id, field_tag, index, word.to_word());
+    //     word
+    // }
 
     pub(crate) fn tx_context_lookup(
         &mut self,
         id: Expression<F>,
         field_tag: TxContextFieldTag,
         index: Option<Expression<F>>,
-        value: Word<Expression<F>>,
+        //value: Word<Expression<F>>,
+        value: Expression<F>,
     ) {
         self.add_lookup(
             "Tx lookup",
@@ -846,7 +849,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         &mut self,
         tag: Expression<F>,
         number: Option<Expression<F>>,
-        val: Word<Expression<F>>,
+        //val: Word<Expression<F>>,
+        val: Expression<F>,
     ) {
         self.add_lookup(
             "Block lookup",

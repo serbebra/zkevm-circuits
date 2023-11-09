@@ -38,7 +38,8 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
             tx_id.expr(),
             TxContextFieldTag::CallerAddress,
             None, // None because unrelated to calldata
-            origin.to_word(),
+            //origin.to_word(),
+            cb.word_rlc(origin.limbs.clone().map(|ref l| l.expr())),
         );
 
         // Push the value to the stack

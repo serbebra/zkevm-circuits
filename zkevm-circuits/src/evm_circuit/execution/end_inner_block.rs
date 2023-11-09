@@ -48,12 +48,14 @@ impl<F: Field> ExecutionGadget<F> for EndInnerBlockGadget<F> {
         cb.block_lookup(
             BlockContextFieldTag::NumTxs.expr(),
             Some(cb.curr.state.block_number.expr()),
-            Word::from_lo_unchecked(num_txs.expr()),
+            //Word::from_lo_unchecked(num_txs.expr()),
+            num_txs.expr(),
         );
         cb.block_lookup(
             BlockContextFieldTag::CumNumTxs.expr(),
             Some(cb.curr.state.block_number.expr()),
-            Word::from_lo_unchecked(cum_num_txs.expr()),
+            //Word::from_lo_unchecked(cum_num_txs.expr()),
+            cum_num_txs.expr(),
         );
 
         cb.require_equal(
@@ -70,7 +72,8 @@ impl<F: Field> ExecutionGadget<F> for EndInnerBlockGadget<F> {
                 last_tx_id.expr(),
                 BlockNumber,
                 None,
-                Word::from_lo_unchecked(cb.curr.state.block_number.expr()),
+                // Word::from_lo_unchecked(cb.curr.state.block_number.expr()),
+                cb.curr.state.block_number.expr(),
             );
         });
 
@@ -110,6 +113,8 @@ impl<F: Field> ExecutionGadget<F> for EndInnerBlockGadget<F> {
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        println!("offset end_inner_block {}", offset);
+
         let num_txs = block
             .txs
             .iter()

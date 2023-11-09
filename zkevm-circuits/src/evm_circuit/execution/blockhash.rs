@@ -16,7 +16,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::BlockContextFieldTag,
-    util::word::{Word, WordCell, WordExpr},
+    util::word::{Word, Word32Cell, WordCell, WordExpr},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::{
@@ -31,7 +31,8 @@ pub(crate) struct BlockHashGadget<F> {
     same_context: SameContextGadget<F>,
     block_number: WordByteCapGadget<F, N_BYTES_U64>,
     current_block_number: Cell<F>,
-    block_hash: Word<Cell<F>>,
+    //block_hash: Word<Cell<F>>,
+    block_hash: Word32Cell<F>,
     chain_id: WordCell<F>,
     diff_lt: LtGadget<F, N_BYTES_U64>,
 }
@@ -46,7 +47,9 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         cb.block_lookup(
             BlockContextFieldTag::Number.expr(),
             Some(cb.curr.state.block_number.expr()),
-            Word::from_lo_unchecked(current_block_number.expr()),
+            // TODO: enable this in word hi stage2.
+            //Word::from_lo_unchecked(current_block_number.expr()),
+            current_block_number.expr(),
         );
 
         let block_number = WordByteCapGadget::construct(cb, current_block_number.expr());
@@ -57,7 +60,8 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
             Some(cb.curr.state.block_number.expr()),
-            chain_id.to_word(),
+            //chain_id.to_word(),
+            chain_id.lo().expr(),
         );
 
         let diff_lt = cb.condition(block_number.not_overflow(), |cb| {
@@ -71,14 +75,18 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         });
 
         let is_valid = and::expr([block_number.lt_cap(), diff_lt.expr()]);
-        let block_hash = cb.query_word_unchecked();
+        //let block_hash = cb.query_word_unchecked();
+        let block_hash = cb.query_word32();
+        let block_hash_rlc = cb.word_rlc(block_hash.limbs.clone().map(|ref l| l.expr()));
+
         cb.condition(is_valid.expr(), |cb| {
             // For non-scroll, lookup for the block hash.
             #[cfg(not(feature = "scroll"))]
             cb.block_lookup(
                 BlockContextFieldTag::BlockHash.expr(),
                 Some(block_number.valid_value()),
-                block_hash.to_word(),
+                // block_hash.to_word(),
+                block_hash_rlc,
             );
 
             // For scroll, the block hash is calculated by Keccak256. The input

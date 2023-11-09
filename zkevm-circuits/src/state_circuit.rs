@@ -157,8 +157,8 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
             |meta| meta.query_fixed(selector, Rotation::cur()),
             |meta| {
                 [
-                    //  meta.query_advice(rw_table.field_tag, Rotation::cur())
-                    //      - AccountFieldTag::CodeHash.expr(),
+                    meta.query_advice(rw_table.field_tag, Rotation::cur())
+                        - AccountFieldTag::CodeHash.expr(),
                     meta.query_advice(initial_value.lo(), Rotation::cur()),
                     meta.query_advice(initial_value.hi(), Rotation::cur()),
                     meta.query_advice(rw_table.value.lo(), Rotation::cur()),
@@ -371,6 +371,7 @@ impl<F: Field> StateCircuitConfig<F> {
                     .map(|u| u.value_assignments())
                     .unwrap_or_default();
                 let value = row.value_assignment();
+                println!("assign_with_region");
                 (
                     word::Word::<F>::from(committed_value),
                     word::Word::<F>::from(value),
@@ -582,8 +583,8 @@ impl<F: Field> StateCircuitConfig<F> {
                 region,
                 offset,
                 Value::known([
-                    //F::from(row.field_tag().unwrap_or_default()) -
-                    // F::from(AccountFieldTag::CodeHash as u64),
+                    F::from(row.field_tag().unwrap_or_default())
+                        - F::from(AccountFieldTag::CodeHash as u64),
                     committed_value.lo(),
                     committed_value.hi(),
                     value.lo(),

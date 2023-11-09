@@ -43,7 +43,8 @@ impl<F: Field> ExecutionGadget<F> for BlockCtxGadget<F> {
 
         // Lookup block table with block context ops
         // TIMESTAMP/NUMBER/GASLIMIT, COINBASE and DIFFICULTY/BASEFEE
-        cb.block_lookup(blockctx_tag, None, value.to_word());
+        // TODO: enable this in word hi lo stage2, blocktable affects tx circuit, super circuit etc.
+        //cb.block_lookup(blockctx_tag, None, value.to_word());
 
         // State transition
         let step_state_transition = StepStateTransition {
