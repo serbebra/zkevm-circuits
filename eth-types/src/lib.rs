@@ -471,6 +471,7 @@ pub struct ResultGethExecTrace {
 /// the memory size before the expansion, so that it corresponds to the memory
 /// before the step is executed.
 #[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct GethExecTrace {
     /// L1 fee
     #[serde(default)]
@@ -489,6 +490,11 @@ pub struct GethExecTrace {
     /// List of accounts' (coinbase etc) status AFTER execution
     /// Only viable for scroll mode
     pub account_after: Vec<crate::l2_types::AccountProofWrapper>,
+    /// prestate trace
+    pub prestate: Option<HashMap<Address, GethPrestateTrace>>,
+    /// call trace
+    #[serde(rename = "callTrace")]
+    pub call_trace: GethCallTrace,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -514,6 +520,25 @@ pub struct GethPrestateTrace {
     pub code: Option<Bytes>,
     /// storage
     pub storage: Option<HashMap<U256, U256>>,
+}
+
+/// The call trace returned by geth RPC debug_trace* methods.
+/// using callTracer
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+pub struct GethCallTrace {
+    #[serde(default)]
+    calls: Vec<GethCallTrace>,
+    error: Option<String>,
+    from: Address,
+    // gas: U256,
+    // #[serde(rename = "gasUsed")]
+    // gas_used: U256,
+    // input: Bytes,
+    // output: Bytes,
+    to: Address,
+    #[serde(rename = "type")]
+    call_type: String,
+    // value: U256,
 }
 
 #[macro_export]
