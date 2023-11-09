@@ -5,7 +5,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
-            AccountAddress, CachedRegion, Cell,
+            from_bytes, AccountAddress, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -39,7 +39,7 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
             TxContextFieldTag::CallerAddress,
             None, // None because unrelated to calldata
             //origin.to_word(),
-            cb.word_rlc(origin.limbs.clone().map(|ref l| l.expr())),
+            from_bytes::expr(&origin.limbs),
         );
 
         // Push the value to the stack

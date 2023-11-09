@@ -113,8 +113,6 @@ impl<F: Field> ExecutionGadget<F> for EndInnerBlockGadget<F> {
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("offset end_inner_block {}", offset);
-
         let num_txs = block
             .txs
             .iter()

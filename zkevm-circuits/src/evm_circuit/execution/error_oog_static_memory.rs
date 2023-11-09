@@ -42,7 +42,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
     // Support other OOG due to pure memory including MSTORE, MSTORE8 and MLOAD
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        //CommonErrorGadget will do opcode lookup;
 
         let memory_address = MemoryExpandedAddressGadget::construct_self(cb);
         cb.stack_pop(memory_address.offset_word());
@@ -88,8 +88,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGStaticMemoryGadget<F> {
             1.expr(),
         );
 
-        let common_error_gadget =
-            CommonErrorGadget::construct(cb, opcode.expr(), cb.rw_counter_offset());
+        let common_error_gadget = CommonErrorGadget::construct(cb, opcode.expr(), 3.expr());
 
         Self {
             opcode,

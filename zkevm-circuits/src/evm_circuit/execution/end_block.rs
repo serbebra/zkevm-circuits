@@ -157,8 +157,6 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("offset end_block {}", offset);
-
         self.is_empty_block
             .assign(region, offset, F::from(step.rw_counter as u64 - 1))?;
         let max_rws = F::from(block.circuits_params.max_rws as u64);

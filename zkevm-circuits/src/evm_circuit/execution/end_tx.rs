@@ -298,7 +298,6 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("offset in end_tx {}", offset);
         let mut rws = StepRws::new(block, step);
         rws.offset_add(3);
 

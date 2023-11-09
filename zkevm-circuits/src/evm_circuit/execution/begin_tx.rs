@@ -796,7 +796,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("offset in begin_tx {}", offset);
         /*
         for (i, idx) in step.rw_indices.iter().copied().enumerate() {
             log::trace!("begin_tx assign rw: #{i} {:?}", block.rws[idx]);

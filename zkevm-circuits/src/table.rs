@@ -1,7 +1,7 @@
 //! Table definitions used cross-circuits
 
 use crate::{
-    copy_circuit::util::number_or_hash_to_field,
+    copy_circuit::util::{number_or_hash_to_field, number_or_hash_to_word},
     evm_circuit::util::{
         constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
         rlc,
@@ -1579,14 +1579,14 @@ pub struct CopyTable {
     pub tag: BinaryNumberConfig<CopyDataType, { CopyDataType::N_BITS }>,
 }
 
-type CopyTableRow<F> = [(Value<F>, &'static str); 8];
+type CopyTableRow<F> = [(Value<F>, &'static str); 9];
 type CopyCircuitRow<F> = [(Value<F>, &'static str); 10];
 
 /// CopyThread is the state used while generating rows of the copy table.
 struct CopyThread<F: Field> {
     tag: CopyDataType,
     is_rw: bool,
-    id: Value<F>,
+    id: word::Word<Value<F>>,
     front_mask: bool,
     addr: u64,
     addr_end: u64,
@@ -1664,7 +1664,8 @@ impl CopyTable {
         let mut reader = CopyThread {
             tag: copy_event.src_type,
             is_rw: copy_event.is_source_rw(),
-            id: number_or_hash_to_field(&copy_event.src_id, challenges.evm_word()),
+            //id: number_or_hash_to_field(&copy_event.src_id, challenges.evm_word()),
+            id: number_or_hash_to_word(&copy_event.src_id),
             front_mask: true,
             addr: copy_event.src_addr,
             addr_end: copy_event.src_addr_end,
@@ -1677,7 +1678,8 @@ impl CopyTable {
         let mut writer = CopyThread {
             tag: copy_event.dst_type,
             is_rw: copy_event.is_destination_rw(),
-            id: number_or_hash_to_field(&copy_event.dst_id, challenges.evm_word()),
+            //id: number_or_hash_to_field(&copy_event.dst_id, challenges.evm_word()),
+            id: number_or_hash_to_word(&copy_event.dst_id),
             front_mask: true,
             addr: copy_event.dst_addr,
             addr_end: copy_event.dst_addr + copy_event.full_length(),
@@ -1760,7 +1762,8 @@ impl CopyTable {
                 thread.tag,
                 [
                     (Value::known(F::from(is_first)), "is_first"),
-                    (thread.id, "id"),
+                    (thread.id.lo(), "id_lo"),
+                    (thread.id.hi(), "id_hi"),
                     (Value::known(addr), "addr"),
                     (Value::known(F::from(thread.addr_end)), "src_addr_end"),
                     (Value::known(F::from(thread.bytes_left)), "real_bytes_left"),
