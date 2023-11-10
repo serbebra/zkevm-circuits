@@ -375,7 +375,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
             self.recovered_addr_keccak_rlc.assign_u256(
                 region,
                 offset,
-                U256::from_little_endian({ &recovered_addr }),
+                U256::from_little_endian(&recovered_addr),
             )?;
         } else {
             log::error!("unexpected aux_data {:?} for ecrecover", step.aux_data);

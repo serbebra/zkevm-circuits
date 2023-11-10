@@ -36,7 +36,7 @@ use halo2_proofs::{
 };
 use snark_verifier::util::arithmetic::PrimeCurveAffine;
 
-use std::iter::repeat;
+use std::{iter::repeat, ops::DerefMut};
 
 #[cfg(feature = "onephase")]
 use halo2_proofs::plonk::FirstPhase as SecondPhase;
@@ -1580,7 +1580,7 @@ pub struct CopyTable {
 }
 
 type CopyTableRow<F> = [(Value<F>, &'static str); 9];
-type CopyCircuitRow<F> = [(Value<F>, &'static str); 10];
+type CopyCircuitRow<F> = [(Value<F>, &'static str); 12];
 
 /// CopyThread is the state used while generating rows of the copy table.
 struct CopyThread<F: Field> {
@@ -1592,8 +1592,10 @@ struct CopyThread<F: Field> {
     addr_end: u64,
     bytes_left: u64,
     value_acc: Value<F>,
-    word_rlc: Value<F>,
-    word_rlc_prev: Value<F>,
+    //word_rlc: Value<F>,
+    value_word: word::Word<Value<F>>,
+    //word_rlc_prev: Value<F>,
+    value_word_prev: word::Word<Value<F>>,
 }
 
 impl CopyTable {
@@ -1660,6 +1662,10 @@ impl CopyTable {
 
         let mut rw_counter = copy_event.rw_counter_start();
         let mut rwc_inc_left = copy_event.rw_counter_delta();
+        let mut value_word_read_bytes: [u8; 32] = [0; 32];
+        let mut value_word_write_bytes: [u8; 32] = [0; 32];
+        let mut value_word_read_prev_bytes: [u8; 32] = [0; 32];
+        let mut value_word_write_prev_bytes: [u8; 32] = [0; 32];
 
         let mut reader = CopyThread {
             tag: copy_event.src_type,
@@ -1671,8 +1677,8 @@ impl CopyTable {
             addr_end: copy_event.src_addr_end,
             bytes_left: copy_event.copy_length(),
             value_acc: Value::known(F::zero()),
-            word_rlc: Value::known(F::zero()),
-            word_rlc_prev: Value::known(F::zero()),
+            value_word: word::Word::new([Value::known(F::zero()), Value::known(F::zero())]),
+            value_word_prev: word::Word::new([Value::known(F::zero()), Value::known(F::zero())]),
         };
 
         let mut writer = CopyThread {
@@ -1685,8 +1691,8 @@ impl CopyTable {
             addr_end: copy_event.dst_addr + copy_event.full_length(),
             bytes_left: reader.bytes_left,
             value_acc: Value::known(F::zero()),
-            word_rlc: Value::known(F::zero()),
-            word_rlc_prev: Value::known(F::zero()),
+            value_word: word::Word::new([Value::known(F::zero()), Value::known(F::zero())]),
+            value_word_prev: word::Word::new([Value::known(F::zero()), Value::known(F::zero())]),
         };
 
         for (step_idx, (is_read_step, mut copy_step)) in copy_steps
@@ -1712,10 +1718,18 @@ impl CopyTable {
             }
             let copy_step = copy_step;
 
-            let thread = if is_read_step {
-                &mut reader
+            let (thread, value_word_bytes, value_word_prev_bytes) = if is_read_step {
+                (
+                    &mut reader,
+                    &mut value_word_read_bytes,
+                    &mut value_word_read_prev_bytes,
+                )
             } else {
-                &mut writer
+                (
+                    &mut writer,
+                    &mut value_word_write_bytes,
+                    &mut value_word_write_prev_bytes,
+                )
             };
 
             let is_first = step_idx == 0;
@@ -1737,17 +1751,33 @@ impl CopyTable {
             }
             if (step_idx / 2) % 32 == 0 {
                 // reset
-                thread.word_rlc = Value::known(F::zero());
-                thread.word_rlc_prev = Value::known(F::zero());
+                thread.value_word =
+                    word::Word::new([Value::known(F::zero()), Value::known(F::zero())]);
+                thread.value_word_prev =
+                    word::Word::new([Value::known(F::zero()), Value::known(F::zero())]);
+                *value_word_bytes = [0; 32];
+                *value_word_prev_bytes = [0; 32];
             }
-            thread.word_rlc = thread.word_rlc * challenges.evm_word() + value;
-            thread.word_rlc_prev = if is_read_step {
-                thread.word_rlc // Reader does not change the word.
-            } else {
-                thread.word_rlc_prev * challenges.evm_word() + value_prev
-            };
-
+            // thread.word_rlc = thread.word_rlc * challenges.evm_word() + value;
+            // thread.word_rlc_prev = if is_read_step {
+            //     thread.word_rlc // Reader does not change the word.
+            // } else {
+            //     thread.word_word_prev * challenges.evm_word() + value_prev
+            // };
             let word_index = (step_idx as u64 / 2) % 32;
+            value_word_bytes[word_index as usize] = copy_step.value;
+            //println!("word_index {}, value_word_bytes {:?}", word_index, value_word_bytes);
+
+            let u256_word = U256::from_big_endian(value_word_bytes);
+            thread.value_word = word::Word::from(u256_word).into_value();
+
+            thread.value_word_prev = if is_read_step {
+                thread.value_word // Reader does not change the word.
+            } else {
+                value_word_prev_bytes[word_index as usize] = copy_step.prev_value;
+                let u256_word_prev = U256::from_big_endian(value_word_prev_bytes);
+                word::Word::from(u256_word_prev).into_value()
+            };
 
             // For LOG, format the address including the log_id.
             let addr = if thread.tag == CopyDataType::TxLog {
@@ -1775,8 +1805,10 @@ impl CopyTable {
                     (Value::known(F::from(is_last)), "is_last"),
                     (value, "value"),
                     (value_prev, "value_prev"),
-                    (thread.word_rlc, "value_word_rlc"),
-                    (thread.word_rlc_prev, "value_word_rlc_prev"),
+                    (thread.value_word.lo(), "value_word lo"),
+                    (thread.value_word.hi(), "value_word hi"),
+                    (thread.value_word_prev.lo(), "value_word_prev lo"),
+                    (thread.value_word_prev.hi(), "value_word_prev hi"),
                     (thread.value_acc, "value_acc"),
                     (Value::known(F::from(is_pad)), "is_pad"),
                     (Value::known(F::from(copy_step.mask)), "mask"),
