@@ -8,10 +8,12 @@ use eth_types::Word;
 pub(crate) fn opt_data(
     input_bytes: Option<Vec<u8>>,
     output_bytes: Option<Vec<u8>>,
+    return_bytes: Option<Vec<u8>>,
 ) -> (Option<PrecompileEvent>, Option<PrecompileAuxData>) {
     let aux_data = ModExpAuxData::new(
-        input_bytes.unwrap_or_default(),
-        output_bytes.unwrap_or_default(),
+        &input_bytes.unwrap_or_default(),
+        &output_bytes.unwrap_or_default(),
+        &return_bytes.unwrap_or_default(),
     );
     if aux_data.valid {
         let event = BigModExp {

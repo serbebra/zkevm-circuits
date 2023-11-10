@@ -19,6 +19,11 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct EcAddGadget<F> {
+    // input bytes RLC.
+    input_bytes_rlc: Cell<F>,
+    // return bytes RLC.
+    return_bytes_rlc: Cell<F>,
+
     // EC points: P, Q, R
     point_p_x_rlc: Cell<F>,
     point_p_y_rlc: Cell<F>,
@@ -44,6 +49,8 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let (
+            input_bytes_rlc,
+            return_bytes_rlc,
             point_p_x_rlc,
             point_p_y_rlc,
             point_q_x_rlc,
@@ -51,6 +58,8 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
             point_r_x_rlc,
             point_r_y_rlc,
         ) = (
+            cb.query_cell_phase2(),
+            cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
@@ -112,6 +121,9 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
         );
 
         Self {
+            input_bytes_rlc,
+            return_bytes_rlc,
+
             point_p_x_rlc,
             point_p_y_rlc,
             point_q_x_rlc,
@@ -141,6 +153,16 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
     ) -> Result<(), Error> {
         if let Some(PrecompileAuxData::EcAdd(aux_data)) = &step.aux_data {
             let keccak_rand = region.challenges().keccak_input();
+            for (col, bytes) in [
+                (&self.input_bytes_rlc, &aux_data.input_bytes),
+                (&self.return_bytes_rlc, &aux_data.return_bytes),
+            ] {
+                col.assign(
+                    region,
+                    offset,
+                    keccak_rand.map(|r| rlc::value(bytes.iter().rev(), r)),
+                )?;
+            }
             for (col, word_value) in [
                 (&self.point_p_x_rlc, aux_data.p_x),
                 (&self.point_p_y_rlc, aux_data.p_y),
@@ -155,9 +177,6 @@ impl<F: Field> ExecutionGadget<F> for EcAddGadget<F> {
                     keccak_rand.map(|r| rlc::value(&word_value.to_le_bytes(), r)),
                 )?;
             }
-            // FIXME: when we handle invalid inputs (and hence failures in the precompile calls),
-            // this will be assigned either fixed gas cost (in case of success) or the
-            // entire gas passed to the precompile call (in case of failure).
         } else {
             log::error!("unexpected aux_data {:?} for ecAdd", step.aux_data);
             return Err(Error::Synthesis);

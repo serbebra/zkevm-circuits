@@ -38,6 +38,9 @@ lazy_static::lazy_static! {
 
 #[derive(Clone, Debug)]
 pub struct EcMulGadget<F> {
+    input_bytes_rlc: Cell<F>,
+    return_bytes_rlc: Cell<F>,
+
     point_p_x_rlc: Cell<F>,
     point_p_y_rlc: Cell<F>,
     scalar_s_raw_rlc: Cell<F>,
@@ -76,7 +79,17 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::PrecompileBn256ScalarMul;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let (point_p_x_rlc, point_p_y_rlc, scalar_s_raw_rlc, point_r_x_rlc, point_r_y_rlc) = (
+        let (
+            input_bytes_rlc,
+            return_bytes_rlc,
+            point_p_x_rlc,
+            point_p_y_rlc,
+            scalar_s_raw_rlc,
+            point_r_x_rlc,
+            point_r_y_rlc,
+        ) = (
+            cb.query_cell_phase2(),
+            cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
@@ -255,6 +268,9 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
         );
 
         Self {
+            input_bytes_rlc,
+            return_bytes_rlc,
+
             point_p_x_rlc,
             point_p_y_rlc,
             scalar_s_raw_rlc,
@@ -296,6 +312,20 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
         step: &ExecStep,
     ) -> Result<(), Error> {
         if let Some(PrecompileAuxData::EcMul(aux_data)) = &step.aux_data {
+            for (col, bytes) in [
+                (&self.input_bytes_rlc, &aux_data.input_bytes),
+                (&self.return_bytes_rlc, &aux_data.return_bytes),
+            ] {
+                col.assign(
+                    region,
+                    offset,
+                    region
+                        .challenges()
+                        .keccak_input()
+                        .map(|r| rlc::value(bytes.iter().rev(), r)),
+                )?;
+            }
+
             for (col, is_zero_gadget, word_value) in [
                 (&self.point_p_x_rlc, &self.p_x_is_zero, aux_data.p_x),
                 (&self.point_p_y_rlc, &self.p_y_is_zero, aux_data.p_y),

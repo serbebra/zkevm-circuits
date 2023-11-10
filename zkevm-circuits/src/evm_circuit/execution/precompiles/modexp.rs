@@ -701,6 +701,9 @@ impl<F: Field> ModExpGasCost<F> {
 
 #[derive(Clone, Debug)]
 pub struct ModExpGadget<F> {
+    input_bytes_rlc: Cell<F>,
+    return_bytes_rlc: Cell<F>,
+
     is_success: Cell<F>,
     callee_address: Cell<F>,
     caller_id: Cell<F>,
@@ -727,6 +730,7 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
     const NAME: &'static str = "MODEXP";
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
+        let (input_bytes_rlc, return_bytes_rlc) = (cb.query_cell_phase2(), cb.query_cell_phase2());
         // we 'copy' the acc_bytes cell inside call_op step, so it must be the first query cells
         let input_bytes_acc = cb.query_cell_phase2();
         let output_bytes_acc = cb.query_cell_phase2();
@@ -826,6 +830,8 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
         );
 
         Self {
+            input_bytes_rlc,
+            return_bytes_rlc,
             is_success,
             callee_address,
             caller_id,
@@ -889,6 +895,15 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
                 .challenges()
                 .keccak_input()
                 .map(|randomness| rlc::value(data.input_memory.iter().rev(), randomness));
+            self.input_bytes_rlc.assign(region, offset, input_rlc)?;
+            self.return_bytes_rlc.assign(
+                region,
+                offset,
+                region
+                    .challenges()
+                    .keccak_input()
+                    .map(|r| rlc::value(data.return_bytes.iter().rev(), r)),
+            )?;
 
             // if the input to modexp has more than 192 bytes, then we only keep the first 192 bytes
             // and discard the remaining bytes

@@ -182,11 +182,15 @@ pub struct EcrecoverAuxData {
     pub sig_s: Word,
     /// Address that was recovered.
     pub recovered_addr: Address,
+    /// Input bytes to the ecrecover call.
+    pub input_bytes: Vec<u8>,
+    /// Bytes returned to the caller from the ecrecover call.
+    pub return_bytes: Vec<u8>,
 }
 
 impl EcrecoverAuxData {
     /// Create a new instance of ecrecover auxiliary data.
-    pub fn new(input: Vec<u8>, output: Vec<u8>) -> Self {
+    pub fn new(input: &[u8], output: &[u8], return_bytes: &[u8]) -> Self {
         assert_eq!(input.len(), 128);
         assert_eq!(output.len(), 32);
 
@@ -200,6 +204,8 @@ impl EcrecoverAuxData {
             sig_r: Word::from_big_endian(&input[0x40..0x60]),
             sig_s: Word::from_big_endian(&input[0x60..0x80]),
             recovered_addr,
+            input_bytes: input.to_vec(),
+            return_bytes: return_bytes.to_vec(),
         }
     }
 
@@ -237,6 +243,8 @@ pub struct ModExpAuxData {
     pub input_memory: Vec<u8>,
     /// backup of output memory
     pub output_memory: Vec<u8>,
+    /// Bytes returned back to the caller from the modexp call.
+    pub return_bytes: Vec<u8>,
 }
 
 impl ModExpAuxData {
@@ -271,11 +279,11 @@ impl ModExpAuxData {
     }
 
     /// Create a new instance of modexp auxiliary data.
-    pub fn new(mut mem_input: Vec<u8>, output: Vec<u8>) -> Self {
-        let input_memory = mem_input.clone();
-        let output_memory = output.clone();
+    pub fn new(mem_input: &[u8], output: &[u8], return_bytes: &[u8]) -> Self {
+        let mut input_memory = mem_input.to_vec();
+        let output_memory = output.to_vec();
 
-        let (input_valid, [base_len, exp_len, modulus_len]) = Self::check_input(&mem_input);
+        let (input_valid, [base_len, exp_len, modulus_len]) = Self::check_input(mem_input);
 
         let base_mem_len = if input_valid { base_len.as_usize() } else { 0 };
         let exp_mem_len = if input_valid { exp_len.as_usize() } else { 0 };
@@ -291,7 +299,7 @@ impl ModExpAuxData {
         } else {
             // In non scroll mode, this can be dangerous.
             // If base and mod are all 0, exp can be very huge.
-            mem_input.resize(96 + base_mem_len + exp_mem_len + modulus_mem_len, 0);
+            input_memory.resize(96 + base_mem_len + exp_mem_len + modulus_mem_len, 0);
             let mut cur_input_begin = &mem_input[96..];
 
             let base = Self::parse_memory_to_value(&cur_input_begin[..base_mem_len]);
@@ -302,7 +310,7 @@ impl ModExpAuxData {
             (base, exp, modulus)
         };
         let output_len = output.len();
-        let output = Self::parse_memory_to_value(&output);
+        let output = Self::parse_memory_to_value(output);
 
         Self {
             valid: input_valid,
@@ -312,6 +320,7 @@ impl ModExpAuxData {
             output_len,
             input_memory,
             output_memory,
+            return_bytes: return_bytes.to_vec(),
         }
     }
 }
@@ -331,11 +340,15 @@ pub struct EcAddAuxData {
     pub r_x: Word,
     /// y co-ordinate of the result point.
     pub r_y: Word,
+    /// Input bytes to the ecAdd call.
+    pub input_bytes: Vec<u8>,
+    /// Bytes returned back to the caller.
+    pub return_bytes: Vec<u8>,
 }
 
 impl EcAddAuxData {
     /// Create a new instance of ecrecover auxiliary data.
-    pub fn new(input: &[u8], output: &[u8]) -> Self {
+    pub fn new(input: &[u8], output: &[u8], return_bytes: &[u8]) -> Self {
         assert_eq!(input.len(), 128);
         assert_eq!(output.len(), 64);
         Self {
@@ -345,6 +358,8 @@ impl EcAddAuxData {
             q_y: Word::from_big_endian(&input[0x60..0x80]),
             r_x: Word::from_big_endian(&output[0x00..0x20]),
             r_y: Word::from_big_endian(&output[0x20..0x40]),
+            input_bytes: input.to_vec(),
+            return_bytes: return_bytes.to_vec(),
         }
     }
 }
@@ -364,11 +379,15 @@ pub struct EcMulAuxData {
     pub r_x: Word,
     /// y co-ordinate of the result point.
     pub r_y: Word,
+    /// Input bytes to the ecMul call.
+    pub input_bytes: Vec<u8>,
+    /// Bytes returned back to the caller from the ecMul call.
+    pub return_bytes: Vec<u8>,
 }
 
 impl EcMulAuxData {
     /// Create a new instance of EcMul auxiliary data.
-    pub fn new(input: &[u8], output: &[u8]) -> Self {
+    pub fn new(input: &[u8], output: &[u8], return_bytes: &[u8]) -> Self {
         assert_eq!(input.len(), 96);
         assert_eq!(output.len(), 64);
         let ec_mul_op = EcMulOp::new_from_bytes(input, output);
@@ -380,6 +399,8 @@ impl EcMulAuxData {
             s_raw: Word::from_big_endian(&input[0x40..0x60]),
             r_x: Word::from_big_endian(&output[0x00..0x20]),
             r_y: Word::from_big_endian(&output[0x20..0x40]),
+            input_bytes: input.to_vec(),
+            return_bytes: return_bytes.to_vec(),
         }
     }
 }
@@ -400,6 +421,13 @@ pub enum EcPairingError {
 /// Auxiliary data attached to an internal state for precompile verification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrecompileAuxData {
+    /// Identity.
+    Identity {
+        /// input bytes to the identity call.
+        input_bytes: Vec<u8>,
+        /// bytes returned back to the caller from the identity call.
+        return_bytes: Vec<u8>,
+    },
     /// Ecrecover.
     Ecrecover(EcrecoverAuxData),
     /// Modexp.

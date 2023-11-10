@@ -6,6 +6,7 @@ use crate::{
 pub(crate) fn opt_data(
     input_bytes: Option<Vec<u8>>,
     output_bytes: Option<Vec<u8>>,
+    return_bytes: Option<Vec<u8>>,
 ) -> (Option<PrecompileEvent>, Option<PrecompileAuxData>) {
     let input_bytes = input_bytes.map_or(vec![0u8; 96], |mut bytes| {
         bytes.resize(96, 0u8);
@@ -16,7 +17,11 @@ pub(crate) fn opt_data(
         bytes
     });
 
-    let aux_data = EcMulAuxData::new(&input_bytes, &output_bytes);
+    let aux_data = EcMulAuxData::new(
+        &input_bytes,
+        &output_bytes,
+        &return_bytes.unwrap_or_default(),
+    );
     let ec_mul_op = EcMulOp::new_from_bytes(&input_bytes, &output_bytes);
 
     (

@@ -1251,6 +1251,10 @@ pub struct EcPairingOp {
     pub pairs: [EcPairingPair; N_PAIRING_PER_OP],
     /// Result from the pairing check.
     pub output: Word,
+    /// Input bytes to the ecPairing call.
+    pub input_bytes: Vec<u8>,
+    /// Bytes returned back to the caller.
+    pub return_bytes: Vec<u8>,
 }
 
 impl Default for EcPairingOp {
@@ -1283,6 +1287,12 @@ impl Default for EcPairingOp {
                 },
             ],
             output: Word::zero(),
+            // It does not matter what the input bytes and return bytes are in this case, as this
+            // operation is a filler op. It is not an op constructed from an EVM call to the
+            // ecPairing precompiled contract. Hence the input/return bytes will not be
+            // constrained.
+            input_bytes: vec![],
+            return_bytes: vec![],
         }
     }
 }
@@ -1321,6 +1331,7 @@ impl EcPairingOp {
                 EcPairingPair::new(G1Affine::identity(), G2Affine::generator()),
             ],
             output: 1.into(),
+            ..Default::default()
         }
     }
 }

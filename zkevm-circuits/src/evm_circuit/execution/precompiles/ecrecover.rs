@@ -31,6 +31,9 @@ lazy_static::lazy_static! {
 
 #[derive(Clone, Debug)]
 pub struct EcrecoverGadget<F> {
+    input_bytes_rlc: Cell<F>,
+    return_bytes_rlc: Cell<F>,
+
     recovered: Cell<F>,
     msg_hash_keccak_rlc: Cell<F>,
     sig_v_keccak_rlc: Cell<F>,
@@ -69,6 +72,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
     const NAME: &'static str = "ECRECOVER";
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
+        let (input_bytes_rlc, return_bytes_rlc) = (cb.query_cell_phase2(), cb.query_cell_phase2());
         let (
             recovered,
             msg_hash_keccak_rlc,
@@ -237,6 +241,9 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         );
 
         Self {
+            input_bytes_rlc,
+            return_bytes_rlc,
+
             recovered,
             msg_hash_keccak_rlc,
             sig_v_keccak_rlc,
@@ -280,6 +287,22 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         step: &ExecStep,
     ) -> Result<(), Error> {
         if let Some(PrecompileAuxData::Ecrecover(aux_data)) = &step.aux_data {
+            self.input_bytes_rlc.assign(
+                region,
+                offset,
+                region
+                    .challenges()
+                    .keccak_input()
+                    .map(|r| rlc::value(aux_data.input_bytes.iter().rev(), r)),
+            )?;
+            self.return_bytes_rlc.assign(
+                region,
+                offset,
+                region
+                    .challenges()
+                    .keccak_input()
+                    .map(|r| rlc::value(aux_data.return_bytes.iter().rev(), r)),
+            )?;
             let recovered = !aux_data.recovered_addr.is_zero();
             self.recovered
                 .assign(region, offset, Value::known(F::from(recovered as u64)))?;

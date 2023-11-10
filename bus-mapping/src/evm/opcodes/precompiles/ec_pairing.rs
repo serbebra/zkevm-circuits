@@ -11,6 +11,7 @@ use crate::{
 pub(crate) fn opt_data(
     input_bytes: Option<Vec<u8>>,
     output_bytes: Option<Vec<u8>>,
+    return_bytes: Option<Vec<u8>>,
 ) -> (Option<PrecompileEvent>, Option<PrecompileAuxData>) {
     // assertions.
     let pairing_check = output_bytes.map_or(U256::zero(), |output| {
@@ -73,12 +74,16 @@ pub(crate) fn opt_data(
         EcPairingOp {
             pairs: <[_; N_PAIRING_PER_OP]>::try_from(pairs).unwrap(),
             output: pairing_check,
+            input_bytes: input,
+            return_bytes: return_bytes.unwrap_or_default(),
         }
     } else {
         let pairs = [EcPairingPair::padding_pair(); N_PAIRING_PER_OP];
         EcPairingOp {
             pairs,
             output: pairing_check,
+            input_bytes: vec![],
+            return_bytes: return_bytes.unwrap_or_default(),
         }
     };
 
