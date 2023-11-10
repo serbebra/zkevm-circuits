@@ -1430,16 +1430,15 @@ impl KeccakTable {
         let output_rlc = challenges
             .evm_word()
             .map(|challenge| rlc::value(&output_bytes, challenge));
-
-        let output_hi_lo = word::Word::from(output_word);
+        let output_lo_hi = word::Word::from(output_word);
 
         vec![[
             Value::known(F::one()),
             input_rlc,
             Value::known(input_len),
             output_rlc,
-            Value::known(output_hi_lo.lo()),
-            Value::known(output_hi_lo.hi()),
+            Value::known(output_lo_hi.lo()),
+            Value::known(output_lo_hi.hi()),
         ]]
     }
 
