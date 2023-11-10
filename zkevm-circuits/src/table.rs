@@ -118,6 +118,69 @@ impl<F: Field, C: Into<Column<Any>> + Copy, const W: usize> LookupTable<F> for [
     }
 }
 
+/// The DualByteTable used to check the range of two bytes at once.
+#[derive(Clone, Debug)]
+pub struct DualByteTable {
+    /// Enabled.
+    // TODO: this could be removed.
+    pub q_enable: Column<Fixed>,
+    /// Two byte columns containing the 256*256 combinations of two bytes.
+    pub bytes: [Column<Fixed>; 2],
+}
+
+impl DualByteTable {
+    /// Construct a new DualByteTable
+    pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
+        Self {
+            q_enable: meta.fixed_column(),
+            bytes: [(); 2].map(|_| meta.fixed_column()),
+        }
+    }
+}
+
+/// The table of fixed functions (range checks, XOR, etc).
+#[derive(Clone, Debug)]
+pub struct FixedTable {
+    /// Enabled.
+    // TODO: this could be removed.
+    pub q_enable: Column<Fixed>,
+    /// The tag that selects the function.
+    pub tag: Column<Fixed>,
+    /// The arguments of the function (or 0).
+    pub values: [Column<Fixed>; 3],
+}
+
+impl FixedTable {
+    /// Construct a new FixedTable
+    pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
+        Self {
+            q_enable: meta.fixed_column(),
+            tag: meta.fixed_column(),
+            values: [(); 3].map(|_| meta.fixed_column()),
+        }
+    }
+}
+
+impl<F: Field> LookupTable<F> for FixedTable {
+    fn columns(&self) -> Vec<Column<Any>> {
+        vec![
+            self.tag.into(),
+            self.values[0].into(),
+            self.values[1].into(),
+            self.values[2].into(),
+        ]
+    }
+
+    fn annotations(&self) -> Vec<String> {
+        vec![
+            String::from("tag"),
+            String::from("values[0]"),
+            String::from("values[1]"),
+            String::from("values[2]"),
+        ]
+    }
+}
+
 /// Tag used to identify each field in the transaction in a row of the
 /// transaction table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter)]

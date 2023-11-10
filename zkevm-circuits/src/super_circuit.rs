@@ -77,9 +77,9 @@ use crate::{
     sig_circuit::{SigCircuit, SigCircuitConfig, SigCircuitConfigArgs},
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
-        ModExpTable, MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable,
-        SigTable, TxTable, U16Table, U8Table,
+        BlockTable, BytecodeTable, CopyTable, DualByteTable, EccTable, ExpTable, FixedTable,
+        KeccakTable, LookupTable, ModExpTable, MptTable, PoseidonTable, PowOfRandTable,
+        RlpFsmRlpTable as RlpTable, RwTable, SigTable, TxTable, U16Table, U8Table,
     },
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
@@ -175,6 +175,9 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
 
         let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges_expr.lookup_input()));
 
+        let dual_byte_table = DualByteTable::construct(meta);
+        let fixed_table = FixedTable::construct(meta);
+        fixed_table.annotate_columns(meta);
         let tx_table = TxTable::construct(meta);
         tx_table.annotate_columns(meta);
         log_circuit_info(meta, "tx table");
@@ -354,6 +357,9 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             &mut bus_builder,
             EvmCircuitConfigArgs {
                 challenges: challenges_expr.clone(),
+                // Tables assigned by the EVM circuit.
+                dual_byte_table: dual_byte_table.clone(),
+                fixed_table: fixed_table.clone(),
                 pow_of_rand_table: pow_of_rand_table.clone(),
             },
         );
@@ -384,6 +390,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let evm_lookups = EVMBusLookups::configure(
             meta,
             &mut bus_builder,
+            &dual_byte_table,
+            &fixed_table,
             &rw_table,
             &tx_table,
             &bytecode_table,

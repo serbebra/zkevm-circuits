@@ -1,8 +1,8 @@
 use crate::{
     evm_circuit::table::{Lookup, MsgExpr, MsgF, RwValues},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
-        PowOfRandTable, RwTable, SigTable, TxTable,
+        BlockTable, BytecodeTable, CopyTable, DualByteTable, EccTable, ExpTable, FixedTable,
+        KeccakTable, ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
     },
     util::{assign_global, query_expression},
 };
@@ -13,19 +13,22 @@ use gadgets::bus::{
 };
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
+    plonk::{ConstraintSystem, Error, Expression, VirtualCells},
     poly::Rotation,
 };
 
+/// EVMBusLookups makes all lookup tables available on the bus.
 #[derive(Clone, Debug)]
 pub struct EVMBusLookups<F> {
-    bus_tables: [BusTable<F>; 11],
+    bus_tables: [BusTable<F>; 13],
 }
 
 impl<F: Field> EVMBusLookups<F> {
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
+        dual_byte_table: &DualByteTable,
+        fixed_table: &FixedTable,
         rw_table: &RwTable,
         tx_table: &TxTable,
         bytecode_table: &BytecodeTable,
@@ -38,23 +41,33 @@ impl<F: Field> EVMBusLookups<F> {
         ecc_table: &EccTable,
         pow_of_rand_table: &PowOfRandTable,
     ) -> Self {
+        let tables: [&dyn QueryTable<F>; 13] = [
+            dual_byte_table,
+            fixed_table,
+            rw_table,
+            tx_table,
+            bytecode_table,
+            block_table,
+            copy_table,
+            keccak_table,
+            exp_table,
+            sig_table,
+            modexp_table,
+            ecc_table,
+            pow_of_rand_table,
+        ];
         Self {
-            bus_tables: [
-                BusTable::configure(meta, bus_builder, rw_table),
-                BusTable::configure(meta, bus_builder, tx_table),
-                BusTable::configure(meta, bus_builder, bytecode_table),
-                BusTable::configure(meta, bus_builder, block_table),
-                BusTable::configure(meta, bus_builder, copy_table),
-                BusTable::configure(meta, bus_builder, keccak_table),
-                BusTable::configure(meta, bus_builder, exp_table),
-                BusTable::configure(meta, bus_builder, sig_table),
-                BusTable::configure(meta, bus_builder, modexp_table),
-                BusTable::configure(meta, bus_builder, ecc_table),
-                BusTable::configure(meta, bus_builder, pow_of_rand_table),
-            ],
+            bus_tables: tables.map(|table| BusTable::configure(meta, bus_builder, table)),
         }
     }
 
+    /// Assign the answers to all lookups on the bus.
+    ///
+    /// This must be called after all other circuits. The lookup queries and the content of the
+    /// tables must have been assigned already.
+    ///
+    /// This function reads the content of the tables, it detects how many times each entry has been
+    /// looked up, and it assigns the bus operations from the tables to balance these lookups.
     pub fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -129,7 +142,7 @@ fn eval<F: Field>(region: &Region<F>, offset: usize, expr: Expression<F>) -> F {
             Value::known(
                 region
                     .query_fixed(
-                        Column::new(fixed_query.column_index(), Fixed),
+                        fixed_query.column(),
                         (offset as i32 + fixed_query.rotation().0) as usize,
                     )
                     .unwrap(),
@@ -139,7 +152,7 @@ fn eval<F: Field>(region: &Region<F>, offset: usize, expr: Expression<F>) -> F {
             Value::known(
                 region
                     .query_advice(
-                        Column::new(advice_query.column_index(), Advice::default()),
+                        advice_query.column(),
                         (offset as i32 + advice_query.rotation().0) as usize,
                     )
                     .unwrap(),
@@ -160,6 +173,31 @@ fn eval<F: Field>(region: &Region<F>, offset: usize, expr: Expression<F>) -> F {
 trait QueryTable<F: Field> {
     fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F>;
     fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F>;
+}
+
+impl<F: Field> QueryTable<F> for DualByteTable {
+    fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
+        meta.query_fixed(self.q_enable, Rotation::cur())
+    }
+
+    fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
+        MsgExpr::bytes(self.bytes.map(|col| meta.query_fixed(col, Rotation::cur())))
+    }
+}
+
+impl<F: Field> QueryTable<F> for FixedTable {
+    fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
+        meta.query_fixed(self.q_enable, Rotation::cur())
+    }
+
+    fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
+        let mut query = |col| meta.query_fixed(col, Rotation::cur());
+
+        MsgExpr::lookup(Lookup::Fixed {
+            tag: query(self.tag),
+            values: self.values.map(|col| query(col)),
+        })
+    }
 }
 
 impl<F: Field> QueryTable<F> for RwTable {

@@ -5,12 +5,10 @@ use gadgets::bus::{
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusConfig,
     bus_codec::{BusCodecExpr, BusCodecVal},
-    bus_lookup::BusLookupChip,
 };
 use halo2_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     plonk::*,
-    poly::Rotation,
 };
 
 mod execution;
@@ -30,27 +28,25 @@ use crate::{
     evm_bus::EVMBusLookups,
     evm_circuit::param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT},
     table::{
-        BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
-        ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
+        BlockTable, BytecodeTable, CopyTable, DualByteTable, EccTable, ExpTable, FixedTable,
+        KeccakTable, LookupTable, ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
     },
-    util::{assign_global, query_expression, SubCircuit, SubCircuitConfig},
+    util::{assign_global, SubCircuit, SubCircuitConfig},
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
 use execution::ExecutionConfig;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
-use table::{FixedTableTag, Lookup, MsgExpr, MsgF};
+use table::{FixedTableTag, MsgExpr, MsgF};
 use witness::Block;
 
 /// EvmCircuitConfig implements verification of execution trace of a block.
 #[derive(Clone, Debug)]
 pub struct EvmCircuitConfig<F> {
-    fixed_table: [Column<Fixed>; 4],
-    dual_byte_table: [Column<Fixed>; 2],
+    dual_byte_table: DualByteTable,
+    fixed_table: FixedTable,
     pow_of_rand_table: PowOfRandTable,
-    bus_lookup: [BusLookupChip<F>; 2],
-    enable_bus_lookup: Column<Fixed>,
     pub(crate) execution: Box<ExecutionConfig<F>>,
 }
 
@@ -58,6 +54,10 @@ pub struct EvmCircuitConfig<F> {
 pub struct EvmCircuitConfigArgs<F: Field> {
     /// Challenge
     pub challenges: crate::util::Challenges<Expression<F>>,
+    /// The dual byte table.
+    pub dual_byte_table: DualByteTable,
+    /// Fixed Table.
+    pub fixed_table: FixedTable,
     // Power of Randomness Table.
     pub pow_of_rand_table: PowOfRandTable,
 }
@@ -92,73 +92,19 @@ impl<F: Field> EvmCircuitConfig<F> {
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
         EvmCircuitConfigArgs {
             challenges,
+            dual_byte_table,
+            fixed_table,
             pow_of_rand_table,
         }: EvmCircuitConfigArgs<F>,
     ) -> Self {
-        let fixed_table = [(); 4].map(|_| meta.fixed_column());
-        let dual_byte_table = [(); 2].map(|_| meta.fixed_column());
-        let enable_bus_lookup = meta.fixed_column(); // TODO: replace with q_usable, or BusConfig.enabled?
-
-        let bus_lookup = Self::configure_bus_lookup(
-            meta,
-            bus_builder,
-            enable_bus_lookup,
-            &dual_byte_table,
-            &fixed_table,
-        );
-
         let execution = Box::new(ExecutionConfig::configure(meta, challenges, bus_builder));
 
-        meta.annotate_lookup_any_column(dual_byte_table[0], || "dual_byte_table_0");
-        meta.annotate_lookup_any_column(dual_byte_table[1], || "dual_byte_table_1");
-        fixed_table.iter().enumerate().for_each(|(idx, &col)| {
-            meta.annotate_lookup_any_column(col, || format!("fix_table_{idx}"))
-        });
-
         Self {
-            fixed_table,
             dual_byte_table,
-            bus_lookup,
-            enable_bus_lookup,
-            execution,
+            fixed_table,
             pow_of_rand_table,
+            execution,
         }
-    }
-
-    fn configure_bus_lookup(
-        meta: &mut ConstraintSystem<F>,
-        bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
-        enabled: Column<Fixed>,
-        dual_byte_table: &[Column<Fixed>; 2],
-        fixed_table: &[Column<Fixed>; 4],
-    ) -> [BusLookupChip<F>; 2] {
-        let enabled = query_expression(meta, |meta| meta.query_fixed(enabled, Rotation::cur()));
-
-        let byte_lookup = {
-            let message = query_expression(meta, |meta| {
-                MsgExpr::bytes([
-                    meta.query_fixed(dual_byte_table[0], Rotation::cur()),
-                    meta.query_fixed(dual_byte_table[1], Rotation::cur()),
-                ])
-            });
-            BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
-        };
-
-        let fixed_lookup = {
-            let message = query_expression(meta, |meta| {
-                MsgExpr::lookup(Lookup::Fixed {
-                    tag: meta.query_fixed(fixed_table[0], Rotation::cur()),
-                    values: [
-                        meta.query_fixed(fixed_table[1], Rotation::cur()),
-                        meta.query_fixed(fixed_table[2], Rotation::cur()),
-                        meta.query_fixed(fixed_table[3], Rotation::cur()),
-                    ],
-                })
-            });
-            BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
-        };
-
-        [byte_lookup, fixed_lookup]
     }
 }
 
@@ -167,45 +113,38 @@ impl<F: Field> EvmCircuitConfig<F> {
     fn load_fixed_table(
         &self,
         layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
-        bus_lookup: &BusLookupChip<F>,
         fixed_table_tags: Vec<FixedTableTag>,
     ) -> Result<(), Error> {
         assign_global(
             layouter,
             || "fixed table",
             |mut region| {
+                let table: [Column<Fixed>; 4] =
+                    <FixedTable as LookupTable<F>>::fixed_columns(&self.fixed_table)
+                        .try_into()
+                        .unwrap();
+
                 for (offset, row) in std::iter::once([F::zero(); 4])
                     .chain(fixed_table_tags.iter().flat_map(|tag| tag.build()))
                     .enumerate()
                 {
-                    for (column, value) in self.fixed_table.iter().zip_eq(row) {
+                    for (column, value) in table.iter().zip_eq(row) {
                         region.assign_fixed(|| "", *column, offset, || Value::known(value))?;
                     }
-
                     region.assign_fixed(
-                        || "",
-                        self.enable_bus_lookup,
+                        || "fixed table enabled",
+                        self.fixed_table.q_enable,
                         offset,
                         || Value::known(F::one()),
                     )?;
-
-                    bus_lookup.assign(&mut region, bus_assigner, offset, MsgF::fixed(row))?;
                 }
-
-                bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
         )
     }
 
     /// Load dual byte table
-    fn load_dual_byte_table(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        bus_assigner: &mut BusAssigner<F, MsgF<F>>,
-        bus_lookup: &BusLookupChip<F>,
-    ) -> Result<(), Error> {
+    fn load_dual_byte_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         assign_global(
             layouter,
             || "byte table",
@@ -218,34 +157,24 @@ impl<F: Field> EvmCircuitConfig<F> {
 
                         region.assign_fixed(
                             || "",
-                            self.enable_bus_lookup,
+                            self.dual_byte_table.q_enable,
                             offset,
                             || Value::known(F::one()),
                         )?;
-
                         region.assign_fixed(
                             || "",
-                            self.dual_byte_table[0],
+                            self.dual_byte_table.bytes[0],
                             offset,
                             || Value::known(b0),
                         )?;
                         region.assign_fixed(
                             || "",
-                            self.dual_byte_table[1],
+                            self.dual_byte_table.bytes[1],
                             offset,
                             || Value::known(b1),
                         )?;
-
-                        bus_lookup.assign(
-                            &mut region,
-                            bus_assigner,
-                            offset,
-                            MsgF::bytes([b0, b1]),
-                        )?;
                     }
                 }
-
-                bus_assigner.finish_ports(&mut region);
                 Ok(())
             },
         )
@@ -388,21 +317,14 @@ impl<F: Field> EvmCircuit<F> {
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
 
+        config.load_dual_byte_table(layouter)?;
+        config.load_fixed_table(layouter, self.fixed_table_tags.clone())?;
         config.pow_of_rand_table.assign(layouter, challenges)?;
 
         let export = config
             .execution
             .assign_block(layouter, bus_assigner, block, challenges)?;
         self.exports.borrow_mut().replace(export);
-
-        config.load_dual_byte_table(layouter, bus_assigner, &config.bus_lookup[0])?;
-
-        config.load_fixed_table(
-            layouter,
-            bus_assigner,
-            &config.bus_lookup[1],
-            self.fixed_table_tags.clone(),
-        )?;
 
         Ok(())
     }
@@ -538,29 +460,32 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let challenges = Challenges::construct(meta);
         let challenges_expr = challenges.exprs(meta);
         let mut bus_builder = BusBuilder::new(BusCodecExpr::new(challenges_expr.lookup_input()));
+
+        let dual_byte_table = DualByteTable::construct(meta);
+        let fixed_table = FixedTable::construct(meta);
+        fixed_table.annotate_columns(meta);
         let rw_table = RwTable::construct(meta);
         rw_table.annotate_columns(meta);
         let tx_table = TxTable::construct(meta);
         tx_table.annotate_columns(meta);
         let bytecode_table = BytecodeTable::construct(meta);
+        bytecode_table.annotate_columns(meta);
         let block_table = BlockTable::construct(meta);
+        block_table.annotate_columns(meta);
         let q_copy_table = meta.fixed_column();
         let copy_table = CopyTable::construct(meta, q_copy_table);
-        let keccak_table = KeccakTable::construct(meta);
-        let exp_table = ExpTable::construct(meta);
-        let sig_table = SigTable::construct(meta);
-        let modexp_table = ModExpTable::construct(meta);
-        let ecc_table = EccTable::construct(meta);
-        let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
-
-        bytecode_table.annotate_columns(meta);
-        block_table.annotate_columns(meta);
         copy_table.annotate_columns(meta);
+        let keccak_table = KeccakTable::construct(meta);
         keccak_table.annotate_columns(meta);
+        let exp_table = ExpTable::construct(meta);
         exp_table.annotate_columns(meta);
+        let sig_table = SigTable::construct(meta);
         sig_table.annotate_columns(meta);
+        let modexp_table = ModExpTable::construct(meta);
         modexp_table.annotate_columns(meta);
+        let ecc_table = EccTable::construct(meta);
         ecc_table.annotate_columns(meta);
+        let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
         pow_of_rand_table.annotate_columns(meta);
 
         let config = EvmCircuitConfig::new(
@@ -568,12 +493,18 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &mut bus_builder,
             EvmCircuitConfigArgs {
                 challenges: challenges_expr,
+                // Tables assigned by the EVM circuit.
+                dual_byte_table: dual_byte_table.clone(),
+                fixed_table: fixed_table.clone(),
                 pow_of_rand_table: pow_of_rand_table.clone(),
             },
         );
+
         let evm_lookups = EVMBusLookups::configure(
             meta,
             &mut bus_builder,
+            &dual_byte_table,
+            &fixed_table,
             &rw_table,
             &tx_table,
             &bytecode_table,
@@ -587,11 +518,13 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &pow_of_rand_table,
         );
         let bus = BusConfig::new(meta, &bus_builder.build());
+
         (
             config,
             bus,
             evm_lookups,
             challenges,
+            // Tables assigned by external circuits.
             rw_table,
             tx_table,
             bytecode_table,
