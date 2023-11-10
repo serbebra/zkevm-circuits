@@ -159,7 +159,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let value_prev = meta.advice_column();
 
         // RLC accumulators in the second phase.
-        let code_hash = word::Word::new([meta.advice_column(), meta.advice_column()]);
+        // let code_hash = word::Word::new([meta.advice_column(), meta.advice_column()]);
 
         let value_word = word::Word::new([meta.advice_column(), meta.advice_column()]);
         let value_word_prev = word::Word::new([meta.advice_column(), meta.advice_column()]);

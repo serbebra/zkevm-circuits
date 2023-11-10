@@ -494,13 +494,13 @@ pub fn constrain_id<F: Field>(
     is_pad: Column<Advice>,
 ) {
     let cond = or::expr([
-        meta.query_advice(is_bytecode, CURRENT),
+        //meta.query_advice(is_bytecode, CURRENT),
         meta.query_advice(is_tx_log, CURRENT),
         meta.query_advice(is_tx_calldata, CURRENT),
         meta.query_advice(is_memory, CURRENT),
     ]) * not::expr(meta.query_advice(is_pad, CURRENT));
     cb.condition(cond, |cb| {
-        cb.require_zero("id_hi === 0", meta.query_advice(id.hi(), CURRENT))
+        cb.require_zero("id_hi == 0", meta.query_advice(id.hi(), CURRENT))
     });
 }
 

@@ -1650,6 +1650,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         &mut self,
         input_rlc: Expression<F>,
         input_len: Expression<F>,
+        output_rlc: Expression<F>,
         output: Word<Expression<F>>,
     ) {
         self.add_lookup(
@@ -1657,6 +1658,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             Lookup::KeccakTable {
                 input_rlc,
                 input_len,
+                output_rlc,
                 output,
             },
         );

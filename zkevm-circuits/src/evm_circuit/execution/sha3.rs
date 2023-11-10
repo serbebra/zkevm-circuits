@@ -20,7 +20,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::word::{Word, WordCell, WordExpr},
+    util::word::{Word, Word32Cell, WordExpr},
 };
 
 use super::ExecutionGadget;
@@ -29,7 +29,8 @@ use super::ExecutionGadget;
 pub(crate) struct Sha3Gadget<F> {
     same_context: SameContextGadget<F>,
     memory_address: MemoryAddressGadget<F>,
-    sha3_digest: WordCell<F>,
+    //sha3_digest: WordCell<F>,
+    sha3_digest: Word32Cell<F>,
     copy_rwc_inc: Cell<F>,
     rlc_acc: Cell<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
@@ -46,7 +47,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
 
         let offset = cb.query_word_unchecked();
         let size = cb.query_memory_address();
-        let sha3_digest = cb.query_word_unchecked();
+        let sha3_digest = cb.query_word32();
 
         cb.stack_pop(offset.to_word());
         cb.stack_pop(size.to_word());
@@ -77,9 +78,11 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             cb.require_zero("rlc_acc == 0 for size = 0", rlc_acc.expr());
         });
 
+        let output_rlc = cb.word_rlc(sha3_digest.limbs.clone().map(|l| l.expr()));
         cb.keccak_table_lookup(
             rlc_acc.expr(),
             memory_address.length(),
+            output_rlc,
             sha3_digest.to_word(),
         );
 

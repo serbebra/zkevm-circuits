@@ -40,7 +40,7 @@ impl<F: Field> ExecutionGadget<F> for ChainIdGadget<F> {
         // Lookup block table with chain_id
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
-            None,
+            Some(cb.curr.state.block_number.expr()),
             //chain_id.to_word(),
             chain_id.lo().expr(),
         );

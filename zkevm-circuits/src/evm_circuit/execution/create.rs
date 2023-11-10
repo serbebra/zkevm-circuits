@@ -81,7 +81,7 @@ pub(crate) struct CreateGadget<F, const IS_CREATE2: bool, const S: ExecutionStat
     gas_left: ConstantDivisionGadget<F, N_BYTES_GAS>,
     // check address collision use
     // TODO: check Word32Cell more suitable for keccak_code_hash field ?
-    keccak_code_hash: WordCell<F>,
+    keccak_code_hash: Word32Cell<F>,
     #[cfg(feature = "scroll")]
     prev_keccak_code_hash: WordCell<F>,
     copy_rw_increase: Cell<F>,
@@ -171,7 +171,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         let (init_code_rlc, keccak_code_hash) = cb.condition(init_code.has_length(), |cb| {
             // the init code is being copied from memory to bytecode, so a copy table lookup to
             // verify that the associated fields for the copy event.
-            let keccak_code_hash = cb.query_word_unchecked();
+            let keccak_code_hash = cb.query_word32();
             let init_code_rlc = cb.query_cell_phase2();
 
             (init_code_rlc, keccak_code_hash)
@@ -182,7 +182,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                 keccak_code_hash.to_word(),
                 cb.empty_code_hash(),
             );
-            // todo: enable it later
             // cb.require_equal(
             //     "code hash of empty bytes",
             //     create.code_hash(),
@@ -403,19 +402,25 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             and::expr([is_precheck_ok.clone(), not_address_collision.expr()]),
             |cb| {
                 cb.condition(init_code.has_length(), |cb| {
+                    let keccak_code_hash_rlc =
+                        cb.word_rlc(keccak_code_hash.limbs.clone().map(|l| l.expr()));
                     cb.keccak_table_lookup(
                         //create.input_rlc(cb),
                         init_code_rlc.expr(),
                         //create.input_length(),
                         init_code.length(),
+                        keccak_code_hash_rlc,
                         keccak_code_hash.to_word(),
                     );
                 });
 
+                //TODO: enable later
                 // keccak table lookup to verify contract address.
+                let keccak_output_rlc = cb.word_rlc(keccak_output.limbs.clone().map(|l| l.expr()));
                 cb.keccak_table_lookup(
                     create.input_rlc(cb),
                     create.input_length(),
+                    keccak_output_rlc,
                     keccak_output.to_word(),
                 );
 

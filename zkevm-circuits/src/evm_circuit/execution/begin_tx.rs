@@ -87,7 +87,8 @@ pub(crate) struct BeginTxGadget<F> {
     /// Keccak256(RLP([tx_caller_address, tx_nonce]))
     caller_nonce_hash_bytes: Word32Cell<F>,
 
-    keccak_code_hash: WordCell<F>,
+    // keccak_code_hash: WordCell<F>,
+    keccak_code_hash: Word32Cell<F>,
     init_code_rlc: Cell<F>,
     /// RLP gadget for CREATE address.
     create: ContractCreateGadget<F, false>,
@@ -426,20 +427,26 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             //         .try_into()
             //         .unwrap(),
             // );
+            let caller_nonce_hash_bytes_rlc =
+                cb.word_rlc(caller_nonce_hash_bytes.limbs.clone().map(|l| l.expr()));
             cb.keccak_table_lookup(
                 create.input_rlc(cb),
                 create.input_length(),
+                caller_nonce_hash_bytes_rlc,
                 caller_nonce_hash_bytes.to_word(),
             );
 
             //let keccak_code_hash = cb.query_cell_phase2();
-            let keccak_code_hash = cb.query_word_unchecked();
+            let keccak_code_hash = cb.query_word32();
 
             let init_code_rlc = cb.query_cell_phase2();
+            let keccak_code_hash_rlc =
+                cb.word_rlc(keccak_code_hash.limbs.clone().map(|l| l.expr()));
             // keccak table lookup for init code.
             cb.keccak_table_lookup(
                 init_code_rlc.expr(),
                 tx_call_data_length.expr(),
+                keccak_code_hash_rlc,
                 keccak_code_hash.to_word(),
             );
             // copy table lookup for init code.
@@ -1012,7 +1019,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         self.caller_nonce_hash_bytes.assign_u256(
             region,
             offset,
-            U256::from(untrimmed_contract_addr),
+            U256::from_big_endian(&untrimmed_contract_addr),
         )?;
         self.account_code_hash_is_empty.assign_u256(
             region,
@@ -1051,11 +1058,11 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             keccak256(&rlp_encoding)
         };
 
-        self.caller_nonce_hash_bytes.assign_u256(
-            region,
-            offset,
-            U256::from(untrimmed_contract_addr),
-        )?;
+        // self.caller_nonce_hash_bytes.assign_u256(
+        //     region,
+        //     offset,
+        //     U256::from(untrimmed_contract_addr),
+        // )?;
 
         let (init_code_rlc, keccak_code_hash) = if tx.is_create {
             let init_code_rlc =
