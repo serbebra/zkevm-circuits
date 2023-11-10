@@ -29,6 +29,8 @@ use crate::{
 pub struct EcPairingGadget<F> {
     // Random linear combination of input bytes to the precompile ecPairing call.
     input_bytes_rlc: Cell<F>,
+    // output bytes from ecpairing call.
+    output_bytes_rlc: Cell<F>,
     // return bytes
     return_bytes_rlc: Cell<F>,
 
@@ -70,7 +72,8 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::PrecompileBn256Pairing;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let (input_bytes_rlc, return_bytes_rlc, output) = (
+        let (input_bytes_rlc, output_bytes_rlc, return_bytes_rlc, output) = (
+            cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_cell_phase2(),
             cb.query_bool(),
@@ -264,7 +267,9 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
 
         Self {
             input_bytes_rlc,
+            output_bytes_rlc,
             return_bytes_rlc,
+
             output,
 
             input_is_zero,
@@ -352,6 +357,11 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
                                 r,
                             )
                         }),
+                    )?;
+                    self.output_bytes_rlc.assign(
+                        region,
+                        offset,
+                        keccak_rand.map(|r| rlc::value(aux_data.0.output_bytes.iter().rev(), r)),
                     )?;
                     self.return_bytes_rlc.assign(
                         region,

@@ -19,14 +19,14 @@ use ec_pairing::opt_data as opt_data_ec_pairing;
 use ecrecover::opt_data as opt_data_ecrecover;
 use modexp::opt_data as opt_data_modexp;
 
-type InOutRetData = (Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>);
-
 pub fn gen_associated_ops(
     state: &mut CircuitInputStateRef,
     geth_step: GethExecStep,
     call: Call,
     precompile: PrecompileCalls,
-    (input_bytes, output_bytes, return_bytes): InOutRetData,
+    input_bytes: &[u8],
+    output_bytes: &[u8],
+    return_bytes: &[u8],
 ) -> Result<ExecStep, Error> {
     assert_eq!(call.code_address(), Some(precompile.into()));
     let mut exec_step = state.new_step(&geth_step)?;
@@ -45,8 +45,9 @@ pub fn gen_associated_ops(
         PrecompileCalls::Identity => (
             None,
             Some(PrecompileAuxData::Identity {
-                input_bytes: input_bytes.unwrap_or_default(),
-                return_bytes: return_bytes.unwrap_or_default(),
+                input_bytes: input_bytes.to_vec(),
+                output_bytes: output_bytes.to_vec(),
+                return_bytes: return_bytes.to_vec(),
             }),
         ),
         _ => {
