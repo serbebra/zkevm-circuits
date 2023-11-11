@@ -437,6 +437,15 @@ pub enum EcPairingError {
 /// Auxiliary data attached to an internal state for precompile verification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrecompileAuxData {
+    /// Base precompile (used for SHA256, RIPEMD-160 and BLAKE2F).
+    Base {
+        /// input bytes to the identity call.
+        input_bytes: Vec<u8>,
+        /// output bytes from the identity call.
+        output_bytes: Vec<u8>,
+        /// bytes returned back to the caller from the identity call.
+        return_bytes: Vec<u8>,
+    },
     /// Identity.
     Identity {
         /// input bytes to the identity call.

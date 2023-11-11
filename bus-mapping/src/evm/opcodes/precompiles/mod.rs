@@ -52,7 +52,14 @@ pub fn gen_associated_ops(
         ),
         _ => {
             log::warn!("precompile {:?} unsupported in circuits", precompile);
-            (None, None)
+            (
+                None,
+                Some(PrecompileAuxData::Base {
+                    input_bytes: input_bytes.to_vec(),
+                    output_bytes: output_bytes.to_vec(),
+                    return_bytes: return_bytes.to_vec(),
+                }),
+            )
         }
     };
     log::trace!("precompile event {opt_event:?}, aux data {aux_data:?}");
