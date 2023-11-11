@@ -51,7 +51,11 @@ impl<F: Field> PrecompileGadget<F> {
 
         // Without constraining the next step's state, only constrain the first two Phase2 cells,
         // i.e. RLC(input_bytes) and RLC(return_bytes)
-        cb.constrain_next_step(None, None, |cb| {
+        // We only check these constraints if there was no OOG error in the precompile call.
+        let is_oog_err = cb
+            .next
+            .execution_state_selector([ExecutionState::ErrorOutOfGasPrecompile]);
+        cb.constrain_next_step(None, Some(not::expr(is_oog_err)), |cb| {
             let (next_input_bytes_rlc, next_output_bytes_rlc, next_return_bytes_rlc) = (
                 cb.query_cell_phase2(),
                 cb.query_cell_phase2(),
