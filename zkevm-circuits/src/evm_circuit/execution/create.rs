@@ -160,8 +160,8 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
         );
 
         cb.stack_pop(value.to_word());
-        cb.stack_pop(offset.to_word());
-        cb.stack_pop(length.to_word());
+        cb.stack_pop(init_code.offset_word());
+        cb.stack_pop(init_code.length_word());
         if IS_CREATE2 {
             cb.stack_pop(create.salt());
         }
@@ -416,11 +416,14 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
 
                 //TODO: enable later
                 // keccak table lookup to verify contract address.
-                let keccak_output_rlc = cb.word_rlc(keccak_output.limbs.clone().map(|l| l.expr()));
+                let kecck_output_exprs = keccak_output.limbs.clone().map(|l| l.expr());
+                //kecck_output_exprs.reverse();
+                let keccak_output_rlc = cb.word_rlc(kecck_output_exprs);
                 cb.keccak_table_lookup(
                     create.input_rlc(cb),
                     create.input_length(),
                     keccak_output_rlc,
+                    //keccak_output.expr(),
                     keccak_output.to_word(),
                 );
 
@@ -627,6 +630,11 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
     ) -> Result<(), Error> {
         let opcode = step.opcode.unwrap();
         let is_create2 = opcode == OpcodeId::CREATE2;
+        println!(
+            "offset {} rw_counter {}, is_create2 {}",
+            offset, step.rw_counter, is_create2
+        );
+
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
 
@@ -703,7 +711,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             offset,
             U256::from(callee_nonce)
                 + callee_prev_code_hash
-                    * (callee_prev_code_hash - CodeDB::empty_code_hash().to_word()),
+                    * (CodeDB::empty_code_hash().to_word() - callee_prev_code_hash),
         )?;
 
         let shift = init_code_start.low_u64() % 32;
@@ -813,7 +821,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             self.keccak_output.assign_u256(
                 region,
                 offset,
-                U256::from_big_endian(&keccak_output),
+                U256::from_little_endian(&keccak_output),
             )?;
 
             self.init_code_rlc.assign(

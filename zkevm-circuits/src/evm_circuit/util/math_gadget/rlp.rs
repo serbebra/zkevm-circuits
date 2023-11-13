@@ -10,7 +10,7 @@ use crate::{
         param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_U64, N_BYTES_WORD},
         util::{
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-            AccountAddress, CachedRegion, Cell, RandomLinearCombination,
+            rlc, AccountAddress, CachedRegion, Cell, RandomLinearCombination,
         },
     },
     util::word::{Word, Word32Cell, WordExpr},
@@ -320,19 +320,6 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     //     self.code_hash.to_word()
     // }
 
-    /// Init Code's keccak hash word RLC.
-    pub(crate) fn keccak_code_hash_word_rlc(&self, cb: &EVMConstraintBuilder<F>) -> Expression<F> {
-        cb.word_rlc::<N_BYTES_WORD>(
-            self.code_hash
-                .limbs
-                .iter()
-                .map(Expr::expr)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-
     /// Init Code's keccak hash keccak RLC.
     pub(crate) fn keccak_code_hash_keccak_rlc(
         &self,
@@ -380,8 +367,12 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
     }
 
     /// Caller address' RLC value.
-    pub(crate) fn caller_address_rlc(&self) -> Expression<F> {
-        self.caller_address.expr()
+    pub(crate) fn caller_address_rlc(&self, cb: &EVMConstraintBuilder<F>) -> Expression<F> {
+        //self.caller_address.expr()
+        rlc::expr(
+            &self.caller_address.limbs.clone().map(|x| x.expr()),
+            cb.challenges().keccak_input(),
+        )
     }
 
     /// Caller nonce's RLC value.
@@ -419,13 +410,13 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
             let challenge_power_64 = challenge_power_32.clone().square();
             let challenge_power_84 = challenge_power_64.clone() * challenge_power_20;
             (0xff.expr() * challenge_power_84)
-                + (self.caller_address_rlc() * challenge_power_64)
+                + (self.caller_address_rlc(cb) * challenge_power_64)
                 + (self.salt_keccak_rlc(cb) * challenge_power_32)
                 + self.keccak_code_hash_keccak_rlc(cb)
         } else {
             // RLC(RLP([caller_address, caller_nonce]))
             let challenge_power_21 = challenges[20].clone();
-            ((self.caller_address_rlc()
+            ((self.caller_address_rlc(cb)
                 + (148.expr() * challenge_power_20)
                 + ((213.expr() + self.nonce.rlp_length()) * challenge_power_21))
                 * self.nonce.challenge_power_rlp_length(cb))

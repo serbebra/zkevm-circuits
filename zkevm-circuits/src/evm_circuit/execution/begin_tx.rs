@@ -430,13 +430,12 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
             let caller_nonce_hash_bytes_rlc =
                 cb.word_rlc(caller_nonce_hash_bytes.limbs.clone().map(|l| l.expr()));
-            // TODO: enable this later
-            // cb.keccak_table_lookup(
-            //     create.input_rlc(cb),
-            //     create.input_length(),
-            //     caller_nonce_hash_bytes_rlc,
-            //     caller_nonce_hash_bytes.to_word(),
-            // );
+            cb.keccak_table_lookup(
+                create.input_rlc(cb),
+                create.input_length(),
+                caller_nonce_hash_bytes_rlc,
+                caller_nonce_hash_bytes.to_word(),
+            );
 
             //let keccak_code_hash = cb.query_cell_phase2();
             let keccak_code_hash = cb.query_word32();
