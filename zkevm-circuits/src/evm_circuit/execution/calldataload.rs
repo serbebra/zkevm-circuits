@@ -143,7 +143,7 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
 
         // Read the call data word, potentially including trailing zeros
         // when reading out-of-bound.
-        let mut calldata_word: Vec<_> = (0..N_BYTES_WORD)
+        let mut calldata_word_bytes: Vec<_> = (0..N_BYTES_WORD)
             .map(|idx| {
                 // For a root call, the call data comes from tx's data field.
                 cb.condition(
@@ -166,9 +166,9 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
             })
             .collect();
         // Since the stack is interpreted as MSB-first in CALLDATALOAD, we reverse the bytes here.
-        calldata_word.reverse();
-        let calldata_word: [Expression<F>; N_BYTES_WORD] = calldata_word.try_into().unwrap();
-        let calldata_word = Word32::new(calldata_word);
+        calldata_word_bytes.reverse();
+        let calldata_word: [Expression<F>; N_BYTES_WORD] = calldata_word_bytes.try_into().unwrap();
+        let calldata_word_rlc = cb.word_rlc(calldata_word.clone());
 
         // Now that we have the address in the caller’s memory, decompose it to work out the
         // alignment.
@@ -197,7 +197,8 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
                 });
                 cb.require_equal(
                     "calldata equals memory data",
-                    cb.word_rlc(calldata_word.limbs.clone()),
+                    //cb.word_rlc(calldata_word.limbs.clone()),
+                    calldata_word_rlc,
                     cb.word_rlc(mem_calldata_overlap),
                 );
 
@@ -229,14 +230,14 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
 
         // Add a lookup constraint for the 32-bytes that should have been pushed
         // to the stack.
-        //let calldata_word_ref = Word32::new(calldata_word.limbs.clone());
-        cb.stack_push(calldata_word.to_word());
+        let calldata_word_limbs = Word32::new(calldata_word.clone());
+        cb.stack_push(calldata_word_limbs.to_word());
 
         cb.require_zero_word(
             "Stack push result must be 0 if stack pop offset is Uint64 overflow",
-            calldata_word.to_word().mul_selector(data_offset.overflow()),
-            // Word::new([calldata_word.to_word().lo() * data_offset.overflow().clone(),
-            //  calldata_word.to_word().hi() * data_offset.overflow()])
+            calldata_word_limbs
+                .to_word()
+                .mul_selector(data_offset.overflow()),
         );
 
         let step_state_transition = StepStateTransition {
@@ -342,9 +343,9 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
         // reconstruct the unaligned word.
         let value_bytes =
             MemoryMask::<F>::make_unaligned_word(shift, &value_left_bytes, &value_right_bytes);
-        // use assign_u256 for `value` ?
+        // use assign_u256 for `value`
         self.value
-            .assign_u256(region, offset, U256::from(value_bytes))?;
+            .assign_u256(region, offset, U256::from_little_endian(&value_bytes))?;
 
         let mut calldata_bytes = vec![0u8; N_BYTES_WORD];
 
