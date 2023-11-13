@@ -30,6 +30,7 @@ ethers = { version = "2.0.7", features = ["ethers-solc"] }
 ethers-core = { git = "https://github.com/scroll-tech/ethers-rs.git", branch = "v2.0.7", features = ["scroll"] }
 ethers-providers = "=2.0.7"
 ethers-signers = "=2.0.7"
+ff = "0.13"
 halo2_proofs = { git = "https://github.com/scroll-tech/halo2.git", branch = "sync-ff-0.13" }
 hash-circuit = { package = "poseidon-circuit", git = "https://github.com/scroll-tech/poseidon-circuit.git", branch = "sync-ff-0.13" }
 halo2-base = { git = "https://github.com/scroll-tech/halo2-lib", branch = "sync-ff-0.13", default-features=false, features=["halo2-pse","display"] }

@@ -14,6 +14,7 @@ array-init = "2.0.0"
 bus-mapping = { path = "../bus-mapping" }
 either = "1.9"
 eth-types = { path = "../eth-types" }
+ff.workspace = true
 gadgets = { path = "../gadgets" }
 ethers-core.workspace = true
 ethers-signers = { workspace = true, optional = true }
