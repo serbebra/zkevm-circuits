@@ -1067,7 +1067,7 @@ impl<'a> CircuitInputStateRef<'a> {
             .unwrap();
         let mut call = self.parse_call_partial(step)?;
         call.is_success = is_success;
-        call.is_persistent = self.call()?.is_persistent;
+        call.is_persistent = self.call()?.is_persistent && is_success;
         Ok(call)
     }
 
