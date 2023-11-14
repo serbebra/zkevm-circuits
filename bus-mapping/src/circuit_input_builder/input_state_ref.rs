@@ -1063,7 +1063,7 @@ impl<'a> CircuitInputStateRef<'a> {
         let is_success = *self
             .tx_ctx
             .call_is_success
-            .get(self.tx.calls().len())
+            .get(self.tx.calls().len() - self.tx_ctx.call_is_success_offset)
             .unwrap();
         let mut call = self.parse_call_partial(step)?;
         call.is_success = is_success;

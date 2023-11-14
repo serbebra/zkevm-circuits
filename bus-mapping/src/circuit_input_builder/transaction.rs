@@ -38,6 +38,9 @@ pub struct TransactionContext {
     pub(crate) calls: Vec<CallContext>,
     /// Call `is_success` indexed by `call_index`.
     pub(crate) call_is_success: Vec<bool>,
+    /// Call `is_success` offset, since some calls are not included in the
+    /// `call_is_success`
+    pub(crate) call_is_success_offset: usize,
     /// Reversion groups by failure calls. We keep the reversion groups in a
     /// stack because it's possible to encounter a revert within a revert,
     /// and in such case, we must only process the reverted operation once:
@@ -94,6 +97,7 @@ impl TransactionContext {
             log_id: 0,
             is_last_tx,
             call_is_success,
+            call_is_success_offset: 0,
             calls: Vec::new(),
             reversion_groups: Vec::new(),
             l1_fee: geth_trace.l1_fee,

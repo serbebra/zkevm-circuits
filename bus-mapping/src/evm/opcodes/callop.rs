@@ -69,6 +69,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         let callee_call = if is_precheck_ok {
             state.parse_call(geth_step)?
         } else {
+            state.tx_ctx.call_is_success_offset += 1;
             let mut call = state.parse_call_partial(geth_step)?;
             call.is_success = false;
             call.is_persistent = false;
