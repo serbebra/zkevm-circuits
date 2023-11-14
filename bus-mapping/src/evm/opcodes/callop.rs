@@ -57,7 +57,9 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             CallKind::Call | CallKind::CallCode => geth_step.stack.nth_last(2)?,
             CallKind::DelegateCall => caller_call.value,
             CallKind::StaticCall => Word::zero(),
-            CallKind::Create | CallKind::Create2 => geth_step.stack.last()?,
+            CallKind::Create | CallKind::Create2 => {
+                unreachable!("CREATE opcode handled in create.rs")
+            }
         };
         // Precheck is OK when depth is in range and caller balance is sufficient.
         let is_call_or_callcode = matches!(callee_kind, CallKind::Call | CallKind::CallCode);
