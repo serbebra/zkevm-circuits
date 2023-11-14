@@ -529,13 +529,13 @@ pub struct GethCallTrace {
     #[serde(default)]
     calls: Vec<GethCallTrace>,
     error: Option<String>,
-    from: Address,
+    // from: Address,
     // gas: U256,
     // #[serde(rename = "gasUsed")]
     // gas_used: U256,
     // input: Bytes,
     // output: Bytes,
-    to: Address,
+    // to: Option<Address>,
     #[serde(rename = "type")]
     call_type: String,
     // value: U256,
@@ -666,8 +666,6 @@ mod tests {
     "callTrace": {
       "calls": [],
       "error": null,
-      "from": "0x0000000000000000000000000000000000000123",
-      "to": "0x0000000000000000000000000000000000000456",
       "type": "CALL"
     }
   }
@@ -747,8 +745,6 @@ mod tests {
                 call_trace: GethCallTrace {
                     calls: Vec::new(),
                     error: None,
-                    from: address!("0x0000000000000000000000000000000000000123"),
-                    to: address!("0x0000000000000000000000000000000000000456"),
                     call_type: "CALL".to_string(),
                 }
             }
