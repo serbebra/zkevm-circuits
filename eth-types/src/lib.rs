@@ -541,6 +541,17 @@ pub struct GethCallTrace {
     // value: U256,
 }
 
+impl GethCallTrace {
+    /// generate the call_is_success vec
+    pub fn gen_call_is_success(&self, mut call_is_success: Vec<bool>) -> Vec<bool> {
+        call_is_success.push(self.error.is_none());
+        for call in &self.calls {
+            call_is_success = call.gen_call_is_success(call_is_success);
+        }
+        call_is_success
+    }
+}
+
 #[macro_export]
 /// Create an [`Address`] from a hex string.  Panics on invalid input.
 macro_rules! address {
