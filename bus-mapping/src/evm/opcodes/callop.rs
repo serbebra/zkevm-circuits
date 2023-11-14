@@ -49,7 +49,13 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
         let tx_id = state.tx_ctx.id();
         let callee_kind = CallKind::try_from(geth_step.op)?;
         let caller_call = state.call()?.clone();
-        let caller_address = caller_call.address;
+        let caller_address = match callee_kind {
+            CallKind::Call | CallKind::CallCode | CallKind::StaticCall => caller_call.address,
+            CallKind::DelegateCall => caller_call.caller_address,
+            CallKind::Create | CallKind::Create2 => {
+                unreachable!("CREATE opcode handled in create.rs")
+            }
+        };
         let (found, sender_account) = state.sdb.get_account(&caller_address);
         debug_assert!(found);
         let caller_balance = sender_account.balance;
