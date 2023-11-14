@@ -7,7 +7,7 @@ use crate::{
     table::{BytecodeFieldTag, BytecodeTable, KeccakTable, LookupTable},
     util::{
         get_push_size,
-        word::{empty_code_hash_word_value, Word, Word32, WordExpr},
+        word::{empty_code_hash_word_value, Word, Word32, WordCell, WordExpr},
         Challenges, Expr, SubCircuit, SubCircuitConfig,
     },
     witness,
@@ -278,8 +278,14 @@ impl<F: Field> SubCircuitConfig<F> for BytecodeCircuitConfig<F> {
                 meta.query_advice(length, Rotation::cur()),
             );
 
-            let empty_hash_word: Word<Expression<F>> =
-                Word32::new(*EMPTY_CODE_HASH_LE).to_expr().to_word();
+            let empty_hash_word = if cfg!(feature = "poseidon-codehash") {
+                Word32::new(POSEIDON_CODE_HASH_EMPTY.to_word().to_le_bytes())
+                    .to_expr::<F>()
+                    .to_word()
+            } else {
+                //Word::from(U256::from_little_endian(&*EMPTY_CODE_HASH_LE).to_word()).to_word()
+                Word32::new(*EMPTY_CODE_HASH_LE).to_expr::<F>().to_word()
+            };
 
             cb.require_equal_word(
                 "assert cur.hash == EMPTY_HASH",
@@ -554,7 +560,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
         let empty_hash = if cfg!(feature = "poseidon-codehash") {
             POSEIDON_CODE_HASH_EMPTY.to_word()
         } else {
-            U256::from(*EMPTY_CODE_HASH_LE)
+            U256::from_little_endian(&*EMPTY_CODE_HASH_LE)
         };
 
         let empty_hash_word = Word::from(empty_hash).map(Value::known);
@@ -1059,6 +1065,12 @@ impl<F: Field> SubCircuit<F> for BytecodeCircuit<F> {
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
         config.load_aux_tables(layouter)?;
+        println!(
+            "BytecodeCircuit  self.size {}
+        ",
+            self.size
+        );
+
         config.assign_internal(
             layouter,
             self.size,
