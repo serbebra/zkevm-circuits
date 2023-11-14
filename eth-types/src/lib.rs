@@ -662,7 +662,14 @@ mod tests {
             "00000000000000000000000000000000000000000000003635c9adc5dea00000"
         ]
       }
-    ]
+    ],
+    "callTrace": {
+      "calls": [],
+      "error": null
+      "from": "0x0000000000000000000000000000000000000123",
+      "to": "0x0000000000000000000000000000000000000456",
+      "type": "CALL",
+    }
   }
         "#;
         let trace: GethExecTrace =
@@ -736,6 +743,14 @@ mod tests {
                         ]),
                     }
                 ],
+                prestate: None,
+                call_trace: GethCallTrace {
+                    calls: Vec::new(),
+                    error: None,
+                    from: address!("0x0000000000000000000000000000000000000123"),
+                    to: address!("0x0000000000000000000000000000000000000456"),
+                    call_type: "CALL".to_string(),
+                }
             }
         );
     }
