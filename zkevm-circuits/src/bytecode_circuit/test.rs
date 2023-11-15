@@ -198,9 +198,8 @@ fn bytecode_invalid_hash_data() {
     // Change the code_hash on the first position (header row)
     {
         let mut invalid = unrolled;
-        //let code_hash_word = word::Word::from(Fr::one()).map(Value::known);
-        invalid.rows[0].code_hash = word::Word::default();
-        //Word::one();
+        invalid.rows[0].code_hash =
+            word::Word::new([Value::known(Fr::one()), Value::known(Fr::zero())]);
         log::trace!("bytecode_invalid_hash_data: Change the code_hash on the first position");
         test_bytecode_circuit_unrolled::<Fr>(k, vec![invalid], false);
     }
