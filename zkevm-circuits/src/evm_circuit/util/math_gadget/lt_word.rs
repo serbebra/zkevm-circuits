@@ -71,7 +71,6 @@ mod tests {
 
     use super::{test_util::*, *};
     use crate::util::word::{Word32Cell, WordExpr};
-    use eth_types::*;
     use halo2_proofs::{halo2curves::bn256::Fr, plonk::Error};
 
     #[derive(Clone)]

@@ -98,7 +98,6 @@ impl RwMap {
 
     /// Check value in the same way like StateCircuit
     pub fn check_value_strict(&self) {
-        let mock_rand = Fr::from(0x1000u64);
         let rows = self.table_assignments();
         let updates = MptUpdates::from_rws_with_mock_state_roots(
             &rows,

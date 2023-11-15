@@ -159,10 +159,10 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
                 [
                     meta.query_advice(rw_table.field_tag, Rotation::cur())
                         - AccountFieldTag::CodeHash.expr(),
-                    meta.query_advice(initial_value.lo(), Rotation::cur()),
-                    meta.query_advice(initial_value.hi(), Rotation::cur()),
-                    meta.query_advice(rw_table.value.lo(), Rotation::cur()),
-                    meta.query_advice(rw_table.value.hi(), Rotation::cur()),
+                    meta.query_advice(initial_value.lo(), Rotation::cur())
+                        + meta.query_advice(initial_value.hi(), Rotation::cur()),
+                    meta.query_advice(rw_table.value.lo(), Rotation::cur())
+                        + meta.query_advice(rw_table.value.hi(), Rotation::cur()),
                 ]
             },
         );
@@ -585,10 +585,8 @@ impl<F: Field> StateCircuitConfig<F> {
                 Value::known([
                     F::from(row.field_tag().unwrap_or_default())
                         - F::from(AccountFieldTag::CodeHash as u64),
-                    committed_value.lo(),
-                    committed_value.hi(),
-                    value.lo(),
-                    value.hi(),
+                    committed_value.lo() + committed_value.hi(),
+                    value.lo() + value.hi(),
                 ]),
             )?;
 
@@ -790,7 +788,6 @@ impl<F: Field> StateCircuitConfig<F> {
         )?;
 
         let mut is_first_time_vec = vec![true; chunk_num];
-        let column = self.initial_value;
         // Each sub-region handle a chunk of RW rows. In part 2, since we need to read previous row,
         // we pass the rw_rows to each sub-region.
         let is_first_access_chunks = layouter.assign_regions(

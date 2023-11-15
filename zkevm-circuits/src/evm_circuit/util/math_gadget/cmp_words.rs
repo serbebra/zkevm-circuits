@@ -84,10 +84,7 @@ mod tests {
     use super::{test_util::*, *};
     use crate::{
         evm_circuit::util::constraint_builder::ConstrainBuilderCommon,
-        util::{
-            word::{WordCell, WordExpr},
-            Expr,
-        },
+        util::{word::WordCell, Expr},
     };
     use eth_types::Word;
     use halo2_proofs::{halo2curves::bn256::Fr, plonk::Error};

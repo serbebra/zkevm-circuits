@@ -667,8 +667,6 @@ arith:
         Ok(())
     }
 
-    // TODO: renable it later
-    #[ignore = "renable, word hi lo related"]
     #[test]
     fn result_pass() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default())
@@ -678,8 +676,6 @@ arith:
         Ok(())
     }
 
-    // TODO: renable it later
-    #[ignore = "renable, word hi lo related"]
     #[test]
     fn test_result_bad_storage() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default()).load_yaml(
@@ -706,8 +702,6 @@ arith:
         Ok(())
     }
 
-    // TODO: renable it later
-    #[ignore = "renable it later, word hi lo related"]
     #[test]
     fn bad_balance() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default()).load_yaml(
@@ -733,8 +727,6 @@ arith:
         Ok(())
     }
 
-    // TODO: renable it later
-    #[ignore = "renable, word hi lo related"]
     #[test]
     fn bad_code() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default()).load_yaml(
@@ -760,8 +752,6 @@ arith:
         Ok(())
     }
 
-    // TODO: renable it later
-    #[ignore = "renable, word hi lo related"]
     #[test]
     fn bad_nonce() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default()).load_yaml(
@@ -787,9 +777,7 @@ arith:
 
         Ok(())
     }
-    // TODO: renable it later
-    #[ignore = "renable, word hi lo related"]
-    #[test]
+
     #[test]
     fn sstore() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default()).load_yaml(
