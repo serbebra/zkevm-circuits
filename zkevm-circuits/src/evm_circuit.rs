@@ -496,7 +496,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
                 // Tables assigned by the EVM circuit.
                 dual_byte_table: dual_byte_table.clone(),
                 fixed_table: fixed_table.clone(),
-                pow_of_rand_table: pow_of_rand_table.clone(),
+                pow_of_rand_table,
             },
         );
 

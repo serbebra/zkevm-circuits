@@ -360,7 +360,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
                 // Tables assigned by the EVM circuit.
                 dual_byte_table: dual_byte_table.clone(),
                 fixed_table: fixed_table.clone(),
-                pow_of_rand_table: pow_of_rand_table.clone(),
+                pow_of_rand_table,
             },
         );
         log_circuit_info(meta, "evm circuit");

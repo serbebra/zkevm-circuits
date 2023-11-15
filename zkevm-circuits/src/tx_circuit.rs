@@ -2517,7 +2517,7 @@ impl<F: Field> TxCircuit<F> {
                     {
                         let row = offset * 3 + j;
                         region.assign_fixed(
-                            || format!("block table enabled"),
+                            || "block table enabled",
                             config.block_table.q_enable,
                             row,
                             || Value::known(F::one()),

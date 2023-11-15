@@ -530,7 +530,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         let bytes_port = Self::configure_bytes_port(meta, bus_builder, q_usable, &cell_manager);
 
-        let config = Self {
+        Self {
             q_usable,
             q_step,
             constants,
@@ -644,9 +644,7 @@ impl<F: Field> ExecutionConfig<F> {
             stored_expressions_map,
             bus_ops_map,
             instrument,
-        };
-
-        config
+        }
     }
 
     pub(crate) fn instrument(&self) -> &Instrument {

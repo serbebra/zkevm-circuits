@@ -24,6 +24,8 @@ pub struct EVMBusLookups<F> {
 }
 
 impl<F: Field> EVMBusLookups<F> {
+    /// Connect all tables to the bus.
+    #[allow(clippy::too_many_arguments)]
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         bus_builder: &mut BusBuilder<F, MsgExpr<F>>,
@@ -195,7 +197,7 @@ impl<F: Field> QueryTable<F> for FixedTable {
 
         MsgExpr::lookup(Lookup::Fixed {
             tag: query(self.tag),
-            values: self.values.map(|col| query(col)),
+            values: self.values.map(query),
         })
     }
 }
