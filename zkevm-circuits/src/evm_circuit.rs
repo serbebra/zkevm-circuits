@@ -218,7 +218,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                     ],
                 })
             });
-            BusLookupChip::connect(meta, bus_builder, enabled.clone(), message)
+            BusLookupChip::connect(meta, bus_builder, enabled, message)
         };
 
         [byte_lookup, fixed_lookup]

@@ -17,14 +17,20 @@ pub trait Assigner<F: Field>: Send + Sync {
     fn assign(&self, region: &mut Region<'_, F>, helper: F) -> (usize, F);
 }
 
-/// PortAssigner computes and assigns terms into helper cells and the bus.
-pub struct PortAssigner<F, M> {
+/// BatchAssigner computes and assigns terms into helper cells and the bus.
+pub struct BatchAssigner<F, M> {
     assigners: HelperBatch<F, Box<dyn Assigner<F>>>,
     _marker: PhantomData<M>,
 }
 
-impl<F: Field, M: BusMessageF<F>> PortAssigner<F, M> {
-    /// Create a new PortAssigner.
+impl<F: Field, M: BusMessageF<F>> Default for BatchAssigner<F, M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<F: Field, M: BusMessageF<F>> BatchAssigner<F, M> {
+    /// Create a new BatchAssigner.
     pub fn new() -> Self {
         Self {
             assigners: HelperBatch::new(),
@@ -58,6 +64,12 @@ impl<F: Field, M: BusMessageF<F>> PortAssigner<F, M> {
 pub struct BusOpCounter<F, M> {
     counts: HashMap<M, isize>,
     _marker: PhantomData<(F, M)>,
+}
+
+impl<F: Field, M: BusMessageF<F>> Default for BusOpCounter<F, M> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<F: Field, M: BusMessageF<F>> BusOpCounter<F, M> {

@@ -44,7 +44,7 @@ impl BusConfig {
             let is_first = cs.query_fixed(is_first, Rotation::cur());
 
             let acc_next = cs.query_advice(acc, Rotation::next());
-            let acc = cs.query_advice(acc.clone(), Rotation::cur());
+            let acc = cs.query_advice(acc, Rotation::cur());
 
             // The sum of terms on the current row.
             let sum = terms
@@ -126,7 +126,7 @@ impl BusConfig {
                     .unwrap();
 
                 if let Some(term) = terms.get(offset) {
-                    acc = acc + term;
+                    acc += term;
                 }
             }
         });
