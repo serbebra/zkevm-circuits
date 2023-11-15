@@ -57,10 +57,8 @@ where
     /// - the inverses of the elements are linearly independent.
     /// - Elements are non-zero.
     pub fn compress(&self, msg: M) -> Value<F> {
-        self.rand.clone().map(|rand| {
-            msg.into_items()
-                .fold(F::one(), |acc, f| rand.clone() * acc + f)
-        })
+        self.rand
+            .map(|rand| msg.into_items().fold(F::one(), |acc, f| rand * acc + f))
     }
 }
 

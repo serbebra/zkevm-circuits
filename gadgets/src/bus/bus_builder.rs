@@ -1,9 +1,9 @@
 use std::mem;
 
 use super::{
+    batch_assigner::{BatchAssigner, BusOpCounter},
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal, BusMessageF},
-    port_assigner::{BusOpCounter, PortAssigner},
     Field,
 };
 use halo2_proofs::circuit::{Region, Value};
@@ -45,14 +45,14 @@ pub struct BusAssigner<F, M> {
     codec: BusCodecVal<F, M>,
     term_adder: TermAdder<F>,
     bus_op_counter: BusOpCounter<F, M>,
-    port_assigner: PortAssigner<F, M>,
+    batch_assigner: BatchAssigner<F, M>,
 }
 
 impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
     /// Create a new bus assigner with a maximum number of rows.
     pub fn new(codec: BusCodecVal<F, M>, n_rows: usize) -> Self {
         Self {
-            port_assigner: PortAssigner::new(),
+            batch_assigner: BatchAssigner::new(),
             codec,
             term_adder: TermAdder::new(n_rows),
             bus_op_counter: BusOpCounter::new(),
@@ -74,16 +74,16 @@ impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
         &mut self.bus_op_counter
     }
 
-    /// Return the port assigner.
-    pub fn port_assigner(&mut self) -> &mut PortAssigner<F, M> {
-        &mut self.port_assigner
+    /// Return the batch assigner.
+    pub fn batch_assigner(&mut self) -> &mut BatchAssigner<F, M> {
+        &mut self.batch_assigner
     }
 
     /// Finish pending assignments in a region.
     pub fn finish_ports(&mut self, region: &mut Region<'_, F>) {
-        let old_port_assigner = mem::replace(&mut self.port_assigner, PortAssigner::new());
+        let old_batch_assigner = mem::replace(&mut self.batch_assigner, BatchAssigner::new());
 
-        old_port_assigner.finish(region, self);
+        old_batch_assigner.finish(region, self);
     }
 
     /// Add a term value to the bus.
@@ -93,7 +93,7 @@ impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
 
     /// Return the collected terms.
     pub fn terms(&self) -> Value<&[F]> {
-        assert_eq!(self.port_assigner.len(), 0, "finish_ports was not called");
+        assert_eq!(self.batch_assigner.len(), 0, "finish_ports was not called");
         // TODO: better error handling.
 
         self.term_adder.terms()

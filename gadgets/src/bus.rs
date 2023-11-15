@@ -19,7 +19,7 @@ pub mod bus_lookup;
 pub mod bus_codec;
 
 /// This module helps ports with their assignments.
-mod port_assigner;
+mod batch_assigner;
 
 /// Utility functions.
 mod util;

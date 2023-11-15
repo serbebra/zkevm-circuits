@@ -1,8 +1,8 @@
 use super::{
+    batch_assigner::Assigner,
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal, BusMessageExpr, BusMessageF},
-    port_assigner::Assigner,
     util::from_isize,
     Field,
 };
@@ -179,7 +179,7 @@ impl Port {
         let denom = bus_assigner.codec().compress(op.message());
 
         bus_assigner.op_counter().track_op(&op);
-        bus_assigner.port_assigner().assign_later(cmd, denom);
+        bus_assigner.batch_assigner().assign_later(cmd, denom);
     }
 
     /// Return the degree of the constraints given these inputs.
@@ -236,7 +236,7 @@ impl Port {
     }
 
     /// Return the witness that must be assigned to the helper cell.
-    /// Very slow. Prefer `PortAssigner::assign_later` instead.
+    /// Very slow. Prefer `BatchAssigner::assign_later` instead.
     pub fn helper_witness<F: Field, M: BusMessageF<F>>(
         codec: &BusCodecVal<F, M>,
         op: BusOpF<M>,

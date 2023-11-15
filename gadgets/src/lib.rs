@@ -13,6 +13,7 @@
 
 pub mod batched_is_zero;
 pub mod binary_number;
+pub mod bus;
 pub mod comparator;
 pub mod evm_word;
 pub mod is_equal;
@@ -22,7 +23,6 @@ pub mod monotone;
 pub mod mul_add;
 pub mod range;
 pub mod util;
-pub mod bus;
 
 use eth_types::Field;
 use halo2_proofs::{

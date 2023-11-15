@@ -1,9 +1,9 @@
 use super::{
+    batch_assigner::Assigner,
     bus_builder::{BusAssigner, BusBuilder},
     bus_chip::BusTerm,
     bus_codec::{BusCodecExpr, BusCodecVal, BusMessageExpr, BusMessageF},
     bus_port::{BusOpExpr, BusOpF},
-    port_assigner::Assigner,
     util::from_isize,
     Field,
 };
@@ -91,9 +91,9 @@ impl PortBatched {
         });
 
         for op in &ops {
-            bus_assigner.op_counter().track_op(&op);
+            bus_assigner.op_counter().track_op(op);
         }
-        bus_assigner.port_assigner().assign_later(cmd, denom);
+        bus_assigner.batch_assigner().assign_later(cmd, denom);
     }
 
     /// Return the degree of the constraints given these inputs.
