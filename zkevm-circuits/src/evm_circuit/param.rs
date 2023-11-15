@@ -21,11 +21,8 @@ pub(crate) const N_PHASE2_COLUMNS: usize = 7;
 pub const N_PHASE3_COLUMNS: usize = 12;
 
 /// Number of Advice Phase1 columns in the EVM circuit
-pub(crate) const N_PHASE1_COLUMNS: usize = STEP_WIDTH
-    - N_PHASE3_COLUMNS
-    - N_PHASE2_COLUMNS
-    - N_COPY_COLUMNS
-    - N_BYTE_LOOKUPS;
+pub(crate) const N_PHASE1_COLUMNS: usize =
+    STEP_WIDTH - N_PHASE3_COLUMNS - N_PHASE2_COLUMNS - N_COPY_COLUMNS - N_BYTE_LOOKUPS;
 
 // Number of copy columns
 pub(crate) const N_COPY_COLUMNS: usize = 2;

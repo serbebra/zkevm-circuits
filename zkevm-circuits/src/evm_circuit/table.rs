@@ -102,13 +102,16 @@ impl<F: Field> MsgF<F> {
     }
 
     pub fn tx(id: F, field_tag: F, index: F, value: F) -> Self {
-        Self::Lookup(Table::Tx, vec![
-            F::one(), // TODO: can remove the "enabled" field.
-            id,
-            field_tag,
-            index,
-            value,
-        ])
+        Self::Lookup(
+            Table::Tx,
+            vec![
+                F::one(), // TODO: can remove the "enabled" field.
+                id,
+                field_tag,
+                index,
+                value,
+            ],
+        )
     }
 }
 

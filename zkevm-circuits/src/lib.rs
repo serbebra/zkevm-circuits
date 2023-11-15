@@ -37,11 +37,11 @@ pub mod rlp_circuit_fsm;
 pub mod sig_circuit;
 // we don't use this for aggregation
 //pub mod root_circuit;
+mod evm_bus;
 pub mod modexp_circuit;
 pub mod state_circuit;
 pub mod super_circuit;
 pub mod table;
-mod evm_bus;
 
 #[cfg(any(feature = "test", test))]
 pub mod test_util;
