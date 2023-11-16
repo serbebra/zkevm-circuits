@@ -51,7 +51,7 @@ impl Default for LoggerConfig {
         Self {
             enable_memory: false,
             disable_stack: false,
-            disable_storage: false,
+            disable_storage: true,
             enable_return_data: true,
         }
     }
