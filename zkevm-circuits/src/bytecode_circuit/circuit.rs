@@ -282,6 +282,9 @@ impl<F: Field> SubCircuitConfig<F> for BytecodeCircuitConfig<F> {
                 Word32::new(POSEIDON_CODE_HASH_EMPTY.to_word().to_le_bytes())
                     .to_expr::<F>()
                     .to_word()
+                //let empty_expr =
+                // Expression::Constant(POSEIDON_CODE_HASH_EMPTY.to_word().to_scalar().unwrap());
+                // Word::from(POSEIDON_CODE_HASH_EMPTY.to_word()).to_expr::<F>()
             } else {
                 //Word::from(U256::from_little_endian(&*EMPTY_CODE_HASH_LE).to_word()).to_word()
                 Word32::new(*EMPTY_CODE_HASH_LE).to_expr::<F>().to_word()
@@ -557,13 +560,16 @@ impl<F: Field> BytecodeCircuitConfig<F> {
             last_row_offset
         );
 
-        let empty_hash = if cfg!(feature = "poseidon-codehash") {
-            POSEIDON_CODE_HASH_EMPTY.to_word()
+        let empty_hash_word = if cfg!(feature = "poseidon-codehash") {
+            //POSEIDON_CODE_HASH_EMPTY.to_word()
+            Word::new([
+                POSEIDON_CODE_HASH_EMPTY.to_word().to_scalar().unwrap(),
+                F::zero(),
+            ])
+            .map(Value::known)
         } else {
-            U256::from_little_endian(&*EMPTY_CODE_HASH_LE)
+            Word::from(U256::from_little_endian(&*EMPTY_CODE_HASH_LE)).map(Value::known)
         };
-
-        let empty_hash_word = Word::from(empty_hash).map(Value::known);
         let mut is_first_time = true;
         layouter.assign_region(
             || "assign bytecode",
@@ -1013,6 +1019,7 @@ impl<F: Field> BytecodeCircuit<F> {
 
     /// Creates bytecode circuit from block and bytecode_size.
     pub fn new_from_block_sized(block: &witness::Block<F>, bytecode_size: usize) -> Self {
+        println!("new_from_block_sized");
         let bytecodes: Vec<UnrolledBytecode<F>> = block
             .bytecodes
             .iter()

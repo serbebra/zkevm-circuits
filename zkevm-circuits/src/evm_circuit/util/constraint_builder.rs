@@ -560,6 +560,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.word_rlc(bytes.map(|byte| byte.expr()))
     }
 
+    pub(crate) fn empty_keccak_hash(&self) -> Word<Expression<F>> {
+        Word32::new(EMPTY_CODE_HASH_LE.map(|byte| byte.expr())).to_word()
+    }
+
+    // poseidon codehash if enalbe scroll or poseidon-codehash, else keccak_hash.
     pub(crate) fn empty_code_hash(&self) -> Word<Expression<F>> {
         if cfg!(feature = "poseidon-codehash") {
             //let codehash = POSEIDON_CODE_HASH_EMPTY.to_word().to_scalar().unwrap();
