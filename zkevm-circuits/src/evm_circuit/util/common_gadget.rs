@@ -698,7 +698,8 @@ impl<F: Field> TransferToGadget<F> {
         receiver_exists: Expression<F>,
         must_create: Expression<F>,
         prev_code_hash: Word<Expression<F>>,
-        #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
+        // scroll feature take use of poseidon hash
+        #[cfg(feature = "scroll")] prev_keccak_code_hash: Word<Expression<F>>,
         value: Word32Cell<F>,
         reversion_info: Option<&mut ReversionInfo<F>>,
     ) -> Self {
@@ -726,7 +727,7 @@ impl<F: Field> TransferToGadget<F> {
         receiver_exists: Expression<F>,
         must_create: Expression<F>,
         prev_code_hash: Word<Expression<F>>,
-        #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
+        #[cfg(feature = "scroll")] prev_keccak_code_hash: Word<Expression<F>>,
         value: Word32Cell<F>,
         value_is_zero: Either<IsZeroWordGadget<F, Word32Cell<F>>, Expression<F>>,
         mut reversion_info: Option<&mut ReversionInfo<F>>,
@@ -758,14 +759,15 @@ impl<F: Field> TransferToGadget<F> {
                     cb.account_read(
                         receiver_address.clone(),
                         AccountFieldTag::KeccakCodeHash,
-                        prev_keccak_code_hash.expr(),
+                        prev_keccak_code_hash.clone(),
                     );
 
                     cb.account_write(
                         receiver_address.clone(),
                         AccountFieldTag::KeccakCodeHash,
-                        cb.empty_keccak_hash_rlc(),
-                        prev_keccak_code_hash.expr(),
+                        ///cb.empty_keccak_hash_rlc(),
+                        cb.empty_keccak_hash(),
+                        prev_keccak_code_hash,
                         reversion_info.as_deref_mut(),
                     );
                 }
@@ -903,7 +905,7 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
         receiver_exists: Expression<F>,
         must_create: Expression<F>,
         prev_code_hash: Word<Expression<F>>,
-        #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
+        #[cfg(feature = "scroll")] prev_keccak_code_hash: Word<Expression<F>>,
         value: Word32Cell<F>,
         gas_fee: Word32Cell<F>,
         reversion_info: &mut ReversionInfo<F>,
@@ -946,7 +948,7 @@ impl<F: Field> TransferGadget<F> {
         receiver_exists: Expression<F>,
         must_create: Expression<F>,
         prev_code_hash: Word<Expression<F>>,
-        #[cfg(feature = "scroll")] prev_keccak_code_hash: Expression<F>,
+        #[cfg(feature = "scroll")] prev_keccak_code_hash: Word<Expression<F>>,
         value: Word32Cell<F>,
         reversion_info: &mut ReversionInfo<F>,
     ) -> Self {

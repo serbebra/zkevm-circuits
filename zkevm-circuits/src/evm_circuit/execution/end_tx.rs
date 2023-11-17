@@ -53,7 +53,7 @@ pub(crate) struct EndTxGadget<F> {
     coinbase: Cell<F>,
     coinbase_codehash: WordCell<F>,
     #[cfg(feature = "scroll")]
-    coinbase_keccak_codehash: Cell<F>,
+    coinbase_keccak_codehash: WordCell<F>,
     coinbase_codehash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
     coinbase_transfer: TransferToGadget<F>,
     current_cumulative_gas_used: Cell<F>,
@@ -162,7 +162,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let coinbase_codehash_is_zero = IsZeroWordGadget::construct(cb, &coinbase_codehash);
 
         #[cfg(feature = "scroll")]
-        let coinbase_keccak_codehash = cb.query_cell_phase2();
+        let coinbase_keccak_codehash = cb.query_word_unchecked();
 
         cb.account_read(
             Word::from_lo_unchecked(coinbase.expr()),
@@ -179,7 +179,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 false.expr(),
                 coinbase_codehash.to_word(),
                 #[cfg(feature = "scroll")]
-                coinbase_keccak_codehash.expr(),
+                coinbase_keccak_codehash.to_word(),
                 effective_fee.clone(),
                 None,
             )

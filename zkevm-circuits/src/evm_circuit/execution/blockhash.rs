@@ -96,13 +96,13 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
             cb.keccak_table_lookup(
                 cb.keccak_rlc::<{ 2 * N_BYTES_U64 }>(
                     chain_id
-                        .cells
+                        .limbs
                         .iter()
                         .rev()
                         .chain(
                             block_number
                                 .original_ref()
-                                .cells
+                                .limbs
                                 .iter()
                                 .take(N_BYTES_U64)
                                 .rev(),
@@ -114,7 +114,8 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
                         .unwrap(),
                 ),
                 (2 * N_BYTES_U64).expr(),
-                block_hash.expr(),
+                block_hash_rlc,
+                block_hash.to_word(),
             );
         });
 

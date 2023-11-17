@@ -78,7 +78,7 @@ pub(crate) struct BeginTxGadget<F> {
     account_code_hash_is_empty: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
     account_code_hash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
     #[cfg(feature = "scroll")]
-    account_keccak_code_hash: Cell<F>,
+    account_keccak_code_hash: WordCell<F>, // poseidon hash
     call_code_hash: WordCell<F>,
     call_code_hash_is_empty: IsEqualWordGadget<F, Word<Expression<F>>, Word<Expression<F>>>,
     call_code_hash_is_zero: IsZeroWordGadget<F, WordCell<F>>,
@@ -354,7 +354,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let account_code_hash_is_empty_or_zero =
             account_code_hash_is_empty.expr() + account_code_hash_is_zero.expr();
         #[cfg(feature = "scroll")]
-        let account_keccak_code_hash = cb.query_cell_phase2();
+        let account_keccak_code_hash = cb.query_word_unchecked();
 
         let call_code_hash = cb.query_word_unchecked();
         let call_code_hash_is_empty =
@@ -378,7 +378,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx_is_create.expr(),
             account_code_hash.to_word(),
             #[cfg(feature = "scroll")]
-            account_keccak_code_hash.expr(),
+            account_keccak_code_hash.to_word(),
             tx_value.clone(),
             tx_fee.clone(),
             &mut reversion_info,
@@ -910,14 +910,17 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         )?;
         #[cfg(feature = "scroll")]
         {
-            self.account_keccak_code_hash.assign(
+            self.account_keccak_code_hash.assign_u256(
                 region,
                 offset,
-                region.word_rlc(
-                    transfer_assign_result
-                        .account_keccak_code_hash
-                        .unwrap_or_default(),
-                ),
+                // region.word_rlc(
+                //     transfer_assign_result
+                //         .account_keccak_code_hash
+                //         .unwrap_or_default(),
+                // ),
+                transfer_assign_result
+                    .account_keccak_code_hash
+                    .unwrap_or_default(),
             )?;
         }
 

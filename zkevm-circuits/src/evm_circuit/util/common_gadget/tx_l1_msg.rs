@@ -65,9 +65,10 @@ impl<F: Field> TxL1MsgGadget<F> {
                 );
                 #[cfg(feature = "scroll")]
                 cb.account_write(
-                    caller_address.expr(),
+                    caller_address.to_word(),
                     AccountFieldTag::KeccakCodeHash,
-                    cb.empty_keccak_hash_rlc(),
+                    //cb.empty_keccak_hash_rlc(),
+                    cb.empty_code_hash(),
                     Word::zero(),
                     None,
                 );

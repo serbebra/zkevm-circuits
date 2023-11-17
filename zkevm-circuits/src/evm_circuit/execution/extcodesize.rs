@@ -77,9 +77,10 @@ impl<F: Field> ExecutionGadget<F> for ExtcodesizeGadget<F> {
         cb.condition(exists.expr(), |cb| {
             #[cfg(feature = "scroll")]
             cb.account_read(
-                address.expr(),
+                address.to_word(),
                 AccountFieldTag::CodeSize,
-                from_bytes::expr(&code_size.limbs),
+                //from_bytes::expr(&code_size.limbs),
+                code_size.to_word(),
             );
             #[cfg(not(feature = "scroll"))]
             cb.bytecode_length(code_hash.to_word(), from_bytes::expr(&code_size.limbs));

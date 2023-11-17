@@ -68,7 +68,7 @@ pub(crate) struct CallOpGadget<F> {
     transfer: TransferGadget<F>,
     code_hash_previous: WordCell<F>,
     #[cfg(feature = "scroll")]
-    keccak_code_hash_previous: Cell<F>,
+    keccak_code_hash_previous: WordCell<F>,
     // current handling Call* opcode's caller balance
     caller_balance: WordCell<F>,
     // check if insufficient balance case
@@ -252,7 +252,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         // would be invalid).
         let code_hash_previous = cb.query_word_unchecked();
         #[cfg(feature = "scroll")]
-        let keccak_code_hash_previous = cb.query_cell_phase2();
+        let keccak_code_hash_previous = cb.query_word_unchecked();
         let transfer = cb.condition(and::expr(&[is_call.expr(), is_precheck_ok.expr()]), |cb| {
             TransferGadget::construct(
                 cb,
@@ -262,7 +262,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 0.expr(),
                 code_hash_previous.to_word(),
                 #[cfg(feature = "scroll")]
-                keccak_code_hash_previous.expr(),
+                keccak_code_hash_previous.to_word(),
                 call_gadget.value.clone(),
                 &mut callee_reversion_info,
             )
@@ -811,6 +811,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
+        println!("callop offset {}", offset);
         let opcode = step.opcode.unwrap();
         let is_call = opcode == OpcodeId::CALL;
         let is_callcode = opcode == OpcodeId::CALLCODE;
@@ -886,10 +887,11 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
             #[cfg(feature = "scroll")]
             if let Some(account_keccak_code_hash) = transfer_assign_result.account_keccak_code_hash
             {
-                self.keccak_code_hash_previous.assign(
+                self.keccak_code_hash_previous.assign_u256(
                     region,
                     offset,
-                    region.word_rlc(account_keccak_code_hash),
+                    //region.word_rlc(account_keccak_code_hash),
+                    account_keccak_code_hash,
                 )?;
             }
         }

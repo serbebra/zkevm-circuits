@@ -53,8 +53,8 @@ pub(crate) struct ReturnRevertGadget<F> {
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     code_hash: Word32Cell<F>,
     prev_code_hash: Word32Cell<F>,
-    keccak_code_hash: Cell<F>,
-    prev_keccak_code_hash: Cell<F>,
+    keccak_code_hash: WordCell<F>,
+    prev_keccak_code_hash: WordCell<F>,
     code_size: Cell<F>,
 
     caller_id: Cell<F>,
@@ -172,21 +172,21 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             );
 
             // keccak hash of code.
-            let keccak_code_hash = cb.query_cell_phase2();
-            let prev_keccak_code_hash = cb.query_cell_phase2();
+            let keccak_code_hash = cb.query_word_unchecked();
+            let prev_keccak_code_hash = cb.query_word_unchecked();
             #[cfg(feature = "scroll")]
             {
                 cb.account_read(
-                    address.expr(),
+                    address.to_word(),
                     AccountFieldTag::KeccakCodeHash,
-                    prev_keccak_code_hash.expr(),
+                    prev_keccak_code_hash.to_word(),
                 );
 
                 cb.account_write(
-                    address.expr(),
+                    address.to_word(),
                     AccountFieldTag::KeccakCodeHash,
-                    keccak_code_hash.expr(),
-                    prev_keccak_code_hash.expr(),
+                    keccak_code_hash.to_word(),
+                    prev_keccak_code_hash.to_word(),
                     Some(&mut reversion_info),
                 );
             }
@@ -196,10 +196,10 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
             cb.require_equal("range == code size", range.length(), code_size.expr());
             #[cfg(feature = "scroll")]
             cb.account_write(
-                address.expr(),
+                address.to_word(),
                 AccountFieldTag::CodeSize,
-                code_size.expr(),
-                0.expr(),
+                Word::from_lo_unchecked(code_size.expr()),
+                Word::zero(),
                 Some(&mut reversion_info),
             );
 
@@ -410,10 +410,12 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
 
             // keccak hash of code.
             let keccak_code_hash = keccak256(&deployed_bytecode);
-            self.keccak_code_hash.assign(
+            self.keccak_code_hash.assign_u256(
                 region,
                 offset,
-                region.word_rlc(U256::from_big_endian(&keccak_code_hash)),
+                //region.word_rlc(U256::from_big_endian(&keccak_code_hash)),
+                //TODO: from_little_endiam
+                U256::from_big_endian(&keccak_code_hash),
             )?;
 
             // poseidon hash of code.
@@ -438,10 +440,11 @@ impl<F: Field> ExecutionGadget<F> for ReturnRevertGadget<F> {
                 {
                     rws.next();
                     let prev_keccak_code_hash = rws.next().account_keccak_codehash_pair().1;
-                    self.prev_keccak_code_hash.assign(
+                    self.prev_keccak_code_hash.assign_u256(
                         region,
                         offset,
-                        region.word_rlc(prev_keccak_code_hash),
+                        //region.word_rlc(prev_keccak_code_hash),
+                        prev_keccak_code_hash,
                     )?;
                 }
             }
