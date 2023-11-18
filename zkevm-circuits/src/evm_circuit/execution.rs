@@ -1117,6 +1117,20 @@ impl<F: Field> ExecutionConfig<F> {
                             tx
                         );
                     }
+
+                    /* gupeng
+                    log::error!("gupeng - step.opcode = {:?}", step.opcode);
+                    if step.opcode == Some(bus_mapping::evm::OpcodeId::BASEFEE) {
+                        log::error!(
+                            "gupeng - found BASEFEE - block_number={}, tx_id={}, tx_hash={}",
+                            transaction.block_number,
+                            transaction.id,
+                            transaction.hash,
+                        );
+                        // panic!("gupeng - 1111");
+                    }
+                    */
+
                     self.assign_exec_step(
                         &mut region,
                         offset,

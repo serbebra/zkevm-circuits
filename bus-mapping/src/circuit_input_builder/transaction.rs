@@ -237,6 +237,7 @@ pub struct Transaction {
     /// Committed values of L1 fee
     pub l1_fee_committed: TxL1Fee,
     /// EIP2930
+    // gupeng
     pub access_list: Option<AccessList>,
     /// Calls made in the transaction
     pub(crate) calls: Vec<Call>,
@@ -355,6 +356,15 @@ impl Transaction {
                 ..Default::default()
             }
         };
+
+        // gupeng
+        if eth_tx.access_list.is_some() {
+            log::error!(
+                "gupeng tx_hash = {:?}, access_list = {:?}",
+                eth_tx.hash,
+                eth_tx.access_list
+            );
+        }
 
         log::debug!(
             "eth_tx's type: {:?}, idx: {:?}, hash: {:?}, tx: {:?}",
