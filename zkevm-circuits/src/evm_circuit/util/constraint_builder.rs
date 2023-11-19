@@ -561,7 +561,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     }
 
     pub(crate) fn empty_keccak_hash(&self) -> Word<Expression<F>> {
-        Word32::new(EMPTY_CODE_HASH_LE.map(|byte| byte.expr())).to_word()
+        let bytes = KECCAK_CODE_HASH_EMPTY.to_word().to_le_bytes();
+        Word32::new(bytes.map(|l| l.expr())).to_word()
     }
 
     // poseidon codehash if enalbe scroll or poseidon-codehash, else keccak_hash.

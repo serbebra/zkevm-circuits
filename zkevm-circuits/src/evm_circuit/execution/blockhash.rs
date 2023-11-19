@@ -11,11 +11,11 @@ use crate::{
                 Transition::Delta,
             },
             math_gadget::LtGadget,
-            CachedRegion, Cell,
+            CachedRegion, Cell, from_bytes,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::BlockContextFieldTag,
+    table::BlockContextFieldTag, 
     util::word::{Word, Word32Cell, WordCell, WordExpr},
 };
 use bus_mapping::evm::OpcodeId;
@@ -33,7 +33,7 @@ pub(crate) struct BlockHashGadget<F> {
     current_block_number: Cell<F>,
     //block_hash: Word<Cell<F>>,
     block_hash: Word32Cell<F>,
-    chain_id: WordCell<F>,
+    chain_id: Word32Cell<F>,
     diff_lt: LtGadget<F, N_BYTES_U64>,
 }
 
@@ -52,16 +52,16 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
             current_block_number.expr(),
         );
 
-        let block_number = WordByteCapGadget::construct(cb, current_block_number.expr());
+        let block_number: WordByteCapGadget<F, 8> = WordByteCapGadget::construct(cb, current_block_number.expr());
         cb.stack_pop(block_number.original_word().to_word());
 
-        let chain_id = cb.query_word_unchecked();
+        let chain_id = cb.query_word32();
 
         cb.block_lookup(
             BlockContextFieldTag::ChainId.expr(),
             Some(cb.curr.state.block_number.expr()),
             //chain_id.to_word(),
-            chain_id.lo().expr(),
+            from_bytes::expr(&chain_id.limbs[..N_BYTES_U64]),
         );
 
         let diff_lt = cb.condition(block_number.not_overflow(), |cb| {
@@ -96,12 +96,12 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
             cb.keccak_table_lookup(
                 cb.keccak_rlc::<{ 2 * N_BYTES_U64 }>(
                     chain_id
-                        .limbs
+                        .limbs[..N_BYTES_U64]
                         .iter()
                         .rev()
                         .chain(
                             block_number
-                                .original_ref()
+                                .original_word()
                                 .limbs
                                 .iter()
                                 .take(N_BYTES_U64)
@@ -184,6 +184,7 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         self.chain_id
             .assign_u256(region, offset, U256::from(chain_id))?;
 
+    
         // Block number overflow should be constrained by WordByteCapGadget.
         let block_number: F = block_number
             .low_u64()

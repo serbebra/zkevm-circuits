@@ -480,14 +480,14 @@ impl<F: Field, const BYTES_IN_FIELD: usize> ToHashBlockCircuitConfig<F, BYTES_IN
                         // we also avoid the failure of "NotEnoughRowsAvailable"
                         // in prover creation (so bytecode_incomplete test could pass)
                         let offset = bytecode_offset_begin + idx;
-                        region.assign_advice(
-                            || format!("assign poseidon_code_hash {idx}"),
-                            self.poseidon_code_hash,
-                            offset,
-                            || Value::known(poseidon_code_hash),
-                        )?;
-
                         if offset <= last_row_offset {
+                            region.assign_advice(
+                                || format!("assign poseidon_code_hash {idx}"),
+                                self.poseidon_code_hash,
+                                offset,
+                                || Value::known(poseidon_code_hash),
+                            )?;
+
                             row_input = self.assign_extended_row(
                                 &mut region,
                                 offset,
