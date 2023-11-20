@@ -213,7 +213,7 @@ pub struct ContractCreateGadget<F, const IS_CREATE2: bool> {
 
     /// RLC of the init code's hash. The value of this field is feature gated and can be the keccak
     /// or the poseidon hash.
-    //code_hash_rlc: Cell<F>,
+    code_hash_rlc: Cell<F>,
     code_hash: Word32Cell<F>,
     /// Random salt for CREATE2.
     salt: Word32Cell<F>,
@@ -227,7 +227,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
 
         let keccak_code_hash = cb.query_word32();
         let code_hash = cb.query_word32();
-        //let code_hash_rlc = cb.query_cell_phase2();
+        let code_hash_rlc = cb.query_cell_phase2();
         let salt = cb.query_word32();
 
         #[cfg(not(feature = "poseidon-codehash"))]
@@ -251,7 +251,7 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
             caller_address,
             nonce,
             keccak_code_hash,
-            //code_hash_rlc,
+            code_hash_rlc,
             code_hash,
             salt,
         }
@@ -285,11 +285,11 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
             debug_assert_eq!(code_hash, keccak_code_hash);
         }
 
-        // self.code_hash_rlc.assign(
-        //     region,
-        //     offset,
-        //     region.code_hash(code_hash.unwrap_or_default()),
-        // )?;
+        self.code_hash_rlc.assign(
+            region,
+            offset,
+            region.code_hash(code_hash.unwrap_or_default()),
+        )?;
         self.code_hash
             .assign_u256(region, offset, code_hash.unwrap_or_default())?;
 

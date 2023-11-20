@@ -266,7 +266,7 @@ pub struct PiCircuitConfig<F: Field> {
     rpi_field_bytes: Column<Advice>,   // rpi in bytes
     rpi_field_bytes_acc: Column<Advice>,
     rpi_rlc_acc: Column<Advice>, // RLC(rpi) as the input to Keccak table
-    // the input word type to Keccak table
+    // the input word type to Keccak table, TODO: enable rpi_rlc_acc_word in stage2
     // rpi_rlc_acc_word: word::Word<Column<Advice>>,
     rpi_length_acc: Column<Advice>,
 
@@ -642,7 +642,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
             rpi_field_bytes: rpi_bytes,
             rpi_field_bytes_acc: rpi_bytes_acc,
             rpi_rlc_acc,
-            rpi_rlc_acc_word,
+            //rpi_rlc_acc_word,
             rpi_length_acc,
             is_rpi_padding,
             real_rpi,
