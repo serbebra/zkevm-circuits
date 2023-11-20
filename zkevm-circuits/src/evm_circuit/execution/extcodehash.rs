@@ -58,14 +58,17 @@ impl<F: Field> ExecutionGadget<F> for ExtcodehashGadget<F> {
             Some(&mut reversion_info),
         );
 
-        let code_hash = cb.query_cell_phase2();
         // For non-existing accounts the code_hash must be 0 in the rw_table.
         // range check will be cover by account code_hash lookup
         let code_hash = cb.query_word_unchecked();
         // For non-existing accounts the code_hash must be 0 in the rw_table.
         cb.account_read(
             address.to_word(),
-            AccountFieldTag::CodeHash,
+            if cfg!(feature = "scroll") {
+                AccountFieldTag::KeccakCodeHash
+            } else {
+                AccountFieldTag::CodeHash
+            },
             code_hash.to_word(),
         );
         cb.stack_push(code_hash.to_word());

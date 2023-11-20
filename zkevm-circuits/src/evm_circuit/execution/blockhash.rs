@@ -10,12 +10,13 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::Delta,
             },
+            from_bytes,
             math_gadget::LtGadget,
-            CachedRegion, Cell, from_bytes,
+            CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::BlockContextFieldTag, 
+    table::BlockContextFieldTag,
     util::word::{Word, Word32Cell, WordCell, WordExpr},
 };
 use bus_mapping::evm::OpcodeId;
@@ -52,7 +53,8 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
             current_block_number.expr(),
         );
 
-        let block_number: WordByteCapGadget<F, 8> = WordByteCapGadget::construct(cb, current_block_number.expr());
+        let block_number: WordByteCapGadget<F, 8> =
+            WordByteCapGadget::construct(cb, current_block_number.expr());
         cb.stack_pop(block_number.original_word().to_word());
 
         let chain_id = cb.query_word32();
@@ -95,8 +97,7 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
             #[cfg(feature = "scroll")]
             cb.keccak_table_lookup(
                 cb.keccak_rlc::<{ 2 * N_BYTES_U64 }>(
-                    chain_id
-                        .limbs[..N_BYTES_U64]
+                    chain_id.limbs[..N_BYTES_U64]
                         .iter()
                         .rev()
                         .chain(
@@ -184,7 +185,6 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
         self.chain_id
             .assign_u256(region, offset, U256::from(chain_id))?;
 
-    
         // Block number overflow should be constrained by WordByteCapGadget.
         let block_number: F = block_number
             .low_u64()

@@ -413,8 +413,12 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 &mut rws,
             )?;
             #[cfg(feature = "scroll")]
-            self.coinbase_keccak_codehash.assign_u256(region, offset, result.account_keccak_code_hash.unwrap_or_default())?;
-            
+            self.coinbase_keccak_codehash.assign_u256(
+                region,
+                offset,
+                result.account_keccak_code_hash.unwrap_or_default(),
+            )?;
+
             let coinbase_balance_pair = result.receiver_balance_pair.unwrap();
             coinbase_balance_pair.0 - coinbase_balance_pair.1
         };
