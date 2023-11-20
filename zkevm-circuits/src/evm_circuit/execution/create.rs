@@ -180,7 +180,7 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             cb.require_equal_word(
                 "keccak hash of empty bytes",
                 keccak_code_hash.to_word(),
-                cb.empty_code_hash(),
+                cb.empty_keccak_hash(),
             );
             // cb.require_equal(
             //     "code hash of empty bytes",
@@ -817,7 +817,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
             };
             let mut keccak_output = keccak256(keccak_input);
             keccak_output.reverse();
-
             self.keccak_output.assign_u256(
                 region,
                 offset,

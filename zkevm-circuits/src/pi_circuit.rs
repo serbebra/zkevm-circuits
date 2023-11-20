@@ -266,6 +266,8 @@ pub struct PiCircuitConfig<F: Field> {
     rpi_field_bytes: Column<Advice>,   // rpi in bytes
     rpi_field_bytes_acc: Column<Advice>,
     rpi_rlc_acc: Column<Advice>, // RLC(rpi) as the input to Keccak table
+    // the input word type to Keccak table
+    // rpi_rlc_acc_word: word::Word<Column<Advice>>,
     rpi_length_acc: Column<Advice>,
 
     // columns for padding in block context and tx hashes
@@ -353,6 +355,8 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
         let rpi_bytes_acc = meta.advice_column_in(SecondPhase);
         // hold the accumulated value of rlc(rpi_bytes, keccak_input)
         let rpi_rlc_acc = meta.advice_column_in(SecondPhase);
+        //let rpi_rlc_acc_word = word::Word::new([meta.advice_column(), meta.advice_column()]);
+
         // hold the accumulated length of rpi_bytes for looking into keccak table
         let rpi_length_acc = meta.advice_column();
 
@@ -566,29 +570,33 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
         // q_keccak = 1     |pi_bs_rlc|     ..    |      ...      | pi_hash_rlc |      136       |
         //   pi hash        |   hi    |     ..    |      ...      |     ...     |       16       |
         //                  |   lo    |     ..    |      ...      | pi_hash_rlc |       32       |
-        meta.lookup_any("keccak(rpi)", |meta| {
-            let q_keccak = meta.query_selector(q_keccak);
+        // TODO: enable this lookup in stage2
+        // meta.lookup_any("keccak(rpi)", |meta| {
+        //     let q_keccak = meta.query_selector(q_keccak);
 
-            let rpi_rlc = meta.query_advice(rpi, Rotation::cur());
-            let rpi_length = meta.query_advice(rpi_length_acc, Rotation::cur());
-            let output = meta.query_advice(rpi_rlc_acc, Rotation::cur());
+        //     let rpi_rlc = meta.query_advice(rpi, Rotation::cur());
+        //     let rpi_length = meta.query_advice(rpi_length_acc, Rotation::cur());
+        //     let output = meta.query_advice(rpi_rlc_acc, Rotation::cur());
+        //     //let output_word = rpi_rlc_acc_word.query_advice(meta, Rotation::cur());
 
-            let input_exprs = vec![
-                1.expr(), // q_enable = true
-                1.expr(), // is_final = true
-                rpi_rlc,
-                rpi_length,
-                output,
-            ];
-            let keccak_table_exprs = keccak_table.table_exprs(meta);
-            assert_eq!(input_exprs.len(), keccak_table_exprs.len());
+        //     let input_exprs = vec![
+        //         1.expr(), // q_enable = true
+        //         1.expr(), // is_final = true
+        //         rpi_rlc,
+        //         rpi_length,
+        //         output,
+        //         //output_word.lo(),
+        //         //soutput_word.hi(),
+        //     ];
+        //     let keccak_table_exprs = keccak_table.table_exprs(meta);
+        //     assert_eq!(input_exprs.len(), keccak_table_exprs.len());
 
-            input_exprs
-                .into_iter()
-                .zip(keccak_table_exprs.into_iter())
-                .map(|(input, table)| (q_keccak.expr() * input, table))
-                .collect()
-        });
+        //     input_exprs
+        //         .into_iter()
+        //         .zip(keccak_table_exprs.into_iter())
+        //         .map(|(input, table)| (q_keccak.expr() * input, table))
+        //         .collect()
+        // });
 
         // 3. constrain block_table
         meta.create_gate(
@@ -634,6 +642,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
             rpi_field_bytes: rpi_bytes,
             rpi_field_bytes_acc: rpi_bytes_acc,
             rpi_rlc_acc,
+            rpi_rlc_acc_word,
             rpi_length_acc,
             is_rpi_padding,
             real_rpi,
@@ -704,6 +713,7 @@ impl<F: Field> PiCircuitConfig<F> {
         let data_bytes_end_row =
             self.max_inner_blocks * BLOCK_HEADER_BYTES_NUM + self.max_txs * KECCAK_DIGEST_SIZE;
         self.assign_rlc_start(region, &mut offset, &mut rpi_rlc_acc, &mut rpi_length_acc)?;
+        //TODO: assign rpi_rlc_acc word
         // assign block contexts
         for (i, block) in block_values
             .ctxs
@@ -1121,6 +1131,8 @@ impl<F: Field> PiCircuitConfig<F> {
             *offset,
             F::zero(),
         )?;
+
+        //let rpi_rlc_acc_word = word::Word::new([F::zero(), F::zero()]);
         region.assign_advice_from_constant(
             || "rpi_length_acc[0]",
             self.rpi_length_acc,
