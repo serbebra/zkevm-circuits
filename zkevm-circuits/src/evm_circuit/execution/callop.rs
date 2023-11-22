@@ -418,7 +418,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                         Word::from_lo_unchecked(precompile_return_length.expr()),
                     ),
                 ] {
-                    cb.call_context_lookup_write(None, field_tag, Word::zero());
+                    cb.call_context_lookup_write(None, field_tag, value);
                 }
                 // rwc_delta = 33 + is_call_or_callcode + transfer + is_delegatecall * 2
 
@@ -811,7 +811,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("callop offset {}", offset);
+        println!("callop begin offset {}", offset);
         let opcode = step.opcode.unwrap();
         let is_call = opcode == OpcodeId::CALL;
         let is_callcode = opcode == OpcodeId::CALLCODE;
@@ -1193,7 +1193,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 region.challenges().keccak_input(),
             )?;
         }
-
+        println!("callop end offset {}", offset);
         Ok(())
     }
 }
