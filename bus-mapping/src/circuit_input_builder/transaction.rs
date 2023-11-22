@@ -358,12 +358,14 @@ impl Transaction {
         };
 
         // gupeng
-        if eth_tx.access_list.is_some() {
-            log::error!(
-                "gupeng tx_hash = {:?}, access_list = {:?}",
-                eth_tx.hash,
-                eth_tx.access_list
-            );
+        if let Some(access_list) = &eth_tx.access_list {
+            if !access_list.0.is_empty() {
+                log::error!(
+                    "gupeng - found tx_hash = {:?}, access_list = {:?}",
+                    eth_tx.hash,
+                    eth_tx.access_list
+                );
+            }
         }
 
         log::debug!(
