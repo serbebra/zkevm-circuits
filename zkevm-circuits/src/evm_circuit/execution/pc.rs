@@ -1,7 +1,6 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_PROGRAM_COUNTER,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -9,7 +8,7 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::Delta,
             },
-            from_bytes, CachedRegion, U64Cell,
+            CachedRegion, U64Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

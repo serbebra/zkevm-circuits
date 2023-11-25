@@ -11,7 +11,7 @@ use crate::{
                 Transition::Delta,
             },
             math_gadget::{IsEqualGadget, IsZeroGadget},
-            rlc, select, sum, CachedRegion, Cell,
+            select, sum, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

@@ -1,7 +1,6 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_PROGRAM_COUNTER,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -15,7 +14,7 @@ use crate::{
     },
     util::{word::WordExpr, Expr},
 };
-use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian};
+use eth_types::{evm_types::OpcodeId, Field};
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]

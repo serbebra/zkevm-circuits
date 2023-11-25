@@ -10,7 +10,7 @@ use crate::{
                 Transition::Delta,
             },
             math_gadget::{IsZeroWordGadget, LtWordGadget, ModGadget, MulAddWords512Gadget},
-            sum, CachedRegion,
+            CachedRegion,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -20,7 +20,7 @@ use crate::{
     },
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, U256};
+use eth_types::{Field, U256};
 use halo2_proofs::plonk::Error;
 
 /// MulModGadget verifies opcode MULMOD

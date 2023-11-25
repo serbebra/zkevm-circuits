@@ -17,7 +17,7 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::word::{Word32Cell, Word4, WordExpr},
+    util::word::{Word32Cell, WordExpr},
 };
 
 use super::ExecutionGadget;

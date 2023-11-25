@@ -22,7 +22,7 @@ use crate::{
     util::word::{Word, Word32Cell, WordExpr},
 };
 use bus_mapping::circuit_input_builder::CopyDataType;
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
+use eth_types::{evm_types::GasCost, Field, ToScalar};
 use gadgets::util::Expr;
 use halo2_proofs::{
     circuit::Value,

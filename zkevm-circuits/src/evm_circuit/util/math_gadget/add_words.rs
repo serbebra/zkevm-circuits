@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::util::{
         self,
         constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-        from_bytes, pow_of_two_expr, split_u256, sum, CachedRegion, Cell,
+        pow_of_two_expr, split_u256, sum, CachedRegion, Cell,
     },
     util::{
         word::{Word32Cell, WordExpr},

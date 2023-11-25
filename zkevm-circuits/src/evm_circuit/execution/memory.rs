@@ -12,7 +12,7 @@ use crate::{
             from_bytes,
             math_gadget::IsEqualGadget,
             memory_gadget::{MemoryExpansionGadget, MemoryMask, MemoryWordAddress},
-            not, CachedRegion, MemoryAddress,
+            not, CachedRegion,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -23,7 +23,7 @@ use crate::{
 };
 
 use array_init::array_init;
-use eth_types::{evm_types::OpcodeId, Field, ToLittleEndian, U256};
+use eth_types::{evm_types::OpcodeId, Field, U256};
 use halo2_proofs::plonk::{Error, Expression};
 
 // MemoryGadget handles mload/mstore/mstore8 op codes gadget

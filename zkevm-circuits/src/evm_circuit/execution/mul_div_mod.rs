@@ -9,8 +9,8 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::Delta,
             },
-            math_gadget::{IsZeroGadget, IsZeroWordGadget, LtWordGadget, MulAddWordsGadget},
-            select, sum, CachedRegion,
+            math_gadget::{IsZeroWordGadget, LtWordGadget, MulAddWordsGadget},
+            CachedRegion,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -20,7 +20,7 @@ use crate::{
     },
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToLittleEndian, U256};
+use eth_types::{Field, U256};
 use halo2_proofs::plonk::Error;
 
 /// MulGadget verifies opcode MUL, DIV, and MOD.

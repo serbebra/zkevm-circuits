@@ -13,7 +13,7 @@ use crate::{
                 AddWordsGadget, ConstantDivisionGadget, IsZeroGadget, LtGadget, MinMaxGadget,
                 RangeCheckGadget,
             },
-            not, or, select, sum, Cell, CellType, MemoryAddress,
+            not, or, select, sum, Cell, MemoryAddress,
         },
     },
     util::{
@@ -40,8 +40,8 @@ pub(crate) mod address_low {
         param::N_BYTES_MEMORY_ADDRESS,
         util::{from_bytes, Word},
     };
-    use eth_types::Field;
-    use halo2_proofs::plonk::Expression;
+    // use eth_types::Field;
+    // use halo2_proofs::plonk::Expression;
 
     pub(crate) fn value(address: [u8; 32]) -> u64 {
         let mut bytes = [0; 8];

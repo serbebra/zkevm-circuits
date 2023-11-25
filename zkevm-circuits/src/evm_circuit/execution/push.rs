@@ -6,7 +6,7 @@ use crate::{
             common_gadget::SameContextGadget,
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
             math_gadget::IsZeroGadget,
-            rlc, select, CachedRegion, Cell,
+            rlc, select, CachedRegion,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

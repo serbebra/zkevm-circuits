@@ -1,7 +1,6 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_ACCOUNT_ADDRESS,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -17,9 +16,8 @@ use crate::{
     },
 };
 use bus_mapping::evm::OpcodeId;
-use eth_types::{Field, ToAddress, ToLittleEndian};
+use eth_types::{Field, ToAddress};
 use halo2_proofs::plonk::Error;
-use std::convert::TryInto;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AddressGadget<F> {

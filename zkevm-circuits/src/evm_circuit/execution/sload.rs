@@ -17,7 +17,7 @@ use crate::{
         Expr,
     },
 };
-use eth_types::{Field, ToScalar};
+use eth_types::Field;
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]

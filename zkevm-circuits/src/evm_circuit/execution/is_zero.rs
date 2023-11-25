@@ -5,7 +5,7 @@ use crate::{
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{EVMConstraintBuilder, StepStateTransition, Transition::Delta},
-            math_gadget, CachedRegion, Cell,
+            math_gadget, CachedRegion,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },

@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::N_BYTES_U64,
+        //param::N_BYTES_U64,
         step::ExecutionState,
         table::{FixedTableTag, Lookup},
         util::{
@@ -10,7 +10,6 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
                 Transition::Delta,
             },
-            from_bytes,
             math_gadget::{IsEqualGadget, IsZeroGadget, LtGadget},
             select, sum, CachedRegion, Cell,
         },

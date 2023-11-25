@@ -16,7 +16,7 @@ use crate::{
                 Transition::{Delta, Same, To},
             },
             math_gadget::{AddWordsGadget, RangeCheckGadget},
-            not, or, Cell, CellType, StepRws,
+            not, or, Cell, StepRws,
         },
     },
     table::{AccountFieldTag, CallContextFieldTag},

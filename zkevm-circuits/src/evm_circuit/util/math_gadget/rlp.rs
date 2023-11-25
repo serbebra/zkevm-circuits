@@ -7,7 +7,7 @@ use halo2_proofs::{
 
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_U64, N_BYTES_WORD},
+        param::{N_BYTES_U64, N_BYTES_WORD},
         util::{
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             rlc, AccountAddress, CachedRegion, Cell, RandomLinearCombination,

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::{
     evm_circuit::util::{
         constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
