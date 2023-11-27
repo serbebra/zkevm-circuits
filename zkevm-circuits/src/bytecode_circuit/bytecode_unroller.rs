@@ -2,7 +2,7 @@ use crate::{
     table::BytecodeFieldTag,
     util::{
         get_push_size,
-        word::{empty_code_hash_word_value, Word, Word32, WordExpr},
+        word::{empty_code_hash_word_value, Word, Word32},
     },
 };
 use halo2_proofs::circuit::{Layouter, Region, Value};

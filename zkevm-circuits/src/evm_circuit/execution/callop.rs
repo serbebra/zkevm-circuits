@@ -811,7 +811,6 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        println!("callop begin offset {}", offset);
         let opcode = step.opcode.unwrap();
         let is_call = opcode == OpcodeId::CALL;
         let is_callcode = opcode == OpcodeId::CALLCODE;
@@ -1193,7 +1192,6 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 region.challenges().keccak_input(),
             )?;
         }
-        println!("callop end offset {}", offset);
         Ok(())
     }
 }

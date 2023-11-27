@@ -1,12 +1,11 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS},
+        param::N_BYTES_GAS,
         step::ExecutionState,
         util::{
             common_gadget::CommonErrorGadget,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-            from_bytes,
             math_gadget::LtGadget,
             select, AccountAddress, CachedRegion, Cell,
         },

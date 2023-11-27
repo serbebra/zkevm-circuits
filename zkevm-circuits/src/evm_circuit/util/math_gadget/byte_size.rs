@@ -185,7 +185,7 @@ pub(crate) type BitLengthGadget<F> = ByteOrBitSizeGadget<F, N_BITS_U8, false>;
 #[cfg(test)]
 mod tests {
     use super::{super::test_util::*, *};
-    use crate::{evm_circuit::util, util::word::Word32Cell};
+    use crate::util::word::Word32Cell;
     use eth_types::Word;
     use halo2_proofs::{halo2curves::bn256::Fr, plonk::Error};
 

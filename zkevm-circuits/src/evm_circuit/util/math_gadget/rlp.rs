@@ -1,4 +1,4 @@
-use eth_types::{Address, Field, ToLittleEndian, ToScalar, Word as U256Word};
+use eth_types::{Address, Field, ToScalar, Word as U256Word};
 use gadgets::util::{and, expr_from_bytes, not, select, sum, Expr};
 use halo2_proofs::{
     circuit::Value,

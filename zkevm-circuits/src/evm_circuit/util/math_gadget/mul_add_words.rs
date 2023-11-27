@@ -65,7 +65,6 @@ impl<F: Field> MulAddWordsGadget<F> {
         let word4_a: Word4<Expression<F>> = a.to_word_n();
         let word4_b: Word4<Expression<F>> = b.to_word_n();
         for i in 0..4 {
-            let idx = (i * 8) as usize;
             a_limbs.push(word4_a.limbs[i].expr());
             b_limbs.push(word4_b.limbs[i].expr());
         }

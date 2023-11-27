@@ -7,10 +7,10 @@ use crate::{
         util::{constraint_builder::EVMConstraintBuilder, CachedRegion},
         witness::{Block, Call, ExecStep, Transaction},
     },
-    util::word::{WordCell, WordExpr},
+    util::word::WordCell,
 };
 
-use eth_types::{Field, ToLittleEndian};
+use eth_types::Field;
 use halo2_proofs::plonk::Error;
 
 #[derive(Clone, Debug)]

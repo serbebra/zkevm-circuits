@@ -1,7 +1,6 @@
 use crate::{
     evm_circuit::util::{
-        constraint_builder::EVMConstraintBuilder, from_bytes, math_gadget::*, split_u256,
-        CachedRegion, Cell,
+        constraint_builder::EVMConstraintBuilder, math_gadget::*, split_u256, CachedRegion,
     },
     util::word::{self},
 };

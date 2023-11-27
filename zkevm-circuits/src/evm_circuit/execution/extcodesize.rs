@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_U64},
+        param::N_BYTES_ACCOUNT_ADDRESS,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,

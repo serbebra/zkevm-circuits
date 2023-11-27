@@ -18,7 +18,7 @@ use crate::{
 };
 use eth_types::{
     evm_types::{GasCost, OpcodeId},
-    Field, ToLittleEndian,
+    Field,
 };
 use halo2_proofs::{circuit::Value, plonk::Error};
 

@@ -10,7 +10,7 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{BlockContextFieldTag, TxFieldTag::BlockNumber},
-    util::word::Word,
+    //util::word::Word,
 };
 use eth_types::Field;
 use gadgets::util::{not, Expr};

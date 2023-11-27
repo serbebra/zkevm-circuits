@@ -9,11 +9,7 @@ use crate::{
     table::RwTableTag,
     //util::{cell_manager::CMFixedWidthStrategyDistribution, int_decomposition::IntDecomposition},
     util::int_decomposition::IntDecomposition,
-    util::{
-        query_expression,
-        word::{Word, WordExpr},
-        Challenges, Expr,
-    },
+    util::{query_expression, word::Word, Challenges, Expr},
     witness::{Block, ExecStep, Rw, RwMap},
 };
 use bus_mapping::state_db::CodeDB;

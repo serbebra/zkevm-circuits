@@ -1,12 +1,11 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
+        param::{N_BYTES_GAS, N_BYTES_MEMORY_WORD_SIZE},
         step::ExecutionState,
         util::{
             common_gadget::CommonErrorGadget,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
-            from_bytes,
             math_gadget::{IsZeroGadget, LtGadget},
             memory_gadget::{
                 CommonMemoryAddressGadget, MemoryCopierGasGadget, MemoryExpandedAddressGadget,

@@ -1170,7 +1170,7 @@ impl<F: Field> ExecutionConfig<F> {
 
                 // part3: assign the last EndBlock at offset `evm_rows - 1`
                 let height = ExecutionState::EndBlock.get_step_height();
-                debug_assert_eq!(height, 2);
+                debug_assert_eq!(height, 1);
                 log::trace!("assign last EndBlock at offset {}", offset);
                 self.assign_exec_step(
                     &mut region,

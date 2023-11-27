@@ -24,7 +24,7 @@ use eth_types::{
     evm_types::{
         GasCost, OpcodeId, CREATE2_GAS_PER_CODE_WORD, CREATE_GAS_PER_CODE_WORD, MAX_INIT_CODE_SIZE,
     },
-    Field, ToLittleEndian, U256,
+    Field, U256,
 };
 use halo2_proofs::{circuit::Value, plonk::Error};
 

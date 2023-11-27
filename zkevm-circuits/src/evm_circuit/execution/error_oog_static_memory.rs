@@ -6,8 +6,10 @@ use crate::{
         util::{
             common_gadget::CommonErrorGadget,
             constraint_builder::{
-                ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
-                Transition::{Delta, Same},
+                ConstrainBuilderCommon,
+                EVMConstraintBuilder,
+                StepStateTransition,
+                //Transition::{Delta, Same},
             },
             math_gadget::{IsEqualGadget, LtGadget},
             memory_gadget::{
@@ -17,7 +19,6 @@ use crate::{
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
-    table::CallContextFieldTag,
     util::{word::Word, Expr},
 };
 use eth_types::{evm_types::OpcodeId, Field, ToWord};

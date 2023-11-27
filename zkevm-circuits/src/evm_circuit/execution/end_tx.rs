@@ -11,8 +11,8 @@ use crate::{
             },
             from_bytes,
             math_gadget::{
-                AddWordsGadget, ConstantDivisionGadget, IsEqualGadget, IsZeroGadget,
-                IsZeroWordGadget, MinMaxGadget, MulWordByU64Gadget,
+                AddWordsGadget, ConstantDivisionGadget, IsEqualGadget, IsZeroWordGadget,
+                MinMaxGadget, MulWordByU64Gadget,
             },
             CachedRegion, Cell, StepRws,
         },

@@ -1064,7 +1064,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let (init_code_rlc, keccak_code_hash) = if tx.is_create {
             let init_code_rlc =
                 region.keccak_rlc(&tx.call_data.iter().cloned().rev().collect::<Vec<u8>>());
-            let keccak_code_hash = U256::from(keccak256(&tx.call_data));
             // keccak_code_hash_rlc: rename to keccak_code_hash for word type, no need to use rlc,
             // two words can hold 256 bytes codehash now.
             let keccak_code_hash = U256::from(keccak256(&tx.call_data));

@@ -2,17 +2,13 @@ use crate::{
     evm_circuit::{
         param::N_BYTES_WORD,
         util::{
-            self,
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             from_bytes,
             math_gadget::*,
             CachedRegion,
         },
     },
-    util::{
-        word::{Word32Cell, WordExpr},
-        Expr,
-    },
+    util::{word::Word32Cell, Expr},
 };
 use eth_types::{Field, ToLittleEndian, Word};
 use gadgets::util::sum;

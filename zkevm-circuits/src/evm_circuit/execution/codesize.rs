@@ -1,4 +1,3 @@
-use array_init::array_init;
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
 use halo2_proofs::{circuit::Value, plonk::Error};
