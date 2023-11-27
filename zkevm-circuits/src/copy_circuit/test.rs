@@ -259,6 +259,8 @@ fn gen_tx_log_data() -> CircuitInputBuilder {
     builder
 }
 
+// TODO: add test for access list data.
+
 fn gen_create_data() -> CircuitInputBuilder {
     let code = bytecode! {
         PUSH21(Word::from("6B6020600060003760206000F3600052600C6014F3"))

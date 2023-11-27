@@ -382,6 +382,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                             log_id: None,
                             rw_counter_start,
                             copy_bytes: CopyBytes::new(copy_steps, None, None),
+                            ..Default::default()
                         },
                     );
                     Some(input_bytes)
@@ -412,6 +413,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                             log_id: None,
                             rw_counter_start,
                             copy_bytes: CopyBytes::new(copy_steps, None, Some(prev_bytes)),
+                            ..Default::default()
                         },
                     );
                     Some(output_bytes)
@@ -451,6 +453,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                                 Some(write_steps),
                                 Some(prev_bytes),
                             ),
+                            ..Default::default()
                         },
                     );
                     Some(returned_bytes)

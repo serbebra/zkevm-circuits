@@ -174,6 +174,10 @@ pub enum TxFieldTag {
     TxHash,
     /// TxType: Type of the transaction
     TxType,
+    /// Access list address
+    AccessListAddress,
+    /// Access list storage key
+    AccessListStorageKey,
     /// Access list address count (EIP-2930)
     AccessListAddressesLen,
     /// Access list all storage key count (EIP-2930)
@@ -1794,13 +1798,27 @@ impl CopyTable {
 
             let is_pad = is_read_step && thread.addr >= thread.addr_end;
 
-            let value = Value::known(F::from(copy_step.value as u64));
+            let [value, value_prev] = if copy_event.src_type == CopyDataType::AccessListAddresses
+                || copy_event.src_type == CopyDataType::AccessListStorageKeys
+            {
+                let address_pair = copy_event.access_list[step_idx];
+                [
+                    address_pair.0.to_scalar().unwrap(),
+                    address_pair.1.to_scalar().unwrap(),
+                ]
+            } else {
+                [
+                    F::from(copy_step.value as u64),
+                    F::from(copy_step.prev_value as u64),
+                ]
+            }
+            .map(Value::known);
+
             let value_or_pad = if is_pad {
                 Value::known(F::zero())
             } else {
                 value
             };
-            let value_prev = Value::known(F::from(copy_step.prev_value as u64));
 
             if !copy_step.mask {
                 thread.front_mask = false;

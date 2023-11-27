@@ -15,7 +15,7 @@ use crate::{
 use eth_types::{
     evm_types::{memory::MemoryWordRange, Gas, GasCost, MemoryAddress, OpcodeId, ProgramCounter},
     sign_types::SignData,
-    Field, GethExecStep, ToLittleEndian, Word, H256, U256,
+    Address, Field, GethExecStep, ToLittleEndian, Word, H256, U256,
 };
 use ethers_core::k256::elliptic_curve::subtle::CtOption;
 use gadgets::impl_expr;
@@ -228,6 +228,7 @@ pub enum CopyDataType {
     /// tx-table and destination is rw-table.
     AccessListStorageKeys,
 }
+
 impl CopyDataType {
     /// How many bits are necessary to represent a copy data type.
     pub const N_BITS: usize = 3usize;
@@ -247,6 +248,8 @@ impl CopyDataTypeIter {
             3usize => Some(CopyDataType::TxCalldata),
             4usize => Some(CopyDataType::TxLog),
             5usize => Some(CopyDataType::RlcAcc),
+            6usize => Some(CopyDataType::AccessListAddresses),
+            7usize => Some(CopyDataType::AccessListStorageKeys),
             _ => None,
         }
     }
@@ -363,6 +366,12 @@ pub enum NumberOrHash {
     Hash(H256),
 }
 
+impl Default for NumberOrHash {
+    fn default() -> Self {
+        Self::Number(0)
+    }
+}
+
 /// Represents all bytes related in one copy event.
 ///
 /// - When the source is memory, `bytes` is the memory content, including masked areas. The
@@ -404,7 +413,7 @@ impl CopyBytes {
 /// Defines a copy event associated with EVM opcodes such as CALLDATACOPY,
 /// CODECOPY, CREATE, etc. More information:
 /// <https://github.com/privacy-scaling-explorations/zkevm-specs/blob/master/specs/copy-proof.md>.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct CopyEvent {
     /// Represents the start address at the source of the copy event.
     pub src_addr: u64,
@@ -428,6 +437,11 @@ pub struct CopyEvent {
     pub rw_counter_start: RWCounter,
     /// Represents the list of bytes related during this copy event
     pub copy_bytes: CopyBytes,
+    /// Represents transaction access list (EIP-2930), if copy data type is
+    /// address, the first item is access list address and second is zero, if
+    /// copy data type is storage key, the first item is access list address and
+    /// second is access list storage key.
+    pub access_list: Vec<(Address, Word)>,
 }
 
 pub type CopyEventSteps = Vec<(u8, bool, bool)>;

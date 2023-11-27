@@ -19,6 +19,8 @@ pub fn constrain_tag<F: Field>(
     is_bytecode: Column<Advice>,
     is_memory: Column<Advice>,
     is_tx_log: Column<Advice>,
+    is_access_list_address: Column<Advice>,
+    is_access_list_storage_key: Column<Advice>,
 ) {
     meta.create_gate("decode tag", |meta| {
         let enabled = meta.query_fixed(q_enable, CURRENT);
@@ -26,6 +28,8 @@ pub fn constrain_tag<F: Field>(
         let is_bytecode = meta.query_advice(is_bytecode, CURRENT);
         let is_memory = meta.query_advice(is_memory, CURRENT);
         let is_tx_log = meta.query_advice(is_tx_log, CURRENT);
+        let is_access_list_address = meta.query_advice(is_access_list_address, CURRENT);
+        let is_access_list_storage_key = meta.query_advice(is_access_list_storage_key, CURRENT);
         vec![
             // Match boolean indicators to their respective tag values.
             enabled.expr()
@@ -34,6 +38,12 @@ pub fn constrain_tag<F: Field>(
                 * (is_bytecode - tag.value_equals(CopyDataType::Bytecode, CURRENT)(meta)),
             enabled.expr() * (is_memory - tag.value_equals(CopyDataType::Memory, CURRENT)(meta)),
             enabled.expr() * (is_tx_log - tag.value_equals(CopyDataType::TxLog, CURRENT)(meta)),
+            enabled.expr()
+                * (is_access_list_address
+                    - tag.value_equals(CopyDataType::AccessListAddresses, CURRENT)(meta)),
+            enabled.expr()
+                * (is_access_list_storage_key
+                    - tag.value_equals(CopyDataType::AccessListStorageKeys, CURRENT)(meta)),
         ]
     });
 }
