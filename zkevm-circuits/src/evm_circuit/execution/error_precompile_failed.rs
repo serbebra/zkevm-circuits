@@ -28,8 +28,8 @@ pub(crate) struct ErrorPrecompileFailedGadget<F> {
     is_delegatecall: IsZeroGadget<F>,
     is_staticcall: IsZeroGadget<F>,
     gas: WordCell<F>,
-    callee_address: WordCell<F>,
-    value: Word32Cell<F>,
+    callee_address: Cell<F>,
+    value: WordCell<F>,
     cd_address: MemoryAddressGadget<F>,
     rd_address: MemoryAddressGadget<F>,
 }
@@ -68,9 +68,8 @@ impl<F: Field> ExecutionGadget<F> for ErrorPrecompileFailedGadget<F> {
         let callee_call_id = cb.curr.state.rw_counter.clone();
 
         let gas = cb.query_word_unchecked();
-        let callee_address = cb.call_context_read_as_word(None, CallContextFieldTag::CalleeAddress);
-
-        let value = cb.query_word32();
+        let callee_address = cb.query_cell();
+        let value = cb.query_word_unchecked();
 
         let cd_offset = cb.query_word_unchecked();
         let cd_length = cb.query_memory_address();
@@ -81,7 +80,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorPrecompileFailedGadget<F> {
         let rd_address = MemoryAddressGadget::construct(cb, rd_offset, rd_length);
 
         cb.stack_pop(gas.to_word());
-        cb.stack_pop(callee_address.to_word());
+        cb.stack_pop(Word::from_lo_unchecked(callee_address.expr()));
 
         // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
         cb.condition(is_call.expr() + is_callcode.expr(), |cb| {
@@ -176,7 +175,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorPrecompileFailedGadget<F> {
         )?;
         self.gas.assign_u256(region, offset, gas)?;
         self.callee_address
-            .assign_u256(region, offset, callee_address)?;
+            .assign(region, offset, Value::known(F::from(callee_address.as_u64())))?;
         self.value.assign_u256(region, offset, value)?;
         self.cd_address
             .assign(region, offset, cd_offset, cd_length)?;
