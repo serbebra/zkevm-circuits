@@ -282,7 +282,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
         cb.require_equal(
             "output bytes (RLC) = recovered address",
             output_bytes_rlc.expr(),
-            cb.word_rlc::<N_BYTES_ACCOUNT_ADDRESS>(
+            cb.keccak_rlc::<N_BYTES_ACCOUNT_ADDRESS>(
                 recovered_addr_keccak.clone().limbs.map(|cell| cell.expr()),
             ),
         );
