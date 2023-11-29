@@ -7,7 +7,7 @@ use bus_mapping::{
 };
 use eth_types::{Address, Field, ToScalar, Word, U256};
 
-use halo2_proofs::{circuit::Value};
+use halo2_proofs::circuit::Value;
 use itertools::Itertools;
 use rayon::prelude::{ParallelBridge, ParallelIterator};
 

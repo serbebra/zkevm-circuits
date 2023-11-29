@@ -241,7 +241,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             constrain_id(
                 cb,
                 meta,
-                is_bytecode,
+                //is_bytecode,
                 is_tx_log,
                 is_tx_calldata,
                 is_memory,

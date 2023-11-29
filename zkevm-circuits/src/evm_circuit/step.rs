@@ -82,11 +82,13 @@ pub enum ExecutionState {
     RETURNDATACOPY,
     EXTCODEHASH,
     BLOCKHASH,
-    // BLOCKCTXU64,  // TIMESTAMP, NUMBER, GASLIMIT
-    // BLOCKCTXU160, // COINBASE
-    // BLOCKCTXU256, // DIFFICULTY, BASEFEE
+    BLOCKCTXU64,  // TIMESTAMP, NUMBER, GASLIMIT
+    BLOCKCTXU160, // COINBASE
+    BLOCKCTXU256, // BASEFEE, DIFFICULTY (for non-scroll)
     /// TIMESTAMP, NUMBER, GASLIMIT, COINBASE, DIFFICULTY, BASEFEE
-    BLOCKCTX,
+    // BLOCKCTX,
+    #[cfg(feature = "scroll")]
+    DIFFICULTY, // DIFFICULTY
     CHAINID,
     SELFBALANCE,
     POP,
@@ -272,28 +274,37 @@ impl ExecutionState {
             Self::RETURNDATACOPY => vec![OpcodeId::RETURNDATACOPY],
             Self::EXTCODEHASH => vec![OpcodeId::EXTCODEHASH],
             Self::BLOCKHASH => vec![OpcodeId::BLOCKHASH],
-            Self::BLOCKCTX => {
+            Self::BLOCKCTXU64 => vec![OpcodeId::TIMESTAMP, OpcodeId::NUMBER, OpcodeId::GASLIMIT],
+            Self::BLOCKCTXU160 => vec![OpcodeId::COINBASE],
+            Self::BLOCKCTXU256 => {
                 if cfg!(feature = "scroll") {
-                    vec![
-                        OpcodeId::TIMESTAMP,
-                        OpcodeId::NUMBER,
-                        OpcodeId::GASLIMIT,
-                        OpcodeId::COINBASE,
-                        OpcodeId::DIFFICULTY,
-                    ]
+                    vec![OpcodeId::BASEFEE]
                 } else {
-                    vec![
-                        OpcodeId::TIMESTAMP,
-                        OpcodeId::NUMBER,
-                        OpcodeId::GASLIMIT,
-                        OpcodeId::COINBASE,
-                        OpcodeId::DIFFICULTY,
-                        OpcodeId::BASEFEE,
-                    ]
+                    vec![OpcodeId::DIFFICULTY, OpcodeId::BASEFEE]
                 }
             }
-            // #[cfg(feature = "scroll")]
-            // Self::DIFFICULTY => vec![OpcodeId::DIFFICULTY],
+            // Self::BLOCKCTX => {
+            //     if cfg!(feature = "scroll") {
+            //         vec![
+            //             OpcodeId::TIMESTAMP,
+            //             OpcodeId::NUMBER,
+            //             OpcodeId::GASLIMIT,
+            //             OpcodeId::COINBASE,
+            //             OpcodeId::DIFFICULTY,
+            //         ]
+            //     } else {
+            //         vec![
+            //             OpcodeId::TIMESTAMP,
+            //             OpcodeId::NUMBER,
+            //             OpcodeId::GASLIMIT,
+            //             OpcodeId::COINBASE,
+            //             OpcodeId::DIFFICULTY,
+            //             OpcodeId::BASEFEE,
+            //         ]
+            //     }
+            // }
+            #[cfg(feature = "scroll")]
+            Self::DIFFICULTY => vec![OpcodeId::DIFFICULTY],
             Self::CHAINID => vec![OpcodeId::CHAINID],
             Self::SELFBALANCE => vec![OpcodeId::SELFBALANCE],
             Self::POP => vec![OpcodeId::POP],

@@ -36,7 +36,9 @@ use crate::{
     table::{KeccakTable, LookupTable},
     util::{
         // word::{self, WordExpr},
-        Challenges, SubCircuit, SubCircuitConfig,
+        Challenges,
+        SubCircuit,
+        SubCircuitConfig,
     },
     witness,
 };

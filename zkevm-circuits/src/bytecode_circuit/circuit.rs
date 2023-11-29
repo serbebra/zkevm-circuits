@@ -658,7 +658,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
             }
 
             region.assign_advice(
-                || format!("assign value_rlc {}", offset),
+                || format!("assign value_rlc {offset}"),
                 self.value_rlc,
                 offset,
                 || value_rlc,
@@ -666,7 +666,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
 
             row.code_hash.assign_advice(
                 region,
-                || format!("assign code_hash {}", offset),
+                || format!("assign code_hash {offset}"),
                 self.bytecode_table.code_hash,
                 offset,
             )?;
@@ -922,7 +922,7 @@ impl<F: Field> BytecodeCircuitConfig<F> {
 
         code_hash.assign_advice(
             region,
-            || format!("assign code_hash {}", offset),
+            || format!("assign code_hash {offset}"),
             self.bytecode_table.code_hash,
             offset,
         )?;

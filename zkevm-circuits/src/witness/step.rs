@@ -183,12 +183,15 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
                     OpcodeId::EXTCODEHASH => ExecutionState::EXTCODEHASH,
                     OpcodeId::EXTCODESIZE => ExecutionState::EXTCODESIZE,
                     OpcodeId::BLOCKHASH => ExecutionState::BLOCKHASH,
-                    OpcodeId::TIMESTAMP
-                    | OpcodeId::NUMBER
-                    | OpcodeId::GASLIMIT
-                    | OpcodeId::COINBASE
-                    | OpcodeId::DIFFICULTY
-                    | OpcodeId::BASEFEE => ExecutionState::BLOCKCTX,
+                    OpcodeId::TIMESTAMP | OpcodeId::NUMBER | OpcodeId::GASLIMIT => {
+                        ExecutionState::BLOCKCTXU64
+                    }
+                    OpcodeId::COINBASE => ExecutionState::BLOCKCTXU160,
+                    OpcodeId::BASEFEE => ExecutionState::BLOCKCTXU256,
+                    #[cfg(not(feature = "scroll"))]
+                    OpcodeId::DIFFICULTY => ExecutionState::BLOCKCTXU256,
+                    #[cfg(feature = "scroll")]
+                    OpcodeId::DIFFICULTY => ExecutionState::DIFFICULTY,
                     OpcodeId::GAS => ExecutionState::GAS,
                     OpcodeId::SAR => ExecutionState::SAR,
                     OpcodeId::SELFBALANCE => ExecutionState::SELFBALANCE,

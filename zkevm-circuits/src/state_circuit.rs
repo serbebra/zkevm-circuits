@@ -371,7 +371,6 @@ impl<F: Field> StateCircuitConfig<F> {
                     .map(|u| u.value_assignments())
                     .unwrap_or_default();
                 let value = row.value_assignment();
-                println!("assign_with_region");
                 (
                     word::Word::<F>::from(committed_value),
                     word::Word::<F>::from(value),
@@ -661,7 +660,7 @@ impl<F: Field> StateCircuitConfig<F> {
                         state_root = new_root;
                     }
                     if matches!(row.tag(), RwTableTag::CallContext) && !row.is_write() {
-                        assert_eq!(row.value_assignment(), 0.into(), "{:?}", row);
+                        assert_eq!(row.value_assignment(), 0.into(), "{row:?}");
                     }
                 }
             }

@@ -3026,7 +3026,7 @@ impl<const N_BITS: usize> UXTable<N_BITS> {
             |mut region| {
                 for i in 0..(1 << N_BITS) {
                     region.assign_fixed(
-                        || format!("assign {} in u{} fixed column", i, N_BITS),
+                        || format!("assign {i} in u{N_BITS} fixed column"),
                         self.col,
                         i,
                         || Value::known(F::from(i as u64)),
@@ -3045,7 +3045,7 @@ impl<F: Field, const N_BITS: usize> LookupTable<F> for UXTable<N_BITS> {
     }
 
     fn annotations(&self) -> Vec<String> {
-        vec![format!("u{}_col", N_BITS)]
+        vec![format!("u{N_BITS}_col")]
     }
 
     fn table_exprs(&self, meta: &mut VirtualCells<F>) -> Vec<Expression<F>> {
