@@ -77,10 +77,10 @@ impl SubCircuitConfig<Fr> for MptCircuitConfig<Fr> {
         let conf = mpt::MptCircuitConfig::configure(meta, &poseidon_table);
         meta.lookup_any("updates in mpt table proven in mpt circuit", |meta| {
             mpt_table
-            .table_exprs(meta)
-            .into_iter()
-            .zip_eq(conf.lookup_exprs(meta))
-            .collect()
+                .table_exprs(meta)
+                .into_iter()
+                .zip_eq(conf.lookup_exprs(meta))
+                .collect()
         });
 
         Self(conf, mpt_table, Default::default())
