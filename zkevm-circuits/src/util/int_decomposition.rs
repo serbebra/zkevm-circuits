@@ -47,7 +47,8 @@ impl<F: Field, const N_LIMBS: usize> IntDecomposition<F, N_LIMBS> {
                 .iter()
                 .zip(bytes.iter())
                 .map(|(cell, byte)| {
-                    cell.assign(region, offset, Value::known(F::from(*byte as u64)))
+                    let mut c = cell.assign(region, offset, Value::known(F::from(*byte as u64)));
+                    c.map(|assgined| assgined.unwrap())
                 })
                 .collect()
         })
