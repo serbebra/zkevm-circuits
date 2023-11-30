@@ -303,7 +303,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             MptCircuitConfigArgs {
                 poseidon_table,
                 mpt_table,
-                challenges,
+                // challenges,
             },
         );
         #[cfg(feature = "zktrie")]

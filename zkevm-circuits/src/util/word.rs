@@ -106,7 +106,7 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
             .map(|chunk| from_bytes::value(chunk))
             .zip_eq(self.limbs[0..half_limb_size].iter())
             .map(|(value, cell)| {
-                let mut c = cell.assign(region, offset, Value::known(value));
+                let c = cell.assign(region, offset, Value::known(value));
                 c.map(|assgined| assgined.unwrap())
             })
             .collect::<Result<Vec<AssignedCell<F, F>>, _>>()?;
@@ -118,7 +118,7 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
                 .map(|chunk| from_bytes::value(chunk))
                 .zip_eq(self.limbs[half_limb_size..].iter())
                 .map(|(value, cell)| {
-                    let mut c = cell.assign(region, offset, Value::known(value));
+                    let c = cell.assign(region, offset, Value::known(value));
                     c.map(|assgined| assgined.unwrap())
                 })
                 .collect::<Result<Vec<AssignedCell<F, F>>, _>>()

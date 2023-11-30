@@ -9,7 +9,6 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::Delta,
             },
-            from_bytes,
             math_gadget::IsZeroWordGadget,
             not, select, AccountAddress, CachedRegion, Cell, U64Cell,
         },
@@ -21,6 +20,9 @@ use crate::{
         Expr,
     },
 };
+
+#[cfg(not(feature = "scroll"))]
+use crate::evm_circuit::util::from_bytes;
 use eth_types::{evm_types::GasCost, Field};
 use halo2_proofs::{circuit::Value, plonk::Error};
 

@@ -51,8 +51,8 @@ pub struct MptCircuitConfigArgs {
     pub poseidon_table: PoseidonTable,
     /// MptTable
     pub mpt_table: MptTable,
-    /// Challenges
-    pub challenges: Challenges,
+    // Challenges
+    // pub challenges: Challenges,
 }
 
 /// re-wrapping for mpt config
@@ -71,7 +71,7 @@ impl SubCircuitConfig<Fr> for MptCircuitConfig<Fr> {
         Self::ConfigArgs {
             poseidon_table,
             mpt_table,
-            challenges,
+            // challenges,
         }: Self::ConfigArgs,
     ) -> Self {
         let conf = mpt::MptCircuitConfig::configure(meta, &poseidon_table);
@@ -175,7 +175,7 @@ impl Circuit<Fr> for MptCircuit<Fr> {
                 MptCircuitConfigArgs {
                     poseidon_table,
                     mpt_table,
-                    challenges,
+                    // challenges,
                 },
             )
         };
