@@ -1466,19 +1466,6 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
-dependencies = [
- "atty",
- "humantime",
- "log",
- "regex",
- "termcolor",
-]
-
-[[package]]
-name = "env_logger"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
@@ -2266,7 +2253,7 @@ name = "geth-utils"
 version = "0.1.0"
 dependencies = [
  "env_logger 0.10.0",
- "gobuild 0.1.0-alpha.2 (git+https://github.com/scroll-tech/gobuild.git)",
+ "gobuild",
  "log",
 ]
 
@@ -2340,16 +2327,7 @@ dependencies = [
 [[package]]
 name = "gobuild"
 version = "0.1.0-alpha.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e156a4ddbf3deb5e8116946c111413bd9a5679bdc1536c78a60618a7a9ac9e"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "gobuild"
-version = "0.1.0-alpha.2"
-source = "git+https://github.com/scroll-tech/gobuild.git#8b84111fc3b58e2134e4794a06d1f199412cf2b0"
+source = "git+https://github.com/scroll-tech/gobuild.git#24935c2b8f677841f22acd6710957621bb294e0e"
 dependencies = [
  "cc",
 ]
@@ -2499,15 +2477,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "halo2_gadgets"
+version = "0.2.0"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#5b9a3d71a325a9ecbad164aba90a7f6a8550a015"
+dependencies = [
+ "arrayvec",
+ "bitvec",
+ "ff 0.12.1",
+ "group 0.12.1",
+ "halo2_proofs",
+ "halo2curves",
+ "lazy_static",
+ "rand",
+ "subtle",
+ "uint",
+]
+
+[[package]]
 name = "halo2_proofs"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#e3fe25eadd714fd991f35190d17ff0b8fb031188"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#5b9a3d71a325a9ecbad164aba90a7f6a8550a015"
 dependencies = [
  "ark-std 0.3.0",
  "blake2b_simd",
  "cfg-if 0.1.10",
  "crossbeam",
- "env_logger 0.8.4",
  "ff 0.12.1",
  "group 0.12.1",
  "halo2curves",
@@ -2541,18 +2535,6 @@ dependencies = [
  "serde",
  "static_assertions",
  "subtle",
-]
-
-[[package]]
-name = "halo2wrong"
-version = "0.1.0"
-source = "git+https://github.com/scroll-tech/halo2wrong?branch=halo2-ecc-snark-verifier-0323#939d679cb16abf0e820bd606248661e400328afa"
-dependencies = [
- "group 0.12.1",
- "halo2_proofs",
- "num-bigint",
- "num-integer",
- "num-traits",
 ]
 
 [[package]]
@@ -3188,20 +3170,6 @@ dependencies = [
  "thiserror",
  "thread-id",
  "winapi",
-]
-
-[[package]]
-name = "maingate"
-version = "0.1.0"
-source = "git+https://github.com/scroll-tech/halo2wrong?branch=halo2-ecc-snark-verifier-0323#939d679cb16abf0e820bd606248661e400328afa"
-dependencies = [
- "group 0.12.1",
- "halo2wrong",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand",
- "subtle",
 ]
 
 [[package]]
@@ -6002,13 +5970,13 @@ dependencies = [
  "gadgets",
  "halo2-base",
  "halo2-ecc",
+ "halo2_gadgets",
  "halo2_proofs",
  "hex",
  "itertools 0.11.0",
  "keccak256",
  "lazy_static",
  "log",
- "maingate",
  "misc-precompiled-circuit",
  "mock",
  "mpt-zktrie 0.1.0",
@@ -6035,9 +6003,9 @@ dependencies = [
 [[package]]
 name = "zktrie"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/zktrie.git?branch=v0.7#a130ea543d291d4b71724f91cb8a49745c593a0c"
+source = "git+https://github.com/scroll-tech/zktrie.git?branch=v0.7#e5071cbd7097c7b65916654d581a510fff9d285c"
 dependencies = [
- "gobuild 0.1.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gobuild",
 ]
 
 [[package]]
