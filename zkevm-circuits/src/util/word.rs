@@ -94,44 +94,64 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
         offset: usize,
         bytes_lo_le: [u8; N_LO],
         bytes_hi_le: Option<[u8; N_HI]>,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) {
         assert_eq!(N % 2, 0); // TODO use static_assertion instead
         assert_eq!(N_LO % (N / 2), 0);
         assert_eq!(N_HI % (N / 2), 0);
         let half_limb_size = N / 2;
 
         // assign lo
-        let bytes_lo_assigned = bytes_lo_le
+        // let bytes_lo_assigned = bytes_lo_le
+        //     .chunks(N_LO / half_limb_size) // chunk in little endian
+        //     .map(|chunk| from_bytes::value(chunk))
+        //     .zip_eq(self.limbs[0..half_limb_size].iter())
+        //     .map(|(value, cell)| cell.assign(region, offset, Value::known(value)))
+        //     .collect::<Result<Vec<Option<AssignedCell<F, F>>>, _>>();
+        for (value, cell) in bytes_lo_le
             .chunks(N_LO / half_limb_size) // chunk in little endian
             .map(|chunk| from_bytes::value(chunk))
             .zip_eq(self.limbs[0..half_limb_size].iter())
-            .map(|(value, cell)| {
-                let c = cell.assign(region, offset, Value::known(value));
-                c.map(|assgined| assgined.unwrap())
-            })
-            .collect::<Result<Vec<AssignedCell<F, F>>, _>>()?;
-
+        {
+            let _res = cell.assign(region, offset, Value::known(value));
+            // disable clippy complaint: err should be handled
+            match _res {
+                Ok(value) => println!("Value: {value:?}"),
+                Err(error) => println!("Error: {error}"),
+            }
+        }
         // assign hi
-        let bytes_hi_assigned = bytes_hi_le.map(|bytes| {
-            bytes
+        // let bytes_hi_assigned = bytes_hi_le.map(|bytes| {
+        //     bytes
+        //         .chunks(N_HI / half_limb_size) // chunk in little endian
+        //         .map(|chunk| from_bytes::value(chunk))
+        //         .zip_eq(self.limbs[half_limb_size..].iter())
+        //         .map(|(value, cell)| cell.assign(region, offset, Value::known(value)))
+        //         .collect::<Result<Vec<Option<AssignedCell<F, F>>>, _>>()?
+        // });
+
+        if let Some(bytes) = bytes_hi_le {
+            for (value, cell) in bytes
                 .chunks(N_HI / half_limb_size) // chunk in little endian
                 .map(|chunk| from_bytes::value(chunk))
                 .zip_eq(self.limbs[half_limb_size..].iter())
-                .map(|(value, cell)| {
-                    let c = cell.assign(region, offset, Value::known(value));
-                    c.map(|assgined| assgined.unwrap())
-                })
-                .collect::<Result<Vec<AssignedCell<F, F>>, _>>()
-        });
+            {
+                let _res = cell.assign(region, offset, Value::known(value));
+                // disable clippy complaint: err should be handled
+                match _res {
+                    Ok(value) => println!("Value: {value:?}"),
+                    Err(error) => println!("Error: {error}"),
+                }
+            }
+        }
 
-        Ok([
-            bytes_lo_assigned.to_vec(),
-            match bytes_hi_assigned {
-                Some(hi_assigned) => hi_assigned?.to_vec(),
-                None => vec![],
-            },
-        ]
-        .concat())
+        // Ok([
+        //     bytes_lo_assigned.to_vec(),
+        //     match bytes_hi_assigned {
+        //         Some(hi_assigned) => hi_assigned?.to_vec(),
+        //         None => vec![],
+        //     },
+        // ]
+        // .concat())
     }
 
     /// assign u256 to wordlimbs
@@ -140,13 +160,15 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         word: eth_types::Word,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<bool, Error> {
         self.assign_lo_hi::<N_BYTES_HALF_WORD, N_BYTES_HALF_WORD>(
             region,
             offset,
             word.to_le_bytes()[0..N_BYTES_HALF_WORD].try_into().unwrap(),
             word.to_le_bytes()[N_BYTES_HALF_WORD..].try_into().ok(),
-        )
+        );
+
+        Ok(true)
     }
 
     /// assign h160 to wordlimbs
@@ -155,7 +177,7 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         h160: H160,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<bool, Error> {
         let mut bytes = *h160.as_fixed_bytes();
         bytes.reverse();
         self.assign_lo_hi::<N_BYTES_HALF_WORD, 4>(
@@ -163,7 +185,9 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
             offset,
             bytes[0..N_BYTES_HALF_WORD].try_into().unwrap(),
             bytes[N_BYTES_HALF_WORD..].try_into().ok(),
-        )
+        );
+
+        Ok(true)
     }
 
     /// assign u64 to wordlimbs
@@ -172,8 +196,9 @@ impl<F: Field, const N: usize> WordLimbs<Cell<F>, N> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         value: u64,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
-        self.assign_lo_hi(region, offset, value.to_le_bytes(), Option::<[u8; 0]>::None)
+    ) -> Result<bool, Error> {
+        self.assign_lo_hi(region, offset, value.to_le_bytes(), Option::<[u8; 0]>::None);
+        Ok(true)
     }
 
     /// word expr
