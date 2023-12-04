@@ -1019,7 +1019,6 @@ impl<F: Field> BytecodeCircuit<F> {
 
     /// Creates bytecode circuit from block and bytecode_size.
     pub fn new_from_block_sized(block: &witness::Block<F>, bytecode_size: usize) -> Self {
-        println!("new_from_block_sized");
         let bytecodes: Vec<UnrolledBytecode<F>> = block
             .bytecodes
             .iter()
@@ -1072,12 +1071,6 @@ impl<F: Field> SubCircuit<F> for BytecodeCircuit<F> {
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
         config.load_aux_tables(layouter)?;
-        println!(
-            "BytecodeCircuit  self.size {}
-        ",
-            self.size
-        );
-
         config.assign_internal(
             layouter,
             self.size,
