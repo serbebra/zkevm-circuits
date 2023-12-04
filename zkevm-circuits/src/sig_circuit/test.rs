@@ -1,10 +1,15 @@
+use std::marker::PhantomData;
+
 use eth_types::{
     sign_types::{sign, SignData},
     Field,
 };
-use halo2_base::gates::{
-    circuit::builder::{BaseCircuitBuilder, RangeCircuitBuilder},
-    GateChip,
+use halo2_base::{
+    gates::{circuit::builder::RangeCircuitBuilder, GateChip},
+    utils::{
+        fs::gen_srs,
+        testing::{check_proof, gen_proof},
+    },
 };
 use halo2_proofs::{
     arithmetic::Field as HaloField,
@@ -14,20 +19,10 @@ use halo2_proofs::{
         group::Curve,
         secp256k1::{self, Secp256k1Affine},
     },
-    plonk::{keygen_pk, keygen_vk, verify_proof},
-    poly::{
-        commitment::ParamsProver,
-        kzg::{commitment::ParamsKZG, multiopen::VerifierSHPLONK, strategy::AccumulatorStrategy},
-        VerificationStrategy,
-    },
+    plonk::{keygen_pk, keygen_vk},
+    poly::kzg::commitment::ParamsKZG,
 };
 use rand::{Rng, RngCore};
-use rand_chacha::rand_core::OsRng;
-use snark_verifier_sdk::{
-    halo2::{gen_proof, gen_proof_shplonk, PoseidonTranscript, POSEIDON_SPEC},
-    NativeLoader,
-};
-use std::{borrow::BorrowMut, marker::PhantomData};
 
 use crate::sig_circuit::SigCircuit;
 
@@ -169,13 +164,14 @@ fn test_edge_cases() {
 
 #[test]
 fn sign_verify() {
-    use super::utils::LOG_TOTAL_NUM_ROWS;
-    use crate::sig_circuit::utils::MAX_NUM_SIG;
+    // use super::utils::LOG_TOTAL_NUM_ROWS;
+    // use crate::sig_circuit::utils::MAX_NUM_SIG;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use sha3::{Digest, Keccak256};
     let mut rng = XorShiftRng::seed_from_u64(1);
 
+    let params = gen_srs(24 as u32);
     // msg_hash == 0
     {
         log::debug!("testing for msg_hash = 0");
@@ -192,9 +188,7 @@ fn sign_verify() {
             msg_hash,
         });
 
-        let k = LOG_TOTAL_NUM_ROWS as u32;
-        run::<Fr>(k, 1, signatures);
-
+        run_real_prover(&params, 1, signatures);
         log::debug!("end of testing for msg_hash = 0");
     }
     // msg_hash == 1
@@ -213,8 +207,7 @@ fn sign_verify() {
             msg_hash,
         });
 
-        let k = LOG_TOTAL_NUM_ROWS as u32;
-        run::<Fr>(k, 1, signatures);
+        run_real_prover(&params, 1, signatures);
         log::debug!("end of testing for msg_hash = 1");
     }
     // random msg_hash
@@ -241,8 +234,7 @@ fn sign_verify() {
             });
         }
 
-        let k = LOG_TOTAL_NUM_ROWS as u32;
-        run::<Fr>(k, *max_sig, signatures);
+        run_real_prover(&params, 1, signatures);
 
         log::debug!("end of testing for {} signatures", max_sig);
     }
@@ -285,48 +277,30 @@ fn sign_with_rng(
 fn run<F: Field>(k: u32, max_verif: usize, signatures: Vec<SignData>) {
     // SignVerifyChip -> ECDSAChip -> MainGate instance column
     let circuit = SigCircuit::<Fr> {
-        phase_1_builder: RangeCircuitBuilder::new(false).into(),
-        // phase_2_builder: BaseCircuitBuilder::new(false).into(),
+        two_phase_builder: RangeCircuitBuilder::new(false).into(),
         gate_chip: GateChip::new(),
         max_verif,
         signatures,
         _marker: PhantomData,
     };
-    // println!("break points set 1");
-    // let break_points = circuit.builder.borrow().break_points();
-    // println!("break points set 2");
-    // circuit.builder.borrow_mut().set_break_points(break_points);
-    // println!("break points set 3");
-
-    // let proof = gen_proof_shplonk(params, &pk, circuit, vec![], &mut rng, None);
-    // // let mut transcript_read =
-    // //     PoseidonTranscript::<NativeLoader, _>::from_spec(proof, POSEIDON_SPEC.clone());
-
-    // let mut transcript_read =
-    //     PoseidonTranscript::<NativeLoader, &[u8]>::from_spec(&proof[..], POSEIDON_SPEC.clone());
-    // assert!(VerificationStrategy::<_, VerifierSHPLONK<Bn256>>::finalize(
-    //     verify_proof::<_, VerifierSHPLONK<Bn256>, _, _, _>(
-    //         params.verifier_params(),
-    //         pk.get_vk(),
-    //         AccumulatorStrategy::new(params.verifier_params()),
-    //         &[],
-    //         &mut transcript_read,
-    //     )
-    //     .unwrap(),
-    // ));
-    // // let mut transcript_read = PoseidonTranscript::<NativeLoader,
-    // // &[u8]>::new::<3>(proof.as_slice());
-    // assert!(verify_proof::<_, VerifierSHPLONK<Bn256>, _, _, _>(
-    //     params,
-    //     &vk,
-    //     AccumulatorStrategy::new(params.verifier_params()),
-    //     &[],
-    //     &mut transcript_read
-    // )
-    // .is_ok())
     let prover = match MockProver::run(k, &circuit, vec![]) {
         Ok(prover) => prover,
         Err(e) => panic!("{e:#?}"),
     };
     assert_eq!(prover.verify(), Ok(()));
+}
+
+fn run_real_prover(params: &ParamsKZG<Bn256>, max_verif: usize, signatures: Vec<SignData>) {
+    // SignVerifyChip -> ECDSAChip -> MainGate instance column
+    let circuit = SigCircuit::<Fr> {
+        two_phase_builder: RangeCircuitBuilder::new(false).into(),
+        gate_chip: GateChip::new(),
+        max_verif,
+        signatures,
+        _marker: PhantomData,
+    };
+    let vk = keygen_vk(params, &circuit).unwrap();
+    let pk = keygen_pk(params, vk.clone(), &circuit).unwrap();
+    let proof = gen_proof(params, &pk, circuit);
+    check_proof(params, &vk, &proof, true);
 }

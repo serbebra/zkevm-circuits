@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    config::{SigCircuitConfig, SigCircuitConfigArgs},
+    *,
+};
 
 use crate::util::Challenges;
 
