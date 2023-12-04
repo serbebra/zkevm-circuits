@@ -12,7 +12,11 @@ use crate::{
 };
 use core::fmt::Debug;
 use eth_types::{
-    evm_types::{gas_utils::tx_data_gas_cost, GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED},
+    evm_types::{
+        gas_utils::{tx_access_list_gas_cost, tx_data_gas_cost},
+        GasCost, MAX_REFUND_QUOTIENT_OF_GAS_USED,
+    },
+    geth_types::access_list_size,
     Bytecode, ToWord, Word,
 };
 use ethers_core::utils::get_contract_address;
@@ -39,10 +43,12 @@ impl TxExecSteps for BeginEndTx {
 
 pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_begin_tx_step();
+
+    // Add two copy-events for tx access-list addresses and storage keys if EIP-2930.
+    gen_tx_eip2930_ops(state, &mut exec_step)?;
+
     let call = state.call()?.clone();
-
     let caller_address = call.caller_address;
-
     if state.tx.tx_type.is_l1_msg() {
         // for l1 message, no need to add rw op, but we must check
         // caller for its existent status
@@ -186,13 +192,15 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, 
 
     // Calculate intrinsic gas cost
     let call_data_gas_cost = tx_data_gas_cost(&state.tx.input);
+    let access_list_gas_cost = tx_access_list_gas_cost(&state.tx.access_list);
     let intrinsic_gas_cost = if state.tx.is_create() {
         GasCost::CREATION_TX.as_u64()
     } else {
         GasCost::TX.as_u64()
     } + call_data_gas_cost
+        + access_list_gas_cost
         + init_code_gas_cost;
-    log::trace!("intrinsic_gas_cost {intrinsic_gas_cost}, call_data_gas_cost {call_data_gas_cost}, init_code_gas_cost {init_code_gas_cost}, exec_step.gas_cost {:?}", exec_step.gas_cost);
+    log::trace!("intrinsic_gas_cost {intrinsic_gas_cost}, call_data_gas_cost {call_data_gas_cost}, access_list_gas_cost {access_list_gas_cost}, init_code_gas_cost {init_code_gas_cost}, exec_step.gas_cost {:?}", exec_step.gas_cost);
     exec_step.gas_cost = GasCost(intrinsic_gas_cost);
 
     // Get code_hash of callee account
@@ -228,11 +236,25 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, 
     if state.tx.is_create()
         && ((!account_code_hash_is_empty_or_zero) || !callee_account.nonce.is_zero())
     {
-        unimplemented!(
-            "deployment collision at {:?}, account {:?}",
-            call.address,
-            callee_account
-        );
+        // since there is a bug in the prestate
+        // tracer: https://github.com/ethereum/go-ethereum/issues/28439
+        // which may also act as the data source for our statedb,
+        // we have to relax the constarint a bit and fix it silently
+        if account_code_hash_is_empty_or_zero && callee_account.nonce == 1.into() {
+            log::warn!(
+                "fix deployment nonce for {:?} silently for the prestate tracer",
+                call.address,
+            );
+            let mut fixed_account = callee_account.clone();
+            fixed_account.nonce = Word::zero();
+            state.sdb.set_account(&call.address, fixed_account);
+        } else {
+            unimplemented!(
+                "deployment collision at {:?}, account {:?}",
+                call.address,
+                callee_account
+            );
+        }
     }
 
     // Transfer with fee
@@ -594,5 +616,58 @@ fn gen_tx_l1_fee_ops(
             fee_scalar_committed,
         ),
     )?;
+    Ok(())
+}
+
+// Add two copy-events for tx access-list addresses and storage keys if EIP-2930.
+fn gen_tx_eip2930_ops(
+    state: &mut CircuitInputStateRef,
+    exec_step: &mut ExecStep,
+) -> Result<(), Error> {
+    if !state.tx.tx_type.is_eip2930_tx() {
+        return Ok(());
+    }
+
+    let tx_id = NumberOrHash::Number(state.tx_ctx.id());
+    let (address_size, storage_key_size) = access_list_size(&state.tx.access_list);
+
+    // Add copy event for access-list addresses.
+    let rw_counter_start = state.block_ctx.rwc;
+    state.push_copy(
+        exec_step,
+        CopyEvent {
+            src_addr: 0,
+            src_addr_end: address_size,
+            src_type: CopyDataType::AccessListAddresses,
+            src_id: tx_id.clone(),
+            dst_addr: 0,
+            dst_type: CopyDataType::AccessListAddresses,
+            dst_id: tx_id.clone(),
+            log_id: None,
+            rw_counter_start,
+            // TODO
+            copy_bytes: CopyBytes::new(vec![], None, None),
+        },
+    );
+
+    // Add copy event for access-list storage keys.
+    let rw_counter_start = state.block_ctx.rwc;
+    state.push_copy(
+        exec_step,
+        CopyEvent {
+            src_addr: 0,
+            src_addr_end: storage_key_size,
+            src_type: CopyDataType::AccessListStorageKeys,
+            src_id: tx_id.clone(),
+            dst_addr: 0,
+            dst_type: CopyDataType::AccessListStorageKeys,
+            dst_id: tx_id,
+            log_id: None,
+            rw_counter_start,
+            // TODO
+            copy_bytes: CopyBytes::new(vec![], None, None),
+        },
+    );
+
     Ok(())
 }
