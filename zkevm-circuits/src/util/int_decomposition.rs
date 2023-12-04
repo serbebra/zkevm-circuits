@@ -33,7 +33,7 @@ impl<F: Field, const N_LIMBS: usize> IntDecomposition<F, N_LIMBS> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         bytes: Option<[u8; N_BYTES]>,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<Vec<Option<AssignedCell<F, F>>>, Error> {
         assert!(N_BYTES >= N_LIMBS);
         if let Some(bytes) = bytes {
             if N_BYTES > N_LIMBS {
@@ -47,8 +47,7 @@ impl<F: Field, const N_LIMBS: usize> IntDecomposition<F, N_LIMBS> {
                 .iter()
                 .zip(bytes.iter())
                 .map(|(cell, byte)| {
-                    let c = cell.assign(region, offset, Value::known(F::from(*byte as u64)));
-                    c.map(|assgined| assgined.unwrap())
+                    cell.assign(region, offset, Value::known(F::from(*byte as u64)))
                 })
                 .collect()
         })
@@ -60,7 +59,7 @@ impl<F: Field, const N_LIMBS: usize> IntDecomposition<F, N_LIMBS> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         h160: H160,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<Vec<Option<AssignedCell<F, F>>>, Error> {
         let mut bytes = *h160.as_fixed_bytes();
         bytes.reverse();
         self.assign(region, offset, Some(bytes))
@@ -72,7 +71,7 @@ impl<F: Field, const N_LIMBS: usize> IntDecomposition<F, N_LIMBS> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         u256: U256,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<Vec<Option<AssignedCell<F, F>>>, Error> {
         self.assign(region, offset, Some(u256.to_le_bytes()))
     }
 
