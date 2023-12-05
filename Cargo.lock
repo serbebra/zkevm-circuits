@@ -2366,16 +2366,15 @@ dependencies = [
 [[package]]
 name = "halo2-gate-generator"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/halo2gategen.git#35b137de2f71c37dfbd236842b868013c46739d1"
+source = "git+https://github.com/scroll-tech/halo2gategen.git?tag=legacy#fd7fc5f62b6c1049e94fa384f51bc3ed5eaadaf2"
 dependencies = [
  "halo2_proofs",
- "lazy_static",
  "num-bigint",
  "rand",
  "serde",
  "serde_json",
- "strum 0.24.1",
- "strum_macros 0.24.3",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "subtle",
 ]
 
@@ -2833,6 +2832,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3082,17 +3090,16 @@ dependencies = [
 [[package]]
 name = "misc-precompiled-circuit"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/misc-precompiled-circuit.git?tag=v0.1.0#f647341f9951f5c2399035728d4f6765564e2e02"
+source = "git+https://github.com/scroll-tech/misc-precompiled-circuit.git?tag=v0.1.0-patch#353bb3fe03d694dda567145738b39d657e977489"
 dependencies = [
  "halo2-gate-generator",
  "halo2_proofs",
- "lazy_static",
  "num-bigint",
  "rand",
  "serde",
  "serde_json",
- "strum 0.24.1",
- "strum_macros 0.24.3",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "subtle",
 ]
 
@@ -4688,15 +4695,14 @@ dependencies = [
 [[package]]
 name = "snark-verifier"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5#bc1d39ae31f3fe520c51dd150f0fefaf9653c465"
+source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5-patch#0dc14c26122435e1d737e780fde09b06107bc076"
 dependencies = [
  "bytes",
  "ethereum-types",
  "halo2-base",
  "halo2-ecc",
  "hex",
- "itertools 0.10.5",
- "lazy_static",
+ "itertools 0.12.0",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -4712,15 +4718,14 @@ dependencies = [
 [[package]]
 name = "snark-verifier-sdk"
 version = "0.0.1"
-source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5#bc1d39ae31f3fe520c51dd150f0fefaf9653c465"
+source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5-patch#0dc14c26122435e1d737e780fde09b06107bc076"
 dependencies = [
  "bincode",
  "env_logger",
  "ethereum-types",
  "halo2-base",
  "hex",
- "itertools 0.10.5",
- "lazy_static",
+ "itertools 0.12.0",
  "log",
  "num-bigint",
  "num-integer",

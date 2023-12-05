@@ -1346,7 +1346,7 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call = self.call()?.clone();
         let geth_step = steps
-            .get(0)
+            .first()
             .ok_or(Error::InternalError("invalid index 0"))?;
         let is_err = exec_step.error.is_some();
         let is_return_revert_succ = (geth_step.op == OpcodeId::REVERT

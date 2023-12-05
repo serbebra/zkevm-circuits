@@ -473,7 +473,6 @@ fn test_invalid_ec_add() {
         })
     };
     let ec_adds = (0..50)
-        .into_iter()
         .map(|_| {
             let px = u256_max - (rng.next_u64() % 1024);
             let x = Fq::from_raw(px.0);
@@ -503,7 +502,6 @@ fn test_invalid_ec_add() {
     // 2. p is on g1 but p.x[i] is close to Fq::MODULUS.limbs[i] and p.y < p
     //   and q is generator
     let ec_adds = (0..50)
-        .into_iter()
         .map(|_| {
             let fq_limbs: [u64; 4] = [
                 0x3c208c16d87cfd47,

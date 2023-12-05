@@ -153,7 +153,7 @@ impl<F: Field, const N: usize, const IS_BYTE: bool> ByteOrBitSizeGadget<F, N, IS
                 region,
                 offset,
                 Value::known(
-                    F::from(u64::try_from(most_significant_nonzero_value).unwrap())
+                    F::from(u64::from(most_significant_nonzero_value))
                         .invert()
                         .unwrap(),
                 ),

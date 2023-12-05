@@ -313,7 +313,6 @@ impl TxTable {
                 let mut calldata_assignments: Vec<[Value<F>; 4]> = Vec::new();
                 // Assign Tx data (all tx fields except for calldata)
                 let padding_txs = (txs.len()..max_txs)
-                    .into_iter()
                     .map(|tx_id| {
                         let mut padding_tx = Transaction::dummy(chain_id);
                         padding_tx.id = tx_id + 1;
@@ -1147,7 +1146,7 @@ impl BytecodeTable {
     }
 
     /// A sub-table of bytecode without is_code nor push_rlc.
-    fn columns_mini<F: Field>(&self) -> Vec<Column<Any>> {
+    fn columns_mini(&self) -> Vec<Column<Any>> {
         vec![
             self.q_enable.into(),
             self.code_hash.into(),
@@ -1159,7 +1158,7 @@ impl BytecodeTable {
 
     /// The expressions of the sub-table of bytecode without is_code nor push_rlc.
     pub fn table_exprs_mini<F: Field>(&self, meta: &mut VirtualCells<F>) -> Vec<Expression<F>> {
-        self.columns_mini::<F>()
+        self.columns_mini()
             .iter()
             .map(|&column| meta.query_any(column, Rotation::cur()))
             .collect()
@@ -1731,7 +1730,7 @@ impl CopyTable {
             .copy_bytes
             .bytes_write_prev
             .clone()
-            .unwrap_or(vec![]);
+            .unwrap_or_default();
 
         let mut rw_counter = copy_event.rw_counter_start();
         let mut rwc_inc_left = copy_event.rw_counter_delta();
@@ -2457,15 +2456,14 @@ impl<F: Field> LookupTable<F> for SigTable {
     }
 }
 
-/// 1. if EcAdd(P, Q) == R then:
-///     (arg1_rlc, arg2_rlc, arg3_rlc, arg4_rlc) \mapsto (output1_rlc, output2_rlc).
+/// 1. if EcAdd(P, Q) == R then: (arg1_rlc, arg2_rlc, arg3_rlc, arg4_rlc) \mapsto (output1_rlc,
+///    output2_rlc).
 ///
 ///     where arg1_rlc = rlc(P.x), arg2_rlc = rlc(P.y),
 ///           arg3_rlc = rlc(Q.x), arg4_rlc = rlc(Q.x),
 ///           output1_rlc = rlc(R.x), output2_rlc = rlc(R.y),
 ///
-/// 2. if EcMul(P, s) == R then:
-///     (arg1_rlc, arg2_rlc, arg3_rlc) \mapsto (output1_rlc, output2_rlc).
+/// 2. if EcMul(P, s) == R then: (arg1_rlc, arg2_rlc, arg3_rlc) \mapsto (output1_rlc, output2_rlc).
 ///
 ///     where arg1_rlc = rlc(P.x), arg2_rlc = rlc(P.y),
 ///           arg3_rlc = s
@@ -2779,7 +2777,7 @@ impl ModExpTable {
 
                     for i in 0..3 {
                         for (limbs, &col) in [base_limbs, exp_limbs, modulus_limbs, result_limbs]
-.into_iter()
+                            .into_iter()
                             .zip([&self.base, &self.exp, &self.modulus, &self.result])
                         {
                             region.assign_advice(
@@ -2792,13 +2790,10 @@ impl ModExpTable {
                     }
 
                     // native is not used by lookup (and in fact it can be omitted in dev)
-                    for (word, &col) in [
-                        &event.base,
-                        &event.exponent,
-                        &event.modulus,
-                        &event.result,
-                    ].into_iter()
-                    .zip([&self.base, &self.exp, &self.modulus, &self.result])
+                    for (word, &col) in
+                        [&event.base, &event.exponent, &event.modulus, &event.result]
+                            .into_iter()
+                            .zip([&self.base, &self.exp, &self.modulus, &self.result])
                     {
                         region.assign_advice(
                             || format!("modexp table native row {}", offset + 3),

@@ -595,7 +595,7 @@ mod test {
         let salt = Word::from(0xbeefcafedeadu64);
         let code = [1, 2, 3, 4, 5, 6, 7, 8];
         let code_hash = Word::from(CodeDB::hash(&code).to_fixed_bytes());
-        let keccak_code_hash = Word::from(keccak256(&code));
+        let keccak_code_hash = Word::from(keccak256(code));
         try_test!(
             ContractCreateGadgetContainer<Fr, true>,
             [

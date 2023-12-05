@@ -1099,7 +1099,7 @@ impl<F: Field> ExecutionConfig<F> {
             .txs
             .last()
             .map(|tx| tx.calls[0].clone())
-            .unwrap_or_else(Call::default);
+            .unwrap_or_default();
         let end_block_not_last = &block.end_block_not_last;
         let end_block_last = &block.end_block_last;
 
@@ -1111,8 +1111,7 @@ impl<F: Field> ExecutionConfig<F> {
             offset: usize,
         }
         let total_step_num = block.txs.iter().map(|t| t.steps.len()).sum::<usize>();
-        let mut step_assignments: Vec<StepAssignment> = Vec::new();
-        step_assignments.reserve(total_step_num);
+        let mut step_assignments: Vec<StepAssignment> = Vec::with_capacity(total_step_num);
 
         // the "global offset"
         let mut offset = 0;

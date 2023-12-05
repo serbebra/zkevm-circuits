@@ -471,8 +471,7 @@ pub fn block_convert<F: Field>(
     let last_block_num = block
         .headers
         .iter()
-        .rev()
-        .next()
+        .next_back()
         .map(|(k, _)| *k)
         .unwrap_or_default();
     let chain_id = block.chain_id();
