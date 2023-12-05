@@ -394,7 +394,7 @@ pub(crate) mod cached {
     lazy_static! {
         /// Cached values of the ConstraintSystem after the EVM Circuit configuration and the EVM
         /// Circuit configuration.  These values are calculated just once.
-        static ref CACHE: Cache = {
+        static CACHE: Cache = {
             let mut meta = ConstraintSystem::<Fr>::default();
             let config = EvmCircuit::<Fr>::configure(&mut meta);
             Cache { cs: meta, config }

@@ -118,16 +118,8 @@ mod tests {
             [Word::from(0), Word::from(1)],
             true,
         );
-        try_test!(
-            LtWordTestContainer<Fr>,
-            [Word::from(1), Word::MAX],
-            true,
-        );
-        try_test!(
-            LtWordTestContainer<Fr>,
-            [WORD_LOW_MAX, WORD_HIGH_MAX],
-            true,
-        );
+        try_test!(LtWordTestContainer<Fr>, [Word::from(1), Word::MAX], true,);
+        try_test!(LtWordTestContainer<Fr>, [WORD_LOW_MAX, WORD_HIGH_MAX], true,);
         try_test!(
             LtWordTestContainer<Fr>,
             [Word::from(90), WORD_LOW_MAX],

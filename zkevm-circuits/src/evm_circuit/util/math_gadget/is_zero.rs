@@ -123,10 +123,6 @@ mod tests {
 
     #[test]
     fn test_large_num_is_not_zero() {
-        try_test!(
-            IsZeroGadgetTestContainer<Fr>,
-            [Word::from(10000)],
-            false,
-        );
+        try_test!(IsZeroGadgetTestContainer<Fr>, [Word::from(10000)], false,);
     }
 }

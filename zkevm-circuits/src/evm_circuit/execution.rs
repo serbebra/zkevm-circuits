@@ -40,6 +40,7 @@ use itertools::Itertools;
 use std::{
     collections::{BTreeSet, HashMap},
     iter,
+    sync::LazyLock,
 };
 
 #[cfg(feature = "onephase")]
@@ -52,10 +53,8 @@ use halo2_proofs::plonk::SecondPhase;
 use halo2_proofs::plonk::ThirdPhase;
 
 use strum::{EnumCount, IntoEnumIterator};
-
-use once_cell::sync::Lazy;
-pub(crate) static CHECK_RW_LOOKUP: Lazy<bool> =
-    Lazy::new(|| read_env_var("CHECK_RW_LOOKUP", false));
+pub(crate) static CHECK_RW_LOOKUP: LazyLock<bool> =
+    LazyLock::new(|| read_env_var("CHECK_RW_LOOKUP", false));
 
 mod add_sub;
 mod addmod;
