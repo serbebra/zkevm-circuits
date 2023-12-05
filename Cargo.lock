@@ -48,7 +48,7 @@ dependencies = [
  "ethers-core 2.0.7",
  "halo2_proofs",
  "hex",
- "itertools",
+ "itertools 0.11.0",
  "log",
  "rand",
  "serde",
@@ -147,7 +147,7 @@ dependencies = [
  "ark-std 0.4.0",
  "derivative",
  "digest 0.10.7",
- "itertools",
+ "itertools 0.10.5",
  "num-bigint",
  "num-traits",
  "paste",
@@ -493,8 +493,7 @@ dependencies = [
  "gadgets",
  "halo2_proofs",
  "hex",
- "itertools",
- "keccak256",
+ "itertools 0.11.0",
  "lazy_static",
  "log",
  "mock",
@@ -507,8 +506,8 @@ dependencies = [
  "revm-precompile",
  "serde",
  "serde_json",
- "strum 0.24.1",
- "strum_macros 0.24.3",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "tokio",
  "url",
 ]
@@ -655,7 +654,7 @@ dependencies = [
  "ethers",
  "ethers-signers",
  "halo2_proofs",
- "itertools",
+ "itertools 0.11.0",
  "keccak256",
  "log",
  "mock",
@@ -942,7 +941,7 @@ dependencies = [
  "clap 2.34.0",
  "criterion-plot",
  "csv",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -964,7 +963,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2673cc8207403546f45f5fd319a974b1e6983ad1a3ee7e6041650013be041876"
 dependencies = [
  "cast",
- "itertools",
+ "itertools 0.10.5",
 ]
 
 [[package]]
@@ -1470,9 +1469,6 @@ dependencies = [
  "quote",
  "syn 2.0.39",
 ]
-
-[[package]]
-name = "env_logger"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95b3f3e67048839cb0d0781f445682a35113da7121f7c949db0e2be96a4fbece"
@@ -1531,7 +1527,7 @@ dependencies = [
  "halo2-base",
  "halo2_proofs",
  "hex",
- "itertools",
+ "itertools 0.11.0",
  "lazy_static",
  "num",
  "num-bigint",
@@ -1542,8 +1538,8 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3 0.10.8",
- "strum 0.24.1",
- "strum_macros 0.24.3",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "subtle",
  "uint",
 ]
@@ -2218,7 +2214,7 @@ dependencies = [
  "rand",
  "rand_xorshift",
  "sha3 0.10.8",
- "strum 0.24.1",
+ "strum 0.25.0",
 ]
 
 [[package]]
@@ -2370,7 +2366,7 @@ source = "git+https://github.com/scroll-tech/halo2-lib?branch=develop#b7c53bb745
 dependencies = [
  "ff 0.13.0",
  "halo2_proofs",
- "itertools",
+ "itertools 0.10.5",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -2386,7 +2382,7 @@ dependencies = [
  "ff 0.13.0",
  "group 0.13.0",
  "halo2-base",
- "itertools",
+ "itertools 0.10.5",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -2422,7 +2418,7 @@ dependencies = [
  "ethers-core 2.0.10",
  "halo2_proofs",
  "hex",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "log",
  "num-bigint",
@@ -2438,15 +2434,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "halo2_gadgets"
+version = "0.2.0"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#5b9a3d71a325a9ecbad164aba90a7f6a8550a015"
+dependencies = [
+ "arrayvec",
+ "bitvec",
+ "ff 0.12.1",
+ "group 0.12.1",
+ "halo2_proofs",
+ "halo2curves",
+ "lazy_static",
+ "rand",
+ "subtle",
+ "uint",
+]
+
+[[package]]
 name = "halo2_proofs"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=v1.0#44dbed4515984bbc14cb8283e273794b03c28afa"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#5b9a3d71a325a9ecbad164aba90a7f6a8550a015"
 dependencies = [
  "ark-std 0.3.0",
  "blake2b_simd",
  "cfg-if 0.1.10",
  "crossbeam",
- "ff 0.13.0",
  "group 0.13.0",
  "halo2curves",
  "log",
@@ -2813,7 +2825,7 @@ dependencies = [
  "rand_xorshift",
  "serde",
  "serde_json",
- "strum 0.24.1",
+ "strum 0.25.0",
  "tokio",
  "url",
  "zkevm-circuits",
@@ -2841,6 +2853,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
 dependencies = [
  "either",
 ]
@@ -2909,7 +2930,7 @@ dependencies = [
  "env_logger",
  "eth-types",
  "halo2_proofs",
- "itertools",
+ "itertools 0.11.0",
  "lazy_static",
  "log",
  "num-bigint",
@@ -2930,7 +2951,7 @@ dependencies = [
  "diff",
  "ena",
  "is-terminal",
- "itertools",
+ "itertools 0.10.5",
  "lalrpop-util",
  "petgraph",
  "regex",
@@ -3106,8 +3127,8 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
- "strum 0.25.0",
- "strum_macros 0.25.3",
+ "strum 0.24.1",
+ "strum_macros 0.24.3",
  "subtle",
 ]
 
@@ -3119,7 +3140,7 @@ dependencies = [
  "ethers-core 2.0.7",
  "ethers-signers",
  "external-tracer",
- "itertools",
+ "itertools 0.11.0",
  "lazy_static",
  "log",
  "rand",
@@ -3896,7 +3917,7 @@ dependencies = [
  "git-version",
  "halo2_proofs",
  "hex",
- "itertools",
+ "itertools 0.11.0",
  "log",
  "log4rs",
  "mpt-zktrie",
@@ -4759,7 +4780,7 @@ dependencies = [
  "halo2-base",
  "halo2-ecc",
  "hex",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "num-bigint",
  "num-integer",
@@ -4779,11 +4800,12 @@ version = "0.0.1"
 source = "git+https://github.com/scroll-tech/snark-verifier?branch=develop#12c1121a855564936a267b37bc9c27306de3eb3b"
 dependencies = [
  "bincode",
+ "env_logger",
  "ethereum-types",
  "ff 0.13.0",
  "halo2-base",
  "hex",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "log",
  "num-bigint",
@@ -4822,7 +4844,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a94494913728908efa7a25a2dd2e4f037e714897985c24273c40596638ed909"
 dependencies = [
- "itertools",
+ "itertools 0.10.5",
  "lalrpop",
  "lalrpop-util",
  "phf",
@@ -4915,6 +4937,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+
+[[package]]
 name = "strum_macros"
 version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4937,7 +4965,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.39",
+ "syn 2.0.32",
 ]
 
 [[package]]
@@ -5089,7 +5117,7 @@ dependencies = [
  "halo2_proofs",
  "handlebars",
  "hex",
- "itertools",
+ "itertools 0.11.0",
  "keccak256",
  "log",
  "mock",
@@ -5102,8 +5130,8 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "strum 0.24.1",
- "strum_macros 0.24.3",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "thiserror",
  "toml 0.5.11",
  "urlencoding",
@@ -5928,9 +5956,10 @@ dependencies = [
  "gadgets",
  "halo2-base",
  "halo2-ecc",
+ "halo2_gadgets",
  "halo2_proofs",
  "hex",
- "itertools",
+ "itertools 0.11.0",
  "keccak256",
  "lazy_static",
  "log",
@@ -5952,15 +5981,15 @@ dependencies = [
  "sha3 0.10.8",
  "snark-verifier",
  "snark-verifier-sdk",
- "strum 0.24.1",
- "strum_macros 0.24.3",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "subtle",
 ]
 
 [[package]]
 name = "zktrie"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/zktrie.git?tag=v0.7.1#a12f2f262ad3e82301e39ecdf9bfe235befc7074"
+source = "git+https://github.com/scroll-tech/zktrie.git?branch=v0.7#e5071cbd7097c7b65916654d581a510fff9d285c"
 dependencies = [
  "gobuild",
 ]
