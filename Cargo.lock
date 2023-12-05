@@ -4686,7 +4686,7 @@ dependencies = [
 [[package]]
 name = "snark-verifier"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5-patch#0dc14c26122435e1d737e780fde09b06107bc076"
+source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5-patch#56347f66cea84d8365ff6bbfdb124c794de9499b"
 dependencies = [
  "bytes",
  "ethereum-types",
@@ -4709,7 +4709,7 @@ dependencies = [
 [[package]]
 name = "snark-verifier-sdk"
 version = "0.0.1"
-source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5-patch#0dc14c26122435e1d737e780fde09b06107bc076"
+source = "git+https://github.com/scroll-tech/snark-verifier?tag=v0.1.5-patch#56347f66cea84d8365ff6bbfdb124c794de9499b"
 dependencies = [
  "bincode",
  "env_logger",

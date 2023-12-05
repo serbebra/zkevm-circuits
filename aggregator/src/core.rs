@@ -20,7 +20,7 @@ use snark_verifier::{
     Error,
 };
 use snark_verifier_sdk::{
-    types::{get_poseidon_spec, PoseidonTranscript, Shplonk},
+    types::{PoseidonTranscript, Shplonk, POSEIDON_SPEC},
     Snark,
 };
 use zkevm_circuits::{
@@ -55,7 +55,7 @@ pub(crate) fn extract_accumulators_and_proof(
     let svk = params.get_g()[0].into();
 
     let mut transcript_read =
-        PoseidonTranscript::<NativeLoader, &[u8]>::from_spec(&[], get_poseidon_spec().clone());
+        PoseidonTranscript::<NativeLoader, &[u8]>::from_spec(&[], POSEIDON_SPEC.clone());
     let accumulators = snarks
         .iter()
         .flat_map(|snark| {
@@ -89,7 +89,7 @@ pub(crate) fn extract_accumulators_and_proof(
     }
 
     let mut transcript_write =
-        PoseidonTranscript::<NativeLoader, Vec<u8>>::from_spec(vec![], get_poseidon_spec().clone());
+        PoseidonTranscript::<NativeLoader, Vec<u8>>::from_spec(vec![], POSEIDON_SPEC.clone());
     // We always use SHPLONK for accumulation scheme when aggregating proofs
     let accumulator =
         // core step
