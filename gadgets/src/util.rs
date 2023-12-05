@@ -225,7 +225,7 @@ pub fn expr_from_u16<F: Field, E: Expr<F>>(u16s: &[E]) -> Expression<F> {
 
 /// Returns 2**by as Field
 pub fn pow_of_two<F: Field>(by: usize) -> F {
-    F::from(2).pow(&[by as u64, 0, 0, 0])
+    F::from(2).pow([by as u64, 0, 0, 0])
 }
 
 /// Returns tuple consists of low and high part of U256
