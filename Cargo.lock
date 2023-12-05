@@ -2361,7 +2361,7 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=v1.0#8deec9924f598c85eb5ec1044199c78ef455c866"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=v1.0#04d8dc09bd4df542feccac85e34dff4b38a467d3"
 dependencies = [
  "arrayvec",
  "bitvec",
@@ -2378,7 +2378,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=v1.0#8deec9924f598c85eb5ec1044199c78ef455c866"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=v1.0#04d8dc09bd4df542feccac85e34dff4b38a467d3"
 dependencies = [
  "ark-std 0.3.0",
  "blake2b_simd",

@@ -1,5 +1,5 @@
-use std::marker::ConstParamTy;
 use bus_mapping::precompile::PrecompileAuxData;
+use std::marker::ConstParamTy;
 
 use eth_types::{Field, ToScalar};
 use gadgets::util::{select, Expr};
