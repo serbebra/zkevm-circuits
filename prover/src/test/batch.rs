@@ -6,9 +6,9 @@ use crate::{
     utils::read_env_var,
     ChunkHash, ChunkProof,
 };
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-static mut BATCH_PROVER: Lazy<Prover> = Lazy::new(|| {
+static mut BATCH_PROVER: LazyLock<Prover> = LazyLock::new(|| {
     let assets_dir = read_env_var("SCROLL_PROVER_ASSETS_DIR", "./test_assets".to_string());
     let params_dir = read_env_var("SCROLL_PROVER_PARAMS_DIR", "./test_params".to_string());
 
@@ -18,7 +18,7 @@ static mut BATCH_PROVER: Lazy<Prover> = Lazy::new(|| {
     prover
 });
 
-static mut BATCH_VERIFIER: Lazy<Verifier> = Lazy::new(|| {
+static mut BATCH_VERIFIER: LazyLock<Verifier> = LazyLock::new(|| {
     let assets_dir = read_env_var("SCROLL_PROVER_ASSETS_DIR", "./test_assets".to_string());
 
     let prover = unsafe { &mut BATCH_PROVER };

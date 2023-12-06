@@ -5,9 +5,9 @@ use crate::{
     zkevm::circuit::{SuperCircuit, TargetCircuit},
     WitnessBlock,
 };
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-static mut INNER_PROVER: Lazy<Prover> = Lazy::new(|| {
+static mut INNER_PROVER: LazyLock<Prover> = LazyLock::new(|| {
     let params_dir = read_env_var("SCROLL_PROVER_PARAMS_DIR", "./test_params".to_string());
     let prover = Prover::from_params_dir(&params_dir, &[*INNER_DEGREE]);
     log::info!("Constructed inner-prover");
@@ -15,8 +15,8 @@ static mut INNER_PROVER: Lazy<Prover> = Lazy::new(|| {
     prover
 });
 
-static mut INNER_VERIFIER: Lazy<Verifier<<SuperCircuit as TargetCircuit>::Inner>> =
-    Lazy::new(|| {
+static mut INNER_VERIFIER: LazyLock<Verifier<<SuperCircuit as TargetCircuit>::Inner>> =
+    LazyLock::new(|| {
         let prover = unsafe { &mut INNER_PROVER };
         let params = prover.params(*INNER_DEGREE).clone();
 

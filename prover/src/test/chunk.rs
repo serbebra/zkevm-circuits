@@ -4,10 +4,9 @@ use crate::{
     utils::read_env_var,
     ChunkHash, ChunkProof, CompressionCircuit, WitnessBlock,
 };
-use once_cell::sync::Lazy;
-use std::env;
+use std::{env, sync::LazyLock};
 
-static mut CHUNK_PROVER: Lazy<Prover> = Lazy::new(|| {
+static mut CHUNK_PROVER: LazyLock<Prover> = LazyLock::new(|| {
     let params_dir = read_env_var("SCROLL_PROVER_PARAMS_DIR", "./test_params".to_string());
     let prover = Prover::from_params_dir(&params_dir, &ZKEVM_DEGREES);
     log::info!("Constructed chunk-prover");
@@ -15,7 +14,7 @@ static mut CHUNK_PROVER: Lazy<Prover> = Lazy::new(|| {
     prover
 });
 
-static mut CHUNK_VERIFIER: Lazy<Verifier<CompressionCircuit>> = Lazy::new(|| {
+static mut CHUNK_VERIFIER: LazyLock<Verifier<CompressionCircuit>> = LazyLock::new(|| {
     env::set_var("COMPRESSION_CONFIG", LayerId::Layer2.config_path());
 
     let prover = unsafe { &mut CHUNK_PROVER };
