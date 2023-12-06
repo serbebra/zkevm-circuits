@@ -55,7 +55,7 @@ use crate::evm_types::Stack;
 #[cfg(feature = "enable-storage")]
 use crate::evm_types::Storage;
 
-/// Trait used to reduce verbosity with the declaration of the [`FieldExt`]
+/// Trait used to reduce verbosity with the declaration of the [`Field`]
 /// trait and its repr.
 pub trait Field:
     PrimeField<Repr = [u8; 32]> + hash_circuit::hash::Hashable + std::convert::From<Fr> + ScalarField
