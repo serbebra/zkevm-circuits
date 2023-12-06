@@ -226,93 +226,93 @@ fn test_field_ops() {
         prover.assert_satisfied();
     }
 
-    // {
-    //     let circuit = ArithTestCircuit {
-    //         f1,
-    //         f2,
-    //         f3: Fr::zero(),
-    //         f4,
-    //         f5,
-    //         f6,
-    //         f7,
-    //         f8,
-    //     };
-    //     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    //     assert!(prover.verify().is_err());
-    // }
+    {
+        let circuit = ArithTestCircuit {
+            f1,
+            f2,
+            f3: Fr::zero(),
+            f4,
+            f5,
+            f6,
+            f7,
+            f8,
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
 
-    // {
-    //     let circuit = ArithTestCircuit {
-    //         f1,
-    //         f2,
-    //         f3,
-    //         f4: Fr::zero(),
-    //         f5,
-    //         f6,
-    //         f7,
-    //         f8,
-    //     };
-    //     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    //     assert!(prover.verify().is_err());
-    // }
+    {
+        let circuit = ArithTestCircuit {
+            f1,
+            f2,
+            f3,
+            f4: Fr::zero(),
+            f5,
+            f6,
+            f7,
+            f8,
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
 
-    // {
-    //     let circuit = ArithTestCircuit {
-    //         f1,
-    //         f2,
-    //         f3,
-    //         f4,
-    //         f5: Fr::zero(),
-    //         f6,
-    //         f7,
-    //         f8,
-    //     };
-    //     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    //     assert!(prover.verify().is_err());
-    // }
+    {
+        let circuit = ArithTestCircuit {
+            f1,
+            f2,
+            f3,
+            f4,
+            f5: Fr::zero(),
+            f6,
+            f7,
+            f8,
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
 
-    // {
-    //     let circuit = ArithTestCircuit {
-    //         f1,
-    //         f2,
-    //         f3,
-    //         f4,
-    //         f5,
-    //         f6: Fr::zero(),
-    //         f7,
-    //         f8,
-    //     };
-    //     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    //     assert!(prover.verify().is_err());
-    // }
+    {
+        let circuit = ArithTestCircuit {
+            f1,
+            f2,
+            f3,
+            f4,
+            f5,
+            f6: Fr::zero(),
+            f7,
+            f8,
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
 
-    // {
-    //     let circuit = ArithTestCircuit {
-    //         f1,
-    //         f2,
-    //         f3,
-    //         f4,
-    //         f5,
-    //         f6,
-    //         f7: Fr::one(),
-    //         f8,
-    //     };
-    //     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    //     assert!(prover.verify().is_err());
-    // }
+    {
+        let circuit = ArithTestCircuit {
+            f1,
+            f2,
+            f3,
+            f4,
+            f5,
+            f6,
+            f7: Fr::one(),
+            f8,
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
 
-    // {
-    //     let circuit = ArithTestCircuit {
-    //         f1,
-    //         f2,
-    //         f3,
-    //         f4,
-    //         f5,
-    //         f6,
-    //         f7,
-    //         f8: Fr::one(),
-    //     };
-    //     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    //     assert!(prover.verify().is_err());
-    // }
+    {
+        let circuit = ArithTestCircuit {
+            f1,
+            f2,
+            f3,
+            f4,
+            f5,
+            f6,
+            f7,
+            f8: Fr::one(),
+        };
+        let prover = MockProver::run(k, &circuit, vec![]).unwrap();
+        assert!(prover.verify().is_err());
+    }
 }
