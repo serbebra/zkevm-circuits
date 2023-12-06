@@ -29,7 +29,6 @@ pub struct UnrolledBytecode<F: Field> {
 pub fn unroll<F: Field>(bytes: Vec<u8>) -> UnrolledBytecode<F> {
     let code_hash = CodeDB::hash(&bytes[..]);
     let code_hash_word = Word::from(code_hash.to_word()).map(Value::known);
-
     unroll_with_codehash(code_hash_word, bytes)
 }
 
