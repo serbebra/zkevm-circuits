@@ -395,8 +395,8 @@ impl CircuitInputBuilder {
                 !existed
             }),
         )
-        .try_fold(
-            HashMap::new(),
+        .fold(
+            Ok(HashMap::new()),
             |m, parsed| -> Result<HashMap<_, _>, Error> {
                 let mut m = m?;
                 let (addr, acc) = parsed.map_err(Error::IoError)?;
@@ -415,8 +415,8 @@ impl CircuitInputBuilder {
                 !existed
             }),
         )
-        .try_fold(
-            HashMap::new(),
+        .fold(
+            Ok(HashMap::new()),
             |m, parsed| -> Result<HashMap<(Address, Word), Word>, Error> {
                 let mut m = m?;
                 let ((addr, key), val) = parsed.map_err(Error::IoError)?;
