@@ -520,10 +520,10 @@ impl<
         push("pi", pi);
         let poseidon = PoseidonCircuit::min_num_rows_block(block);
         push("poseidon", poseidon);
-        // let sig = SigCircuit::min_num_rows_block(block);
-        // push("sig", sig);
-        // let ecc = EccCircuit::<Fr, 9>::min_num_rows_block(block);
-        // push("ecc", ecc);
+        let sig = SigCircuit::min_num_rows_block(block);
+        push("sig", sig);
+        let ecc = EccCircuit::<Fr, 9>::min_num_rows_block(block);
+        push("ecc", ecc);
         #[cfg(feature = "zktrie")]
         {
             let mpt = MptCircuit::<Fr>::min_num_rows_block(block);
