@@ -9,10 +9,7 @@ use std::{
     sync::Once,
 };
 
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    halo2curves::{bn256::Fr, group::ff::PrimeField},
-};
+use halo2_proofs::halo2curves::{bn256::Fr, group::ff::PrimeField};
 use hash_circuit::hash::Hashable;
 
 /// Init hash scheme

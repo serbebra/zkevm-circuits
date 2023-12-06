@@ -285,13 +285,18 @@ impl<F: Field> RestoreContextGadget<F> {
             if call.is_root {
                 [U256::zero(); 9]
             } else {
-                let mut rws = StepRws::new(block, step);
-                rws.offset_set(rw_offset);
-                field_tags.map(|field_tag| {
-                    let rw = rws.next();
-                    debug_assert_eq!(rw.field_tag(), Some(field_tag as u64));
-                    rw.call_context_value()
-                })
+                field_tags
+                    .iter()
+                    .zip([0, 1, 2, 3, 4, 5, 6, 7, 8])
+                    .map(|(&field_tag, i)| {
+                        let idx = step.rw_indices[i + rw_offset];
+                        let rw = block.rws[idx];
+                        debug_assert_eq!(rw.field_tag(), Some(field_tag as u64));
+                        rw.call_context_value()
+                    })
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
             };
 
         for (cell, value) in [
