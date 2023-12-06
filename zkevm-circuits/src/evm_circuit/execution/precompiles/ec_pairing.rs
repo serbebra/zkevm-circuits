@@ -388,7 +388,7 @@ impl<F: Field> ExecutionGadget<F> for EcPairingGadget<F> {
                     self.rand_pow_64.assign(
                         region,
                         offset,
-                        keccak_rand.map(|r| r.pow(&[64, 0, 0, 0])),
+                        keccak_rand.map(|r| r.pow([64, 0, 0, 0])),
                     )?;
                 }
                 Err(EcPairingError::InvalidInputLen(input_bytes)) => {

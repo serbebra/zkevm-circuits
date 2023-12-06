@@ -1,5 +1,3 @@
-use std::marker::ConstParamTy;
-
 use super::util::{CachedRegion, CellManager, CellType};
 use crate::{
     evm_circuit::{

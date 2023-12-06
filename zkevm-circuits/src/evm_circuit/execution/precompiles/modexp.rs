@@ -102,7 +102,7 @@ impl<F: Field, const BIT_LIMIT: usize> RandPowRepresent<F, BIT_LIMIT> {
         let pow_of_rand = region
             .challenges()
             .keccak_input()
-            .map(|v| v.pow(&[exponent as u64, 0, 0, 0]));
+            .map(|v| v.pow([exponent as u64, 0, 0, 0]));
         let value_should_assigned =
             linked_value.unwrap_or_else(|| Value::known(F::one())) * pow_of_rand;
 
@@ -950,7 +950,7 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             let n_padded_zeroes_pow = region
                 .challenges()
                 .keccak_input()
-                .map(|r| r.pow(&[n_padded_zeros, 0, 0, 0]));
+                .map(|r| r.pow([n_padded_zeros, 0, 0, 0]));
 
             let output_rlc = region
                 .challenges()
