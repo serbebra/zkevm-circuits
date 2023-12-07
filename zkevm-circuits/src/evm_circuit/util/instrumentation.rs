@@ -2,7 +2,7 @@ use crate::evm_circuit::{
     step::ExecutionState,
     util::{constraint_builder::EVMConstraintBuilder, CellType},
 };
-use halo2_proofs::arithmetic::FieldExt;
+use eth_types::Field;
 use itertools::Itertools;
 
 type StepSize = Vec<(CellType, ColumnSize)>;
@@ -19,7 +19,7 @@ pub(crate) struct Instrument {
 impl Instrument {
     /// Collects `CellManager` stats from a compiled EVMCircuit in order to
     /// extract metrics.
-    pub(crate) fn on_gadget_built<F: FieldExt>(
+    pub(crate) fn on_gadget_built<F: Field>(
         &mut self,
         execution_state: ExecutionState,
         cb: &EVMConstraintBuilder<F>,
@@ -107,6 +107,7 @@ pub(crate) struct ExecStateReport {
     pub(crate) block_table: StateReportRow,
     pub(crate) copy_table: StateReportRow,
     pub(crate) keccak_table: StateReportRow,
+    pub(crate) sha256_table: StateReportRow,
     pub(crate) exp_table: StateReportRow,
     pub(crate) sig_table: StateReportRow,
     pub(crate) modexp_table: StateReportRow,

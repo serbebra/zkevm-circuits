@@ -1,15 +1,14 @@
+#![feature(lazy_cell)]
 #![cfg(feature = "circuit_input_builder")]
 
 use bus_mapping::circuit_input_builder::{
     build_state_code_db, get_state_accesses, BuilderClient, CircuitsParams,
 };
 use integration_tests::{get_client, log_init, GenDataOutput};
-use lazy_static::lazy_static;
 use log::trace;
+use std::sync::LazyLock;
 
-lazy_static! {
-    pub static ref GEN_DATA: GenDataOutput = GenDataOutput::load();
-}
+pub static GEN_DATA: LazyLock<GenDataOutput> = LazyLock::new(GenDataOutput::load);
 
 async fn test_circuit_input_builder_block(block_num: u64) {
     let cli = get_client();
@@ -42,7 +41,7 @@ async fn test_circuit_input_builder_block(block_num: u64) {
     trace!("AccessSet: {:#?}", access_set);
 
     // 3. Query geth for all accounts, storage keys, and codes from Accesses
-    let (proofs, codes) = cli.get_state(block_num, access_set.into()).await.unwrap();
+    let (proofs, codes) = cli.get_state(block_num, access_set).await.unwrap();
 
     // 4. Build a partial StateDB from step 3
     let (state_db, code_db) = build_state_code_db(proofs, codes);

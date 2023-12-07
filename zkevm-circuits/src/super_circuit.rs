@@ -74,12 +74,16 @@ use crate::{
     pi_circuit::{PiCircuit, PiCircuitConfig, PiCircuitConfigArgs},
     poseidon_circuit::{PoseidonCircuit, PoseidonCircuitConfig, PoseidonCircuitConfigArgs},
     rlp_circuit_fsm::{RlpCircuit, RlpCircuitConfig, RlpCircuitConfigArgs},
+    sha256_circuit::{
+        CircuitConfig as SHA256CircuitConfig, CircuitConfigArgs as SHA256CircuitConfigArgs,
+        SHA256Circuit,
+    },
     sig_circuit::{SigCircuit, SigCircuitConfig, SigCircuitConfigArgs},
     state_circuit::{StateCircuit, StateCircuitConfig, StateCircuitConfigArgs},
     table::{
         BlockTable, BytecodeTable, CopyTable, DualByteTable, EccTable, ExpTable, FixedTable,
         KeccakTable, LookupTable, ModExpTable, MptTable, PoseidonTable, PowOfRandTable,
-        RlpFsmRlpTable as RlpTable, RwTable, SigTable, TxTable, U16Table, U8Table,
+        RlpFsmRlpTable as RlpTable, RwTable, SHA256Table, SigTable, TxTable, U16Table, U8Table,
     },
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
@@ -125,6 +129,7 @@ pub struct SuperCircuitConfig<F: Field> {
     sig_circuit: SigCircuitConfig<F>,
     modexp_circuit: ModExpCircuitConfig,
     ecc_circuit: EccCircuitConfig<F>,
+    sha256_circuit: SHA256CircuitConfig,
     #[cfg(not(feature = "poseidon-codehash"))]
     bytecode_circuit: BytecodeCircuitConfig<F>,
     #[cfg(feature = "poseidon-codehash")]
@@ -161,9 +166,9 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
     fn new(
         meta: &mut ConstraintSystem<Fr>,
         Self::ConfigArgs {
-            max_txs,
-            max_calldata,
-            max_inner_blocks,
+            max_txs: _,
+            max_calldata: _,
+            max_inner_blocks: _,
             mock_randomness: _mock_randomness,
             challenges,
         }: Self::ConfigArgs,
@@ -204,6 +209,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         log_circuit_info(meta, "rlp table");
         let keccak_table = KeccakTable::construct(meta);
         log_circuit_info(meta, "keccak table");
+        let sha256_table = SHA256Table::construct(meta);
+        log_circuit_info(meta, "sha256 table");
         let sig_table = SigTable::construct(meta);
         log_circuit_info(meta, "sig table");
         let modexp_table = ModExpTable::construct(meta);
@@ -239,6 +246,15 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         );
         log_circuit_info(meta, "keccak circuit");
 
+        let sha256_circuit = SHA256CircuitConfig::new(
+            meta,
+            SHA256CircuitConfigArgs {
+                sha256_table: sha256_table.clone(),
+                challenges: challenges_expr.clone(),
+            },
+        );
+        log_circuit_info(meta, "sha256 circuit");
+
         let poseidon_circuit =
             PoseidonCircuitConfig::new(meta, PoseidonCircuitConfigArgs { poseidon_table });
         log_circuit_info(meta, "poseidon circuit");
@@ -256,9 +272,6 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let pi_circuit = PiCircuitConfig::new(
             meta,
             PiCircuitConfigArgs {
-                max_txs,
-                max_calldata,
-                max_inner_blocks,
                 block_table: block_table.clone(),
                 keccak_table: keccak_table.clone(),
                 tx_table: tx_table.clone(),
@@ -427,6 +440,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             copy_circuit,
             bytecode_circuit,
             keccak_circuit,
+            sha256_circuit,
             poseidon_circuit,
             pi_circuit,
             rlp_circuit,
@@ -454,7 +468,7 @@ pub struct SubcircuitRowUsage {
 }
 
 /// The Super Circuit contains all the zkEVM circuits
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct SuperCircuit<
     F: Field,
     const MAX_TXS: usize,
@@ -480,6 +494,8 @@ pub struct SuperCircuit<
     pub exp_circuit: ExpCircuit<F>,
     /// Keccak Circuit
     pub keccak_circuit: KeccakCircuit<F>,
+    /// SHA256 Circuit
+    pub sha256_circuit: SHA256Circuit<F>,
     /// Poseidon hash Circuit
     pub poseidon_circuit: PoseidonCircuit<F>,
     /// Sig Circuit
@@ -493,6 +509,8 @@ pub struct SuperCircuit<
     /// Mpt Circuit
     #[cfg(feature = "zktrie")]
     pub mpt_circuit: MptCircuit<F>,
+
+    circuit_params: CircuitsParams,
 }
 
 impl<
@@ -531,6 +549,8 @@ impl<
         push("copy", copy);
         let keccak = KeccakCircuit::min_num_rows_block(block);
         push("keccak", keccak);
+        let sha256 = SHA256Circuit::min_num_rows_block(block);
+        push("sha256", sha256);
         let tx = TxCircuit::min_num_rows_block(block);
         push("tx", tx);
         let rlp = RlpCircuit::min_num_rows_block(block);
@@ -613,6 +633,7 @@ impl<
         let exp_circuit = ExpCircuit::new_from_block(block);
         let modexp_circuit = ModExpCircuit::new_from_block(block);
         let keccak_circuit = KeccakCircuit::new_from_block(block);
+        let sha256_circuit = SHA256Circuit::new_from_block(block);
         let poseidon_circuit = PoseidonCircuit::new_from_block(block);
         let rlp_circuit = RlpCircuit::new_from_block(block);
         let sig_circuit = SigCircuit::new_from_block(block);
@@ -629,6 +650,7 @@ impl<
             copy_circuit,
             exp_circuit,
             keccak_circuit,
+            sha256_circuit,
             poseidon_circuit,
             rlp_circuit,
             sig_circuit,
@@ -636,6 +658,7 @@ impl<
             ecc_circuit,
             #[cfg(feature = "zktrie")]
             mpt_circuit,
+            circuit_params: block.circuits_params,
         }
     }
 
@@ -701,6 +724,9 @@ impl<
         log::debug!("assigning keccak_circuit");
         self.keccak_circuit
             .synthesize_sub(&config.keccak_circuit, challenges, layouter)?;
+        log::debug!("assigning sha256_circuit");
+        self.sha256_circuit
+            .synthesize_sub(&config.sha256_circuit, challenges, layouter)?;
         log::debug!("assigning poseidon_circuit");
         self.poseidon_circuit
             .synthesize_sub(&config.poseidon_circuit, challenges, layouter)?;
@@ -768,9 +794,15 @@ impl<
 {
     type Config = (SuperCircuitConfig<Fr>, Challenges);
     type FloorPlanner = SimpleFloorPlanner;
+    #[cfg(feature = "circuit-params")]
+    type Params = ();
 
     fn without_witnesses(&self) -> Self {
-        Self::default()
+        let dummy_block = Block::<Fr> {
+            circuits_params: self.circuit_params,
+            ..Default::default()
+        };
+        Self::new_from_block(&dummy_block)
     }
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {

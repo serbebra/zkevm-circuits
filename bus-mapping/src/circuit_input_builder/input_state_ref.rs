@@ -1346,7 +1346,7 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call = self.call()?.clone();
         let geth_step = steps
-            .get(0)
+            .first()
             .ok_or(Error::InternalError("invalid index 0"))?;
         let is_err = exec_step.error.is_some();
         let is_return_revert_succ = (geth_step.op == OpcodeId::REVERT
@@ -1510,13 +1510,13 @@ impl<'a> CircuitInputStateRef<'a> {
             return Ok(Some(ExecError::InvalidOpcode));
         }
 
-        if let Some(error) = &step.error {
+        if let Some(error) = step.error {
             return Ok(Some(get_step_reported_error(&step.op, error)));
         }
 
         let call = self.call()?;
 
-        if matches!(next_step, None) {
+        if next_step.is_none() {
             // enumerating call scope successful cases
             // case 1: call with normal halt opcode termination
             if matches!(

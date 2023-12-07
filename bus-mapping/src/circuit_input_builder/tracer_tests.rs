@@ -4,10 +4,6 @@ use crate::{
     error::{
         ContractAddressCollisionError, DepthError, ExecError, InsufficientBalanceError, OogError,
     },
-    geth_errors::{
-        GETH_ERR_GAS_UINT_OVERFLOW, GETH_ERR_OUT_OF_GAS, GETH_ERR_STACK_OVERFLOW,
-        GETH_ERR_STACK_UNDERFLOW,
-    },
     operation::RWCounter,
     state_db::Account,
 };
@@ -15,15 +11,14 @@ use eth_types::{
     address, bytecode,
     evm_types::{stack::Stack, Gas, Memory, OpcodeId},
     geth_types::GethData,
-    word, Bytecode, Hash, ToAddress, ToWord, Word,
+    word, Bytecode, GethExecError, Hash, ToAddress, ToWord, Word,
 };
-use lazy_static::lazy_static;
 use mock::{
     test_ctx::{helpers::*, LoggerConfig, TestContext},
     MOCK_COINBASE,
 };
 use pretty_assertions::assert_eq;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::LazyLock};
 
 // Helper struct that contains a CircuitInputBuilder, a particular tx and a
 // particular execution step so that we can easily get a
@@ -78,12 +73,11 @@ impl CircuitInputBuilderTx {
     }
 }
 
-lazy_static! {
-    static ref ADDR_A: Address = Address::zero();
-    static ref WORD_ADDR_A: Word = ADDR_A.to_word();
-    static ref ADDR_B: Address = address!("0x0000000000000000000000000000000000000123");
-    static ref WORD_ADDR_B: Word = ADDR_B.to_word();
-}
+static ADDR_A: LazyLock<Address> = LazyLock::new(Address::zero);
+static WORD_ADDR_A: LazyLock<Word> = LazyLock::new(|| ADDR_A.to_word());
+static ADDR_B: LazyLock<Address> =
+    LazyLock::new(|| address!("0x0000000000000000000000000000000000000123"));
+static WORD_ADDR_B: LazyLock<Word> = LazyLock::new(|| ADDR_B.to_word());
 
 fn mock_internal_create() -> Call {
     Call {
@@ -1503,7 +1497,7 @@ fn tracer_err_gas_uint_overflow() {
     let step = &block.geth_traces[0].struct_logs[index];
     let next_step = block.geth_traces[0].struct_logs.get(index + 1);
     assert_eq!(step.op, OpcodeId::MSTORE);
-    assert_eq!(step.error, Some(GETH_ERR_GAS_UINT_OVERFLOW.to_string()));
+    assert_eq!(step.error, Some(GethExecError::GasUintOverflow));
 
     let mut builder = CircuitInputBuilderTx::new(&block, step);
     assert_eq!(
@@ -1674,7 +1668,7 @@ fn tracer_err_out_of_gas() {
     .into();
     let struct_logs = &block.geth_traces[0].struct_logs;
 
-    assert_eq!(struct_logs[1].error, Some(GETH_ERR_OUT_OF_GAS.to_string()));
+    assert_eq!(struct_logs[1].error, Some(GethExecError::OutOfGas));
 }
 
 #[test]
@@ -1697,10 +1691,13 @@ fn tracer_err_stack_overflow() {
     let index = block.geth_traces[0].struct_logs.len() - 1; // PUSH2
     let step = &block.geth_traces[0].struct_logs[index];
     let next_step = block.geth_traces[0].struct_logs.get(index + 1);
-    assert_eq!(
+    assert!(matches!(
         step.error,
-        Some(format!("{GETH_ERR_STACK_OVERFLOW} 1024 (1023)"))
-    );
+        Some(GethExecError::StackOverflow {
+            stack_len: 1024,
+            limit: 1023,
+        })
+    ));
 
     let mut builder = CircuitInputBuilderTx::new(&block, step);
     assert_eq!(
@@ -1728,10 +1725,13 @@ fn tracer_err_stack_underflow() {
     let index = 0; // SWAP5
     let step = &block.geth_traces[0].struct_logs[index];
     let next_step = block.geth_traces[0].struct_logs.get(index + 1);
-    assert_eq!(
+    assert!(matches!(
         step.error,
-        Some(format!("{GETH_ERR_STACK_UNDERFLOW} (0 <=> 6)",))
-    );
+        Some(GethExecError::StackUnderflow {
+            stack_len: 0,
+            required: 6,
+        })
+    ));
 
     let mut builder = CircuitInputBuilderTx::new(&block, step);
     assert_eq!(

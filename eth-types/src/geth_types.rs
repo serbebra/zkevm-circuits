@@ -49,12 +49,17 @@ impl From<TxType> for u64 {
 impl TxType {
     /// If this type is L1Msg or not
     pub fn is_l1_msg(&self) -> bool {
-        matches!(*self, TxType::L1Msg)
+        matches!(*self, Self::L1Msg)
     }
 
-    /// If this type is Eip155 or not
+    /// If this type is EIP-155 or not
     pub fn is_eip155_tx(&self) -> bool {
-        matches!(*self, TxType::Eip155)
+        matches!(*self, Self::Eip155)
+    }
+
+    /// If this type is EIP-2930 or not
+    pub fn is_eip2930_tx(&self) -> bool {
+        matches!(*self, Self::Eip2930)
     }
 
     /// Get the type of transaction
@@ -110,9 +115,14 @@ impl TxType {
 
 /// Get the RLP bytes for signing
 pub fn get_rlp_unsigned(tx: &crate::Transaction) -> Vec<u8> {
+    let sig_v = tx.v;
     match TxType::get_tx_type(tx) {
         TxType::Eip155 => {
-            let tx: TransactionRequest = tx.into();
+            let mut tx: TransactionRequest = tx.into();
+            tx.chain_id = Some(tx.chain_id.unwrap_or_else(|| {
+                let recv_v = TxType::Eip155.get_recovery_id(sig_v.as_u64()) as u64;
+                (sig_v - recv_v - 35) / 2
+            }));
             tx.rlp().to_vec()
         }
         TxType::PreEip155 => {
@@ -397,3 +407,19 @@ impl GethData {
     }
 }
 */
+
+/// Returns the number of addresses and the cumulative number of storage keys in
+/// the entire access list.
+pub fn access_list_size(access_list: &Option<AccessList>) -> (u64, u64) {
+    access_list.as_ref().map_or_else(
+        || (0, 0),
+        |list| {
+            (
+                list.0.len() as u64,
+                list.0
+                    .iter()
+                    .fold(0, |acc, item| acc + item.storage_keys.len()) as u64,
+            )
+        },
+    )
+}

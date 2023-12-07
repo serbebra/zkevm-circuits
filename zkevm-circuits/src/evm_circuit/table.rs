@@ -274,6 +274,7 @@ pub enum Table {
     Block,
     Copy,
     Keccak,
+    Sha256,
     Exp,
     Sig,
     ModExp,
@@ -423,6 +424,16 @@ pub enum Lookup<F> {
         /// the final output keccak256 hash of the input.
         output_rlc: Expression<F>,
     },
+    /// Lookup to sha256 table.
+    Sha256Table {
+        /// Accumulator to the input.
+        input_rlc: Expression<F>,
+        /// Length of input that is being hashed.
+        input_len: Expression<F>,
+        /// Output (hash) until this state. This is the RLC representation of
+        /// the final output sha256 hash of the input.
+        output_rlc: Expression<F>,
+    },
     /// Lookup to exponentiation table.
     ExpTable {
         base_limbs: [Expression<F>; 4],
@@ -476,6 +487,7 @@ impl<F: Field> Lookup<F> {
             Self::Block { .. } => Table::Block,
             Self::CopyTable { .. } => Table::Copy,
             Self::KeccakTable { .. } => Table::Keccak,
+            Self::Sha256Table { .. } => Table::Sha256,
             Self::ExpTable { .. } => Table::Exp,
             Self::SigTable { .. } => Table::Sig,
             Self::ModExpTable { .. } => Table::ModExp,
@@ -586,6 +598,17 @@ impl<F: Field> Lookup<F> {
                 rwc_inc.clone(),
             ],
             Self::KeccakTable {
+                input_rlc,
+                input_len,
+                output_rlc,
+            } => vec![
+                1.expr(), // q_enable
+                1.expr(), // is_final
+                input_rlc.clone(),
+                input_len.clone(),
+                output_rlc.clone(),
+            ],
+            Self::Sha256Table {
                 input_rlc,
                 input_len,
                 output_rlc,

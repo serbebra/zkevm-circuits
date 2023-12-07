@@ -1,3 +1,4 @@
+#![feature(lazy_cell)]
 //! ![GitHub Workflow Status (branch)](https://img.shields.io/github/workflow/status/appliedzkp/zkevm-circuits/CI%20checks/main?style=for-the-badge)
 //! Bus-Mapping is a crate designed to parse EVM execution traces and manipulate
 //! all of the data they provide in order to obtain structured witness inputs
@@ -234,7 +235,6 @@ pub mod circuit_input_builder;
 pub mod error;
 pub mod evm;
 pub mod exec_trace;
-pub(crate) mod geth_errors;
 pub mod l2_predeployed;
 pub mod mock;
 pub mod operation;

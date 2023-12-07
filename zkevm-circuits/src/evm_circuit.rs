@@ -29,7 +29,8 @@ use crate::{
     evm_circuit::param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT},
     table::{
         BlockTable, BytecodeTable, CopyTable, DualByteTable, EccTable, ExpTable, FixedTable,
-        KeccakTable, LookupTable, ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
+        KeccakTable, LookupTable, ModExpTable, PowOfRandTable, RwTable, SHA256Table, SigTable,
+        TxTable,
     },
     util::{assign_global, SubCircuit, SubCircuitConfig},
 };
@@ -175,6 +176,7 @@ impl<F: Field> EvmCircuitConfig<F> {
                         )?;
                     }
                 }
+
                 Ok(())
             },
         )
@@ -257,11 +259,7 @@ impl<F: Field> EvmCircuit<F> {
     }
 }
 
-// the diff is from the num of valid opcodes: self-destruct?
-#[cfg(not(feature = "scroll"))]
 const FIXED_TABLE_ROWS_NO_BITWISE: usize = 3647;
-#[cfg(feature = "scroll")]
-const FIXED_TABLE_ROWS_NO_BITWISE: usize = 3646;
 const FIXED_TABLE_ROWS: usize = FIXED_TABLE_ROWS_NO_BITWISE + 3 * 65536;
 
 impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
@@ -373,22 +371,20 @@ pub(crate) fn detect_fixed_table_tags<F: Field>(block: &Block<F>) -> Vec<FixedTa
 pub(crate) mod cached {
     use super::*;
     use halo2_proofs::halo2curves::bn256::Fr;
-    use lazy_static::lazy_static;
+    use std::sync::LazyLock;
 
     struct Cache {
         cs: ConstraintSystem<Fr>,
         config: (EvmCircuitConfig<Fr>, Challenges),
     }
 
-    lazy_static! {
-        /// Cached values of the ConstraintSystem after the EVM Circuit configuration and the EVM
-        /// Circuit configuration.  These values are calculated just once.
-        static ref CACHE: Cache = {
-            let mut meta = ConstraintSystem::<Fr>::default();
-            let config = EvmCircuit::<Fr>::configure(&mut meta);
-            Cache { cs: meta, config }
-        };
-    }
+    /// Cached values of the ConstraintSystem after the EVM Circuit configuration and the EVM
+    /// Circuit configuration.  These values are calculated just once.
+    static CACHE: LazyLock<Cache> = LazyLock::new(|| {
+        let mut meta = ConstraintSystem::<Fr>::default();
+        let config = EvmCircuit::<Fr>::configure(&mut meta);
+        Cache { cs: meta, config }
+    });
 
     /// Wrapper over the EvmCircuit that behaves the same way and also
     /// implements the halo2 Circuit trait, but reuses the precalculated
@@ -451,6 +447,8 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         EccTable,
     );
     type FloorPlanner = SimpleFloorPlanner;
+    #[cfg(feature = "circuit-params")]
+    type Params = ();
 
     fn without_witnesses(&self) -> Self {
         Self::default()
@@ -477,6 +475,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         copy_table.annotate_columns(meta);
         let keccak_table = KeccakTable::construct(meta);
         keccak_table.annotate_columns(meta);
+        let sha256_table = SHA256Table::construct(meta);
         let exp_table = ExpTable::construct(meta);
         exp_table.annotate_columns(meta);
         let sig_table = SigTable::construct(meta);
@@ -531,6 +530,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             block_table,
             copy_table,
             keccak_table,
+            sha256_table,
             exp_table,
             sig_table,
             modexp_table,
@@ -588,6 +588,14 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         block_table.dev_load(&mut layouter, &block.context, &block.txs, &challenges)?;
         copy_table.dev_load(&mut layouter, block, &challenges)?;
         keccak_table.dev_load(&mut layouter, &block.sha3_inputs, &challenges)?;
+        sha256_table.dev_load(
+            &mut layouter,
+            block
+                .get_sha256()
+                .iter()
+                .map(|evt| (&evt.input, &evt.digest)),
+            &challenges,
+        )?;
         exp_table.dev_load(&mut layouter, block)?;
         sig_table.dev_load(&mut layouter, block, &challenges)?;
         modexp_table.dev_load(&mut layouter, &block.get_big_modexp())?;

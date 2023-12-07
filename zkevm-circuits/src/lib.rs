@@ -5,8 +5,8 @@
 #![allow(incomplete_features)]
 // Needed by DummyGadget in evm circuit
 #![feature(adt_const_params)]
-#![feature(array_zip)]
 #![feature(slice_group_by)]
+#![feature(lazy_cell)]
 // Needed by some builder patterns in testing modules.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // Temporary until we have more of the crate implemented.
@@ -39,6 +39,7 @@ pub mod sig_circuit;
 //pub mod root_circuit;
 mod evm_bus;
 pub mod modexp_circuit;
+pub mod sha256_circuit;
 pub mod state_circuit;
 pub mod super_circuit;
 pub mod table;
