@@ -80,7 +80,7 @@ use halo2_proofs::plonk::SecondPhase;
 use itertools::Itertools;
 
 /// Number of rows of one tx occupies in the fixed part of tx table
-pub const TX_LEN: usize = 28;
+pub const TX_LEN: usize = 26;
 /// Offset of TxHash tag in the tx table
 pub const TX_HASH_OFFSET: usize = 21;
 /// Offset of ChainID tag in the tx table
