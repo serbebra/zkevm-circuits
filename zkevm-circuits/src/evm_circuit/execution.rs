@@ -771,7 +771,7 @@ impl<F: Field> ExecutionConfig<F> {
 
         {
             let step_enabled = query_expression(meta, |meta| {
-                let q_usable = meta.query_selector(q_usable);
+                let q_usable = meta.query_fixed(q_usable, Rotation::cur());
                 let q_step = meta.query_advice(q_step, Rotation::cur());
                 q_usable * q_step * state_selector.clone()
             });
@@ -921,7 +921,7 @@ impl<F: Field> ExecutionConfig<F> {
         q_usable: Column<Fixed>,
         cell_manager: &CellManager<F>,
     ) -> BusPortMulti<F> {
-        let q_usable = query_expression(meta, |meta| meta.query_selector(q_usable));
+        let q_usable = query_expression(meta, |meta| meta.query_fixed(q_usable, Rotation::cur()));
 
         let byte_columns = {
             let mut cols = cell_manager
