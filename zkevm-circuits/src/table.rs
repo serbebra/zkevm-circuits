@@ -1801,7 +1801,7 @@ impl CopyTable {
             let [value, value_prev] = if copy_event.src_type == CopyDataType::AccessListAddresses
                 || copy_event.src_type == CopyDataType::AccessListStorageKeys
             {
-                let address_pair = copy_event.access_list[step_idx];
+                let address_pair = copy_event.access_list[step_idx / 2];
                 [
                     address_pair.0.to_scalar().unwrap(),
                     address_pair.1.to_scalar().unwrap(),
