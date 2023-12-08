@@ -144,7 +144,7 @@ impl PortBatched {
         // counts_times_others = ∑ counts[i] * other_denoms[i]
         let counts_times_others = ops
             .iter()
-            .zip_eq(other_denoms.into_iter())
+            .zip_eq(other_denoms)
             .map(|(op, other)| op.count() * other)
             .reduce(|acc, term| acc + term)
             .unwrap_or(0.expr());
@@ -185,7 +185,7 @@ impl PortBatched {
         //        = (∑ counts[i] * other_denoms[i]) / all_denoms
         let numer = ops
             .iter()
-            .zip_eq(other_denoms.into_iter())
+            .zip_eq(other_denoms)
             .map(|(op, others)| from_isize::<F>(op.count()) * others)
             .reduce(|sum, term| sum + term)
             .unwrap_or(F::zero());
