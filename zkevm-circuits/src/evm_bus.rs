@@ -2,7 +2,7 @@ use crate::{
     evm_circuit::table::{Lookup, MsgExpr, MsgF, RwValues},
     table::{
         BlockTable, BytecodeTable, CopyTable, DualByteTable, EccTable, ExpTable, FixedTable,
-        KeccakTable, ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
+        KeccakTable, ModExpTable, PowOfRandTable, RwTable, SHA256Table, SigTable, TxTable,
     },
     util::{assign_global, query_expression},
 };
@@ -20,7 +20,7 @@ use halo2_proofs::{
 /// EVMBusLookups makes all lookup tables available on the bus.
 #[derive(Clone, Debug)]
 pub struct EVMBusLookups<F> {
-    bus_tables: [BusTable<F>; 13],
+    bus_tables: [BusTable<F>; 14],
 }
 
 impl<F: Field> EVMBusLookups<F> {
@@ -37,13 +37,14 @@ impl<F: Field> EVMBusLookups<F> {
         block_table: &BlockTable,
         copy_table: &CopyTable,
         keccak_table: &KeccakTable,
+        sha256_table: &SHA256Table,
         exp_table: &ExpTable,
         sig_table: &SigTable,
         modexp_table: &ModExpTable,
         ecc_table: &EccTable,
         pow_of_rand_table: &PowOfRandTable,
     ) -> Self {
-        let tables: [&dyn QueryTable<F>; 13] = [
+        let tables: [&dyn QueryTable<F>; 14] = [
             dual_byte_table,
             fixed_table,
             rw_table,
@@ -52,6 +53,7 @@ impl<F: Field> EVMBusLookups<F> {
             block_table,
             copy_table,
             keccak_table,
+            sha256_table,
             exp_table,
             sig_table,
             modexp_table,
@@ -308,6 +310,22 @@ impl<F: Field> QueryTable<F> for KeccakTable {
 
     fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
         MsgExpr::lookup(Lookup::KeccakTable {
+            input_rlc: meta.query_advice(self.input_rlc, Rotation::cur()),
+            input_len: meta.query_advice(self.input_len, Rotation::cur()),
+            output_rlc: meta.query_advice(self.output_rlc, Rotation::cur()),
+        })
+    }
+}
+
+impl<F: Field> QueryTable<F> for SHA256Table {
+    fn enabled(&self, meta: &mut VirtualCells<F>) -> Expression<F> {
+        // This is a boolean because of constraint "final_is_bool".
+        meta.query_fixed(self.q_enable, Rotation::cur())
+            * meta.query_advice(self.is_final, Rotation::cur())
+    }
+
+    fn message(&self, meta: &mut VirtualCells<F>) -> MsgExpr<F> {
+        MsgExpr::lookup(Lookup::Sha256Table {
             input_rlc: meta.query_advice(self.input_rlc, Rotation::cur()),
             input_len: meta.query_advice(self.input_len, Rotation::cur()),
             output_rlc: meta.query_advice(self.output_rlc, Rotation::cur()),

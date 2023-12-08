@@ -230,6 +230,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         block_table.annotate_columns(meta);
         copy_table.annotate_columns(meta);
         keccak_table.annotate_columns(meta);
+        sha256_table.annotate_columns(meta);
         exp_table.annotate_columns(meta);
         sig_table.annotate_columns(meta);
         modexp_table.annotate_columns(meta);
@@ -411,6 +412,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             &block_table,
             &copy_table,
             &keccak_table,
+            &sha256_table,
             &exp_table,
             &sig_table,
             &modexp_table,

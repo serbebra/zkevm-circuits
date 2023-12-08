@@ -511,6 +511,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
             &block_table,
             &copy_table,
             &keccak_table,
+            &sha256_table,
             &exp_table,
             &sig_table,
             &modexp_table,
