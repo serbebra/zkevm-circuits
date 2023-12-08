@@ -48,8 +48,7 @@ impl<F: Field, M: BusMessageF<F>> BatchAssigner<F, M> {
         self.assigners.invert().map(|commands| {
             for (helper, command) in commands {
                 let (offset, term) = command.assign(region, helper);
-                bus_assigner.add_term(offset, Value::known(term));
-                // TODO: Ensure this is a global offset (need Halo2 support).
+                bus_assigner.add_term(region.global_offset(offset), Value::known(term));
             }
         });
     }
@@ -118,5 +117,12 @@ impl<F: Field, M: BusMessageF<F>> BusOpCounter<F, M> {
     /// Return true if all messages received have been sent.
     pub fn is_complete(&self) -> bool {
         self.counts.is_empty()
+    }
+
+    /// Merge another instance of BusOpCounter into self. The counts are accumulated.
+    pub fn merge(&mut self, other: Self) {
+        for (key, other_count) in other.counts {
+            *self.counts.entry(key).or_insert(0) += other_count;
+        }
     }
 }

@@ -1060,8 +1060,7 @@ impl<F: Field> ExecutionConfig<F> {
                 self.q_step,
                 height - 1,
                 || Value::known(F::zero()),
-            )?;
-            Ok(height)
+            )
         };
 
         let dummy_tx = Transaction::default();
@@ -1161,13 +1160,15 @@ impl<F: Field> ExecutionConfig<F> {
         };
 
         // Step1: assign real steps
-        let (region1_chunk_size, region1_chunk_num) =
-            chunking_fn("region1", step_assignments.len(), 50);
-        let mut region1_is_first_time: Vec<(usize, bool)> = (0..region1_chunk_num)
-            .map(|chunk_idx| (chunk_idx, true))
-            .collect();
-        let region1_height_sum = layouter
-            .assign_regions(
+        {
+            // Prepare the thread states.
+            let (region1_chunk_size, region1_chunk_num) =
+                chunking_fn("region1", step_assignments.len(), 50);
+            let mut region1_is_first_time: Vec<(usize, bool)> = (0..region1_chunk_num)
+                .map(|chunk_idx| (chunk_idx, true))
+                .collect();
+            // Assign in parallel.
+            let bus_assigner_forks = layouter.assign_regions(
                 || "Execution step region1",
                 region1_is_first_time
                     .iter_mut()
@@ -1185,9 +1186,13 @@ impl<F: Field> ExecutionConfig<F> {
                                 .sum::<usize>();
                             if *is_first_time {
                                 *is_first_time = false;
-                                return assign_shape_fn(&mut region, total_height);
+                                assign_shape_fn(&mut region, total_height)?;
+                                return Ok(None);
                             }
                             let mut offset = 0;
+
+                            let mut bus_assigner_fork =
+                                bus_assigner.fork(region.global_offset(0), total_height);
 
                             // Annotate the EVMCircuit columns within it's single region.
                             self.annotate_circuit(&mut region);
@@ -1218,7 +1223,7 @@ impl<F: Field> ExecutionConfig<F> {
 
                                 self.assign_exec_step(
                                     &mut region,
-                                    bus_assigner,
+                                    &mut bus_assigner_fork,
                                     offset,
                                     block,
                                     transaction,
@@ -1233,58 +1238,90 @@ impl<F: Field> ExecutionConfig<F> {
 
                                 offset += height;
                             }
+
+                            bus_assigner_fork.finish_ports(&mut region);
                             debug_assert_eq!(offset, total_height);
-                            Ok(total_height)
+                            Ok(Some(bus_assigner_fork))
                         }
                     })
                     .collect_vec(),
-            )?
-            .into_iter()
-            .sum::<usize>();
+            )?;
+            // Merge the thread results.
+            let mut actual_offset = 0;
+            for bus_assigner_fork in bus_assigner_forks {
+                let bus_assigner_fork = bus_assigner_fork.unwrap();
 
-        debug_assert_eq!(region1_height, region1_height_sum);
+                // Validate the offsets found by assign_regions.
+                assert_eq!(actual_offset, bus_assigner_fork.start_offset());
+                actual_offset += bus_assigner_fork.n_rows();
+
+                bus_assigner.merge(bus_assigner_fork);
+            }
+            assert_eq!(region1_height, actual_offset);
+        }
 
         // part2: assign non-last EndBlock steps when padding needed
+        {
+            // Prepare the thread states.
+            let (region2_chunk_size, region2_chunk_num) =
+                chunking_fn("region2", region2_height, 300);
+            let idxs: Vec<usize> = (0..region2_height).collect();
+            let mut region2_is_first_time = vec![true; region2_chunk_num];
 
-        let (region2_chunk_size, region2_chunk_num) = chunking_fn("region2", region2_height, 300);
-        let idxs: Vec<usize> = (0..region2_height).collect();
-        let mut region2_is_first_time = vec![true; region2_chunk_num];
+            log::trace!(
+                "assign non-last EndBlock in range [{},{})",
+                region1_height,
+                region1_height + region2_height
+            );
+            let bus_assigner_forks = layouter.assign_regions(
+                || "Execution step region2",
+                idxs.chunks(region2_chunk_size)
+                    .zip_eq(region2_is_first_time.iter_mut())
+                    .map(|(rows, is_first_time)| {
+                        |mut region: Region<'_, F>| {
+                            if *is_first_time {
+                                *is_first_time = false;
+                                assign_shape_fn(&mut region, rows.len())?;
+                                return Ok(None);
+                            }
 
-        log::trace!(
-            "assign non-last EndBlock in range [{},{})",
-            region1_height,
-            region1_height + region2_height
-        );
-        layouter.assign_regions(
-            || "Execution step region2",
-            idxs.chunks(region2_chunk_size)
-                .zip_eq(region2_is_first_time.iter_mut())
-                .map(|(rows, is_first_time)| {
-                    |mut region: Region<'_, F>| {
-                        if *is_first_time {
-                            *is_first_time = false;
-                            return assign_shape_fn(&mut region, rows.len());
+                            let mut bus_assigner_fork =
+                                bus_assigner.fork(region.global_offset(0), rows.len());
+
+                            self.assign_same_exec_step_in_range(
+                                &mut region,
+                                &mut bus_assigner_fork,
+                                0,
+                                rows.len(),
+                                block,
+                                &dummy_tx,
+                                &last_call,
+                                end_block_not_last,
+                                1,
+                                challenges,
+                            )?;
+                            for row_idx in 0..rows.len() {
+                                self.assign_q_step(&mut region, &inverter, row_idx, 1)?;
+                            }
+                            bus_assigner_fork.finish_ports(&mut region);
+                            Ok(Some(bus_assigner_fork))
                         }
-                        self.assign_same_exec_step_in_range(
-                            &mut region,
-                            bus_assigner,
-                            0,
-                            rows.len(),
-                            block,
-                            &dummy_tx,
-                            &last_call,
-                            end_block_not_last,
-                            1,
-                            challenges,
-                        )?;
-                        for row_idx in 0..rows.len() {
-                            self.assign_q_step(&mut region, &inverter, row_idx, 1)?;
-                        }
-                        Ok(rows.len())
-                    }
-                })
-                .collect_vec(),
-        )?;
+                    })
+                    .collect_vec(),
+            )?;
+            // Merge the thread results.
+            let mut actual_offset = region1_height;
+            for bus_assigner_fork in bus_assigner_forks {
+                let bus_assigner_fork = bus_assigner_fork.unwrap();
+
+                // Validate the offsets found by assign_regions.
+                assert_eq!(actual_offset, bus_assigner_fork.start_offset());
+                actual_offset += bus_assigner_fork.n_rows();
+
+                bus_assigner.merge(bus_assigner_fork);
+            }
+            assert_eq!(region1_height + region2_height, actual_offset);
+        }
 
         // part3: assign the last EndBlock at offset `evm_rows - 1`
         // This region don't need to be parallelized
@@ -1299,7 +1336,8 @@ impl<F: Field> ExecutionConfig<F> {
             |mut region| {
                 if region3_is_first_time {
                     region3_is_first_time = false;
-                    return assign_shape_fn(&mut region, region3_height);
+                    assign_shape_fn(&mut region, region3_height)?;
+                    return Ok(());
                 }
                 self.assign_exec_step(
                     &mut region,
@@ -1331,7 +1369,8 @@ impl<F: Field> ExecutionConfig<F> {
 
                 bus_assigner.finish_ports(&mut region);
 
-                Ok(2) // region height
+                assert_eq!(region.global_offset(0), region1_height + region2_height);
+                Ok(())
             },
         )?;
 

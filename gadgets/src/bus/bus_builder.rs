@@ -54,12 +54,17 @@ impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
         Self {
             batch_assigner: BatchAssigner::new(),
             codec,
-            term_adder: TermAdder::new(n_rows),
+            term_adder: TermAdder::new(0, n_rows),
             bus_op_counter: BusOpCounter::new(),
         }
     }
 
-    /// Return the number of rows where the bus must be enabled.
+    /// Return the first offset supported by this BusAssigner.
+    pub fn start_offset(&self) -> usize {
+        self.term_adder.start_offset
+    }
+
+    /// Return the number of rows supported by this BusAssigner.
     pub fn n_rows(&self) -> usize {
         self.term_adder.terms.len()
     }
@@ -86,6 +91,11 @@ impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
         old_batch_assigner.finish(region, self);
     }
 
+    fn assert_finished(&self) {
+        assert_eq!(self.batch_assigner.len(), 0, "finish_ports was not called");
+        // TODO: better error handling.
+    }
+
     /// Add a term value to the bus.
     pub fn add_term(&mut self, offset: usize, term: Value<F>) {
         self.term_adder.add_term(offset, term);
@@ -93,22 +103,44 @@ impl<F: Field, M: BusMessageF<F>> BusAssigner<F, M> {
 
     /// Return the collected terms.
     pub fn terms(&self) -> Value<&[F]> {
-        assert_eq!(self.batch_assigner.len(), 0, "finish_ports was not called");
-        // TODO: better error handling.
-
+        self.assert_finished();
+        assert_eq!(
+            self.start_offset(),
+            0,
+            "cannot use the terms of a BusAssigner fork"
+        );
         self.term_adder.terms()
+    }
+
+    /// Fork this BusAssigner for parallel assignment.
+    pub fn fork(&self, start_offset: usize, n_rows: usize) -> Self {
+        Self {
+            batch_assigner: BatchAssigner::new(),
+            codec: self.codec.clone(),
+            term_adder: TermAdder::new(start_offset, n_rows),
+            bus_op_counter: BusOpCounter::new(),
+        }
+    }
+
+    /// Merge a fork of this BusAssigner back into it.
+    pub fn merge(&mut self, fork: Self) {
+        fork.assert_finished();
+        self.term_adder.merge(fork.term_adder);
+        self.bus_op_counter.merge(fork.bus_op_counter);
     }
 }
 
 struct TermAdder<F> {
+    start_offset: usize,
     terms: Vec<F>,
     unknown: bool,
 }
 
 impl<F: Field> TermAdder<F> {
     /// Create a term adder with a maximum number of rows.
-    fn new(n_rows: usize) -> Self {
+    fn new(start_offset: usize, n_rows: usize) -> Self {
         Self {
+            start_offset,
             terms: vec![F::zero(); n_rows],
             unknown: false,
         }
@@ -116,10 +148,10 @@ impl<F: Field> TermAdder<F> {
 
     /// Add a term value to the bus.
     fn add_term(&mut self, offset: usize, term: Value<F>) {
+        let range = self.start_offset..self.start_offset + self.terms.len();
         assert!(
-            offset < self.terms.len(),
-            "offset={offset} out of bounds n_rows={}",
-            self.terms.len()
+            range.contains(&offset),
+            "offset={offset} out of bounds ({range:?})"
         );
         if self.unknown {
             return;
@@ -128,7 +160,7 @@ impl<F: Field> TermAdder<F> {
             self.unknown = true;
             self.terms.clear();
         } else {
-            term.map(|t| self.terms[offset] += t);
+            term.map(|t| self.terms[offset - self.start_offset] += t);
         }
     }
 
@@ -138,6 +170,22 @@ impl<F: Field> TermAdder<F> {
             Value::unknown()
         } else {
             Value::known(&self.terms)
+        }
+    }
+
+    /// Merge another TermAdder::terms() into self.
+    fn merge(&mut self, other: Self) {
+        if other.unknown {
+            self.unknown = true;
+            self.terms.clear();
+        } else {
+            assert!(other.start_offset >= self.start_offset);
+            assert!(other.start_offset + other.terms.len() <= self.start_offset + self.terms.len());
+            let start_index = other.start_offset - self.start_offset;
+
+            for (index, term) in other.terms.into_iter().enumerate() {
+                self.terms[start_index + index] += term;
+            }
         }
     }
 }
