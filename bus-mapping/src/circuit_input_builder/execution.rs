@@ -233,7 +233,7 @@ impl CopyDataType {
     /// How many bits are necessary to represent a copy data type.
     pub const N_BITS: usize = 3usize;
 }
-const NUM_COPY_DATA_TYPES: usize = 6usize;
+const NUM_COPY_DATA_TYPES: usize = 8usize;
 pub struct CopyDataTypeIter {
     idx: usize,
     back_idx: usize,
