@@ -236,8 +236,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             // NEXT_STEP.
             let is_word_end = is_word_end.expr();
             let is_tx_log = meta.query_advice(is_tx_log, CURRENT);
-            let is_access_list_address = meta.query_advice(is_access_list_address, CURRENT);
-            let is_access_list_storage_key = meta.query_advice(is_access_list_storage_key, CURRENT);
+            let is_access_list = meta.query_advice(is_access_list_address, CURRENT)
+                + meta.query_advice(is_access_list_storage_key, CURRENT);
 
             constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
 
@@ -260,10 +260,8 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             let (mask, mask_next, front_mask) = {
                 // The first 31 bytes may be front_mask, but not the last byte of the first word.
                 // LOG, access-list address and storage-key have no front mask at all.
-                let forbid_front_mask = is_word_end.expr()
-                    + is_tx_log.expr()
-                    + is_access_list_address.expr()
-                    + is_access_list_storage_key.expr();
+                let forbid_front_mask =
+                    is_word_end.expr() + is_tx_log.expr() + is_access_list.expr();
 
                 constrain_mask(
                     cb,
@@ -302,8 +300,11 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 constrain_word_rlc(
                     cb,
                     meta,
-                    is_first.expr(),
-                    is_continue.expr(),
+                    // Not constrain word rlc for access list, since `value`
+                    // saves access list address and `value_prev` saves storage
+                    // key.
+                    is_first.expr() * (1.expr() - is_access_list.expr()),
+                    is_continue.expr() * (1.expr() - is_access_list.expr()),
                     is_word_end.expr(),
                     word_rlc,
                     value,
@@ -334,8 +335,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             {
                 let is_rw_type = meta.query_advice(is_memory, CURRENT)
                     + is_tx_log.expr()
-                    + is_access_list_address.expr()
-                    + is_access_list_storage_key.expr();
+                    + is_access_list.expr();
 
                 constrain_rw_counter(
                     cb,

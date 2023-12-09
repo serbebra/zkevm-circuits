@@ -666,6 +666,7 @@ fn add_access_list_address_copy_event(
         src_id: tx_id,
         src_addr: 1, // index starts from 1.
         src_addr_end: access_list.len() as u64 + 1,
+        dst_type: CopyDataType::AccessListAddresses,
         rw_counter_start,
         copy_bytes,
         access_list,
@@ -721,6 +722,7 @@ fn add_access_list_storage_key_copy_event(
         src_id: tx_id,
         src_addr: 1, // index starts from 1 in tx-table.
         src_addr_end: access_list.len() as u64 + 1,
+        dst_type: CopyDataType::AccessListStorageKeys,
         rw_counter_start,
         copy_bytes,
         access_list,
