@@ -465,7 +465,10 @@ impl CopyEvent {
 
     /// Whether the destination performs RW lookups in the state circuit.
     pub fn is_destination_rw(&self) -> bool {
-        self.dst_type == CopyDataType::Memory || self.dst_type == CopyDataType::TxLog
+        self.dst_type == CopyDataType::Memory
+            || self.dst_type == CopyDataType::TxLog
+            || self.dst_type == CopyDataType::AccessListAddresses
+            || self.dst_type == CopyDataType::AccessListStorageKeys
     }
 
     /// Whether the RLC of data must be computed.
@@ -483,6 +486,14 @@ impl CopyEvent {
 
     /// The number of RW lookups performed by this copy event.
     pub fn rw_counter_delta(&self) -> u64 {
+        if self.dst_type == CopyDataType::AccessListAddresses
+            || self.dst_type == CopyDataType::AccessListStorageKeys
+        {
+            // For access list, the placeholder is used for copy bytes which
+            // value will be replaced by address and storage key.
+            return self.full_length();
+        }
+
         (self.is_source_rw() as u64 + self.is_destination_rw() as u64) * (self.full_length() / 32)
     }
 }

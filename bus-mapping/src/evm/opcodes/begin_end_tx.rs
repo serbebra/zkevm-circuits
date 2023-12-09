@@ -658,6 +658,8 @@ fn add_access_list_address_copy_event(
 
     let tx_id = NumberOrHash::Number(tx_id);
     let rw_counter_start = state.block_ctx.rwc;
+
+    // Use placeholder bytes for copy steps.
     let copy_bytes = CopyBytes::new(vec![(0, false, false); access_list.len()], None, None);
 
     // Add copy event to copy table.
@@ -714,6 +716,8 @@ fn add_access_list_storage_key_copy_event(
 
     let rw_counter_start = state.block_ctx.rwc;
     let tx_id = NumberOrHash::Number(state.tx_ctx.id());
+
+    // Use placeholder bytes for copy steps.
     let copy_bytes = CopyBytes::new(vec![(0, false, false); access_list.len()], None, None);
 
     // Add copy event to copy table.
