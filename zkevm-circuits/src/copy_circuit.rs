@@ -451,26 +451,30 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             .collect()
         });
 
-        meta.lookup_any("Tx access list address lookup", |meta| {
-            let cond = meta.query_fixed(q_enable, CURRENT)
-                * meta.query_advice(is_access_list_address, CURRENT);
+        /* TODO: enable tx lookup for access list after merging EIP-1559 PR with tx-table update.
 
-            let tx_id = meta.query_advice(id, CURRENT);
-            let index = meta.query_advice(addr, CURRENT);
-            let address = meta.query_advice(value, CURRENT);
+                meta.lookup_any("Tx access list address lookup", |meta| {
+                    let cond = meta.query_fixed(q_enable, CURRENT)
+                        * meta.query_advice(is_access_list_address, CURRENT);
 
-            vec![
-                1.expr(),
-                tx_id,
-                TxContextFieldTag::AccessListAddress.expr(),
-                index,
-                address,
-            ]
-            .into_iter()
-            .zip(tx_table.table_exprs(meta))
-            .map(|(arg, table)| (cond.clone() * arg, table))
-            .collect()
-        });
+                    let tx_id = meta.query_advice(id, CURRENT);
+                    let index = meta.query_advice(addr, CURRENT);
+                    let address = meta.query_advice(value, CURRENT);
+
+                    vec![
+                        1.expr(),
+                        tx_id,
+                        TxContextFieldTag::AccessListAddress.expr(),
+                        index,
+                        address.expr(),
+                        address,
+                    ]
+                    .into_iter()
+                    .zip(tx_table.table_exprs(meta))
+                    .map(|(arg, table)| (cond.clone() * arg, table))
+                    .collect()
+                });
+        */
 
         meta.lookup_any("Rw access list address lookup", |meta| {
             let cond = meta.query_fixed(q_enable, CURRENT)
@@ -499,26 +503,31 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             .collect()
         });
 
-        meta.lookup_any("Tx access list storage key lookup", |meta| {
-            let cond = meta.query_fixed(q_enable, CURRENT)
-                * meta.query_advice(is_access_list_storage_key, CURRENT);
+        /* TODO: enable tx lookup for access list after merging EIP-1559 PR with tx-table update.
 
-            let tx_id = meta.query_advice(id, CURRENT);
-            let index = meta.query_advice(addr, CURRENT);
-            let storage_key = meta.query_advice(value_prev, CURRENT);
+                meta.lookup_any("Tx access list storage key lookup", |meta| {
+                    let cond = meta.query_fixed(q_enable, CURRENT)
+                        * meta.query_advice(is_access_list_storage_key, CURRENT);
 
-            vec![
-                1.expr(),
-                tx_id,
-                TxContextFieldTag::AccessListStorageKey.expr(),
-                index,
-                storage_key,
-            ]
-            .into_iter()
-            .zip(tx_table.table_exprs(meta))
-            .map(|(arg, table)| (cond.clone() * arg, table))
-            .collect()
-        });
+                    let tx_id = meta.query_advice(id, CURRENT);
+                    let index = meta.query_advice(addr, CURRENT);
+                    let address = meta.query_advice(value, CURRENT);
+                    let storage_key = meta.query_advice(value_prev, CURRENT);
+
+                    vec![
+                        1.expr(),
+                        tx_id,
+                        TxContextFieldTag::AccessListStorageKey.expr(),
+                        index,
+                        storage_key,
+                        address,
+                    ]
+                    .into_iter()
+                    .zip(tx_table.table_exprs(meta))
+                    .map(|(arg, table)| (cond.clone() * arg, table))
+                    .collect()
+                });
+        */
 
         meta.lookup_any("Rw access list storage key lookup", |meta| {
             let cond = meta.query_fixed(q_enable, CURRENT)

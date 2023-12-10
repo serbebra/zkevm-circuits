@@ -686,6 +686,7 @@ fn add_access_list_storage_key_copy_event(
     exec_step: &mut ExecStep,
 ) -> Result<(), Error> {
     let tx_id = state.tx_ctx.id();
+    let rw_counter_start = state.block_ctx.rwc;
 
     // Build copy access list including addresses and storage keys.
     let access_list = if let Some(access_list) = state.tx.access_list.clone() {
@@ -715,7 +716,6 @@ fn add_access_list_storage_key_copy_event(
         vec![]
     };
 
-    let rw_counter_start = state.block_ctx.rwc;
     let tx_id = NumberOrHash::Number(state.tx_ctx.id());
 
     // Use placeholder bytes for copy steps.

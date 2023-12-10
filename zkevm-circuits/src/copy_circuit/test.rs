@@ -291,6 +291,7 @@ fn gen_access_list_data() -> CircuitInputBuilder {
                 .gas_price(gwei(2))
                 .gas(Word::from(0x10000))
                 .value(eth(2))
+                .transaction_type(1) // Set tx type to EIP-2930.
                 .access_list(test_access_list);
         },
         |block, _tx| block.number(0xcafeu64),
