@@ -638,6 +638,7 @@ fn add_access_list_address_copy_event(
     exec_step: &mut ExecStep,
 ) -> Result<(), Error> {
     let tx_id = state.tx_ctx.id();
+    let rw_counter_start = state.block_ctx.rwc;
 
     // Build copy access list including addresses.
     let access_list = if let Some(access_list) = state.tx.access_list.clone() {
@@ -657,7 +658,6 @@ fn add_access_list_address_copy_event(
     };
 
     let tx_id = NumberOrHash::Number(tx_id);
-    let rw_counter_start = state.block_ctx.rwc;
 
     // Use placeholder bytes for copy steps.
     let copy_bytes = CopyBytes::new(vec![(0, false, false); access_list.len()], None, None);
@@ -665,10 +665,11 @@ fn add_access_list_address_copy_event(
     // Add copy event to copy table.
     let copy_event = CopyEvent {
         src_type: CopyDataType::AccessListAddresses,
-        src_id: tx_id,
+        dst_type: CopyDataType::AccessListAddresses,
+        src_id: tx_id.clone(),
+        dst_id: tx_id,
         src_addr: 1, // index starts from 1.
         src_addr_end: access_list.len() as u64 + 1,
-        dst_type: CopyDataType::AccessListAddresses,
         rw_counter_start,
         copy_bytes,
         access_list,
@@ -723,10 +724,11 @@ fn add_access_list_storage_key_copy_event(
     // Add copy event to copy table.
     let copy_event = CopyEvent {
         src_type: CopyDataType::AccessListStorageKeys,
-        src_id: tx_id,
+        dst_type: CopyDataType::AccessListStorageKeys,
+        src_id: tx_id.clone(),
+        dst_id: tx_id,
         src_addr: 1, // index starts from 1 in tx-table.
         src_addr_end: access_list.len() as u64 + 1,
-        dst_type: CopyDataType::AccessListStorageKeys,
         rw_counter_start,
         copy_bytes,
         access_list,
