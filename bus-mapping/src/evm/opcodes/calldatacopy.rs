@@ -120,7 +120,7 @@ fn gen_copy_event(
             log_id: None,
             rw_counter_start,
             copy_bytes,
-            ..Default::default()
+            access_list: vec![],
         })
     } else {
         let (read_steps, write_steps, prev_bytes) =
@@ -138,7 +138,7 @@ fn gen_copy_event(
             rw_counter_start,
             //fetch pre read and write bytes of CopyBytes
             copy_bytes: CopyBytes::new(read_steps, Some(write_steps), Some(prev_bytes)),
-            ..Default::default()
+            access_list: vec![],
         })
     }
 }

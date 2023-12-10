@@ -314,7 +314,7 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, 
                 log_id: None,
                 rw_counter_start,
                 copy_bytes: CopyBytes::new(bytes, None, None),
-                ..Default::default()
+                access_list: vec![],
             },
         );
     }
@@ -670,10 +670,11 @@ fn add_access_list_address_copy_event(
         dst_id: tx_id,
         src_addr: 1, // index starts from 1.
         src_addr_end: access_list.len() as u64 + 1,
+        dst_addr: 1,
         rw_counter_start,
         copy_bytes,
         access_list,
-        ..Default::default()
+        log_id: None,
     };
 
     state.push_copy(exec_step, copy_event);
@@ -729,10 +730,11 @@ fn add_access_list_storage_key_copy_event(
         dst_id: tx_id,
         src_addr: 1, // index starts from 1 in tx-table.
         src_addr_end: access_list.len() as u64 + 1,
+        dst_addr: 1,
         rw_counter_start,
         copy_bytes,
         access_list,
-        ..Default::default()
+        log_id: None,
     };
 
     state.push_copy(exec_step, copy_event);

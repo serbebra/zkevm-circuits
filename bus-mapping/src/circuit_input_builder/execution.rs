@@ -366,12 +366,6 @@ pub enum NumberOrHash {
     Hash(H256),
 }
 
-impl Default for NumberOrHash {
-    fn default() -> Self {
-        Self::Number(0)
-    }
-}
-
 /// Represents all bytes related in one copy event.
 ///
 /// - When the source is memory, `bytes` is the memory content, including masked areas. The
@@ -413,7 +407,7 @@ impl CopyBytes {
 /// Defines a copy event associated with EVM opcodes such as CALLDATACOPY,
 /// CODECOPY, CREATE, etc. More information:
 /// <https://github.com/privacy-scaling-explorations/zkevm-specs/blob/master/specs/copy-proof.md>.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct CopyEvent {
     /// Represents the start address at the source of the copy event.
     pub src_addr: u64,

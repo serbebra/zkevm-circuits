@@ -111,7 +111,7 @@ fn gen_copy_event(
         log_id: None,
         rw_counter_start,
         copy_bytes: CopyBytes::new(read_steps, Some(write_steps), Some(prev_bytes)),
-        ..Default::default()
+        access_list: vec![],
     })
 }
 
