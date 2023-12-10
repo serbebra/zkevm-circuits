@@ -494,15 +494,14 @@ pub fn constrain_address<F: Field>(
 pub fn constrain_rw_counter<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
-    is_last: Expression<F>,      // The last row.
-    is_last_step: Expression<F>, // Both the last reader and writer rows.
+    is_last: Expression<F>, // The last row.
     is_rw_type: Expression<F>,
-    is_word_end: Expression<F>,
+    is_row_end: Expression<F>,
     rw_counter: Column<Advice>,
     rwc_inc_left: Column<Advice>,
 ) {
     // Decrement rwc_inc_left for the next row, when an RW operation happens.
-    let rwc_diff = is_rw_type.expr() * is_word_end.expr();
+    let rwc_diff = is_rw_type.expr() * is_row_end.expr();
     let new_value = meta.query_advice(rwc_inc_left, CURRENT) - rwc_diff;
     // At the end, it must reach 0.
     let update_or_finish = select::expr(
@@ -524,13 +523,20 @@ pub fn constrain_rw_counter<F: Field>(
             meta.query_advice(rw_counter, NEXT_ROW) + meta.query_advice(rwc_inc_left, NEXT_ROW),
         );
     });
+}
 
-    // Ensure that the word operation completes.
+/// Ensure the word operation completes for RW.
+pub fn constrain_rw_word_complete<F: Field>(
+    cb: &mut BaseConstraintBuilder<F>,
+    is_last_step: Expression<F>, // Both the last reader and writer rows.
+    is_rw_word_type: Expression<F>,
+    is_word_end: Expression<F>,
+) {
     cb.require_zero(
         "is_last_step requires is_word_end for word-based types",
         and::expr([
             is_last_step.expr(),
-            is_rw_type.expr(),
+            is_rw_word_type.expr(),
             not::expr(is_word_end.expr()),
         ]),
     );

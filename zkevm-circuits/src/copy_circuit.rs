@@ -17,7 +17,7 @@ use eth_types::{Field, Word};
 use gadgets::{
     binary_number::BinaryNumberChip,
     is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
-    util::{not, Expr},
+    util::{not, select, Expr},
 };
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
@@ -46,8 +46,9 @@ use crate::{
 use self::copy_gadgets::{
     constrain_address, constrain_bytes_left, constrain_event_rlc_acc, constrain_first_last,
     constrain_forward_parameters, constrain_is_pad, constrain_mask, constrain_masked_value,
-    constrain_must_terminate, constrain_non_pad_non_mask, constrain_rw_counter, constrain_tag,
-    constrain_value_rlc, constrain_word_index, constrain_word_rlc,
+    constrain_must_terminate, constrain_non_pad_non_mask, constrain_rw_counter,
+    constrain_rw_word_complete, constrain_tag, constrain_value_rlc, constrain_word_index,
+    constrain_word_rlc,
 };
 
 /// The current row.
@@ -333,20 +334,27 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             constrain_address(cb, meta, is_continue.expr(), front_mask.expr(), addr);
 
             {
-                let is_rw_type = meta.query_advice(is_memory, CURRENT)
-                    + is_tx_log.expr()
-                    + is_access_list.expr();
+                let is_rw_word_type = meta.query_advice(is_memory, CURRENT) + is_tx_log.expr();
+                let is_rw_type = is_rw_word_type.expr() + is_access_list.expr();
+
+                // No word align for access list address and storage key.
+                let is_row_end = select::expr(
+                    is_access_list.expr(),
+                    not::expr(is_reader),
+                    is_word_end.expr(),
+                );
 
                 constrain_rw_counter(
                     cb,
                     meta,
                     is_last.expr(),
-                    is_last_step.expr(),
                     is_rw_type.expr(),
-                    is_word_end.expr(),
+                    is_row_end.expr(),
                     rw_counter,
                     rwc_inc_left,
                 );
+
+                constrain_rw_word_complete(cb, is_last_step, is_rw_word_type.expr(), is_word_end);
             }
 
             cb.gate(meta.query_fixed(q_enable, CURRENT))

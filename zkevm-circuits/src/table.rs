@@ -1764,6 +1764,8 @@ impl CopyTable {
             word_rlc_prev: Value::known(F::zero()),
         };
 
+        let is_access_list = copy_event.src_type == CopyDataType::AccessListAddresses
+            || copy_event.src_type == CopyDataType::AccessListStorageKeys;
         for (step_idx, (is_read_step, mut copy_step)) in copy_steps
             .flat_map(|(read_step, write_step)| {
                 let read_step = CopyStep {
@@ -1798,9 +1800,7 @@ impl CopyTable {
 
             let is_pad = is_read_step && thread.addr >= thread.addr_end;
 
-            let [value, value_prev] = if copy_event.src_type == CopyDataType::AccessListAddresses
-                || copy_event.src_type == CopyDataType::AccessListStorageKeys
-            {
+            let [value, value_prev] = if is_access_list {
                 let address_pair = copy_event.access_list[step_idx / 2];
                 [
                     address_pair.0.to_scalar().unwrap(),
@@ -1881,9 +1881,10 @@ impl CopyTable {
             if !copy_step.mask {
                 thread.bytes_left -= 1;
             }
+            // No word operation for access list data types.
+            let is_row_end = is_access_list || (step_idx / 2) % 32 == 31;
             // Update the RW counter.
-            let is_word_end = (step_idx / 2) % 32 == 31;
-            if is_word_end && thread.is_rw {
+            if is_row_end && thread.is_rw {
                 rw_counter += 1;
                 rwc_inc_left -= 1;
             }

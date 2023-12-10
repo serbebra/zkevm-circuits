@@ -490,7 +490,8 @@ impl CopyEvent {
             || self.dst_type == CopyDataType::AccessListStorageKeys
         {
             // For access list, the placeholder is used for copy bytes which
-            // value will be replaced by address and storage key.
+            // value will be replaced by address and storage key, and no word
+            // operations.
             return self.full_length();
         }
 
