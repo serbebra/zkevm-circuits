@@ -641,21 +641,16 @@ fn add_access_list_address_copy_event(
     let rw_counter_start = state.block_ctx.rwc;
 
     // Build copy access list including addresses.
-    let access_list = if let Some(access_list) = state.tx.access_list.clone() {
-        let mut addresses = Vec::with_capacity(access_list.0.len());
-
-        for item in access_list.0.iter() {
-            // Add RW write operations for access list addresses
-            // (will lookup in copy circuit).
-            state.tx_access_list_account_write(exec_step, tx_id, item.address, true, false)?;
-
-            addresses.push((item.address, 0.into()));
-        }
-
-        addresses
-    } else {
-        vec![]
-    };
+    let access_list = state.tx.access_list.clone().map_or(Ok(vec![]), |al| {
+        al.0.iter()
+            .map(|item| {
+                // Add RW write operations for access list addresses
+                // (will lookup in copy circuit).
+                state.tx_access_list_account_write(exec_step, tx_id, item.address, true, false)?;
+                Ok((item.address, Word::zero()))
+            })
+            .collect::<Result<Vec<(_, _)>, Error>>()
+    })?;
 
     let tx_id = NumberOrHash::Number(tx_id);
 
@@ -690,32 +685,38 @@ fn add_access_list_storage_key_copy_event(
     let rw_counter_start = state.block_ctx.rwc;
 
     // Build copy access list including addresses and storage keys.
-    let access_list = if let Some(access_list) = state.tx.access_list.clone() {
-        let mut address_storage_keys = vec![];
+    let access_list = state
+        .tx
+        .access_list
+        .clone()
+        .map_or(Ok(vec![]), |al| {
+            al.0.iter()
+                .map(|item| {
+                    item.storage_keys
+                        .iter()
+                        .map(|&sk| {
+                            let sk = sk.to_word();
 
-        for item in access_list.0.iter() {
-            for storage_key in item.storage_keys.iter() {
-                let storage_key = storage_key.to_word();
+                            // Add RW write operations for access list address storage keys
+                            // (will lookup in copy circuit).
+                            state.tx_access_list_storage_key_write(
+                                exec_step,
+                                tx_id,
+                                item.address,
+                                sk,
+                                true,
+                                false,
+                            )?;
 
-                // Add RW write operations for access list address storage keys
-                // (will lookup in copy circuit).
-                state.tx_access_list_storage_key_write(
-                    exec_step,
-                    tx_id,
-                    item.address,
-                    storage_key,
-                    true,
-                    false,
-                )?;
-
-                address_storage_keys.push((item.address, storage_key));
-            }
-        }
-
-        address_storage_keys
-    } else {
-        vec![]
-    };
+                            Ok((item.address, sk))
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, Error>>()
+        })?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     let tx_id = NumberOrHash::Number(state.tx_ctx.id());
 
