@@ -1923,6 +1923,12 @@ impl CopyTable {
                 word::Word::from(u256_word_prev).into_value()
             };
 
+            if is_access_list {
+                let address_pair = copy_event.access_list[step_idx / 2];
+                thread.value_word = word::Word::from(address_pair.0).into_value();
+                thread.value_word_prev = word::Word::from(address_pair.1).into_value();
+            }
+
             // For LOG, format the address including the log_id.
             let addr = if thread.tag == CopyDataType::TxLog {
                 build_tx_log_address(thread.addr, TxLogFieldTag::Data, copy_event.log_id.unwrap())
