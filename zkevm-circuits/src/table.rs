@@ -211,6 +211,8 @@ pub struct TxTable {
     pub index: Column<Advice>,
     /// Value
     pub value: Column<Advice>,
+    /// Access list address
+    pub access_list_address: Column<Advice>,
 }
 
 impl TxTable {
@@ -224,6 +226,7 @@ impl TxTable {
             tag,
             index: meta.advice_column(),
             value: meta.advice_column_in(SecondPhase),
+            access_list_address: meta.advice_column(),
         }
     }
 
@@ -260,7 +263,7 @@ impl TxTable {
             q_enable: Column<Fixed>,
             advice_columns: &[Column<Advice>],
             tag: &Column<Fixed>,
-            row: &[Value<F>; 4],
+            row: &[Value<F>; 5],
             msg: &str,
         ) -> Result<AssignedCell<F, F>, Error> {
             let mut value_cell = None;
@@ -303,7 +306,7 @@ impl TxTable {
                     self.q_enable,
                     &advice_columns,
                     &self.tag,
-                    &[(); 4].map(|_| Value::known(F::zero())),
+                    &[(); 5].map(|_| Value::known(F::zero())),
                     "all-zero",
                 )?;
                 offset += 1;
@@ -313,8 +316,6 @@ impl TxTable {
                 // region that has a size parametrized by max_calldata with all
                 // the tx calldata.  This is required to achieve a constant fixed column tag
                 // regardless of the number of input txs or the calldata size of each tx.
-                let mut calldata_assignments: Vec<[Value<F>; 4]> = Vec::new();
-                // Assign Tx data (all tx fields except for calldata)
                 let padding_txs = (txs.len()..max_txs)
                     .map(|tx_id| {
                         let mut padding_tx = Transaction::dummy(chain_id);
@@ -326,7 +327,6 @@ impl TxTable {
                 for (i, tx) in txs.iter().chain(padding_txs.iter()).enumerate() {
                     debug_assert_eq!(i + 1, tx.id);
                     let tx_data = tx.table_assignments_fixed(*challenges);
-                    let tx_calldata = tx.table_assignments_dyn(*challenges);
                     for row in tx_data {
                         tx_value_cells.push(assign_row(
                             &mut region,
@@ -339,21 +339,39 @@ impl TxTable {
                         )?);
                         offset += 1;
                     }
-                    calldata_assignments.extend(tx_calldata.iter());
                 }
-                // Assign Tx calldata
-                for row in calldata_assignments.into_iter() {
-                    assign_row(
-                        &mut region,
-                        offset,
-                        self.q_enable,
-                        &advice_columns,
-                        &self.tag,
-                        &row,
-                        "",
-                    )?;
-                    offset += 1;
+
+                // Assign dynamic calldata and access list section
+                for tx in txs.iter().chain(padding_txs.iter()) {
+                    for row in tx.table_assignments_dyn(*challenges).into_iter() {
+                        assign_row(
+                            &mut region,
+                            offset,
+                            self.q_enable,
+                            &advice_columns,
+                            &self.tag,
+                            &row,
+                            "",
+                        )?;
+                        offset += 1;
+                    }
+                    for row in tx
+                        .table_assignments_access_list_dyn(*challenges)
+                        .into_iter()
+                    {
+                        assign_row(
+                            &mut region,
+                            offset,
+                            self.q_enable,
+                            &advice_columns,
+                            &self.tag,
+                            &row,
+                            "",
+                        )?;
+                        offset += 1;
+                    }
                 }
+
                 Ok(tx_value_cells)
             },
         )
@@ -368,6 +386,7 @@ impl<F: Field> LookupTable<F> for TxTable {
             self.tag.into(),
             self.index.into(),
             self.value.into(),
+            self.access_list_address.into(),
         ]
     }
 
@@ -378,6 +397,7 @@ impl<F: Field> LookupTable<F> for TxTable {
             String::from("tag"),
             String::from("index"),
             String::from("value"),
+            String::from("access_list_address"),
         ]
     }
 
@@ -388,6 +408,7 @@ impl<F: Field> LookupTable<F> for TxTable {
             meta.query_fixed(self.tag, Rotation::cur()),
             meta.query_advice(self.index, Rotation::cur()),
             meta.query_advice(self.value, Rotation::cur()),
+            meta.query_advice(self.access_list_address, Rotation::cur()),
         ]
     }
 }
