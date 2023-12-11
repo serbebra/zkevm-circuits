@@ -501,6 +501,7 @@ dependencies = [
  "poseidon-circuit",
  "pretty_assertions",
  "rand",
+ "rayon",
  "revm-precompile",
  "serde",
  "serde_json",
@@ -2333,8 +2334,9 @@ dependencies = [
 [[package]]
 name = "halo2-mpt-circuits"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/mpt-circuit.git?branch=feat/hi_lo#43ba0749a943057a44b5339e4819e7b09df021c2"
+source = "git+https://github.com/scroll-tech/mpt-circuit.git?branch=v0.8#287a66e56ad3071cddd843c7388ca555ea02ceed"
 dependencies = [
+ "env_logger",
  "ethers-core",
  "halo2_proofs",
  "hex",
@@ -2345,6 +2347,7 @@ dependencies = [
  "num-traits",
  "poseidon-circuit",
  "rand",
+ "rand_chacha",
  "serde",
  "serde_json",
  "strum 0.24.1",
