@@ -58,8 +58,6 @@ impl<F: Field> ExecutionGadget<F> for ExtcodehashGadget<F> {
             Some(&mut reversion_info),
         );
 
-        // For non-existing accounts the code_hash must be 0 in the rw_table.
-        // range check will be cover by account code_hash lookup
         let code_hash = cb.query_word_unchecked();
         // For non-existing accounts the code_hash must be 0 in the rw_table.
         cb.account_read(

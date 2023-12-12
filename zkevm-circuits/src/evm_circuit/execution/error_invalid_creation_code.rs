@@ -50,11 +50,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorInvalidCreationCodeGadget<F> {
         );
         let first_byte = cb.query_cell();
 
-        //let offset = cb.query_word32();
         let offset = cb.query_memory_address();
-
-        // let offset = cb.query_word_unchecked();
-        // let length = cb.query_memory_address();
 
         let length = cb.query_word32();
         let value_left = cb.query_word32();

@@ -176,11 +176,11 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                 keccak_code_hash.to_word(),
                 cb.empty_keccak_hash(),
             );
-            // cb.require_equal(
-            //     "code hash of empty bytes",
-            //     create.code_hash(),
-            //     cb.empty_code_hash(),
-            // );
+            cb.require_equal_word(
+                "code hash of empty bytes",
+                create.code_hash(),
+                cb.empty_code_hash(),
+            );
         });
 
         cb.call_context_lookup(
@@ -408,10 +408,8 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
                     );
                 });
 
-                //TODO: enable later
                 // keccak table lookup to verify contract address.
                 let kecck_output_exprs = keccak_output.limbs.clone().map(|l| l.expr());
-                //kecck_output_exprs.reverse();
                 let keccak_output_rlc = cb.word_rlc(kecck_output_exprs);
                 cb.keccak_table_lookup(
                     create.input_rlc(cb),
@@ -624,10 +622,6 @@ impl<F: Field, const IS_CREATE2: bool, const S: ExecutionState> ExecutionGadget<
     ) -> Result<(), Error> {
         let opcode = step.opcode.unwrap();
         let is_create2 = opcode == OpcodeId::CREATE2;
-        println!(
-            "offset {} rw_counter {}, is_create2 {}",
-            offset, step.rw_counter, is_create2
-        );
 
         self.opcode
             .assign(region, offset, Value::known(F::from(opcode.as_u64())))?;
