@@ -373,24 +373,7 @@ impl MptUpdate {
         (self.new_root, self.old_root)
     }
 
-    // pub(crate) fn table_assignments<F: Field>(
-    //     &self,
-    //     //randomness: Value<F>,
-    // ) -> MptUpdateRow<Value<F>> {
-
-    //     let (new_root, old_root) = update.root_assignments();
-    //     let (new_value, old_value) = update.value_assignments();
-    //     MptUpdateRow {
-    //         address: Value::known(update.key.address().to_scalar().unwrap()),
-    //         storage_key: word::Word::<F>::from(update.key.storage_key()).into_value(),
-    //         proof_type: Value::known(update.proof_type()),
-    //         new_root: word::Word::<F>::from(new_root).into_value(),
-    //         old_root: word::Word::<F>::from(old_root).into_value(),
-    //         new_value: word::Word::<F>::from(new_value).into_value(),
-    //         old_value: word::Word::<F>::from(old_value).into_value(),
-    //     }
-    // }
-
+    // mpt proof type
     fn proof_type(&self) -> MPTProofType {
         match self.key {
             Key::AccountStorage { .. } => {

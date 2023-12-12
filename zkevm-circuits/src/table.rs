@@ -1734,7 +1734,6 @@ impl CopyTable {
         Self {
             q_enable,
             is_first: meta.advice_column(),
-            // id: meta.advice_column_in(SecondPhase),
             id: word::Word::new([meta.advice_column(), meta.advice_column()]),
             tag: BinaryNumberChip::configure(meta, q_enable, None),
             addr: meta.advice_column(),
@@ -1800,7 +1799,6 @@ impl CopyTable {
         let mut reader = CopyThread {
             tag: copy_event.src_type,
             is_rw: copy_event.is_source_rw(),
-            //id: number_or_hash_to_field(&copy_event.src_id, challenges.evm_word()),
             id: number_or_hash_to_word(&copy_event.src_id),
             front_mask: true,
             addr: copy_event.src_addr,
@@ -1814,7 +1812,6 @@ impl CopyTable {
         let mut writer = CopyThread {
             tag: copy_event.dst_type,
             is_rw: copy_event.is_destination_rw(),
-            //id: number_or_hash_to_field(&copy_event.dst_id, challenges.evm_word()),
             id: number_or_hash_to_word(&copy_event.dst_id),
             front_mask: true,
             addr: copy_event.dst_addr,
@@ -1902,15 +1899,9 @@ impl CopyTable {
                 *value_word_bytes = [0; 32];
                 *value_word_prev_bytes = [0; 32];
             }
-            // thread.word_rlc = thread.word_rlc * challenges.evm_word() + value;
-            // thread.word_rlc_prev = if is_read_step {
-            //     thread.word_rlc // Reader does not change the word.
-            // } else {
-            //     thread.word_word_prev * challenges.evm_word() + value_prev
-            // };
+
             let word_index = (step_idx as u64 / 2) % 32;
             value_word_bytes[word_index as usize] = copy_step.value;
-            //println!("word_index {}, value_word_bytes {:?}", word_index, value_word_bytes);
 
             let u256_word = U256::from_big_endian(value_word_bytes);
             thread.value_word = word::Word::from(u256_word).into_value();
@@ -2079,19 +2070,17 @@ impl<F: Field> LookupTable<F> for CopyTable {
         vec![
             meta.query_fixed(self.q_enable, Rotation::cur()),
             meta.query_advice(self.is_first, Rotation::cur()),
-            //meta.query_advice(self.id, Rotation::cur()), // src_id
             meta.query_advice(self.id.lo(), Rotation::cur()), // src_id
             meta.query_advice(self.id.hi(), Rotation::cur()), // src_id
             self.tag.value(Rotation::cur())(meta),            // src_tag
-            //meta.query_advice(self.id, Rotation::next()), // dst_id
             meta.query_advice(self.id.lo(), Rotation::next()), // dst_id
             meta.query_advice(self.id.hi(), Rotation::next()), // dst_id
-            self.tag.value(Rotation::next())(meta),            // dst_tag
-            meta.query_advice(self.addr, Rotation::cur()),     // src_addr
+            self.tag.value(Rotation::next())(meta),           // dst_tag
+            meta.query_advice(self.addr, Rotation::cur()),    // src_addr
             meta.query_advice(self.src_addr_end, Rotation::cur()), // src_addr_end
-            meta.query_advice(self.addr, Rotation::next()),    // dst_addr
+            meta.query_advice(self.addr, Rotation::next()),   // dst_addr
             meta.query_advice(self.real_bytes_left, Rotation::cur()), // real_length
-            meta.query_advice(self.rlc_acc, Rotation::cur()),  // rlc_acc
+            meta.query_advice(self.rlc_acc, Rotation::cur()), // rlc_acc
             meta.query_advice(self.rw_counter, Rotation::cur()), // rw_counter
             meta.query_advice(self.rwc_inc_left, Rotation::cur()), // rwc_inc_left
         ]

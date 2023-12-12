@@ -411,7 +411,6 @@ impl<F: Field, const IS_CREATE2: bool> ContractCreateGadget<F, IS_CREATE2> {
                 + (self.caller_address_rlc(cb) * challenge_power_64)
                 + (self.salt_keccak_rlc(cb) * challenge_power_32)
                 + self.keccak_code_hash_keccak_rlc(cb)
-            //+ self.code_hash_rlc.expr()
         } else {
             // RLC(RLP([caller_address, caller_nonce]))
             let challenge_power_21 = challenges[20].clone();

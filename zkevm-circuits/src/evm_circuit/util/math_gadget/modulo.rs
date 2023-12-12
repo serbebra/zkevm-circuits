@@ -85,12 +85,8 @@ impl<F: Field> ModGadget<F> {
 
         self.k.assign_u256(region, offset, k)?;
         self.a_or_zero.assign_u256(region, offset, a_or_zero)?;
-        //let n_sum = (0..32).fold(0, |acc, idx| acc + n.byte(idx) as u64);
-        //let a_or_zero_sum = (0..32).fold(0, |acc, idx| acc + a_or_zero.byte(idx) as u64);
-        //self.n_is_zero.assign(region, offset, F::from(n_sum))?;
+
         self.n_is_zero.assign(region, offset, word::Word::from(n))?;
-        // self.a_or_is_zero
-        //     .assign(region, offset, F::from(a_or_zero_sum))?;
         self.a_or_is_zero
             .assign(region, offset, word::Word::from(a_or_zero))?;
         self.mul_add_words

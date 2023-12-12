@@ -172,11 +172,7 @@ impl<F: Field> ExecutionGadget<F> for EcrecoverGadget<F> {
                     .expect("sig_v is 32 bytes"),
             ),
         );
-        // cb.require_equal(
-        //     "Secp256k1::Fq modulus assigned correctly",
-        //     fq_modulus.expr(),
-        //     cb.word_rlc::<N_BYTES_WORD>(FQ_MODULUS.to_le_bytes().map(|b| b.expr())),
-        // );
+
         cb.require_equal(
             "Secp256k1::Fq modulus assigned correctly",
             cb.word_rlc::<N_BYTES_WORD>(fq_modulus.clone().limbs.map(|cell| cell.expr())),

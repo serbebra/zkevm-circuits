@@ -208,7 +208,6 @@ pub struct TxCircuitConfigArgs<F: Field> {
     pub u8_table: U8Table,
     /// Reusable u16 lookup table,
     pub u16_table: U16Table,
-
     /// Challenges
     pub challenges: crate::util::Challenges<Expression<F>>,
 }

@@ -1064,7 +1064,6 @@ pub(crate) struct CommonCallGadget<F, MemAddrGadget, const IS_SUCCESS_CALL: bool
     // phase2_callee_code_hash
     pub callee_code_hash: WordCell<F>,
     pub is_empty_code_hash: IsEqualWordGadget<F, WordCell<F>, Word<Expression<F>>>,
-    //pub is_empty_code_hash: IsEqualGadget<F>,
 
     //pub callee_not_exists: IsZeroGadget<F>,
     pub callee_not_exists: IsZeroWordGadget<F, WordCell<F>>,
@@ -1496,7 +1495,6 @@ impl<F: Field> CommonErrorGadget<F> {
     ) -> Self {
         cb.opcode_lookup_rlc(opcode.expr(), push_rlc);
 
-        //let rw_counter_end_of_reversion = cb.query_cell();
         // rw_counter_end_of_reversion just used for read lookup, therefore skip range check
         let rw_counter_end_of_reversion = cb.query_word_unchecked();
 
@@ -1640,9 +1638,7 @@ impl<F: Field, const VALID_BYTES: usize> WordByteCapGadget<F, VALID_BYTES> {
         self.lt_cap.expr()
     }
 
-    // pub(crate) fn original_ref(&self) -> &Word<F> {
-    //     self.word.original.clone()
-    // }
+    // orginal ref of word limbs
     pub(crate) fn original_ref(&self) -> &Word32Cell<F> {
         self.word.original_ref()
     }
