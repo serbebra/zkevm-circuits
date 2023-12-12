@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use eth_types::{
     sign_types::{sign, SignData},
     Field,
@@ -281,7 +279,6 @@ fn run<F: Field>(k: u32, max_verif: usize, signatures: Vec<SignData>) {
         gate_chip: GateChip::new(),
         max_verif,
         signatures,
-        _marker: PhantomData,
     };
     let prover = match MockProver::run(k, &circuit, vec![]) {
         Ok(prover) => prover,
@@ -297,7 +294,6 @@ fn run_real_prover(params: &ParamsKZG<Bn256>, max_verif: usize, signatures: Vec<
         gate_chip: GateChip::new(),
         max_verif,
         signatures,
-        _marker: PhantomData,
     };
     let vk = keygen_vk(params, &circuit).unwrap();
     let pk = keygen_pk(params, vk.clone(), &circuit).unwrap();

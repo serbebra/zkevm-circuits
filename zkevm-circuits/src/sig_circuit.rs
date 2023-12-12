@@ -19,7 +19,7 @@ mod utils;
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 pub(crate) use utils::*;
 
-use std::{cell::RefCell, marker::PhantomData};
+use std::cell::RefCell;
 
 use eth_types::{self, sign_types::SignData, Field};
 use halo2_base::{
@@ -56,8 +56,6 @@ pub struct SigCircuit<F: Field> {
     pub max_verif: usize,
     /// Without padding
     pub signatures: Vec<SignData>,
-    /// Marker
-    pub _marker: PhantomData<F>,
 }
 
 impl<F: Field> SubCircuit<F> for SigCircuit<F> {
@@ -71,7 +69,6 @@ impl<F: Field> SubCircuit<F> for SigCircuit<F> {
             gate_chip: GateChip::new(),
             max_verif: MAX_NUM_SIG,
             signatures: block.get_sign_data(true),
-            _marker: Default::default(),
         }
     }
 
@@ -139,7 +136,6 @@ impl<F: Field> SigCircuit<F> {
             gate_chip: GateChip::default(),
             max_verif,
             signatures: Vec::new(),
-            _marker: PhantomData,
         }
     }
 
