@@ -94,6 +94,8 @@ impl<F: Field> SubCircuit<F> for SigCircuit<F> {
         self.assign_main(config, layouter, &self.signatures, challenges)?;
         // clear the builder before finalizing the synthesizing process
         self.two_phase_builder.borrow_mut().clear();
+        // let param = self.two_phase_builder.borrow_mut().calculate_params(None);
+        // println!("\n\nparam: {:?}\n\n", param);
         Ok(())
     }
 

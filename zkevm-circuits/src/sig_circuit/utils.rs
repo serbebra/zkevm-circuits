@@ -30,16 +30,16 @@ use crate::{
 // Hard coded parameters.
 // FIXME: allow for a configurable param.
 pub(super) const MAX_NUM_SIG: usize = 128;
-// Each ecdsa signature requires 461174 cells
-pub(super) const CELLS_PER_SIG: usize = 461174;
-// Each ecdsa signature requires 63276 lookup cells
-pub(super) const LOOKUP_CELLS_PER_SIG: usize = 63276;
+// Each ecdsa signature requires 495770 cells
+pub(super) const CELLS_PER_SIG: usize = 495770;
+// Each ecdsa signature requires 70746 lookup cells
+pub(super) const LOOKUP_CELLS_PER_SIG: usize = 70746;
 // Total number of rows allocated for ecdsa chip
 pub(super) const LOG_TOTAL_NUM_ROWS: usize = 20;
 // Max number of columns allowed
-pub(super) const COLUMN_NUM_LIMIT: usize = 58;
+pub(super) const COLUMN_NUM_LIMIT: usize = 62;
 // Max number of lookup columns allowed
-pub(super) const LOOKUP_COLUMN_NUM_LIMIT: usize = 9;
+pub(super) const LOOKUP_COLUMN_NUM_LIMIT: usize = 10;
 
 pub(super) fn calc_required_advices(num_verif: usize) -> usize {
     let mut num_adv = 1;
