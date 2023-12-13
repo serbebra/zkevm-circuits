@@ -162,14 +162,14 @@ fn test_edge_cases() {
 
 #[test]
 fn sign_verify() {
-    // use super::utils::LOG_TOTAL_NUM_ROWS;
-    // use crate::sig_circuit::utils::MAX_NUM_SIG;
+    use super::utils::LOG_TOTAL_NUM_ROWS;
+    use crate::sig_circuit::utils::MAX_NUM_SIG;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use sha3::{Digest, Keccak256};
     let mut rng = XorShiftRng::seed_from_u64(1);
 
-    let params = gen_srs(24 as u32);
+    // let params = gen_srs(24 as u32);
     // msg_hash == 0
     {
         log::debug!("testing for msg_hash = 0");
@@ -185,8 +185,8 @@ fn sign_verify() {
             msg: msg.into(),
             msg_hash,
         });
-
-        run_real_prover(&params, 1, signatures);
+        run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, 1, signatures);
+        // run_real_prover(&params, 1, signatures);
         log::debug!("end of testing for msg_hash = 0");
     }
     // msg_hash == 1
@@ -204,13 +204,13 @@ fn sign_verify() {
             msg: msg.into(),
             msg_hash,
         });
-
-        run_real_prover(&params, 1, signatures);
+        run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, 1, signatures);
+        // run_real_prover(&params, 1, signatures);
         log::debug!("end of testing for msg_hash = 1");
     }
     // random msg_hash
-    let max_sigs = [1, 16];
-    // let max_sigs = [1, 16, MAX_NUM_SIG];
+    // let max_sigs = [1, 16];
+    let max_sigs = [1, 16, MAX_NUM_SIG];
     for max_sig in max_sigs.iter() {
         log::debug!("testing for {} signatures", max_sig);
         let mut signatures = Vec::new();
@@ -232,7 +232,8 @@ fn sign_verify() {
             });
         }
 
-        run_real_prover(&params, 1, signatures);
+        run::<Fr>(LOG_TOTAL_NUM_ROWS as u32, *max_sig, signatures);
+        // run_real_prover(&params, 1, signatures);
 
         log::debug!("end of testing for {} signatures", max_sig);
     }
@@ -287,16 +288,22 @@ fn run<F: Field>(k: u32, max_verif: usize, signatures: Vec<SignData>) {
     assert_eq!(prover.verify(), Ok(()));
 }
 
-fn run_real_prover(params: &ParamsKZG<Bn256>, max_verif: usize, signatures: Vec<SignData>) {
-    // SignVerifyChip -> ECDSAChip -> MainGate instance column
-    let circuit = SigCircuit::<Fr> {
-        two_phase_builder: RangeCircuitBuilder::new(false).into(),
-        gate_chip: GateChip::new(),
-        max_verif,
-        signatures,
-    };
-    let vk = keygen_vk(params, &circuit).unwrap();
-    let pk = keygen_pk(params, vk.clone(), &circuit).unwrap();
-    let proof = gen_proof(params, &pk, circuit);
-    check_proof(params, &vk, &proof, true);
-}
+// fn run_real_prover(params: &ParamsKZG<Bn256>, max_verif: usize, signatures: Vec<SignData>) {
+//     // SignVerifyChip -> ECDSAChip -> MainGate instance column
+//     let circuit = SigCircuit::<Fr> {
+//         two_phase_builder: RangeCircuitBuilder::new(false).into(),
+//         gate_chip: GateChip::new(),
+//         max_verif,
+//         signatures,
+//     };
+
+//     let prover = match MockProver::run(24, &circuit, vec![]) {
+//         Ok(prover) => prover,
+//         Err(e) => panic!("{e:#?}"),
+//     };
+//     assert_eq!(prover.verify(), Ok(()));
+//     let vk = keygen_vk(params, &circuit).unwrap();
+//     let pk = keygen_pk(params, vk.clone(), &circuit).unwrap();
+//     let proof = gen_proof(params, &pk, circuit);
+//     check_proof(params, &vk, &proof, true);
+// }

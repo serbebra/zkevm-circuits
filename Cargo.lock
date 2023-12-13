@@ -771,7 +771,7 @@ checksum = "c688fc74432808e3eb684cae8830a86be1d66a2bd58e1f248ed0960a590baf6f"
 dependencies = [
  "glob",
  "libc",
- "libloading 0.7.4",
+ "libloading",
 ]
 
 [[package]]
@@ -1485,7 +1485,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.1",
+ "libloading",
 ]
 
 [[package]]
@@ -1705,7 +1705,7 @@ version = "0.1.0"
 dependencies = [
  "ethers-core 2.0.7",
  "ethers-signers",
- "halo2-base",
+ "halo2-base 0.4.0",
  "halo2_proofs",
  "hex",
  "itertools 0.10.5",
@@ -2535,7 +2535,6 @@ checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
 [[package]]
 name = "halo2-base"
 version = "0.4.0"
-source = "git+https://github.com/scroll-tech/halo2-lib?branch=sync-halo2-lib-0.4.0#3e807cc1e406e6b9fef81e431ab7fead07c6fd09"
 dependencies = [
  "ark-std 0.3.0",
  "getset",
@@ -2555,11 +2554,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "halo2-base"
+version = "0.4.0"
+source = "git+https://github.com/scroll-tech/halo2-lib.git?branch=sync-halo2-lib-0.4.0#276991de8b24daffb22b966f2757772efe3da1fa"
+dependencies = [
+ "getset",
+ "halo2_proofs",
+ "itertools 0.11.0",
+ "log",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "poseidon-circuit",
+ "rand_chacha",
+ "rayon",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "halo2-ecc"
 version = "0.4.0"
-source = "git+https://github.com/scroll-tech/halo2-lib?branch=sync-halo2-lib-0.4.0#3e807cc1e406e6b9fef81e431ab7fead07c6fd09"
 dependencies = [
- "halo2-base",
+ "halo2-base 0.4.0",
+ "itertools 0.10.5",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "rand",
+ "rand_chacha",
+ "rand_core",
+ "rayon",
+ "serde",
+ "serde_json",
+ "test-case",
+]
+
+[[package]]
+name = "halo2-ecc"
+version = "0.4.0"
+source = "git+https://github.com/scroll-tech/halo2-lib.git?branch=sync-halo2-lib-0.4.0#276991de8b24daffb22b966f2757772efe3da1fa"
+dependencies = [
+ "halo2-base 0.4.0 (git+https://github.com/scroll-tech/halo2-lib.git?branch=sync-halo2-lib-0.4.0)",
  "itertools 0.10.5",
  "num-bigint",
  "num-integer",
@@ -2614,7 +2651,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=sync-halo2-lib-0.4.0#3d4438999c6397633b32b89e7789c0350316c4b1"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=sync-halo2-lib-0.4.0#45883f2d2d7ca33e629444b87d79e19ff2dc1de4"
 dependencies = [
  "ark-std 0.3.0",
  "blake2b_simd",
@@ -3179,16 +3216,6 @@ checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
 dependencies = [
  "cfg-if 1.0.0",
  "winapi",
-]
-
-[[package]]
-name = "libloading"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c571b676ddfc9a8c12f1f3d3085a7b163966a8fd8098a90640953ce5f6170161"
-dependencies = [
- "cfg-if 1.0.0",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -5019,11 +5046,10 @@ dependencies = [
 [[package]]
 name = "snark-verifier"
 version = "0.1.6"
-source = "git+https://github.com/scroll-tech/snark-verifier?branch=sync-halo2-lib-0.4.0#731b311672383537abdabae43d32401234dfe7c0"
 dependencies = [
  "ff 0.13.0",
- "halo2-base",
- "halo2-ecc",
+ "halo2-base 0.4.0 (git+https://github.com/scroll-tech/halo2-lib.git?branch=sync-halo2-lib-0.4.0)",
+ "halo2-ecc 0.4.0 (git+https://github.com/scroll-tech/halo2-lib.git?branch=sync-halo2-lib-0.4.0)",
  "hex",
  "itertools 0.11.0",
  "lazy_static",
@@ -5039,12 +5065,11 @@ dependencies = [
 [[package]]
 name = "snark-verifier-sdk"
 version = "0.1.6"
-source = "git+https://github.com/scroll-tech/snark-verifier?branch=sync-halo2-lib-0.4.0#731b311672383537abdabae43d32401234dfe7c0"
 dependencies = [
  "bincode",
  "ethereum-types",
  "getset",
- "halo2-base",
+ "halo2-base 0.4.0 (git+https://github.com/scroll-tech/halo2-lib.git?branch=sync-halo2-lib-0.4.0)",
  "hex",
  "itertools 0.10.5",
  "lazy_static",
@@ -6330,8 +6355,8 @@ dependencies = [
  "ethers-core 2.0.7",
  "ethers-signers",
  "gadgets",
- "halo2-base",
- "halo2-ecc",
+ "halo2-base 0.4.0",
+ "halo2-ecc 0.4.0",
  "halo2_proofs",
  "hex",
  "itertools 0.10.5",
