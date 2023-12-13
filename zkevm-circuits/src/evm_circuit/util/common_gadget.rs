@@ -3,7 +3,7 @@ use super::{
     from_bytes,
     math_gadget::{IsEqualWordGadget, IsZeroGadget, IsZeroWordGadget, LtGadget},
     memory_gadget::{CommonMemoryAddressGadget, MemoryExpansionGadget},
-    AccountAddress, CachedRegion,
+    CachedRegion,
 };
 use crate::{
     evm_circuit::{
@@ -28,7 +28,7 @@ use crate::{
 };
 use bus_mapping::state_db::CodeDB;
 use either::Either;
-use eth_types::{evm_types::GasCost, Field, ToAddress, ToLittleEndian, ToScalar, ToWord, U256};
+use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, ToWord, U256};
 use gadgets::util::{select, sum};
 use halo2_proofs::{
     circuit::Value,
@@ -1052,7 +1052,7 @@ pub(crate) struct CommonCallGadget<F, MemAddrGadget, const IS_SUCCESS_CALL: bool
 
     pub gas: Word32Cell<F>,
     pub gas_is_u64: IsZeroGadget<F>,
-    pub callee_address: AccountAddress<F>,
+    pub callee_address_word: Word32Cell<F>,
     pub value: Word32Cell<F>,
     pub cd_address: MemAddrGadget,
     pub rd_address: MemAddrGadget,
@@ -1093,7 +1093,7 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         );
 
         let gas_word = cb.query_word32();
-        let callee_address = cb.query_account_address();
+        let callee_address_word = cb.query_word32();
         let value = cb.query_word32();
         let is_success = cb.query_bool();
 
@@ -1109,7 +1109,7 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         // For both CALL and STATICCALL, caller address is
         // `current_callee_address` and callee address is `callee_address`.
         cb.stack_pop(gas_word.to_word());
-        cb.stack_pop(callee_address.to_word());
+        cb.stack_pop(callee_address_word.to_word());
 
         // `CALL` and `CALLCODE` opcodes have an additional stack pop `value`.
         cb.condition(is_call.clone() + is_callcode.clone(), |cb| {
@@ -1142,8 +1142,10 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         );
 
         let callee_code_hash = cb.query_word_unchecked();
+        let callee_address_normal = Self::callee_address_valid(&callee_address_word);
+
         cb.account_read(
-            callee_address.to_word(),
+            callee_address_normal,
             AccountFieldTag::CodeHash,
             callee_code_hash.to_word(),
         );
@@ -1154,7 +1156,7 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
 
         Self {
             is_success,
-            callee_address,
+            callee_address_word,
             gas: gas_word,
             gas_is_u64,
             value,
@@ -1175,7 +1177,14 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
     }
 
     pub fn callee_address(&self) -> Word<Expression<F>> {
-        self.callee_address.to_word()
+        Self::callee_address_valid(&self.callee_address_word)
+    }
+
+    pub fn callee_address_valid(callee_address_word: &Word32Cell<F>) -> Word<Expression<F>> {
+        let limbs: [Expression<F>; 32] = callee_address_word.limbs.clone().map(|l| l.expr());
+        let callee_address_lo = from_bytes::expr(&limbs[0..16]);
+        let callee_address_hi = from_bytes::expr(&limbs[16..20]);
+        Word::new([callee_address_lo, callee_address_hi])
     }
 
     pub fn gas_expr(&self) -> Expression<F> {
@@ -1216,8 +1225,9 @@ impl<F: Field, MemAddrGadget: CommonMemoryAddressGadget<F>, const IS_SUCCESS_CAL
         callee_code_hash: U256,
     ) -> Result<u64, Error> {
         self.gas.assign_u256(region, offset, gas)?;
-        self.callee_address
-            .assign_h160(region, offset, callee_address.to_address())?;
+        self.callee_address_word
+            .assign_u256(region, offset, callee_address)?;
+
         self.value.assign_u256(region, offset, value)?;
         if IS_SUCCESS_CALL {
             self.is_success
