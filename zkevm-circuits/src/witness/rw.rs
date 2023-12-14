@@ -378,7 +378,7 @@ impl<F: Field> RwRow<Value<F>> {
             _ = f.map(|v| {
                 inner = Some(v);
             });
-            inner.unwrap()
+            inner.unwrap_or_default()
         };
         let unwrap_w = |f: word::Word<Value<F>>| {
             let (lo, hi) = f.into_lo_hi();
