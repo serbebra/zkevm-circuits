@@ -1,7 +1,7 @@
-//! Helper functions for super circuit tests of EIP-2930
+//! Helper functions for super circuit tests of EIP-1559
 
 use super::CircuitsParams;
-use eth_types::{address, l2_types::BlockTrace, AccessList, AccessListItem, H256};
+use eth_types::{address, l2_types::BlockTrace};
 use ethers_signers::{LocalWallet, Signer};
 use mock::{eth, gwei, TestContext, MOCK_CHAIN_ID};
 use rand::SeedableRng;
@@ -12,38 +12,24 @@ pub(crate) fn test_block_trace() -> BlockTrace {
     let wallet_a = LocalWallet::new(&mut rng).with_chain_id(MOCK_CHAIN_ID);
 
     let addr_a = wallet_a.address();
-    let addr_b = address!("0x0000000000000000000000000000000000002930");
-
-    let test_access_list = AccessList(vec![
-        AccessListItem {
-            address: address!("0x0000000000000000000000000000000000001111"),
-            storage_keys: [10, 11].map(H256::from_low_u64_be).to_vec(),
-        },
-        AccessListItem {
-            address: address!("0x0000000000000000000000000000000000002222"),
-            storage_keys: [20, 22].map(H256::from_low_u64_be).to_vec(),
-        },
-        AccessListItem {
-            address: address!("0x0000000000000000000000000000000000003333"),
-            storage_keys: [30, 33].map(H256::from_low_u64_be).to_vec(),
-        },
-    ]);
+    let addr_b = address!("0x0000000000000000000000000000000000001559");
 
     TestContext::<2, 1>::new(
         None,
         |accs| {
-            accs[0].address(addr_b).balance(eth(20));
-            accs[1].address(addr_a).balance(eth(20));
+            accs[0].address(addr_b).balance(eth(1));
+            accs[1].address(addr_a).balance(gwei(80_000));
         },
         |mut txs, _accs| {
             txs[0]
                 .from(addr_a)
                 .to(addr_b)
                 .gas_price(gwei(2))
-                .gas(1_000_000.into())
-                .value(eth(2))
-                .transaction_type(1) // Set tx type to EIP-2930.
-                .access_list(test_access_list);
+                .gas(30_000.into())
+                .value(gwei(20_000))
+                .max_fee_per_gas(gwei(2))
+                .max_priority_fee_per_gas(gwei(2))
+                .transaction_type(2); // Set tx type to EIP-1559.
         },
         |block, _tx| block.number(0xcafe_u64),
     )

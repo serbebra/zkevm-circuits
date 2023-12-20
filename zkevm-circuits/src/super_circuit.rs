@@ -50,6 +50,8 @@
 //!   - [x] Tx Circuit
 //!   - [ ] MPT Circuit
 #[cfg(feature = "scroll")]
+mod eip1559;
+#[cfg(feature = "scroll")]
 mod eip2930;
 mod precompile_block_trace;
 #[cfg(any(feature = "test", test))]
