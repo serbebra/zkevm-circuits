@@ -64,7 +64,7 @@ macro_rules! compression_layer_snark {
         let is_fresh = if $layer_index == 1 { true } else { false };
         let compression_circuit = CompressionCircuit::new(
             CircuitBuilderStage::Prover,
-            ConfigParams::default_compress_wide_param(),
+            &ConfigParams::default_compress_wide_param(),
             &$param,
             $previous_snark.clone(),
             is_fresh,
@@ -111,8 +111,15 @@ macro_rules! compression_layer_evm {
 
         let mut rng = test_rng();
 
-        let compression_circuit =
-            CompressionCircuit::new(&$param, $previous_snark, false, &mut rng).unwrap();
+        let compression_circuit = CompressionCircuit::new(
+            CircuitBuilderStage::Prover,
+            &ConfigParams::default_compress_wide_param(),
+            &$param,
+            $previous_snark,
+            false,
+            &mut rng,
+        )
+        .unwrap();
 
         let instances = compression_circuit.instances();
 

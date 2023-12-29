@@ -16,8 +16,8 @@ use crate::ConfigParams;
 pub struct CompressionConfig {
     /// Non-native field chip configurations
     pub base_field_config: BaseConfig<Fr>,
-    /// Instance for public input
-    pub instance: Column<Instance>,
+    // /// Instance for public input
+    // pub instance: Column<Instance>,
 }
 
 impl CompressionConfig {
@@ -40,12 +40,12 @@ impl CompressionConfig {
         // circuit configuration is built from config with given num columns etc
         // can be wide or thin circuit
         let base_field_config = BaseCircuitBuilder::configure_with_params(meta, (&params).into());
-        let instance = meta.instance_column();
-        meta.enable_equality(instance);
+        // let instance = meta.instance_column();
+        // meta.enable_equality(instance);
 
         Self {
             base_field_config,
-            instance,
+            // instance,
         }
     }
 }
