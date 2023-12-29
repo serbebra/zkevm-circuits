@@ -21,7 +21,7 @@ use snark_verifier_sdk::{
 
 use crate::{
     compression_layer_evm, compression_layer_snark, layer_0, tests::mock_chunk::MockChunkCircuit,
-    CompressionCircuit, ConfigParams,
+    AccScheme, CompressionCircuit, ConfigParams,
 };
 
 #[ignore = "it takes too much time"]
@@ -59,7 +59,7 @@ fn test_mock_compression() {
             param
         };
         let compression_circuit = CompressionCircuit::new(
-            CircuitBuilderStage::Prover,
+            CircuitBuilderStage::Keygen,
             &ConfigParams::default_compress_wide_param(),
             &param,
             layer_0_snark,
@@ -100,12 +100,119 @@ fn test_two_layer_proof_compression() {
     let mut rng = test_rng();
     let layer_2_params = gen_srs(k2);
 
+    // layer 0
     let circuit = MockChunkCircuit::random(&mut rng, false, false);
     let layer_0_snark = layer_0!(circuit, MockChunkCircuit, layer_2_params, k0, path);
 
-    std::env::set_var("COMPRESSION_CONFIG", "./configs/compression_wide.config");
-    let layer_1_snark = compression_layer_snark!(layer_0_snark, layer_2_params, k1, path, 1);
+    // layer 1
+    let layer_1_snark = {
+        let timer = start_timer!(|| format!("gen layer {} snark", 1));
 
-    std::env::set_var("COMPRESSION_CONFIG", "./configs/compression_thin.config");
-    compression_layer_evm!(layer_1_snark, layer_2_params, k2, path, 2);
+        let param = {
+            let mut param = layer_2_params.clone();
+            param.downsize(k1);
+            param
+        };
+
+        let mut rng = test_rng();
+
+        let compression_circuit = CompressionCircuit::new(
+            CircuitBuilderStage::Keygen,
+            &ConfigParams::default_compress_wide_param(),
+            &param,
+            layer_0_snark.clone(),
+            true,
+            &mut rng,
+        )
+        .unwrap();
+
+        let pk = gen_pk(&param, &compression_circuit, None);
+        let break_points = compression_circuit.break_points();
+
+        let compression_circuit = CompressionCircuit::new(
+            CircuitBuilderStage::Prover,
+            &ConfigParams::default_compress_wide_param(),
+            &param,
+            layer_0_snark.clone(),
+            true,
+            &mut rng,
+        )
+        .unwrap()
+        .use_break_points(break_points.clone());
+
+        // build the snark for next layer
+        let snark = gen_snark_shplonk(
+            &param,
+            &pk,
+            compression_circuit.clone(),
+            &mut rng,
+            None::<String>, // Some(&$path.join(Path::new("layer_1.snark"))),
+        );
+        log::trace!("finished layer {} snark generation for circuit", 1);
+
+        assert!(verify_snark_shplonk::<CompressionCircuit>(
+            &param,
+            snark.clone(),
+            pk.get_vk()
+        ));
+
+        end_timer!(timer);
+        snark
+    };
+
+    // layer 2
+    {
+        let timer = start_timer!(|| format!("gen layer {} snark", 2));
+
+        let param = layer_2_params;
+
+        let mut rng = test_rng();
+
+        let compression_circuit = CompressionCircuit::new(
+            CircuitBuilderStage::Keygen,
+            &ConfigParams::compress_thin_param(),
+            &param,
+            layer_1_snark.clone(),
+            true,
+            &mut rng,
+        )
+        .unwrap();
+
+        let pk = gen_pk(&param, &compression_circuit, None);
+        let break_points = compression_circuit.break_points();
+
+        let compression_circuit = CompressionCircuit::new(
+            CircuitBuilderStage::Prover,
+            &ConfigParams::default_compress_wide_param(),
+            &param,
+            layer_1_snark.clone(),
+            true,
+            &mut rng,
+        )
+        .unwrap()
+        .use_break_points(break_points.clone());
+
+        let instances = compression_circuit.instances();
+
+        // build the snark for next layer
+        let proof = gen_evm_proof_shplonk(
+            &param,
+            &pk,
+            compression_circuit.clone(),
+            instances.clone(),
+            &mut rng,
+        );
+        log::trace!("finished layer {} snark generation for circuit", 1);
+
+        let deployment_code = gen_evm_verifier::<CompressionCircuit, AccScheme>(
+            &param,
+            pk.get_vk(),
+            compression_circuit.num_instance(),
+            None,
+        );
+
+        println!("finished bytecode generation");
+        evm_verify(deployment_code, instances, proof);
+        end_timer!(timer);
+    }
 }

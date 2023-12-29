@@ -9,8 +9,9 @@ use rand::Rng;
 use snark_verifier::{
     loader::halo2::halo2_ecc::{
         bn254::FpChip,
-        halo2_base::gates::circuit::{
-            builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage,
+        halo2_base::gates::{
+            circuit::{builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage},
+            flex_gate::MultiPhaseThreadBreakPoints,
         },
     },
     pcs::{kzg::KzgAccumulator, AccumulationSchemeProver},
@@ -96,6 +97,17 @@ impl CompressionCircuit {
             circuit: res,
             is_fresh: !has_accumulator,
         })
+    }
+
+    /// The break points of the circuit.
+    pub fn break_points(&self) -> MultiPhaseThreadBreakPoints {
+        self.circuit.builder.break_points()
+    }
+
+    /// Returns new with break points
+    pub fn use_break_points(mut self, break_points: MultiPhaseThreadBreakPoints) -> Self {
+        self.circuit.set_break_points(break_points);
+        self
     }
 }
 
