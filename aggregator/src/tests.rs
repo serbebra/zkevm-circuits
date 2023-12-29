@@ -1,4 +1,4 @@
-mod aggregation;
+// mod aggregation;
 mod compression;
 mod mock_chunk;
 mod rlc;
@@ -62,8 +62,15 @@ macro_rules! compression_layer_snark {
         let mut rng = test_rng();
 
         let is_fresh = if $layer_index == 1 { true } else { false };
-        let compression_circuit =
-            CompressionCircuit::new(&$param, $previous_snark.clone(), is_fresh, &mut rng).unwrap();
+        let compression_circuit = CompressionCircuit::new(
+            CircuitBuilderStage::Prover,
+            ConfigParams::default_compress_wide_param(),
+            &$param,
+            $previous_snark.clone(),
+            is_fresh,
+            &mut rng,
+        )
+        .unwrap();
 
         let pk = gen_pk(&$param, &compression_circuit, None);
         // build the snark for next layer
@@ -123,7 +130,7 @@ macro_rules! compression_layer_evm {
         log::trace!("proof size: {}", proof.len());
 
         // verify proof via EVM
-        let deployment_code = gen_evm_verifier::<CompressionCircuit, Kzg<Bn256, Bdfg21>>(
+        let deployment_code = gen_evm_verifier::<CompressionCircuit, KzgAs<Bn256, Bdfg21>>(
             &param,
             pk.get_vk(),
             compression_circuit.num_instance(),

@@ -15,7 +15,7 @@ use snark_verifier::pcs::kzg::KzgSuccinctVerifyingKey;
 #[cfg(not(feature = "disable_proof_aggregation"))]
 use snark_verifier::{
     loader::halo2::{
-        halo2_ecc::halo2_base::{AssignedValue, Context, ContextParams},
+        halo2_ecc::halo2_base::{AssignedValue, Context},
         Halo2Loader,
     },
     pcs::kzg::{Bdfg21, Kzg},
@@ -119,10 +119,13 @@ impl AggregationCircuit {
 
 impl Circuit<Fr> for AggregationCircuit {
     type Config = (AggregationConfig, Challenges);
+
     type FloorPlanner = SimpleFloorPlanner;
     fn without_witnesses(&self) -> Self {
         unimplemented!()
     }
+
+    type Params = ();
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         let params = env::var("AGGREGATION_CONFIG").map_or_else(

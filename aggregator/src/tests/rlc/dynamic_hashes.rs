@@ -6,7 +6,11 @@ use halo2_proofs::{
     plonk::{Circuit, ConstraintSystem, Error},
 };
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::utils::fs::gen_srs;
-use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
+use snark_verifier_sdk::{
+    gen_pk,
+    halo2::{gen_snark_shplonk, verify_snark_shplonk},
+    CircuitExt,
+};
 use zkevm_circuits::{
     keccak_circuit::{
         keccak_packed_multi::{self, multi_keccak},
@@ -34,6 +38,7 @@ struct DynamicHashCircuitConfig {
 impl Circuit<Fr> for DynamicHashCircuit {
     type Config = (DynamicHashCircuitConfig, Challenges);
     type FloorPlanner = SimpleFloorPlanner;
+    type Params = ();
 
     fn without_witnesses(&self) -> Self {
         unimplemented!()

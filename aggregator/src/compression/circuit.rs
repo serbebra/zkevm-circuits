@@ -14,18 +14,25 @@ use snark_verifier::{
         halo2_ecc::{
             halo2_base,
             halo2_base::{
+                gates::circuit::builder::BaseCircuitBuilder,
                 halo2_proofs::{
                     halo2curves::bn256::{Bn256, Fr},
                     poly::{commitment::ParamsProver, kzg::commitment::ParamsKZG},
                 },
-                Context, ContextParams,
+                Context,
             },
         },
         Halo2Loader,
     },
-    pcs::kzg::{Bdfg21, Kzg, KzgSuccinctVerifyingKey},
+    pcs::kzg::{
+        Bdfg21,
+        KzgAs,
+        // Kzg,
+        KzgSuccinctVerifyingKey,
+    },
 };
-use snark_verifier_sdk::{aggregate, flatten_accumulator, types::Svk, Snark, SnarkWitness};
+use snark_verifier_sdk::{halo2::aggregation::aggregate, Snark};
+// use snark_verifier_sdk::{aggregate, flatten_accumulator, types::Svk, Snark, SnarkWitness};
 
 use crate::{core::extract_proof_and_instances_with_pairing_check, param::ConfigParams, ACC_LEN};
 
@@ -37,15 +44,16 @@ use super::config::CompressionConfig;
 /// All this circuit does is to reduce the proof size.
 #[derive(Clone, Debug)]
 pub struct CompressionCircuit {
-    pub(crate) svk: KzgSuccinctVerifyingKey<G1Affine>,
-    pub(crate) snark: SnarkWitness,
-    /// whether this circuit compresses a fresh snark
+    pub(crate) builder: BaseCircuitBuilder<Fr>,
+    // pub(crate) svk: KzgSuccinctVerifyingKey<G1Affine>,
+    // pub(crate) snark: Snark,
+    // /// whether this circuit compresses a fresh snark
     pub(crate) has_accumulator: bool,
-    /// instances, flattened.
-    /// It re-exposes same public inputs from the input snark.
-    /// If the previous snark is already a compressed, this flattened_instances will
-    /// exclude the previous accumulator.
-    pub(crate) flattened_instances: Vec<Fr>,
+    // /// instances, flattened.
+    // /// It re-exposes same public inputs from the input snark.
+    // /// If the previous snark is already a compressed, this flattened_instances will
+    // /// exclude the previous accumulator.
+    // pub(crate) flattened_instances: Vec<Fr>,
     // accumulation scheme proof, private input
     pub(crate) as_proof: Value<Vec<u8>>,
 }
@@ -53,22 +61,24 @@ pub struct CompressionCircuit {
 impl Circuit<Fr> for CompressionCircuit {
     type Config = CompressionConfig;
     type FloorPlanner = SimpleFloorPlanner;
+    type Params = ();
 
     fn without_witnesses(&self) -> Self {
-        let flattened_instances = self
-            .snark
-            .instances
-            .iter()
-            .flat_map(|instance| instance.iter().map(|_| Fr::zero()))
-            .collect();
+        unimplemented!()
+        // let flattened_instances = self
+        //     .snark
+        //     .instances
+        //     .iter()
+        //     .flat_map(|instance| instance.iter().map(|_| Fr::zero()))
+        //     .collect();
 
-        Self {
-            svk: self.svk,
-            snark: SnarkWitness::without_witnesses(&self.snark),
-            has_accumulator: false,
-            flattened_instances,
-            as_proof: Value::unknown(),
-        }
+        // Self {
+        //     svk: self.svk,
+        //     snark: Snark::without_witnesses(&self.snark),
+        //     has_accumulator: false,
+        //     flattened_instances,
+        //     as_proof: Value::unknown(),
+        // }
     }
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
@@ -124,7 +134,7 @@ impl Circuit<Fr> for CompressionCircuit {
 
                 let ecc_chip = config.ecc_chip();
                 let loader = Halo2Loader::new(ecc_chip, ctx);
-                let (assigned_instances, acc) = aggregate::<Kzg<Bn256, Bdfg21>>(
+                let (assigned_instances, acc) = aggregate::<KzgAs<Bn256, Bdfg21>>(
                     &self.svk,
                     &loader,
                     &[self.snark.clone()],
@@ -209,13 +219,13 @@ impl CompressionCircuit {
         })
     }
 
-    pub fn succinct_verifying_key(&self) -> &Svk {
-        &self.svk
-    }
+    // pub fn succinct_verifying_key(&self) -> &Svk {
+    //     &self.svk
+    // }
 
-    pub fn snark(&self) -> &SnarkWitness {
-        &self.snark
-    }
+    // pub fn snark(&self) -> &SnarkWitness {
+    //     &self.snark
+    // }
 
     pub fn as_proof(&self) -> Value<&[u8]> {
         self.as_proof.as_ref().map(Vec::as_slice)
