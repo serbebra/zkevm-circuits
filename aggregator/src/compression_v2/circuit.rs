@@ -84,7 +84,7 @@ impl CompressionCircuit {
         let witness_time = start_timer!(|| "new | compression Circuit");
 
         let config_params: BaseCircuitParams = config_params.into();
-        let res = ComCircuit::new::<AccScheme>(
+        let circuit = ComCircuit::new::<AccScheme>(
             stage,
             config_params.try_into().unwrap(),
             params,
@@ -94,7 +94,7 @@ impl CompressionCircuit {
         end_timer!(witness_time);
 
         Ok(Self {
-            circuit: res,
+            circuit,
             is_fresh: !has_accumulator,
         })
     }

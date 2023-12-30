@@ -9,5 +9,5 @@ mod circuit;
 /// Config for compression circuit
 mod config;
 
-pub(crate) use circuit::CompressionCircuit;
-pub(crate) use config::CompressionConfig;
+pub use circuit::CompressionCircuit;
+pub use config::CompressionConfig;

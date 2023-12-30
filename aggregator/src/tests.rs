@@ -1,4 +1,4 @@
-// mod aggregation;
+mod aggregation;
 mod compression;
 mod mock_chunk;
 mod rlc;

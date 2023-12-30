@@ -1,16 +1,9 @@
 use std::{fs, path::Path, process};
 
 use ark_std::{end_timer, start_timer, test_rng};
-use halo2_proofs::{
-    dev::MockProver,
-    halo2curves::bn256::{Bn256, Fr},
-    poly::commitment::Params,
-};
-use snark_verifier::{
-    loader::halo2::halo2_ecc::halo2_base::{
-        gates::circuit::CircuitBuilderStage, halo2_proofs, utils::fs::gen_srs,
-    },
-    pcs::kzg::{Bdfg21, KzgAs},
+use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr, poly::commitment::Params};
+use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
+    gates::circuit::CircuitBuilderStage, halo2_proofs, utils::fs::gen_srs,
 };
 use snark_verifier_sdk::{
     evm::{evm_verify, gen_evm_proof_shplonk, gen_evm_verifier},
@@ -20,8 +13,7 @@ use snark_verifier_sdk::{
 };
 
 use crate::{
-    compression_layer_evm, compression_layer_snark, layer_0, tests::mock_chunk::MockChunkCircuit,
-    AccScheme, CompressionCircuit, ConfigParams,
+    layer_0, tests::mock_chunk::MockChunkCircuit, AccScheme, CompressionCircuit, ConfigParams,
 };
 
 #[ignore = "it takes too much time"]

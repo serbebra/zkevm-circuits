@@ -11,8 +11,8 @@ mod chunk;
 mod compression_v2;
 /// Configurations
 mod constants;
-// /// Core module for circuit assignment
-// mod core;
+/// Core module for circuit assignment
+mod core;
 /// Parameters for compression circuit
 mod param;
 /// utilities
@@ -30,8 +30,8 @@ pub use constants::MAX_AGG_SNARKS;
 
 pub use param::*;
 
-pub(crate) use compression_v2::*;
-pub(crate) use constants::*;
+pub use compression_v2::*;
+pub use constants::*;
 
 use halo2_proofs::halo2curves::bn256::Bn256;
 use snark_verifier::{

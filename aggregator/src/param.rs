@@ -31,9 +31,9 @@ impl ConfigParams {
     pub(crate) fn aggregation_param() -> Self {
         Self {
             // strategy: FpStrategy::Simple,
-            degree: 19,
-            num_advice: vec![64],
-            num_lookup_advice: vec![8],
+            degree: 20,
+            num_advice: vec![150],
+            num_lookup_advice: vec![20],
             num_fixed: 2,
             lookup_bits: 18,
         }
