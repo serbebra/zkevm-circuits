@@ -39,11 +39,7 @@ impl AggregationConfig {
         params: ConfigParams,
         challenges: Challenges,
     ) -> Self {
-        let base_field_config = BaseCircuitBuilder::configure_with_params(meta, (&params).into());
-
-        // RLC configuration
-        let rlc_config = RlcConfig::configure(meta, challenges);
-
+        // It is wired that if we config ...
         // hash configuration for aggregation circuit
         let keccak_circuit_config = {
             let keccak_table = KeccakTable::construct(meta);
@@ -70,6 +66,12 @@ impl AggregationConfig {
         meta.enable_equality(keccak_circuit_config.keccak_table.input_len);
         // enable equality for the is_final column
         meta.enable_equality(keccak_circuit_config.keccak_table.is_final);
+
+
+        let base_field_config = BaseCircuitBuilder::configure_with_params(meta, (&params).into());
+
+        // RLC configuration
+        let rlc_config = RlcConfig::configure(meta, challenges);
 
         // Instance column stores public input column
         // - the batch public input hash

@@ -11,11 +11,9 @@ use itertools::Itertools;
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
     gates::circuit::CircuitBuilderStage, utils::fs::gen_srs,
 };
-use snark_verifier_sdk::halo2::verify_snark_shplonk;
 use snark_verifier_sdk::{
     gen_pk,
-    halo2::gen_snark_shplonk,
-    // gen_snark_shplonk, verify_snark_shplonk,
+    halo2::{gen_snark_shplonk, verify_snark_shplonk},
     CircuitExt,
 };
 
@@ -36,6 +34,7 @@ fn test_mock_aggregation_circuit() {
 fn test_real_aggregation_circuit() {
     env_logger::init();
 
+    let mut rng = test_rng();
     let k = 20;
 
     let params = gen_srs(k);
@@ -45,12 +44,17 @@ fn test_real_aggregation_circuit() {
     let pk = gen_pk(&params, &circuit, None);
     let break_points = circuit.agg_circuit.break_points();
 
-    let mut circuit =
-        build_new_aggregation_circuit(2, CircuitBuilderStage::Prover, Some(break_points));
+    let circuit = build_new_aggregation_circuit(2, CircuitBuilderStage::Prover, Some(break_points));
 
-    let instance = circuit.instances();
-    let mock_prover = MockProver::<Fr>::run(k, &circuit, instance).unwrap();
-    mock_prover.assert_satisfied_par();
+    // build the snark for next layer
+    let snark = gen_snark_shplonk(&params, &pk, circuit.clone(), &mut rng, None::<String>);
+    log::trace!("finished layer {} snark generation for circuit", 1);
+
+    assert!(verify_snark_shplonk::<AggregationCircuit>(
+        &params,
+        snark.clone(),
+        pk.get_vk()
+    ));
 }
 
 // #[ignore = "it takes too much time"]
