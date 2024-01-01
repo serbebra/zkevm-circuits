@@ -53,7 +53,7 @@ impl AggregationCircuit {
             let chunk_hash_bytes = chunk.public_input_hash();
             let snark_hash_bytes = &snark.instances[0];
 
-            println!(
+            log::trace!(
                 "snark hash bytes ({}): {:?}",
                 snark_hash_bytes.len(),
                 snark_hash_bytes
