@@ -1,20 +1,14 @@
+use std::fs::File;
+
 use halo2_proofs::{
-    halo2curves::bn256::{Fq, Fr, G1Affine},
-    plonk::{Column, ConstraintSystem, Instance, Circuit},
+    halo2curves::bn256::Fr,
+    plonk::{Circuit, ConstraintSystem},
 };
-use snark_verifier::loader::halo2::halo2_ecc::{
-    ecc::{BaseFieldEccChip, EccChip},
-    fields::fp::FpConfig,
-    halo2_base::{
-        gates::{circuit::{BaseConfig, builder::BaseCircuitBuilder}, flex_gate::FlexGateConfig, range::RangeConfig},
-        utils::modulus,
-    },
+use snark_verifier::loader::halo2::halo2_ecc::halo2_base::gates::circuit::{
+    builder::BaseCircuitBuilder, BaseConfig,
 };
 
-use crate::{
-    constants::{BITS, LIMBS},
-    param::ConfigParams,
-};
+use crate::ConfigParams;
 
 #[derive(Clone, Debug)]
 /// Configurations for compression circuit
@@ -22,54 +16,36 @@ use crate::{
 pub struct CompressionConfig {
     /// Non-native field chip configurations
     pub base_field_config: BaseConfig<Fr>,
-    /// Instance for public input
-    pub instance: Column<Instance>,
+    // /// Instance for public input
+    // pub instance: Column<Instance>,
 }
 
 impl CompressionConfig {
-    /// Build a configuration from parameters.
-    pub fn configure(meta: &mut ConstraintSystem<Fr>, params: ConfigParams) -> Self {
-        // assert!(
-        //     params.limb_bits == BITS && params.num_limbs == LIMBS,
-        //     "For now we fix limb_bits = {BITS}, otherwise change code",
-        // );
-        let base_field_config = BaseCircuitBuilder::configure_with_params(meta, params.base_field_config);
+    pub(crate) fn new(meta: &mut ConstraintSystem<Fr>) -> Self {
+        // Too bad that configure function doesn't take additional input
+        // it would be nicer to load parameters from API rather than ENV
+        let path = std::env::var("COMPRESSION_CONFIG")
+            .unwrap_or_else(|_| "configs/compression_wide.config".to_owned());
+        let params: ConfigParams = serde_json::from_reader(
+            File::open(path.as_str()).unwrap_or_else(|_| panic!("{path:?} does not exist")),
+        )
+        .unwrap_or_else(|_| ConfigParams::default_compress_wide_param());
 
-        // let base_field_config = FpConfig::configure(
-        //     meta,
-        //     params.strategy,
-        //     &params.num_advice,
-        //     &params.num_lookup_advice,
-        //     params.num_fixed,
-        //     params.lookup_bits,
-        //     params.limb_bits,
-        //     params.num_limbs,
-        //     modulus::<Fq>(),
-        //     0,
-        //     params.degree as usize,
-        // );
+        log::info!(
+            "compression circuit configured with k = {} and {:?} advice columns",
+            params.degree,
+            params.num_advice
+        );
 
-        let instance = meta.instance_column();
-        meta.enable_equality(instance);
+        // circuit configuration is built from config with given num columns etc
+        // can be wide or thin circuit
+        let base_field_config = BaseCircuitBuilder::configure_with_params(meta, (&params).into());
+        // let instance = meta.instance_column();
+        // meta.enable_equality(instance);
 
         Self {
             base_field_config,
-            instance,
+            // instance,
         }
     }
-
-    // /// Range gate configuration
-    // pub fn range(&self) -> &RangeConfig<Fr> {
-    //     &self.base_field_config.range
-    // }
-
-    // /// Flex gate configuration
-    // pub fn gate(&self) -> &FlexGateConfig<Fr> {
-    //     &self.base_field_config.range.gate
-    // }
-
-    // /// Ecc gate configuration
-    // pub fn ecc_chip(&self) -> BaseFieldEccChip<G1Affine> {
-    //     EccChip::construct(self.base_field_config.clone())
-    // }
 }

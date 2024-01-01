@@ -55,8 +55,6 @@ fn test_mock_compression() {
             &ConfigParams::default_compress_wide_param(),
             &param,
             layer_0_snark,
-            true,
-            &mut rng,
         )
         .unwrap();
         let instance = compression_circuit.instances();
@@ -113,8 +111,6 @@ fn test_two_layer_proof_compression() {
             &ConfigParams::default_compress_wide_param(),
             &param,
             layer_0_snark.clone(),
-            true,
-            &mut rng,
         )
         .unwrap();
 
@@ -126,8 +122,6 @@ fn test_two_layer_proof_compression() {
             &ConfigParams::default_compress_wide_param(),
             &param,
             layer_0_snark.clone(),
-            true,
-            &mut rng,
         )
         .unwrap()
         .use_break_points(break_points.clone());
@@ -162,11 +156,9 @@ fn test_two_layer_proof_compression() {
 
         let compression_circuit = CompressionCircuit::new(
             CircuitBuilderStage::Keygen,
-            &ConfigParams::compress_thin_param(),
+            &ConfigParams::_compress_thin_param(),
             &param,
             layer_1_snark.clone(),
-            true,
-            &mut rng,
         )
         .unwrap();
 
@@ -178,8 +170,6 @@ fn test_two_layer_proof_compression() {
             &ConfigParams::default_compress_wide_param(),
             &param,
             layer_1_snark.clone(),
-            true,
-            &mut rng,
         )
         .unwrap()
         .use_break_points(break_points.clone());

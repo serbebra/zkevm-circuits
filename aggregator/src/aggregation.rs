@@ -1,14 +1,12 @@
-// /// Circuit implementation of aggregation circuit.
-// mod circuit;
-// /// Config for aggregation circuit
-// mod config;
 /// Circuit implementation of aggregation circuit.
-mod circuit_v2;
+mod circuit;
 /// Config for aggregation circuit
-mod config_v2;
+mod config;
 /// config for RLC circuit
 mod rlc;
+/// utilities
+mod util;
 
-pub use circuit_v2::AggregationCircuit;
-pub use config_v2::AggregationConfig;
+pub use circuit::AggregationCircuit;
+pub use config::AggregationConfig;
 pub use rlc::RlcConfig;

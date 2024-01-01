@@ -1,8 +1,4 @@
-// use snark_verifier::loader::halo2::halo2_ecc::fields::fp::FpStrategy;
-
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::gates::circuit::BaseCircuitParams;
-
-use crate::{BITS, LIMBS};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 /// Parameters for aggregation circuit and compression circuit configs.
@@ -30,7 +26,6 @@ impl From<&ConfigParams> for BaseCircuitParams {
 impl ConfigParams {
     pub(crate) fn aggregation_param() -> Self {
         Self {
-            // strategy: FpStrategy::Simple,
             degree: 20,
             num_advice: vec![45],
             num_lookup_advice: vec![6],
@@ -41,7 +36,6 @@ impl ConfigParams {
 
     pub(crate) fn default_compress_wide_param() -> Self {
         Self {
-            // strategy: FpStrategy::Simple,
             degree: 22,
             num_advice: vec![35],
             num_lookup_advice: vec![1],
@@ -50,9 +44,8 @@ impl ConfigParams {
         }
     }
 
-    pub(crate) fn compress_thin_param() -> Self {
+    pub(crate) fn _compress_thin_param() -> Self {
         Self {
-            // strategy: FpStrategy::Simple,
             degree: 25,
             num_advice: vec![1],
             num_lookup_advice: vec![1],

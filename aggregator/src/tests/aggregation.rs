@@ -1,11 +1,8 @@
-use std::{borrow::BorrowMut, fs, path::Path, process};
-
 use crate::{
     aggregation::AggregationCircuit, batch::BatchHash, constants::MAX_AGG_SNARKS, layer_0,
     tests::mock_chunk::MockChunkCircuit, ChunkHash, ConfigParams,
 };
 use ark_std::{end_timer, start_timer, test_rng};
-use ethers_core::k256::elliptic_curve::PrimeField;
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr, poly::commitment::Params};
 use itertools::Itertools;
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
@@ -187,7 +184,6 @@ fn build_new_aggregation_circuit(
         &ConfigParams::aggregation_param(),
         &params,
         [real_snarks, padded_snarks].concat().as_ref(),
-        rng,
         batch_hash,
         break_points,
     )

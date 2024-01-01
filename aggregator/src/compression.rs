@@ -5,8 +5,7 @@
 
 /// Circuit implementation of compression circuit.
 mod circuit;
-/// CircuitExt implementation of compression circuit.
-mod circuit_ext;
+
 /// Config for compression circuit
 mod config;
 

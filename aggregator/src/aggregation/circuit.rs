@@ -1,53 +1,33 @@
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
-    halo2curves::bn256::{Bn256, Fr, G1Affine},
+    circuit::{Layouter, SimpleFloorPlanner},
+    halo2curves::bn256::{Bn256, Fr},
     plonk::{Circuit, ConstraintSystem, Error, Selector},
-    poly::{commitment::ParamsProver, kzg::commitment::ParamsKZG},
+    poly::kzg::commitment::ParamsKZG,
 };
 use itertools::Itertools;
-use rand::Rng;
-use std::{env, fs::File};
-
-#[cfg(not(feature = "disable_proof_aggregation"))]
-use snark_verifier::loader::halo2::halo2_ecc::halo2_base;
-use snark_verifier::pcs::kzg::KzgSuccinctVerifyingKey;
-#[cfg(not(feature = "disable_proof_aggregation"))]
-use snark_verifier::{
-    loader::halo2::{
-        halo2_ecc::halo2_base::{AssignedValue, Context},
-        Halo2Loader,
-    },
-    pcs::kzg::{Bdfg21, Kzg},
+use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
+    gates::circuit::{builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage},
+    SKIP_FIRST_PASS,
 };
-#[cfg(not(feature = "disable_proof_aggregation"))]
-use snark_verifier_sdk::{aggregate, flatten_accumulator};
-use snark_verifier_sdk::{CircuitExt, Snark, SnarkWitness};
+use snark_verifier_sdk::{
+    halo2::aggregation::{AggregationCircuit as AggCircuit, VerifierUniversality},
+    CircuitExt, Snark,
+};
 use zkevm_circuits::util::Challenges;
 
 use crate::{
-    batch::BatchHash,
-    constants::{ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS},
-    core::{assign_batch_hashes, extract_proof_and_instances_with_pairing_check},
-    util::parse_hash_digest_cells,
-    ConfigParams,
+    aggregation::util::assign_batch_hashes, util::parse_hash_digest_cells, AccScheme,
+    AggregationConfig, BatchHash, ConfigParams, ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS,
 };
-
-use super::AggregationConfig;
 
 /// Aggregation circuit that does not re-expose any public inputs from aggregated snarks
 #[derive(Clone)]
 pub struct AggregationCircuit {
-    pub svk: KzgSuccinctVerifyingKey<G1Affine>,
-    // the input snarks for the aggregation circuit
-    // it is padded already so it will have a fixed length of MAX_AGG_SNARKS
-    pub snarks_with_padding: Vec<SnarkWitness>,
-    // the public instance for this circuit consists of
-    // - an accumulator (12 elements)
-    // - the batch's public_input_hash (32 elements)
-    pub flattened_instances: Vec<Fr>,
-    // accumulation scheme proof, private input
-    pub as_proof: Value<Vec<u8>>,
+    /// snark verifier's aggregation circuit builder
+    pub agg_circuit: AggCircuit,
+    // the batch's public_input_hash (32 elements)
+    pub pi_instances: Vec<Fr>,
     // batch hash circuit for which the snarks are generated
     // the chunks in this batch are also padded already
     pub batch_hash: BatchHash,
@@ -55,12 +35,14 @@ pub struct AggregationCircuit {
 
 impl AggregationCircuit {
     pub fn new(
+        stage: CircuitBuilderStage,
+        config_params: &ConfigParams,
         params: &ParamsKZG<Bn256>,
         snarks_with_padding: &[Snark],
-        rng: impl Rng + Send,
         batch_hash: BatchHash,
+        break_points: Option<Vec<Vec<usize>>>,
     ) -> Result<Self, snark_verifier::Error> {
-        let timer = start_timer!(|| "generate aggregation circuit");
+        let timer = start_timer!(|| "new | aggregation circuit");
 
         // sanity check: snarks's public input matches chunk_hashes
         for (chunk, snark) in batch_hash
@@ -71,6 +53,11 @@ impl AggregationCircuit {
             let chunk_hash_bytes = chunk.public_input_hash();
             let snark_hash_bytes = &snark.instances[0];
 
+            println!(
+                "snark hash bytes ({}): {:?}",
+                snark_hash_bytes.len(),
+                snark_hash_bytes
+            );
             assert_eq!(snark_hash_bytes.len(), ACC_LEN + DIGEST_LEN);
 
             for i in 0..DIGEST_LEN {
@@ -85,70 +72,71 @@ impl AggregationCircuit {
             }
         }
 
-        // extract the accumulators and proofs
-        let svk = params.get_g()[0].into();
+        let config_params: BaseCircuitParams = config_params.into();
 
-        // this aggregates MULTIPLE snarks
-        //  (instead of ONE as in proof compression)
-        let (as_proof, acc_instances) =
-            extract_proof_and_instances_with_pairing_check(params, snarks_with_padding, rng)?;
+        let agg_circuit = match stage {
+            CircuitBuilderStage::Prover => AggCircuit::new::<AccScheme>(
+                stage,
+                config_params.try_into().unwrap(),
+                params,
+                snarks_with_padding.into_iter().cloned(),
+                VerifierUniversality::None,
+            )
+            .use_break_points(break_points.unwrap()),
+            _ => AggCircuit::new::<AccScheme>(
+                stage,
+                config_params.try_into().unwrap(),
+                params,
+                snarks_with_padding.into_iter().cloned(),
+                VerifierUniversality::None,
+            ),
+        };
 
         // extract batch's public input hash
-        let public_input_hash = &batch_hash.instances_exclude_acc()[0];
+        let pi_instances = batch_hash.instances_exclude_acc()[0].clone();
+        println!("pi bytes ({}): {:?}", pi_instances.len(), pi_instances);
 
-        // the public instance for this circuit consists of
-        // - an accumulator (12 elements)
-        // - the batch's public_input_hash (32 elements)
-        let flattened_instances: Vec<Fr> =
-            [acc_instances.as_slice(), public_input_hash.as_slice()].concat();
+        // let param = agg_circuit.borrow_mut().calculate_params(None);
+        // println!("param: {:?}", param);
 
         end_timer!(timer);
         Ok(Self {
-            svk,
-            snarks_with_padding: snarks_with_padding.iter().cloned().map_into().collect(),
-            flattened_instances,
-            as_proof: Value::known(as_proof),
+            agg_circuit,
+            pi_instances,
             batch_hash,
         })
     }
 
-    pub fn as_proof(&self) -> Value<&[u8]> {
-        self.as_proof.as_ref().map(Vec::as_slice)
+    pub fn pi_instances(&self) -> Vec<Fr> {
+        self.pi_instances.clone()
+    }
+
+    pub fn accumulator_instances(&self) -> Vec<Fr> {
+        self.agg_circuit.builder.borrow().assigned_instances[0]
+            .iter()
+            .map(|x| *x.value())
+            .collect_vec()
     }
 }
 
 impl Circuit<Fr> for AggregationCircuit {
     type Config = (AggregationConfig, Challenges);
-
     type FloorPlanner = SimpleFloorPlanner;
+    // todo: pass params
+    type Params = ();
+
     fn without_witnesses(&self) -> Self {
         unimplemented!()
     }
 
-    type Params = ();
-
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        let params = env::var("AGGREGATION_CONFIG").map_or_else(
-            |_| ConfigParams::aggregation_param(),
-            |path| {
-                serde_json::from_reader(
-                    File::open(path.as_str()).unwrap_or_else(|_| panic!("{path:?} does not exist")),
-                )
-                .unwrap()
-            },
-        );
-
         let challenges = Challenges::construct(meta);
-        let config = AggregationConfig::configure(meta, &params, challenges);
-        log::info!(
-            "aggregation circuit configured with k = {} and {:?} advice columns",
-            params.degree,
-            params.num_advice
-        );
+        let config =
+            AggregationConfig::configure(meta, ConfigParams::aggregation_param(), challenges);
+        // todo: build config from Params rather than ENV VARs
         (config, challenges)
     }
 
-    #[allow(clippy::type_complexity)]
     fn synthesize(
         &self,
         config: Self::Config,
@@ -156,87 +144,17 @@ impl Circuit<Fr> for AggregationCircuit {
     ) -> Result<(), Error> {
         let (config, challenge) = config;
 
-        let witness_time = start_timer!(|| "synthesize | Aggregation Circuit");
-
-        let timer = start_timer!(|| "aggregation");
-
         // ==============================================
         // Step 1: snark aggregation circuit
         // ==============================================
-        #[cfg(not(feature = "disable_proof_aggregation"))]
-        let (accumulator_instances, snark_inputs) = {
-            config
-                .range()
-                .load_lookup_table(&mut layouter)
-                .expect("load range lookup table");
+        // let param = self.agg_circuit.clone().borrow_mut().calculate_params(None);
+        // println!("\n\nparam: {:?}\n\n", param);
+        self.agg_circuit
+            .builder
+            .borrow()
+            .synthesize_ref_layouter(config.base_field_config.clone(), &mut layouter)?;
+        let snark_inputs = self.agg_circuit.previous_instances();
 
-            let mut first_pass = halo2_base::SKIP_FIRST_PASS;
-
-            let (accumulator_instances, snark_inputs) = layouter.assign_region(
-                || "aggregation",
-                |region| -> Result<(Vec<AssignedValue<Fr>>, Vec<AssignedValue<Fr>>), Error> {
-                    if first_pass {
-                        first_pass = false;
-                        return Ok((vec![], vec![]));
-                    }
-
-                    // stores accumulators for all snarks, including the padded ones
-                    let mut accumulator_instances: Vec<AssignedValue<Fr>> = vec![];
-                    // stores public inputs for all snarks, including the padded ones
-                    let mut snark_inputs: Vec<AssignedValue<Fr>> = vec![];
-                    let ctx = Context::new(
-                        region,
-                        ContextParams {
-                            max_rows: config.flex_gate().max_rows,
-                            num_context_ids: 1,
-                            fixed_columns: config.flex_gate().constants.clone(),
-                        },
-                    );
-
-                    let ecc_chip = config.ecc_chip();
-                    let loader = Halo2Loader::new(ecc_chip, ctx);
-
-                    //
-                    // extract the assigned values for
-                    // - instances which are the public inputs of each chunk (prefixed with 12
-                    //   instances from previous accumulators)
-                    // - new accumulator to be verified on chain
-                    //
-                    let (assigned_aggregation_instances, acc) = aggregate::<Kzg<Bn256, Bdfg21>>(
-                        &self.svk,
-                        &loader,
-                        &self.snarks_with_padding,
-                        self.as_proof(),
-                    );
-                    log::trace!("aggregation circuit during assigning");
-                    for (i, e) in assigned_aggregation_instances[0].iter().enumerate() {
-                        log::trace!("{}-th instance: {:?}", i, e.value)
-                    }
-
-                    // extract the following cells for later constraints
-                    // - the accumulators
-                    // - the public inputs from each snark
-                    accumulator_instances.extend(flatten_accumulator(acc).iter().copied());
-                    // the snark is not a fresh one, assigned_instances already contains an
-                    // accumulator so we want to skip the first 12 elements from the public input
-                    snark_inputs.extend(
-                        assigned_aggregation_instances
-                            .iter()
-                            .flat_map(|instance_column| instance_column.iter().skip(ACC_LEN)),
-                    );
-
-                    config.range().finalize(&mut loader.ctx_mut());
-
-                    loader.ctx_mut().print_stats(&["Range"]);
-
-                    Ok((accumulator_instances, snark_inputs))
-                },
-            )?;
-
-            assert_eq!(snark_inputs.len(), MAX_AGG_SNARKS * DIGEST_LEN);
-            (accumulator_instances, snark_inputs)
-        };
-        end_timer!(timer);
         // ==============================================
         // step 2: public input aggregation circuit
         // ==============================================
@@ -301,11 +219,7 @@ impl Circuit<Fr> for AggregationCircuit {
                 }
             }
         }
-
-        #[cfg(not(feature = "disable_proof_aggregation"))]
-        let mut first_pass = halo2_base::SKIP_FIRST_PASS;
-
-        #[cfg(not(feature = "disable_proof_aggregation"))]
+        let mut first_pass = SKIP_FIRST_PASS;
         layouter.assign_region(
             || "pi checks",
             |mut region| -> Result<(), Error> {
@@ -316,30 +230,38 @@ impl Circuit<Fr> for AggregationCircuit {
                     return Ok(());
                 }
 
-                for i in 0..MAX_AGG_SNARKS {
-                    for j in 0..4 {
-                        for k in 0..8 {
-                            let mut t1 = Fr::default();
-                            let mut t2 = Fr::default();
-                            chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
-                            snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k]
-                                .value()
-                                .map(|x| t2 = *x);
-                            log::trace!(
-                                "{}-th snark: {:?} {:?}",
-                                i,
-                                chunk_pi_hash_digests[i][j * 8 + k].value(),
-                                snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k].value()
-                            );
+                {
+                    let builder = self.agg_circuit.builder.borrow();
+                    let copy_manager = builder.core().copy_manager.lock().unwrap();
+                    let hash_map = &copy_manager.assigned_advices;
 
-                            region.constrain_equal(
-                                // in the keccak table, the input and output data have different
-                                // endianess
-                                chunk_pi_hash_digests[i][j * 8 + k].cell(),
-                                snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k].cell(),
-                            )?;
+                    for i in 0..MAX_AGG_SNARKS {
+                        for j in 0..4 {
+                            for k in 0..8 {
+                                let mut t1 = Fr::default();
+                                chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
+                                assert_eq!(t1, *snark_inputs[i][(3 - j) * 8 + k + 12].value());
+                                log::trace!(
+                                    "{}-th snark's pi: {:?} {:?}",
+                                    i,
+                                    chunk_pi_hash_digests[i][j * 8 + k].value(),
+                                    snark_inputs[i][(3 - j) * 8 + k].value()
+                                );
+
+                                let cell = hash_map
+                                    .get(&snark_inputs[i][(3 - j) * 8 + k + 12].cell.unwrap())
+                                    .unwrap();
+
+                                region.constrain_equal(
+                                    // in the keccak table, the input and output data have
+                                    // different endianess
+                                    chunk_pi_hash_digests[i][j * 8 + k].cell(),
+                                    *cell,
+                                )?;
+                            }
                         }
                     }
+                    drop(copy_manager);
                 }
 
                 Ok(())
@@ -350,12 +272,22 @@ impl Circuit<Fr> for AggregationCircuit {
         // step 4: assert public inputs to the aggregator circuit are correct
         // ==============================================
         // accumulator
-        #[cfg(not(feature = "disable_proof_aggregation"))]
         {
-            assert!(accumulator_instances.len() == ACC_LEN);
-            for (i, v) in accumulator_instances.iter().enumerate() {
-                layouter.constrain_instance(v.cell(), config.instance, i)?;
+            let accumulator = self.agg_circuit.builder.borrow().assigned_instances[0].clone();
+            assert!(accumulator.len() == ACC_LEN);
+
+            let builder = self.agg_circuit.builder.borrow();
+            let copy_manager = builder.core().copy_manager.lock().unwrap();
+            let hash_map = &copy_manager.assigned_advices;
+
+            for (i, v) in accumulator.iter().enumerate() {
+                println!("accumulator {}: {:?} ", i, v.value(),);
+                let cell = hash_map.get(&v.cell.unwrap()).unwrap();
+
+                layouter.constrain_instance(*cell, config.base_field_config.instance[0], i)?;
             }
+
+            drop(copy_manager);
         }
 
         // public input hash
@@ -364,18 +296,27 @@ impl Circuit<Fr> for AggregationCircuit {
                 log::trace!(
                     "pi (circuit vs real): {:?} {:?}",
                     batch_pi_hash_digest[i * 8 + j].value(),
-                    self.instances()[0][(3 - i) * 8 + j + ACC_LEN]
+                    self.instances()[1][(3 - i) * 8 + j]
+                );
+
+                println!(
+                    "pi (circuit vs real): {:?} {:?}",
+                    batch_pi_hash_digest[i * 8 + j].value(),
+                    self.instances()[1][(3 - i) * 8 + j]
                 );
 
                 layouter.constrain_instance(
                     batch_pi_hash_digest[i * 8 + j].cell(),
-                    config.instance,
-                    (3 - i) * 8 + j + ACC_LEN,
+                    config.pi_instance,
+                    (3 - i) * 8 + j,
                 )?;
             }
         }
 
-        end_timer!(witness_time);
+        // ==============================================
+        // Finished. Clear builder buffer
+        // ==============================================
+        self.agg_circuit.builder.borrow_mut().clear();
         Ok(())
     }
 }
@@ -384,13 +325,15 @@ impl CircuitExt<Fr> for AggregationCircuit {
     fn num_instance(&self) -> Vec<usize> {
         // 12 elements from accumulator
         // 32 elements from batch's public_input_hash
-        vec![ACC_LEN + DIGEST_LEN]
+        vec![ACC_LEN, DIGEST_LEN]
     }
 
     // 12 elements from accumulator
     // 32 elements from batch's public_input_hash
     fn instances(&self) -> Vec<Vec<Fr>> {
-        vec![self.flattened_instances.clone()]
+        let mut res = self.agg_circuit.builder.borrow().instances();
+        res.extend([self.pi_instances.clone()]);
+        res
     }
 
     fn accumulator_indices() -> Option<Vec<(usize, usize)>> {
@@ -401,9 +344,7 @@ impl CircuitExt<Fr> for AggregationCircuit {
     fn selectors(config: &Self::Config) -> Vec<Selector> {
         // - advice columns from flex gate
         // - selector from RLC gate
-        config.0.flex_gate().basic_gates[0]
-            .iter()
-            .map(|gate| gate.q_enable)
+        BaseCircuitBuilder::selectors(&config.0.base_field_config)
             .into_iter()
             .chain(
                 [
