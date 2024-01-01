@@ -8,9 +8,9 @@ use halo2_proofs::{
     poly::kzg::commitment::ParamsKZG,
 };
 use rand::Rng;
-use snark_verifier::loader::halo2::halo2_ecc::halo2_base::gates::circuit::{
+use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{gates::circuit::{
     builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage,
-};
+}, SKIP_FIRST_PASS};
 use snark_verifier_sdk::{
     halo2::aggregation::{AggregationCircuit as AggCircuit, VerifierUniversality},
     CircuitExt, Snark,
@@ -18,8 +18,7 @@ use snark_verifier_sdk::{
 use zkevm_circuits::util::Challenges;
 
 use crate::{
-    core::assign_batch_hashes, 
-    util::parse_hash_digest_cells, AccScheme, AggregationConfig,
+    core::assign_batch_hashes, util::parse_hash_digest_cells, AccScheme, AggregationConfig,
     BatchHash, ConfigParams, ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS,
 };
 
@@ -121,7 +120,6 @@ impl Circuit<Fr> for AggregationCircuit {
         unimplemented!()
     }
 
-
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         let challenges = Challenges::construct(meta);
         let config =
@@ -146,7 +144,7 @@ impl Circuit<Fr> for AggregationCircuit {
             .builder
             .borrow()
             .synthesize_ref_layouter(config.base_field_config.clone(), &mut layouter)?;
-            // .synthesize(config.base_field_config, layouter)?;
+        let snark_inputs = self.agg_circuit.previous_instances();
 
         // ==============================================
         // step 2: public input aggregation circuit
@@ -212,6 +210,49 @@ impl Circuit<Fr> for AggregationCircuit {
                 }
             }
         }
+        let mut first_pass = SKIP_FIRST_PASS;
+        layouter.assign_region(
+            || "pi checks",
+            |mut region| -> Result<(), Error> {
+                if first_pass {
+                    // this region only use copy constraints and do not affect the shape of the
+                    // layouter
+                    first_pass = false;
+                    return Ok(());
+                }
+
+                for i in 0..MAX_AGG_SNARKS {
+                    for j in 0..4 {
+                        for k in 0..8 {
+                            let mut t1 = Fr::default();
+                            let mut t2 = Fr::default();
+                            chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
+                            snark_inputs[i][ (3 - j) * 8 + k]
+                                .value()
+                ;
+                            log::trace!(
+                                "{}-th snark: {:?} {:?}",
+                                i,
+                                chunk_pi_hash_digests[i][j * 8 + k].value(),
+                                snark_inputs[i][ (3 - j) * 8 + k]
+                                .value()
+                            );
+
+
+                            // FIXME
+                            // region.constrain_equal(
+                            //     // in the keccak table, the input and output data have different
+                            //     // endianess
+                            //     chunk_pi_hash_digests[i][j * 8 + k].cell(),
+                            //     snark_inputs[i][ (3 - j) * 8 + k].cell(),
+                            // )?;
+                        }
+                    }
+                }
+
+                Ok(())
+            },
+        )?;
 
         self.agg_circuit.builder.borrow_mut().clear();
         Ok(())
@@ -242,15 +283,15 @@ impl CircuitExt<Fr> for AggregationCircuit {
         // - advice columns from flex gate
         // - selector from RLC gate
         BaseCircuitBuilder::selectors(&config.0.base_field_config)
-            // .into_iter()
-            // .chain(
-            //     [
-            //         config.0.rlc_config.selector,
-            //         config.0.rlc_config.enable_challenge,
-            //     ]
-            //     .iter()
-            //     .cloned(),
-            // )
-            // .collect()
+            .into_iter()
+            .chain(
+                [
+                    config.0.rlc_config.selector,
+                    config.0.rlc_config.enable_challenge,
+                ]
+                .iter()
+                .cloned(),
+            )
+            .collect()
     }
 }

@@ -67,7 +67,6 @@ impl AggregationConfig {
         // enable equality for the is_final column
         meta.enable_equality(keccak_circuit_config.keccak_table.is_final);
 
-
         let base_field_config = BaseCircuitBuilder::configure_with_params(meta, (&params).into());
 
         // RLC configuration
