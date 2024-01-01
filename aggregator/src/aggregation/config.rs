@@ -27,7 +27,6 @@ pub struct AggregationConfig {
     /// There are two instances for public input;
     /// - accumulator from aggregation, 12 elements, stored in base_field_config.instance
     /// - batch_public_input_hash, 32 elements, stored here
-    /// - the number of valid SNARKs, 1 element, stored here
     pub pi_instance: Column<Instance>,
 }
 
@@ -87,8 +86,7 @@ impl AggregationConfig {
     /// Expose the instance columns
     /// There are two instances for public input;
     /// - accumulator from aggregation, 12 elements, stored in base_field_config.instance
-    /// - batch_public_input_hash, 32 elements, stored here
-    /// - the number of valid SNARKs, 1 element, stored here
+    /// - batch_public_input_hash, 32 elements, stored in self.pi_instance
     pub fn instance_columns(&self) -> Vec<Column<Instance>> {
         let mut instances = self.base_field_config.instance.clone();
         instances.extend([self.pi_instance]);

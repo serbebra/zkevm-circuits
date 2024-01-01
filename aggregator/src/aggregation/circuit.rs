@@ -94,8 +94,12 @@ impl AggregationCircuit {
 
         // extract batch's public input hash
         let pi_instances = batch_hash.instances_exclude_acc()[0].clone();
-        println!("pi bytes ({}): {:?}", pi_instances.len(), pi_instances);
+        log::trace!("pi bytes ({}): {:?}", pi_instances.len(), pi_instances);
 
+        // todo: the following code generate the parameters
+        // we may want to pass this parameters in with new Circuit API
+        // - Circuit::configure_with_params
+        //
         // let param = agg_circuit.borrow_mut().calculate_params(None);
         // println!("param: {:?}", param);
 
@@ -281,9 +285,8 @@ impl Circuit<Fr> for AggregationCircuit {
             let hash_map = &copy_manager.assigned_advices;
 
             for (i, v) in accumulator.iter().enumerate() {
-                println!("accumulator {}: {:?} ", i, v.value(),);
+                log::trace!("final accumulator {}: {:?} ", i, v.value(),);
                 let cell = hash_map.get(&v.cell.unwrap()).unwrap();
-
                 layouter.constrain_instance(*cell, config.base_field_config.instance[0], i)?;
             }
 
@@ -294,12 +297,6 @@ impl Circuit<Fr> for AggregationCircuit {
         for i in 0..4 {
             for j in 0..8 {
                 log::trace!(
-                    "pi (circuit vs real): {:?} {:?}",
-                    batch_pi_hash_digest[i * 8 + j].value(),
-                    self.instances()[1][(3 - i) * 8 + j]
-                );
-
-                println!(
                     "pi (circuit vs real): {:?} {:?}",
                     batch_pi_hash_digest[i * 8 + j].value(),
                     self.instances()[1][(3 - i) * 8 + j]
