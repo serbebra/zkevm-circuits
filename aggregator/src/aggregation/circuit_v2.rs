@@ -7,6 +7,7 @@ use halo2_proofs::{
     plonk::{Circuit, ConstraintSystem, Error, Selector},
     poly::kzg::commitment::ParamsKZG,
 };
+use itertools::Itertools;
 use rand::Rng;
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
     gates::circuit::{builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage},
@@ -109,6 +110,17 @@ impl AggregationCircuit {
             batch_hash,
         })
     }
+
+    pub fn pi_instances(&self) -> Vec<Fr> {
+        self.pi_instances.clone()
+    }
+
+    pub fn accumulator_instances(&self) -> Vec<Fr> {
+        self.agg_circuit.builder.borrow().assigned_instances[0]
+            .iter()
+            .map(|x| *x.value())
+            .collect_vec()
+    }
 }
 
 impl Circuit<Fr> for AggregationCircuit {
@@ -196,17 +208,6 @@ impl Circuit<Fr> for AggregationCircuit {
         let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
             parse_hash_digest_cells(&hash_digest_cells);
 
-        println!("\n\n");
-        for (i, e) in chunk_pi_hash_digests[0].iter().enumerate() {
-            println!("{}: {:?}", i, e.value());
-        }
-        println!("\n\n");
-
-        for (i, e) in snark_inputs[0].iter().enumerate() {
-            println!("{}: {:?}", i, e.value());
-        }
-
-        println!("\n\n");
         // ==============================================
         // step 3: assert public inputs to the snarks are correct
         // ==============================================
@@ -233,32 +234,44 @@ impl Circuit<Fr> for AggregationCircuit {
                     return Ok(());
                 }
 
-                for i in 0..MAX_AGG_SNARKS {
-                    for j in 0..4 {
-                        for k in 0..8 {
-                            let mut t1 = Fr::default();
-                            chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
-                            assert_eq!(t1, *snark_inputs[i][(3 - j) * 8 + k + 12].value());
-                            log::trace!(
-                                "{}-th snark's pi: {:?} {:?}",
-                                i,
-                                chunk_pi_hash_digests[i][j * 8 + k].value(),
-                                snark_inputs[i][(3 - j) * 8 + k].value()
-                            );
+                {
+                    let builder = self.agg_circuit.builder.borrow();
+                    let copy_manager = builder.core().copy_manager.lock().unwrap();
+                    let hash_map = &copy_manager.assigned_advices;
 
-                            // region.constrain_equal(
-                            //     // in the keccak table, the input and output data have different
-                            //     // endianess
-                            //     chunk_pi_hash_digests[i][j * 8 + k].cell(),
-                            //     snark_inputs[i][ (3 - j) * 8 + k].cell(),
-                            // )?;
+                    for i in 0..MAX_AGG_SNARKS {
+                        for j in 0..4 {
+                            for k in 0..8 {
+                                let mut t1 = Fr::default();
+                                chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
+                                assert_eq!(t1, *snark_inputs[i][(3 - j) * 8 + k + 12].value());
+                                log::trace!(
+                                    "{}-th snark's pi: {:?} {:?}",
+                                    i,
+                                    chunk_pi_hash_digests[i][j * 8 + k].value(),
+                                    snark_inputs[i][(3 - j) * 8 + k].value()
+                                );
+
+                                let cell = hash_map
+                                    .get(&snark_inputs[i][(3 - j) * 8 + k + 12].cell.unwrap())
+                                    .unwrap();
+
+                                region.constrain_equal(
+                                    // in the keccak table, the input and output data have
+                                    // different endianess
+                                    chunk_pi_hash_digests[i][j * 8 + k].cell(),
+                                    *cell,
+                                )?;
+                            }
                         }
                     }
+                    drop(copy_manager);
                 }
 
                 Ok(())
             },
         )?;
+
         // ==============================================
         // step 4: assert public inputs to the aggregator circuit are correct
         // ==============================================
@@ -266,10 +279,19 @@ impl Circuit<Fr> for AggregationCircuit {
         {
             let accumulator = self.agg_circuit.builder.borrow().assigned_instances[0].clone();
             assert!(accumulator.len() == ACC_LEN);
+
+            let builder = self.agg_circuit.builder.borrow();
+            let copy_manager = builder.core().copy_manager.lock().unwrap();
+            let hash_map = &copy_manager.assigned_advices;
+
             for (i, v) in accumulator.iter().enumerate() {
                 println!("accumulator {}: {:?} ", i, v.value(),);
-                // layouter.constrain_instance(v.cell(), config.instance, i)?;
+                let cell = hash_map.get(&v.cell.unwrap()).unwrap();
+
+                layouter.constrain_instance(*cell, config.base_field_config.instance[0], i)?;
             }
+
+            drop(copy_manager);
         }
 
         // public input hash
@@ -307,7 +329,7 @@ impl CircuitExt<Fr> for AggregationCircuit {
     fn num_instance(&self) -> Vec<usize> {
         // 12 elements from accumulator
         // 32 elements from batch's public_input_hash
-        vec![ACC_LEN + DIGEST_LEN]
+        vec![ACC_LEN, DIGEST_LEN]
     }
 
     // 12 elements from accumulator
