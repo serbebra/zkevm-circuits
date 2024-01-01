@@ -26,6 +26,15 @@ fn test_mock_aggregation_circuit() {
     // This set up requires one round of keccak for chunk's data hash
     let circuit = build_new_aggregation_circuit(2, CircuitBuilderStage::Mock, None);
     let instance = circuit.instances();
+    println!("instance 1: ");
+    for (i, e) in instance[0].iter().enumerate() {
+        println!("{}: {:?}", i, e);
+    }
+    println!("instance 2: ");
+    for (i, e) in instance[1].iter().enumerate() {
+        println!("{}: {:?}", i, e);
+    }
+
     let mock_prover = MockProver::<Fr>::run(k, &circuit, instance).unwrap();
     mock_prover.assert_satisfied_par();
 }

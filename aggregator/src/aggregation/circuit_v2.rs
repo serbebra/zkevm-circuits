@@ -8,9 +8,10 @@ use halo2_proofs::{
     poly::kzg::commitment::ParamsKZG,
 };
 use rand::Rng;
-use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{gates::circuit::{
-    builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage,
-}, SKIP_FIRST_PASS};
+use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
+    gates::circuit::{builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage},
+    SKIP_FIRST_PASS,
+};
 use snark_verifier_sdk::{
     halo2::aggregation::{AggregationCircuit as AggCircuit, VerifierUniversality},
     CircuitExt, Snark,
@@ -195,6 +196,17 @@ impl Circuit<Fr> for AggregationCircuit {
         let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
             parse_hash_digest_cells(&hash_digest_cells);
 
+        println!("\n\n");
+        for (i, e) in chunk_pi_hash_digests[0].iter().enumerate() {
+            println!("{}: {:?}", i, e.value());
+        }
+        println!("\n\n");
+
+        for (i, e) in snark_inputs[0].iter().enumerate() {
+            println!("{}: {:?}", i, e.value());
+        }
+
+        println!("\n\n");
         // ==============================================
         // step 3: assert public inputs to the snarks are correct
         // ==============================================
@@ -225,21 +237,15 @@ impl Circuit<Fr> for AggregationCircuit {
                     for j in 0..4 {
                         for k in 0..8 {
                             let mut t1 = Fr::default();
-                            let mut t2 = Fr::default();
                             chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
-                            snark_inputs[i][ (3 - j) * 8 + k]
-                                .value()
-                ;
+                            assert_eq!(t1, *snark_inputs[i][(3 - j) * 8 + k + 12].value());
                             log::trace!(
-                                "{}-th snark: {:?} {:?}",
+                                "{}-th snark's pi: {:?} {:?}",
                                 i,
                                 chunk_pi_hash_digests[i][j * 8 + k].value(),
-                                snark_inputs[i][ (3 - j) * 8 + k]
-                                .value()
+                                snark_inputs[i][(3 - j) * 8 + k].value()
                             );
 
-
-                            // FIXME
                             // region.constrain_equal(
                             //     // in the keccak table, the input and output data have different
                             //     // endianess
@@ -253,7 +259,45 @@ impl Circuit<Fr> for AggregationCircuit {
                 Ok(())
             },
         )?;
+        // ==============================================
+        // step 4: assert public inputs to the aggregator circuit are correct
+        // ==============================================
+        // accumulator
+        {
+            let accumulator = self.agg_circuit.builder.borrow().assigned_instances[0].clone();
+            assert!(accumulator.len() == ACC_LEN);
+            for (i, v) in accumulator.iter().enumerate() {
+                println!("accumulator {}: {:?} ", i, v.value(),);
+                // layouter.constrain_instance(v.cell(), config.instance, i)?;
+            }
+        }
 
+        // public input hash
+        for i in 0..4 {
+            for j in 0..8 {
+                log::trace!(
+                    "pi (circuit vs real): {:?} {:?}",
+                    batch_pi_hash_digest[i * 8 + j].value(),
+                    self.instances()[1][(3 - i) * 8 + j]
+                );
+
+                println!(
+                    "pi (circuit vs real): {:?} {:?}",
+                    batch_pi_hash_digest[i * 8 + j].value(),
+                    self.instances()[1][(3 - i) * 8 + j]
+                );
+
+                layouter.constrain_instance(
+                    batch_pi_hash_digest[i * 8 + j].cell(),
+                    config.pi_instance,
+                    (3 - i) * 8 + j,
+                )?;
+            }
+        }
+
+        // ==============================================
+        // Finished. Clear builder buffer
+        // ==============================================
         self.agg_circuit.builder.borrow_mut().clear();
         Ok(())
     }
