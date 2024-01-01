@@ -61,11 +61,13 @@ impl Circuit<Fr> for CompressionCircuit {
         let witness_time = start_timer!(|| "synthesize | compression Circuit");
         self.circuit
             .builder
+            .borrow()
             .synthesize(config.base_field_config, layouter)?;
         println!(
             "instance len: {}",
-            self.circuit.builder.assigned_instances.len()
+            self.circuit.builder.borrow().assigned_instances.len()
         );
+        self.circuit.builder.borrow_mut().clear();
         end_timer!(witness_time);
         Ok(())
     }
@@ -101,7 +103,7 @@ impl CompressionCircuit {
 
     /// The break points of the circuit.
     pub fn break_points(&self) -> MultiPhaseThreadBreakPoints {
-        self.circuit.builder.break_points()
+        self.circuit.builder.borrow().break_points()
     }
 
     /// Returns new with break points
@@ -116,12 +118,12 @@ impl CircuitExt<Fr> for CompressionCircuit {
     /// This may depend on extra circuit parameters but NOT on private witnesses.
     fn num_instance(&self) -> Vec<usize> {
         // todo: re-expose the accumulator if not fresh
-        self.circuit.builder.num_instance()
+        self.circuit.builder.borrow().num_instance()
     }
 
     fn instances(&self) -> Vec<Vec<Fr>> {
         // todo: re-expose the accumulator if not fresh
-        self.circuit.builder.instances()
+        self.circuit.builder.borrow().instances()
     }
 
     fn accumulator_indices() -> Option<Vec<(usize, usize)>> {

@@ -9,16 +9,17 @@ use halo2_proofs::{
 };
 use rand::Rng;
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::gates::circuit::{
-    BaseCircuitParams, CircuitBuilderStage, builder::BaseCircuitBuilder,
+    builder::BaseCircuitBuilder, BaseCircuitParams, CircuitBuilderStage,
 };
 use snark_verifier_sdk::{
     halo2::aggregation::{AggregationCircuit as AggCircuit, VerifierUniversality},
-    Snark, CircuitExt,
+    CircuitExt, Snark,
 };
 use zkevm_circuits::util::Challenges;
 
 use crate::{
-    AccScheme, AggregationConfig, BatchHash, ConfigParams, ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS, core::assign_batch_hashes, util::parse_hash_digest_cells,
+    core::assign_batch_hashes, util::parse_hash_digest_cells, AccScheme, AggregationConfig,
+    BatchHash, ConfigParams, ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS,
 };
 
 /// Aggregation circuit that does not re-expose any public inputs from aggregated snarks
@@ -124,11 +125,11 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         self.agg_circuit
             .builder
+            .borrow()
             .synthesize_ref_layouter(config.base_field_config.clone(), &mut layouter)?;
 
-
         let param = self.agg_circuit.clone().borrow_mut().calculate_params(None);
-               println!("\n\nparam: {:?}\n\n", param);
+        println!("\n\nparam: {:?}\n\n", param);
         // ==============================================
         // step 2: public input aggregation circuit
         // ==============================================
@@ -178,7 +179,7 @@ impl Circuit<Fr> for AggregationCircuit {
         let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
             parse_hash_digest_cells(&hash_digest_cells);
 
-       // ==============================================
+        // ==============================================
         // step 3: assert public inputs to the snarks are correct
         // ==============================================
         for (i, chunk) in chunk_pi_hash_digests.iter().enumerate() {
@@ -194,11 +195,10 @@ impl Circuit<Fr> for AggregationCircuit {
             }
         }
 
+        self.agg_circuit.builder.borrow_mut().clear();
         Ok(())
     }
 }
-
-
 
 impl CircuitExt<Fr> for AggregationCircuit {
     fn num_instance(&self) -> Vec<usize> {
@@ -210,7 +210,7 @@ impl CircuitExt<Fr> for AggregationCircuit {
     // 12 elements from accumulator
     // 32 elements from batch's public_input_hash
     fn instances(&self) -> Vec<Vec<Fr>> {
-        let mut res = self.agg_circuit.builder.instances();
+        let mut res = self.agg_circuit.builder.borrow_mut().instances();
         res.extend([self.pi_instances.clone()]);
         res
     }

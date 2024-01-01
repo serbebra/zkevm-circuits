@@ -32,7 +32,7 @@ impl ConfigParams {
         Self {
             // strategy: FpStrategy::Simple,
             degree: 20,
-            num_advice: vec![150],
+            num_advice: vec![100],
             num_lookup_advice: vec![20],
             num_fixed: 2,
             lookup_bits: 18,
