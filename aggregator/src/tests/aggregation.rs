@@ -1,10 +1,11 @@
-use std::{fs, path::Path, process};
+use std::{borrow::BorrowMut, fs, path::Path, process};
 
 use crate::{
     aggregation::AggregationCircuit, batch::BatchHash, constants::MAX_AGG_SNARKS, layer_0,
     tests::mock_chunk::MockChunkCircuit, ChunkHash, ConfigParams,
 };
 use ark_std::{end_timer, start_timer, test_rng};
+use ethers_core::k256::elliptic_curve::PrimeField;
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr, poly::commitment::Params};
 use itertools::Itertools;
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::{
@@ -19,13 +20,34 @@ use snark_verifier_sdk::{
 };
 
 #[test]
-fn test_aggregation_circuit() {
+fn test_mock_aggregation_circuit() {
     env_logger::init();
 
     let k = 20;
 
     // This set up requires one round of keccak for chunk's data hash
-    let circuit = build_new_aggregation_circuit(2);
+    let circuit = build_new_aggregation_circuit(2, CircuitBuilderStage::Mock, None);
+    let instance = circuit.instances();
+    let mock_prover = MockProver::<Fr>::run(k, &circuit, instance).unwrap();
+    mock_prover.assert_satisfied_par();
+}
+
+#[test]
+fn test_real_aggregation_circuit() {
+    env_logger::init();
+
+    let k = 20;
+
+    let params = gen_srs(k);
+
+    // This set up requires one round of keccak for chunk's data hash
+    let circuit = build_new_aggregation_circuit(2, CircuitBuilderStage::Keygen, None);
+    let pk = gen_pk(&params, &circuit, None);
+    let break_points = circuit.agg_circuit.break_points();
+
+    let mut circuit =
+        build_new_aggregation_circuit(2, CircuitBuilderStage::Prover, Some(break_points));
+
     let instance = circuit.instances();
     let mock_prover = MockProver::<Fr>::run(k, &circuit, instance).unwrap();
     mock_prover.assert_satisfied_par();
@@ -97,7 +119,11 @@ fn test_aggregation_circuit() {
 //     log::trace!("finished verification for circuit");
 // }
 
-fn build_new_aggregation_circuit(num_real_chunks: usize) -> AggregationCircuit {
+fn build_new_aggregation_circuit(
+    num_real_chunks: usize,
+    stage: CircuitBuilderStage,
+    break_points: Option<Vec<Vec<usize>>>,
+) -> AggregationCircuit {
     // inner circuit: Mock circuit
     let k0 = 8;
 
@@ -143,14 +169,14 @@ fn build_new_aggregation_circuit(num_real_chunks: usize) -> AggregationCircuit {
     // batch
     // ==========================
     let batch_hash = BatchHash::construct(&chunks_with_padding);
-
     AggregationCircuit::new(
-        CircuitBuilderStage::Keygen,
+        stage,
         &ConfigParams::aggregation_param(),
         &params,
         [real_snarks, padded_snarks].concat().as_ref(),
         rng,
         batch_hash,
+        break_points,
     )
     .unwrap()
 }

@@ -1,4 +1,4 @@
-use std::borrow::BorrowMut;
+use std::borrow::{Borrow, BorrowMut};
 
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::{
@@ -42,8 +42,9 @@ impl AggregationCircuit {
         snarks_with_padding: &[Snark],
         rng: impl Rng + Send,
         batch_hash: BatchHash,
+        break_points: Option<Vec<Vec<usize>>>,
     ) -> Result<Self, snark_verifier::Error> {
-        let timer = start_timer!(|| "generate aggregation circuit");
+        let timer = start_timer!(|| "new | aggregation circuit");
 
         // sanity check: snarks's public input matches chunk_hashes
         for (chunk, snark) in batch_hash
@@ -74,17 +75,39 @@ impl AggregationCircuit {
         }
 
         let config_params: BaseCircuitParams = config_params.into();
-        let agg_circuit = AggCircuit::new::<AccScheme>(
-            stage,
-            config_params.try_into().unwrap(),
-            params,
-            snarks_with_padding.into_iter().cloned(),
-            VerifierUniversality::None,
-        );
+
+        let agg_circuit = match stage {
+            CircuitBuilderStage::Prover => AggCircuit::new::<AccScheme>(
+                stage,
+                config_params.try_into().unwrap(),
+                params,
+                snarks_with_padding.into_iter().cloned(),
+                VerifierUniversality::None,
+            )
+            .use_break_points(break_points.unwrap()),
+            _ => AggCircuit::new::<AccScheme>(
+                stage,
+                config_params.try_into().unwrap(),
+                params,
+                snarks_with_padding.into_iter().cloned(),
+                VerifierUniversality::None,
+            ),
+        };
+
+        // let agg_circuit = AggCircuit::new::<AccScheme>(
+        //     stage,
+        //     config_params.try_into().unwrap(),
+        //     params,
+        //     snarks_with_padding.into_iter().cloned(),
+        //     VerifierUniversality::None,
+        // );
 
         // extract batch's public input hash
         let pi_instances = batch_hash.instances_exclude_acc()[0].clone();
         println!("pi bytes ({}): {:?}", pi_instances.len(), pi_instances);
+
+        // let param = agg_circuit.borrow_mut().calculate_params(None);
+        // println!("param: {:?}", param);
 
         end_timer!(timer);
         Ok(Self {
@@ -123,77 +146,78 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // Step 1: snark aggregation circuit
         // ==============================================
+        let param = self.agg_circuit.clone().borrow_mut().calculate_params(None);
+        println!("\n\nparam: {:?}\n\n", param);
         self.agg_circuit
             .builder
             .borrow()
-            .synthesize_ref_layouter(config.base_field_config.clone(), &mut layouter)?;
+            // .synthesize_ref_layouter(config.base_field_config.clone(), &mut layouter)?;
+            .synthesize(config.base_field_config, layouter)?;
 
-        let param = self.agg_circuit.clone().borrow_mut().calculate_params(None);
-        println!("\n\nparam: {:?}\n\n", param);
-        // ==============================================
-        // step 2: public input aggregation circuit
-        // ==============================================
-        // extract all the hashes and load them to the hash table
-        let challenges = challenge.values(&layouter);
+        // // ==============================================
+        // // step 2: public input aggregation circuit
+        // // ==============================================
+        // // extract all the hashes and load them to the hash table
+        // let challenges = challenge.values(&layouter);
 
-        let timer = start_timer!(|| "load aux table");
+        // let timer = start_timer!(|| "load aux table");
 
-        let hash_digest_cells = {
-            config
-                .keccak_circuit_config
-                .load_aux_tables(&mut layouter)?;
-            end_timer!(timer);
+        // let hash_digest_cells = {
+        //     config
+        //         .keccak_circuit_config
+        //         .load_aux_tables(&mut layouter)?;
+        //     end_timer!(timer);
 
-            let timer = start_timer!(|| "extract hash");
-            // orders:
-            // - batch_public_input_hash
-            // - chunk\[i\].piHash for i in \[0, MAX_AGG_SNARKS)
-            // - batch_data_hash_preimage
-            let preimages = self.batch_hash.extract_hash_preimages();
-            assert_eq!(
-                preimages.len(),
-                MAX_AGG_SNARKS + 2,
-                "error extracting preimages"
-            );
-            end_timer!(timer);
+        //     let timer = start_timer!(|| "extract hash");
+        //     // orders:
+        //     // - batch_public_input_hash
+        //     // - chunk\[i\].piHash for i in \[0, MAX_AGG_SNARKS)
+        //     // - batch_data_hash_preimage
+        //     let preimages = self.batch_hash.extract_hash_preimages();
+        //     assert_eq!(
+        //         preimages.len(),
+        //         MAX_AGG_SNARKS + 2,
+        //         "error extracting preimages"
+        //     );
+        //     end_timer!(timer);
 
-            let timer = start_timer!(|| ("assign hash cells").to_string());
-            let chunks_are_valid = self
-                .batch_hash
-                .chunks_with_padding
-                .iter()
-                .map(|chunk| !chunk.is_padding)
-                .collect::<Vec<_>>();
-            let hash_digest_cells = assign_batch_hashes(
-                &config,
-                &mut layouter,
-                challenges,
-                &chunks_are_valid,
-                &preimages,
-            )
-            .map_err(|_e| Error::ConstraintSystemFailure)?;
-            end_timer!(timer);
-            hash_digest_cells
-        };
-        // digests
-        let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
-            parse_hash_digest_cells(&hash_digest_cells);
+        //     let timer = start_timer!(|| ("assign hash cells").to_string());
+        //     let chunks_are_valid = self
+        //         .batch_hash
+        //         .chunks_with_padding
+        //         .iter()
+        //         .map(|chunk| !chunk.is_padding)
+        //         .collect::<Vec<_>>();
+        //     let hash_digest_cells = assign_batch_hashes(
+        //         &config,
+        //         &mut layouter,
+        //         challenges,
+        //         &chunks_are_valid,
+        //         &preimages,
+        //     )
+        //     .map_err(|_e| Error::ConstraintSystemFailure)?;
+        //     end_timer!(timer);
+        //     hash_digest_cells
+        // };
+        // // digests
+        // let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
+        //     parse_hash_digest_cells(&hash_digest_cells);
 
-        // ==============================================
-        // step 3: assert public inputs to the snarks are correct
-        // ==============================================
-        for (i, chunk) in chunk_pi_hash_digests.iter().enumerate() {
-            let hash = self.batch_hash.chunks_with_padding[i].public_input_hash();
-            for j in 0..4 {
-                for k in 0..8 {
-                    log::trace!(
-                        "pi {:02x} {:?}",
-                        hash[j * 8 + k],
-                        chunk[8 * (3 - j) + k].value()
-                    );
-                }
-            }
-        }
+        // // ==============================================
+        // // step 3: assert public inputs to the snarks are correct
+        // // ==============================================
+        // for (i, chunk) in chunk_pi_hash_digests.iter().enumerate() {
+        //     let hash = self.batch_hash.chunks_with_padding[i].public_input_hash();
+        //     for j in 0..4 {
+        //         for k in 0..8 {
+        //             log::trace!(
+        //                 "pi {:02x} {:?}",
+        //                 hash[j * 8 + k],
+        //                 chunk[8 * (3 - j) + k].value()
+        //             );
+        //         }
+        //     }
+        // }
 
         self.agg_circuit.builder.borrow_mut().clear();
         Ok(())
@@ -210,7 +234,7 @@ impl CircuitExt<Fr> for AggregationCircuit {
     // 12 elements from accumulator
     // 32 elements from batch's public_input_hash
     fn instances(&self) -> Vec<Vec<Fr>> {
-        let mut res = self.agg_circuit.builder.borrow_mut().instances();
+        let mut res = self.agg_circuit.builder.borrow().instances();
         res.extend([self.pi_instances.clone()]);
         res
     }
