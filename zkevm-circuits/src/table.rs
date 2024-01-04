@@ -176,6 +176,10 @@ pub enum TxFieldTag {
     TxHash,
     /// TxType: Type of the transaction
     TxType,
+    /// Access list address
+    AccessListAddress,
+    /// Access list storage key
+    AccessListStorageKey,
     /// Access list address count (EIP-2930)
     AccessListAddressesLen,
     /// Access list all storage key count (EIP-2930)
@@ -807,6 +811,46 @@ impl MptTable {
             || "mpt table zkevm",
             |mut region| self.load_with_region(&mut region, updates, max_mpt_rows, randomness),
         )
+    }
+
+    pub(crate) fn load_par<F: Field>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        updates: &MptUpdates,
+        max_mpt_rows: usize,
+        randomness: Value<F>,
+    ) -> Result<(), Error> {
+        let num_threads = std::thread::available_parallelism().unwrap().get();
+        let chunk_size = (max_mpt_rows + num_threads - 1) / num_threads;
+        let mpt_update_rows = updates
+            .table_assignments(randomness)
+            .into_iter()
+            .chain(repeat(MptUpdateRow::padding()))
+            .take(max_mpt_rows)
+            .collect_vec();
+        let mut is_first_passes = vec![true; num_threads];
+        let assignments = mpt_update_rows
+            .chunks(chunk_size)
+            .zip(is_first_passes.iter_mut())
+            .map(|(mpt_update_rows, is_first_pass)| {
+                |mut region: Region<'_, F>| -> Result<(), Error> {
+                    if *is_first_pass {
+                        *is_first_pass = false;
+                        let last_off = mpt_update_rows.len() - 1;
+                        self.assign(&mut region, last_off, &mpt_update_rows[last_off])?;
+                        return Ok(());
+                    }
+                    for (offset, row) in mpt_update_rows.iter().enumerate() {
+                        self.assign(&mut region, offset, row)?;
+                    }
+                    Ok(())
+                }
+            })
+            .collect_vec();
+
+        layouter.assign_regions(|| "mpt table zkevm", assignments)?;
+
+        Ok(())
     }
 
     pub(crate) fn load_with_region<F: Field>(
@@ -1762,6 +1806,8 @@ impl CopyTable {
             word_rlc_prev: Value::known(F::zero()),
         };
 
+        let is_access_list = copy_event.src_type == CopyDataType::AccessListAddresses
+            || copy_event.src_type == CopyDataType::AccessListStorageKeys;
         for (step_idx, (is_read_step, mut copy_step)) in copy_steps
             .flat_map(|(read_step, write_step)| {
                 let read_step = CopyStep {
@@ -1796,13 +1842,25 @@ impl CopyTable {
 
             let is_pad = is_read_step && thread.addr >= thread.addr_end;
 
-            let value = Value::known(F::from(copy_step.value as u64));
+            let [value, value_prev] = if is_access_list {
+                let address_pair = copy_event.access_list[step_idx / 2];
+                [
+                    address_pair.0.to_scalar().unwrap(),
+                    address_pair.1.to_scalar().unwrap(),
+                ]
+            } else {
+                [
+                    F::from(copy_step.value as u64),
+                    F::from(copy_step.prev_value as u64),
+                ]
+            }
+            .map(Value::known);
+
             let value_or_pad = if is_pad {
                 Value::known(F::zero())
             } else {
                 value
             };
-            let value_prev = Value::known(F::from(copy_step.prev_value as u64));
 
             if !copy_step.mask {
                 thread.front_mask = false;
@@ -1865,9 +1923,10 @@ impl CopyTable {
             if !copy_step.mask {
                 thread.bytes_left -= 1;
             }
+            // No word operation for access list data types.
+            let is_row_end = is_access_list || (step_idx / 2) % 32 == 31;
             // Update the RW counter.
-            let is_word_end = (step_idx / 2) % 32 == 31;
-            if is_word_end && thread.is_rw {
+            if is_row_end && thread.is_rw {
                 rw_counter += 1;
                 rwc_inc_left -= 1;
             }
