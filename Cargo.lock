@@ -2358,14 +2358,14 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=v1.0#04d8dc09bd4df542feccac85e34dff4b38a467d3"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#1070391642dd64b2d68b47ec246cba9e35bd3c15"
 dependencies = [
  "arrayvec",
  "bitvec",
  "ff 0.13.0",
  "group 0.13.0",
- "halo2_proofs 0.2.0 (git+https://github.com/scroll-tech/halo2.git?branch=v1.0)",
- "halo2curves 0.3.2",
+ "halo2_proofs 0.2.0 (git+https://github.com/scroll-tech/halo2.git?branch=develop)",
+ "halo2curves",
  "lazy_static",
  "rand",
  "subtle",
@@ -2383,7 +2383,7 @@ dependencies = [
  "crossbeam",
  "ff 0.13.0",
  "group 0.13.0",
- "halo2curves 0.1.0",
+ "halo2curves",
  "log",
  "num-bigint",
  "num-integer",
@@ -2408,7 +2408,7 @@ dependencies = [
  "crossbeam",
  "ff 0.13.0",
  "group 0.13.0",
- "halo2curves 0.1.0",
+ "halo2curves",
  "log",
  "num-bigint",
  "num-integer",
@@ -2438,24 +2438,6 @@ dependencies = [
  "rand_core",
  "serde",
  "serde_arrays",
- "static_assertions",
- "subtle",
-]
-
-[[package]]
-name = "halo2curves"
-version = "0.3.2"
-source = "git+https://github.com/privacy-scaling-explorations/halo2curves?tag=0.3.2#9f5c50810bbefe779ee5cf1d852b2fe85dc35d5e"
-dependencies = [
- "ff 0.13.0",
- "group 0.13.0",
- "lazy_static",
- "num-bigint",
- "num-traits",
- "pasta_curves",
- "paste",
- "rand",
- "rand_core",
  "static_assertions",
  "subtle",
 ]
@@ -3681,7 +3663,7 @@ name = "poseidon"
 version = "0.2.0"
 source = "git+https://github.com/scroll-tech/poseidon.git?branch=main#5787dd3d2ce7a9e9601a035c396ac0c03449b54d"
 dependencies = [
- "halo2curves 0.1.0",
+ "halo2curves",
  "subtle",
 ]
 
