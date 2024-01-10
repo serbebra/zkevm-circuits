@@ -16,8 +16,8 @@ use crate::{
     exec_trace::OperationRef,
     operation::{
         AccountField, AccountOp, CallContextField, CallContextOp, MemoryOp, Op, OpEnum, Operation,
-        StackOp, Target, TxAccessListAccountOp, TxLogField, TxLogOp, TxReceiptField, TxReceiptOp,
-        RW,
+        StackOp, Target, TxAccessListAccountOp, TxAccessListAccountStorageOp, TxLogField, TxLogOp,
+        TxReceiptField, TxReceiptOp, RW,
     },
     precompile::{is_precompiled, PrecompileCalls},
     state_db::{CodeDB, StateDB},
@@ -75,6 +75,30 @@ impl<'a> CircuitInputStateRef<'a> {
             rwc: self.block_ctx.rwc,
             ..Default::default()
         }
+    }
+
+    /// Create a step right after the ref_step, it shared the same
+    /// exec_state and call context with ref_step
+    pub fn new_next_step(&self, ref_step: &ExecStep) -> Result<ExecStep, Error> {
+        let call_ctx = self.tx_ctx.call_ctx()?;
+        let gas_left = ref_step.gas_left.0 - ref_step.gas_cost.as_u64();
+
+        let step = ExecStep {
+            exec_state: ref_step.exec_state.clone(),
+            pc: ref_step.pc,
+            stack_size: ref_step.stack_size,
+
+            memory_size: call_ctx.memory.len(),
+            call_index: call_ctx.index,
+            reversible_write_counter: call_ctx.reversible_write_counter,
+            rwc: self.block_ctx.rwc,
+            log_id: self.tx_ctx.log_id,
+
+            gas_left: Gas(gas_left),
+            ..Default::default()
+        };
+
+        Ok(step)
     }
 
     /// Create a new EndTx step
@@ -591,7 +615,7 @@ impl<'a> CircuitInputStateRef<'a> {
     /// adds a reference to the stored operation ([`OperationRef`]) inside
     /// the bus-mapping instance of the current [`ExecStep`].  Then increase
     /// the `block_ctx` [`RWCounter`](crate::operation::RWCounter)  by one.
-    pub fn tx_accesslist_account_write(
+    pub fn tx_access_list_account_write(
         &mut self,
         step: &mut ExecStep,
         tx_id: usize,
@@ -605,6 +629,29 @@ impl<'a> CircuitInputStateRef<'a> {
             TxAccessListAccountOp {
                 tx_id,
                 address,
+                is_warm,
+                is_warm_prev,
+            },
+        )
+    }
+
+    /// Add address storage key to access list for the current transaction.
+    pub fn tx_access_list_storage_key_write(
+        &mut self,
+        step: &mut ExecStep,
+        tx_id: usize,
+        address: Address,
+        key: Word,
+        is_warm: bool,
+        is_warm_prev: bool,
+    ) -> Result<(), Error> {
+        self.push_op(
+            step,
+            RW::WRITE,
+            TxAccessListAccountStorageOp {
+                tx_id,
+                address,
+                key,
                 is_warm,
                 is_warm_prev,
             },
@@ -920,6 +967,7 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(address)
     }
 
+    /// read reversion info
     pub(crate) fn reversion_info_read(
         &mut self,
         step: &mut ExecStep,
@@ -933,6 +981,24 @@ impl<'a> CircuitInputStateRef<'a> {
             (CallContextField::IsPersistent, call.is_persistent.to_word()),
         ] {
             self.call_context_read(step, call.call_id, field, value)?;
+        }
+        Ok(())
+    }
+
+    /// write reversion info
+    pub(crate) fn reversion_info_write(
+        &mut self,
+        step: &mut ExecStep,
+        call: &Call,
+    ) -> Result<(), Error> {
+        for (field, value) in [
+            (
+                CallContextField::RwCounterEndOfReversion,
+                call.rw_counter_end_of_reversion.to_word(),
+            ),
+            (CallContextField::IsPersistent, call.is_persistent.to_word()),
+        ] {
+            self.call_context_write(step, call.call_id, field, value)?;
         }
         Ok(())
     }
@@ -1213,7 +1279,7 @@ impl<'a> CircuitInputStateRef<'a> {
 
         // Store deployed code if it's a successful create
         if call_success_create {
-            let offset = step.stack.nth_last(0)?;
+            let offset = step.stack.last()?;
             let length = step.stack.nth_last(1)?;
             let code = callee_memory.read_chunk(MemoryRange::new_with_length(
                 offset.low_u64(),
@@ -1253,7 +1319,7 @@ impl<'a> CircuitInputStateRef<'a> {
                 && step.error.is_none()
                 && !call_success_create
             {
-                step.stack.nth_last(0)?.low_u64()
+                step.stack.last()?.low_u64()
             } else {
                 // common err, call empty, call precompile
                 0
@@ -1299,7 +1365,7 @@ impl<'a> CircuitInputStateRef<'a> {
                     [Word::zero(), return_data_length]
                 }
                 OpcodeId::REVERT | OpcodeId::RETURN => {
-                    let offset = geth_step.stack.nth_last(0)?;
+                    let offset = geth_step.stack.last()?;
                     let length = geth_step.stack.nth_last(1)?;
                     // This is the convention we are using for memory addresses so that there is no
                     // memory expansion cost when the length is 0.
@@ -1327,7 +1393,7 @@ impl<'a> CircuitInputStateRef<'a> {
     ) -> Result<(), Error> {
         let call = self.call()?.clone();
         let geth_step = steps
-            .get(0)
+            .first()
             .ok_or(Error::InternalError("invalid index 0"))?;
         let is_err = exec_step.error.is_some();
         let is_return_revert_succ = (geth_step.op == OpcodeId::REVERT
@@ -1491,13 +1557,13 @@ impl<'a> CircuitInputStateRef<'a> {
             return Ok(Some(ExecError::InvalidOpcode));
         }
 
-        if let Some(error) = &step.error {
+        if let Some(error) = step.error {
             return Ok(Some(get_step_reported_error(&step.op, error)));
         }
 
         let call = self.call()?;
 
-        if matches!(next_step, None) {
+        if next_step.is_none() {
             // enumerating call scope successful cases
             // case 1: call with normal halt opcode termination
             if matches!(
@@ -1527,7 +1593,7 @@ impl<'a> CircuitInputStateRef<'a> {
         // get value first if call/create
         let value = match step.op {
             OpcodeId::CALL | OpcodeId::CALLCODE => step.stack.nth_last(2)?,
-            OpcodeId::CREATE | OpcodeId::CREATE2 => step.stack.nth_last(0)?,
+            OpcodeId::CREATE | OpcodeId::CREATE2 => step.stack.last()?,
             _ => Word::zero(),
         };
 
@@ -1567,7 +1633,7 @@ impl<'a> CircuitInputStateRef<'a> {
             } else {
                 // Return from a {CREATE, CREATE2} with a failure, via RETURN
                 if call.is_create() {
-                    let offset = step.stack.nth_last(0)?;
+                    let offset = step.stack.last()?;
                     let length = step.stack.nth_last(1)?;
                     if length > Word::from(MAX_CODE_SIZE) {
                         return Ok(Some(ExecError::MaxCodeSizeExceeded));
@@ -2154,7 +2220,7 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(())
     }
 
-    // write all chunks to memroy word and add prev bytes
+    // write all chunks to memory word and add prev bytes
     pub(crate) fn write_chunks(
         &mut self,
         exec_step: &mut ExecStep,

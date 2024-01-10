@@ -1,3 +1,5 @@
+#![feature(lazy_cell)]
+
 /// Execute the bytecode from an empty state and run the EVM and State circuits
 mod abi;
 mod compiler;
@@ -22,7 +24,7 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
-use strum::EnumString;
+use strum_macros::EnumString;
 
 const REPORT_FOLDER: &str = "report";
 const CODEHASH_FILE: &str = "./codehash.txt";
@@ -165,7 +167,7 @@ fn go() -> Result<()> {
     log::info!("Parsing and compliling tests...");
     let compiler = Compiler::new(true, Some(PathBuf::from(CODEHASH_FILE)))?;
     let suite = config.suite(&args.suite)?.clone();
-    let mut state_tests = load_statetests_suite(&suite.path, config, compiler)?;
+    let mut state_tests = load_statetests_suite(&suite, config, compiler)?;
     log::info!("{} tests collected in {}", state_tests.len(), suite.path);
 
     if args.ls {

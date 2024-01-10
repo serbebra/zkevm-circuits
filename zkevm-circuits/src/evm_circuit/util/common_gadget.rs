@@ -31,9 +31,11 @@ use halo2_proofs::{
     plonk::{Error, Expression},
 };
 
+mod tx_eip2930;
 mod tx_l1_fee;
 mod tx_l1_msg;
 
+pub(crate) use tx_eip2930::TxEip2930Gadget;
 pub(crate) use tx_l1_fee::TxL1FeeGadget;
 pub(crate) use tx_l1_msg::TxL1MsgGadget;
 
@@ -52,7 +54,16 @@ impl<F: Field> SameContextGadget<F> {
         opcode: Cell<F>,
         step_state_transition: StepStateTransition<F>,
     ) -> Self {
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        Self::construct2(cb, opcode, step_state_transition, 0.expr())
+    }
+
+    pub(crate) fn construct2(
+        cb: &mut EVMConstraintBuilder<F>,
+        opcode: Cell<F>,
+        step_state_transition: StepStateTransition<F>,
+        push_rlc: Expression<F>,
+    ) -> Self {
+        cb.opcode_lookup_rlc(opcode.expr(), push_rlc);
         cb.add_lookup(
             "Responsible opcode lookup",
             Lookup::Fixed {
@@ -275,13 +286,17 @@ impl<F: Field> RestoreContextGadget<F> {
                 [U256::zero(); 9]
             } else {
                 field_tags
+                    .iter()
                     .zip([0, 1, 2, 3, 4, 5, 6, 7, 8])
-                    .map(|(field_tag, i)| {
+                    .map(|(&field_tag, i)| {
                         let idx = step.rw_indices[i + rw_offset];
                         let rw = block.rws[idx];
                         debug_assert_eq!(rw.field_tag(), Some(field_tag as u64));
                         rw.call_context_value()
                     })
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
             };
 
         for (cell, value) in [
@@ -1412,13 +1427,16 @@ impl<F: Field> CommonErrorGadget<F> {
         opcode: Expression<F>,
         rw_counter_delta: Expression<F>,
     ) -> Self {
-        Self::construct_with_lastcallee_return_data(
-            cb,
-            opcode,
-            rw_counter_delta,
-            0.expr(),
-            0.expr(),
-        )
+        Self::construct2(cb, opcode, rw_counter_delta, 0.expr())
+    }
+
+    pub(crate) fn construct2(
+        cb: &mut EVMConstraintBuilder<F>,
+        opcode: Expression<F>,
+        rw_counter_delta: Expression<F>,
+        push_rlc: Expression<F>,
+    ) -> Self {
+        Self::construct_full(cb, opcode, rw_counter_delta, 0.expr(), 0.expr(), push_rlc)
     }
 
     pub(crate) fn construct_with_lastcallee_return_data(
@@ -1428,7 +1446,25 @@ impl<F: Field> CommonErrorGadget<F> {
         return_data_offset: Expression<F>,
         return_data_length: Expression<F>,
     ) -> Self {
-        cb.opcode_lookup(opcode.expr(), 1.expr());
+        Self::construct_full(
+            cb,
+            opcode,
+            rw_counter_delta,
+            return_data_offset,
+            return_data_length,
+            0.expr(),
+        )
+    }
+
+    fn construct_full(
+        cb: &mut EVMConstraintBuilder<F>,
+        opcode: Expression<F>,
+        rw_counter_delta: Expression<F>,
+        return_data_offset: Expression<F>,
+        return_data_length: Expression<F>,
+        push_rlc: Expression<F>,
+    ) -> Self {
+        cb.opcode_lookup_rlc(opcode.expr(), push_rlc);
 
         let rw_counter_end_of_reversion = cb.query_cell();
 
@@ -1510,6 +1546,21 @@ impl<F: Field> CommonErrorGadget<F> {
 
         // NOTE: return value not use for now.
         Ok(1u64)
+    }
+
+    pub(crate) fn get_push_rlc(
+        region: &CachedRegion<'_, '_, F>,
+        block: &Block<F>,
+        call: &Call,
+        step: &ExecStep,
+    ) -> Value<F> {
+        let code = block
+            .bytecodes
+            .get(&call.code_hash)
+            .expect("could not find current environment's bytecode");
+
+        let pc = step.program_counter as usize;
+        code.get_byte_row(pc, region.challenges()).2
     }
 }
 
@@ -1764,13 +1815,11 @@ pub(crate) fn get_copy_bytes(
 ) -> Vec<u8> {
     // read real copy bytes from padded memory words
     let padded_bytes: Vec<u8> = (0..copy_rwc_inc)
-        .map(|_| {
+        .flat_map(|_| {
             let mut bytes = rws.next().memory_word_pair().0.to_le_bytes();
             bytes.reverse();
             bytes
         })
-        .into_iter()
-        .flatten()
         .collect();
     let values: Vec<u8> = if copy_size == 0 {
         vec![0; 0]

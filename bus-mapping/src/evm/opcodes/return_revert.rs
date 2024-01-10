@@ -27,9 +27,9 @@ impl Opcode for ReturnRevert {
         let step = &steps[0];
         let mut exec_step = state.new_step(step)?;
 
-        let offset = step.stack.nth_last(0)?;
+        let offset = step.stack.last()?;
         let length = step.stack.nth_last(1)?;
-        state.stack_read(&mut exec_step, step.stack.nth_last_filled(0), offset)?;
+        state.stack_read(&mut exec_step, step.stack.last_filled(), offset)?;
         state.stack_read(&mut exec_step, step.stack.nth_last_filled(1), length)?;
 
         if !length.is_zero() {
@@ -282,6 +282,7 @@ fn handle_copy(
             dst_addr: destination.offset.try_into().unwrap(),
             log_id: None,
             copy_bytes: CopyBytes::new(read_steps, Some(write_steps), Some(dst_data_prev)),
+            access_list: vec![],
         },
     );
 
@@ -348,6 +349,7 @@ fn handle_create(
             dst_addr: 0,
             log_id: None,
             copy_bytes: CopyBytes::new(copy_steps, None, None),
+            access_list: vec![],
         },
     );
 

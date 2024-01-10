@@ -15,12 +15,12 @@ use crate::{
 use eth_types::{
     evm_types::{memory::MemoryWordRange, Gas, GasCost, MemoryAddress, OpcodeId, ProgramCounter},
     sign_types::SignData,
-    GethExecStep, ToLittleEndian, Word, H256, U256,
+    Address, Field, GethExecStep, ToLittleEndian, Word, H256, U256,
 };
 use ethers_core::k256::elliptic_curve::subtle::CtOption;
 use gadgets::impl_expr;
 use halo2_proofs::{
-    arithmetic::{CurveAffine, Field},
+    arithmetic::{CurveAffine, Field as Halo2Field},
     halo2curves::{
         bn256::{Fq, Fq2, Fr, G1Affine, G2Affine},
         group::prime::PrimeCurveAffine,
@@ -221,12 +221,19 @@ pub enum CopyDataType {
     /// scenario where we wish to accumulate the value (RLC) over all rows.
     /// This is used for Copy Lookup from SHA3 opcode verification.
     RlcAcc,
+    /// When copy event is access-list addresses (EIP-2930), source is tx-table
+    /// and destination is rw-table.
+    AccessListAddresses,
+    /// When copy event is access-list storage keys (EIP-2930), source is
+    /// tx-table and destination is rw-table.
+    AccessListStorageKeys,
 }
+
 impl CopyDataType {
     /// How many bits are necessary to represent a copy data type.
     pub const N_BITS: usize = 3usize;
 }
-const NUM_COPY_DATA_TYPES: usize = 6usize;
+const NUM_COPY_DATA_TYPES: usize = 8usize;
 pub struct CopyDataTypeIter {
     idx: usize,
     back_idx: usize,
@@ -241,6 +248,8 @@ impl CopyDataTypeIter {
             3usize => Some(CopyDataType::TxCalldata),
             4usize => Some(CopyDataType::TxLog),
             5usize => Some(CopyDataType::RlcAcc),
+            6usize => Some(CopyDataType::AccessListAddresses),
+            7usize => Some(CopyDataType::AccessListStorageKeys),
             _ => None,
         }
     }
@@ -307,6 +316,8 @@ impl From<CopyDataType> for usize {
             CopyDataType::TxCalldata => 3,
             CopyDataType::TxLog => 4,
             CopyDataType::RlcAcc => 5,
+            CopyDataType::AccessListAddresses => 6,
+            CopyDataType::AccessListStorageKeys => 7,
         }
     }
 }
@@ -320,6 +331,8 @@ impl From<&CopyDataType> for u64 {
             CopyDataType::TxCalldata => 3,
             CopyDataType::TxLog => 4,
             CopyDataType::RlcAcc => 5,
+            CopyDataType::AccessListAddresses => 6,
+            CopyDataType::AccessListStorageKeys => 7,
         }
     }
 }
@@ -342,9 +355,6 @@ pub struct CopyStep {
     pub prev_value: u8,
     /// mask indicates this byte won't be copied.
     pub mask: bool,
-    /// Optional field which is enabled only for the source being `bytecode`,
-    /// and represents whether or not the byte is an opcode.
-    pub is_code: Option<bool>,
 }
 
 /// Defines an enum type that can hold either a number or a hash value.
@@ -421,6 +431,11 @@ pub struct CopyEvent {
     pub rw_counter_start: RWCounter,
     /// Represents the list of bytes related during this copy event
     pub copy_bytes: CopyBytes,
+    /// Represents transaction access list (EIP-2930), if copy data type is
+    /// address, the first item is access list address and second is zero, if
+    /// copy data type is storage key, the first item is access list address and
+    /// second is access list storage key.
+    pub access_list: Vec<(Address, Word)>,
 }
 
 pub type CopyEventSteps = Vec<(u8, bool, bool)>;
@@ -444,7 +459,10 @@ impl CopyEvent {
 
     /// Whether the destination performs RW lookups in the state circuit.
     pub fn is_destination_rw(&self) -> bool {
-        self.dst_type == CopyDataType::Memory || self.dst_type == CopyDataType::TxLog
+        self.dst_type == CopyDataType::Memory
+            || self.dst_type == CopyDataType::TxLog
+            || self.dst_type == CopyDataType::AccessListAddresses
+            || self.dst_type == CopyDataType::AccessListStorageKeys
     }
 
     /// Whether the RLC of data must be computed.
@@ -462,6 +480,15 @@ impl CopyEvent {
 
     /// The number of RW lookups performed by this copy event.
     pub fn rw_counter_delta(&self) -> u64 {
+        if self.dst_type == CopyDataType::AccessListAddresses
+            || self.dst_type == CopyDataType::AccessListStorageKeys
+        {
+            // For access list, the placeholder is used for copy bytes which
+            // value will be replaced by address and storage key, and no word
+            // operations.
+            return self.full_length();
+        }
+
         (self.is_source_rw() as u64 + self.is_destination_rw() as u64) * (self.full_length() / 32)
     }
 }
@@ -911,6 +938,20 @@ impl PrecompileEvents {
             .cloned()
             .collect()
     }
+    /// Get all SHA256 events.
+    pub fn get_sha256_events(&self) -> Vec<SHA256> {
+        self.events
+            .iter()
+            .filter_map(|e| {
+                if let PrecompileEvent::SHA256(op) = e {
+                    Some(op)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 /// I/O from a precompiled contract call.
@@ -926,6 +967,8 @@ pub enum PrecompileEvent {
     EcPairing(Box<EcPairingOp>),
     /// Represents the I/O from Modexp call.
     ModExp(BigModExp),
+    /// Represents the I/O from SHA256 call.
+    SHA256(SHA256),
 }
 
 impl Default for PrecompileEvent {
@@ -979,13 +1022,17 @@ impl EcAddOp {
             })
         };
 
-        assert_eq!(input.len(), 128);
-        assert_eq!(output.len(), 64);
+        let mut resized_input = input.to_vec();
+        resized_input.resize(128, 0u8);
+        let mut resized_output = output.to_vec();
+        resized_output.resize(64, 0u8);
 
         let mut buf = [0u8; 32];
-        let opt_point_p: Option<G1Affine> = g1_from_slice(&mut buf, &input[0x00..0x40]).into();
-        let opt_point_q: Option<G1Affine> = g1_from_slice(&mut buf, &input[0x40..0x80]).into();
-        let point_r_evm = g1_from_slice(&mut buf, &output[0x00..0x40]).unwrap();
+        let opt_point_p: Option<G1Affine> =
+            g1_from_slice(&mut buf, &resized_input[0x00..0x40]).into();
+        let opt_point_q: Option<G1Affine> =
+            g1_from_slice(&mut buf, &resized_input[0x40..0x80]).into();
+        let point_r_evm = g1_from_slice(&mut buf, &resized_output[0x00..0x40]).unwrap();
         let point_r_cal = opt_point_p.zip(opt_point_q).map(|(point_p, point_q)| {
             let point_r: G1Affine = point_p.add(&point_q).into();
             debug_assert_eq!(
@@ -997,12 +1044,12 @@ impl EcAddOp {
 
         Self {
             p: (
-                U256::from_big_endian(&input[0x00..0x20]),
-                U256::from_big_endian(&input[0x20..0x40]),
+                U256::from_big_endian(&resized_input[0x00..0x20]),
+                U256::from_big_endian(&resized_input[0x20..0x40]),
             ),
             q: (
-                U256::from_big_endian(&input[0x40..0x60]),
-                U256::from_big_endian(&input[0x60..0x80]),
+                U256::from_big_endian(&resized_input[0x40..0x60]),
+                U256::from_big_endian(&resized_input[0x60..0x80]),
             ),
             r: point_r_cal,
         }
@@ -1081,14 +1128,17 @@ impl EcMulOp {
             })
         };
 
-        assert_eq!(input.len(), 96);
-        assert_eq!(output.len(), 64);
+        let mut resized_input = input.to_vec();
+        resized_input.resize(96, 0u8);
+        let mut resized_output = output.to_vec();
+        resized_output.resize(64, 0u8);
 
         let mut buf = [0u8; 32];
 
-        let opt_point_p: Option<G1Affine> = g1_from_slice(&mut buf, &input[0x00..0x40]).into();
-        let s = Fr::from_raw(Word::from_big_endian(&input[0x40..0x60]).0);
-        let point_r_evm = g1_from_slice(&mut buf, &output[0x00..0x40]).unwrap();
+        let opt_point_p: Option<G1Affine> =
+            g1_from_slice(&mut buf, &resized_input[0x00..0x40]).into();
+        let s = Fr::from_raw(Word::from_big_endian(&resized_input[0x40..0x60]).0);
+        let point_r_evm = g1_from_slice(&mut buf, &resized_output[0x00..0x40]).unwrap();
         let point_r_cal = opt_point_p.map(|point_p| {
             let point_r: G1Affine = point_p.mul(s).into();
             debug_assert_eq!(
@@ -1100,8 +1150,8 @@ impl EcMulOp {
 
         Self {
             p: (
-                U256::from_big_endian(&input[0x00..0x20]),
-                U256::from_big_endian(&input[0x20..0x40]),
+                U256::from_big_endian(&resized_input[0x00..0x20]),
+                U256::from_big_endian(&resized_input[0x20..0x40]),
             ),
             s,
             r: point_r_cal,
@@ -1254,6 +1304,12 @@ pub struct EcPairingOp {
     pub pairs: [EcPairingPair; N_PAIRING_PER_OP],
     /// Result from the pairing check.
     pub output: Word,
+    /// Input bytes to the ecPairing call.
+    pub input_bytes: Vec<u8>,
+    /// Output bytes from the ecPairing call.
+    pub output_bytes: Vec<u8>,
+    /// Bytes returned back to the caller.
+    pub return_bytes: Vec<u8>,
 }
 
 impl Default for EcPairingOp {
@@ -1286,6 +1342,13 @@ impl Default for EcPairingOp {
                 },
             ],
             output: Word::zero(),
+            // It does not matter what the input bytes and return bytes are in this case, as this
+            // operation is a filler op. It is not an op constructed from an EVM call to the
+            // ecPairing precompiled contract. Hence the input/return bytes will not be
+            // constrained.
+            input_bytes: vec![],
+            output_bytes: vec![],
+            return_bytes: vec![],
         }
     }
 }
@@ -1324,6 +1387,7 @@ impl EcPairingOp {
                 EcPairingPair::new(G1Affine::identity(), G2Affine::generator()),
             ],
             output: 1.into(),
+            ..Default::default()
         }
     }
 }
@@ -1350,4 +1414,13 @@ impl Default for BigModExp {
             result: Default::default(),
         }
     }
+}
+
+/// Event representating an SHA256 hash in precompile sha256.
+#[derive(Clone, Debug, Default)]
+pub struct SHA256 {
+    /// input bytes
+    pub input: Vec<u8>,
+    /// digest
+    pub digest: [u8; 32],
 }

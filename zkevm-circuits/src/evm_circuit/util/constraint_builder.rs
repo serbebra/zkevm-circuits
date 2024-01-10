@@ -16,7 +16,7 @@ use bus_mapping::{
     util::{KECCAK_CODE_HASH_EMPTY, POSEIDON_CODE_HASH_EMPTY},
 };
 use eth_types::{Field, ToLittleEndian, ToScalar, ToWord};
-use gadgets::util::{and, not, sum};
+use gadgets::util::{and, not};
 use halo2_proofs::{
     circuit::Value,
     plonk::{
@@ -333,8 +333,6 @@ impl<'a, F: Field> ConstrainBuilderCommon<F> for EVMConstraintBuilder<'a, F> {
     }
 }
 
-pub(crate) type BoxedClosure<'a, F> = Box<dyn FnOnce(&mut EVMConstraintBuilder<F>) + 'a>;
-
 impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     pub(crate) fn new(
         curr: Step<F>,
@@ -632,12 +630,8 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
     // Opcode
 
     pub(crate) fn opcode_lookup(&mut self, opcode: Expression<F>, is_code: Expression<F>) {
-        self.opcode_lookup_at(
-            self.curr.state.program_counter.expr() + self.program_counter_offset.expr(),
-            opcode,
-            is_code,
-        );
-        self.program_counter_offset += 1;
+        assert_eq!(is_code, 1.expr());
+        self.opcode_lookup_rlc(opcode, 0.expr());
     }
 
     pub(crate) fn opcode_lookup_at(
@@ -646,6 +640,25 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         opcode: Expression<F>,
         is_code: Expression<F>,
     ) {
+        assert_eq!(is_code, 1.expr());
+        self.opcode_lookup_at_rlc(index, opcode, 0.expr());
+    }
+
+    pub(crate) fn opcode_lookup_rlc(&mut self, opcode: Expression<F>, push_rlc: Expression<F>) {
+        self.opcode_lookup_at_rlc(
+            self.curr.state.program_counter.expr() + self.program_counter_offset.expr(),
+            opcode,
+            push_rlc,
+        );
+        self.program_counter_offset += 1;
+    }
+
+    pub(crate) fn opcode_lookup_at_rlc(
+        &mut self,
+        index: Expression<F>,
+        opcode: Expression<F>,
+        push_rlc: Expression<F>,
+    ) {
         let is_root_create = self.curr.state.is_root.expr() * self.curr.state.is_create.expr();
         self.add_lookup(
             "Opcode lookup",
@@ -653,8 +666,9 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                 hash: self.curr.state.code_hash.expr(),
                 tag: BytecodeFieldTag::Byte.expr(),
                 index,
-                is_code,
+                is_code: 1.expr(),
                 value: opcode,
+                push_rlc,
             }
             .conditional(1.expr() - is_root_create),
         );
@@ -668,6 +682,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         index: Expression<F>,
         is_code: Expression<F>,
         value: Expression<F>,
+        push_rlc: Expression<F>,
     ) {
         self.add_lookup(
             "Bytecode (byte) lookup",
@@ -677,6 +692,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                 index,
                 is_code,
                 value,
+                push_rlc,
             },
         )
     }
@@ -690,6 +706,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
                 index: 0.expr(),
                 is_code: 0.expr(),
                 value,
+                push_rlc: 0.expr(),
             },
         );
     }
@@ -1459,6 +1476,24 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         );
     }
 
+    // SHA256 Table
+
+    pub(crate) fn sha256_table_lookup(
+        &mut self,
+        input_rlc: Expression<F>,
+        input_len: Expression<F>,
+        output_rlc: Expression<F>,
+    ) {
+        self.add_lookup(
+            "sha256 lookup",
+            Lookup::Sha256Table {
+                input_rlc,
+                input_len,
+                output_rlc,
+            },
+        );
+    }
+
     // ModExp table
     pub(crate) fn modexp_table_lookup(
         &mut self,
@@ -1524,60 +1559,13 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         ret
     }
 
-    /// Constraints the next step, given mutually exclusive conditions to determine the next state
-    /// and constrain it using the provided respective constraint. This mechanism is specifically
-    /// used for constraining the internal states for precompile calls. Each precompile call
-    /// expects a different cell layout, but since the next state can be at the most one precompile
-    /// state, we can re-use cells assigned across all those conditions.
-    pub(crate) fn constrain_mutually_exclusive_next_step(
-        &mut self,
-        conditions: Vec<Expression<F>>,
-        next_states: Vec<ExecutionState>,
-        constraints: Vec<BoxedClosure<F>>,
-    ) {
-        assert_eq!(conditions.len(), constraints.len());
-        assert_eq!(conditions.len(), next_states.len());
-        self.require_boolean(
-            "at the most one condition is true from mutually exclusive conditions",
-            sum::expr(&conditions),
-        );
-
-        // record the heights of all columns (for the next step) as we begin cell assignment.
-        let start_heights = self.next.cell_manager.get_heights();
-
-        let mut max_end_heights: Vec<usize> = vec![0usize; start_heights.len()];
-        for ((&next_state, condition), constraint) in next_states
-            .iter()
-            .zip(conditions.into_iter())
-            .zip(constraints.into_iter())
-        {
-            // constraint the next step.
-            self.constrain_next_step(next_state, Some(condition), constraint);
-
-            // get the column heights at the end of querying cells in the above constraints.
-            let end_heights = self.next.cell_manager.get_heights();
-            for (max_end_height, end_height) in max_end_heights.iter_mut().zip(end_heights.iter()) {
-                if end_height > max_end_height {
-                    *max_end_height = *end_height;
-                }
-            }
-
-            // reset the column heights of the next step before proceeding to the next mutually
-            // exclusive condition/constraint/next_state.
-            self.next.cell_manager.reset_heights_to(&start_heights);
-        }
-
-        // reset height of next step to the maximum heights of each column.
-        self.next.cell_manager.reset_heights_to(&max_end_heights);
-    }
-
     /// This function needs to be used with extra precaution. You need to make
     /// sure the layout is the same as the gadget for `next_step_state`.
     /// `query_cell` will return cells in the next step in the `constraint`
     /// function.
     pub(crate) fn constrain_next_step<R>(
         &mut self,
-        next_step_state: ExecutionState,
+        opt_next_step_state: Option<ExecutionState>,
         condition: Option<Expression<F>>,
         constraint: impl FnOnce(&mut Self) -> R,
     ) -> R {
@@ -1585,11 +1573,15 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         self.in_next_step = true;
         let ret = match condition {
             None => {
-                self.require_next_state(next_step_state);
+                if let Some(next_step_state) = opt_next_step_state {
+                    self.require_next_state(next_step_state);
+                }
                 constraint(self)
             }
             Some(cond) => self.condition(cond, |cb| {
-                cb.require_next_state(next_step_state);
+                if let Some(next_step_state) = opt_next_step_state {
+                    cb.require_next_state(next_step_state);
+                }
                 constraint(cb)
             }),
         };

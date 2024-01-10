@@ -154,6 +154,7 @@ pub(crate) enum Table {
     Block,
     Copy,
     Keccak,
+    Sha256,
     Exp,
     Sig,
     ModExp,
@@ -249,6 +250,9 @@ pub(crate) enum Lookup<F> {
         is_code: Expression<F>,
         /// Value corresponding to the tag.
         value: Expression<F>,
+        /// The RLC of the PUSH data (LE order), or 0.
+        /// Warning: If the bytecode is truncated, this is the actual data, without zero-padding.
+        push_rlc: Expression<F>,
     },
     /// Lookup to block table, which contains constants of this block.
     Block {
@@ -298,6 +302,16 @@ pub(crate) enum Lookup<F> {
         input_len: Expression<F>,
         /// Output (hash) until this state. This is the RLC representation of
         /// the final output keccak256 hash of the input.
+        output_rlc: Expression<F>,
+    },
+    /// Lookup to sha256 table.
+    Sha256Table {
+        /// Accumulator to the input.
+        input_rlc: Expression<F>,
+        /// Length of input that is being hashed.
+        input_len: Expression<F>,
+        /// Output (hash) until this state. This is the RLC representation of
+        /// the final output sha256 hash of the input.
         output_rlc: Expression<F>,
     },
     /// Lookup to exponentiation table.
@@ -353,6 +367,7 @@ impl<F: Field> Lookup<F> {
             Self::Block { .. } => Table::Block,
             Self::CopyTable { .. } => Table::Copy,
             Self::KeccakTable { .. } => Table::Keccak,
+            Self::Sha256Table { .. } => Table::Sha256,
             Self::ExpTable { .. } => Table::Exp,
             Self::SigTable { .. } => Table::Sig,
             Self::ModExpTable { .. } => Table::ModExp,
@@ -404,6 +419,7 @@ impl<F: Field> Lookup<F> {
                 index,
                 is_code,
                 value,
+                push_rlc,
             } => {
                 vec![
                     1.expr(), // q_enable
@@ -412,6 +428,7 @@ impl<F: Field> Lookup<F> {
                     index.clone(),
                     is_code.clone(),
                     value.clone(),
+                    push_rlc.clone(),
                 ]
             }
             Self::Block {
@@ -450,6 +467,17 @@ impl<F: Field> Lookup<F> {
                 rwc_inc.clone(),
             ],
             Self::KeccakTable {
+                input_rlc,
+                input_len,
+                output_rlc,
+            } => vec![
+                1.expr(), // q_enable
+                1.expr(), // is_final
+                input_rlc.clone(),
+                input_len.clone(),
+                output_rlc.clone(),
+            ],
+            Self::Sha256Table {
                 input_rlc,
                 input_len,
                 output_rlc,

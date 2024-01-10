@@ -29,15 +29,11 @@ fn gen_calldatacopy_step(
     geth_step: &GethExecStep,
 ) -> Result<ExecStep, Error> {
     let mut exec_step = state.new_step(geth_step)?;
-    let memory_offset = geth_step.stack.nth_last(0)?;
+    let memory_offset = geth_step.stack.last()?;
     let data_offset = geth_step.stack.nth_last(1)?;
     let length = geth_step.stack.nth_last(2)?;
 
-    state.stack_read(
-        &mut exec_step,
-        geth_step.stack.nth_last_filled(0),
-        memory_offset,
-    )?;
+    state.stack_read(&mut exec_step, geth_step.stack.last_filled(), memory_offset)?;
     state.stack_read(
         &mut exec_step,
         geth_step.stack.nth_last_filled(1),
@@ -89,7 +85,7 @@ fn gen_copy_event(
 ) -> Result<CopyEvent, Error> {
     let rw_counter_start = state.block_ctx.rwc;
 
-    let memory_offset = geth_step.stack.nth_last(0)?;
+    let memory_offset = geth_step.stack.last()?;
     let data_offset = geth_step.stack.nth_last(1)?;
     let length = geth_step.stack.nth_last(2)?;
 
@@ -124,6 +120,7 @@ fn gen_copy_event(
             log_id: None,
             rw_counter_start,
             copy_bytes,
+            access_list: vec![],
         })
     } else {
         let (read_steps, write_steps, prev_bytes) =
@@ -141,6 +138,7 @@ fn gen_copy_event(
             rw_counter_start,
             //fetch pre read and write bytes of CopyBytes
             copy_bytes: CopyBytes::new(read_steps, Some(write_steps), Some(prev_bytes)),
+            access_list: vec![],
         })
     }
 }

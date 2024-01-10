@@ -240,7 +240,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             // panic with full info
             let info1 = format!("callee_gas_left {callee_gas_left} gas_specified {gas_specified} gas_cost {gas_cost} is_warm {is_warm} has_value {has_value} current_memory_word_size {curr_memory_word_size} next_memory_word_size {next_memory_word_size}, memory_expansion_gas_cost {memory_expansion_gas_cost}");
             let info2 = format!("args gas:{:?} addr:{:?} value:{:?} cd_pos:{:?} cd_len:{:?} rd_pos:{:?} rd_len:{:?}",
-                        geth_step.stack.nth_last(0),
+                        geth_step.stack.last(),
                         geth_step.stack.nth_last(1),
                         geth_step.stack.nth_last(2),
                         geth_step.stack.nth_last(3),
@@ -301,6 +301,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         callee_call.code_address().unwrap().to_word(),
                     ),
                     (CallContextField::CallerId, callee_call.caller_id.into()),
+                    (CallContextField::IsRoot, 0.into()),
                     (
                         CallContextField::CallDataOffset,
                         callee_call.call_data_offset.into(),
@@ -368,7 +369,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         .iter()
                         .filter(|(_, _, is_mask)| !*is_mask)
                         .map(|t| t.0)
-                        .collect();
+                        .collect::<Vec<u8>>();
                     state.push_copy(
                         &mut exec_step,
                         CopyEvent {
@@ -382,6 +383,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                             log_id: None,
                             rw_counter_start,
                             copy_bytes: CopyBytes::new(copy_steps, None, None),
+                            access_list: vec![],
                         },
                     );
                     Some(input_bytes)
@@ -398,7 +400,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         .iter()
                         .filter(|(_, _, is_mask)| !*is_mask)
                         .map(|t| t.0)
-                        .collect();
+                        .collect::<Vec<u8>>();
                     state.push_copy(
                         &mut exec_step,
                         CopyEvent {
@@ -412,6 +414,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                             log_id: None,
                             rw_counter_start,
                             copy_bytes: CopyBytes::new(copy_steps, None, Some(prev_bytes)),
+                            access_list: vec![],
                         },
                     );
                     Some(output_bytes)
@@ -433,7 +436,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         .iter()
                         .filter(|(_, _, is_mask)| !*is_mask)
                         .map(|t| t.0)
-                        .collect();
+                        .collect::<Vec<u8>>();
                     state.push_copy(
                         &mut exec_step,
                         CopyEvent {
@@ -451,6 +454,7 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                                 Some(write_steps),
                                 Some(prev_bytes),
                             ),
+                            access_list: vec![],
                         },
                     );
                     Some(returned_bytes)
@@ -484,7 +488,9 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
                         geth_steps[1].clone(),
                         callee_call.clone(),
                         precompile_call,
-                        (input_bytes, output_bytes, returned_bytes),
+                        &input_bytes.unwrap_or_default(),
+                        &output_bytes.unwrap_or_default(),
+                        &returned_bytes.unwrap_or_default(),
                     )?;
 
                     // Set gas left and gas cost for precompile step.
@@ -751,9 +757,6 @@ pub mod tests {
                 address: Word::from(0x2),
                 stack_value: vec![(
                     Word::from(0x20),
-                    #[cfg(feature = "scroll")]
-                    Word::zero(),
-                    #[cfg(not(feature = "scroll"))]
                     word!("a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89"),
                 )],
                 ..Default::default()

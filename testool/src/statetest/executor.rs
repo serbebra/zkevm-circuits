@@ -16,8 +16,7 @@ use ethers_signers::LocalWallet;
 use external_tracer::{LoggerConfig, TraceConfig};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr, plonk::Circuit};
 use itertools::Itertools;
-use once_cell::sync::Lazy;
-use std::{collections::HashMap, env, str::FromStr};
+use std::{collections::HashMap, env, str::FromStr, sync::LazyLock};
 use thiserror::Error;
 use zkevm_circuits::{
     bytecode_circuit::circuit::BytecodeCircuit, ecc_circuit::EccCircuit,
@@ -32,7 +31,7 @@ pub fn read_env_var<T: Clone + FromStr>(var_name: &'static str, default: T) -> T
         .unwrap_or(default)
 }
 /// Which circuit to test. Default is evm + state.
-pub static CIRCUIT: Lazy<String> = Lazy::new(|| read_env_var("CIRCUIT", "".to_string()));
+pub static CIRCUIT: LazyLock<String> = LazyLock::new(|| read_env_var("CIRCUIT", "".to_string()));
 
 #[derive(PartialEq, Eq, Error, Debug)]
 pub enum StateTestError {
@@ -194,7 +193,7 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
                 gas_fee_cap: U256::zero(),
                 gas_tip_cap: U256::zero(),
                 call_data: st.data,
-                access_list: None,
+                access_list: st.access_list,
                 v: sig.v,
                 r: sig.r,
                 s: sig.s,
@@ -204,7 +203,10 @@ fn into_traceconfig(st: StateTest) -> (String, TraceConfig, StateTestResult) {
             }],
             accounts,
             logger_config: LoggerConfig {
-                enable_memory: *bus_mapping::util::CHECK_MEM_STRICT,
+                enable_memory: cfg!(feature = "enable-memory")
+                    && bus_mapping::util::GETH_TRACE_CHECK_LEVEL.should_check(),
+                disable_stack: !cfg!(feature = "enable-stack"),
+                disable_storage: !cfg!(feature = "enable-storage"),
                 ..Default::default()
             },
             #[cfg(feature = "shanghai")]
@@ -290,7 +292,8 @@ fn trace_config_to_witness_block_l2(
 
     let geth_traces = block_trace
         .execution_results
-        .iter()
+        .clone()
+        .into_iter()
         .map(From::from)
         .collect::<Vec<_>>();
     // if the trace exceed max steps, we cannot fit it into circuit
@@ -306,14 +309,17 @@ fn trace_config_to_witness_block_l2(
     let difficulty_be_bytes = [0u8; 32];
     env::set_var("DIFFICULTY", hex::encode(difficulty_be_bytes));
     let mut builder =
-        CircuitInputBuilder::new_from_l2_trace(circuits_params, &block_trace, false, false)
+        CircuitInputBuilder::new_from_l2_trace(circuits_params, block_trace, false, false)
             .expect("could not handle block tx");
     builder
         .finalize_building()
         .expect("could not finalize building block");
     let mut block =
         zkevm_circuits::witness::block_convert(&builder.block, &builder.code_db).unwrap();
-    zkevm_circuits::witness::block_apply_mpt_state(&mut block, &builder.mpt_init_state);
+    zkevm_circuits::witness::block_apply_mpt_state(
+        &mut block,
+        builder.mpt_init_state.as_ref().unwrap(),
+    );
     // as mentioned above, we cannot fit the trace into circuit
     // stop here
     if exceed_max_steps != 0 {
@@ -550,6 +556,7 @@ pub fn run_test(
     log::info!("{test_id}: run-test BEGIN - {circuits_config:?}");
 
     // get the geth traces
+    #[allow(unused_mut)]
     let (_, mut trace_config, post) = into_traceconfig(st.clone());
 
     let balance_overflow = trace_config
@@ -750,7 +757,7 @@ fn mock_prove(test_id: &str, witness_block: &Block<Fr>) {
     // TODO: do we need to automatically adjust this k?
     let k = 20;
     // TODO: remove this MOCK_RANDOMNESS?
-    let circuit = ScrollSuperCircuit::new_from_block(&witness_block);
+    let circuit = ScrollSuperCircuit::new_from_block(witness_block);
     let instance = circuit.instance();
     let prover = MockProver::run(k, &circuit, instance).unwrap();
     prover.assert_satisfied_par();

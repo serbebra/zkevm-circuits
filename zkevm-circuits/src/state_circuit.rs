@@ -738,7 +738,6 @@ impl<F: Field> StateCircuitConfig<F> {
                 .enumerate()
                 .map(|(part_idx, (indices, is_first_time))| {
                     let rows = rows.as_slice();
-                    let updates = updates;
                     move |mut region: Region<'_, F>| {
                         if *is_first_time {
                             *is_first_time = false;
@@ -891,7 +890,7 @@ impl<F: Field> StateCircuit<F> {
             n_rows,
             #[cfg(any(feature = "test", test, feature = "test-circuits"))]
             overrides: HashMap::new(),
-            _marker: PhantomData::default(),
+            _marker: PhantomData,
         }
     }
 }
@@ -909,7 +908,7 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
             n_rows: block.circuits_params.max_rws,
             #[cfg(any(feature = "test", test, feature = "test-circuits"))]
             overrides: HashMap::new(),
-            _marker: PhantomData::default(),
+            _marker: PhantomData,
         }
     }
 
@@ -921,9 +920,10 @@ impl<F: Field> SubCircuit<F> for StateCircuit<F> {
 
     /// Return the minimum number of rows required to prove the block
     fn min_num_rows_block(block: &witness::Block<F>) -> (usize, usize) {
+        let total_rw_count = block.rws.0.values().flatten().count() + 1;
         (
-            block.rws.0.values().flatten().count() + 1,
-            std::cmp::max(1 << 16, block.circuits_params.max_rws),
+            total_rw_count,
+            std::cmp::max(1 << 16, block.circuits_params.max_rws.max(total_rw_count)),
         )
     }
 

@@ -8,7 +8,7 @@ mod execution;
 mod input_state_ref;
 #[cfg(feature = "scroll")]
 mod l2;
-#[cfg(test)]
+#[cfg(all(feature = "tracer-tests", feature = "enable-memory", test))]
 mod tracer_tests;
 mod transaction;
 
@@ -18,9 +18,9 @@ use crate::{
     error::Error,
     evm::opcodes::{gen_associated_ops, gen_associated_steps},
     operation::{self, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
-    precompile::is_precompiled,
     rpc::GethClient,
     state_db::{self, CodeDB, StateDB},
+    util::{hash_code_keccak, KECCAK_CODE_HASH_EMPTY},
 };
 pub use access::{Access, AccessSet, AccessValue, CodeSource};
 pub use block::{Block, BlockContext};
@@ -37,7 +37,7 @@ use ethers_providers::JsonRpcClient;
 pub use execution::{
     BigModExp, CopyBytes, CopyDataType, CopyEvent, CopyEventStepsBuilder, CopyStep, EcAddOp,
     EcMulOp, EcPairingOp, EcPairingPair, ExecState, ExecStep, ExpEvent, ExpStep, NumberOrHash,
-    PrecompileEvent, PrecompileEvents, N_BYTES_PER_PAIR, N_PAIRING_PER_OP,
+    PrecompileEvent, PrecompileEvents, N_BYTES_PER_PAIR, N_PAIRING_PER_OP, SHA256,
 };
 use hex::decode_to_slice;
 
@@ -179,7 +179,7 @@ pub struct CircuitInputBuilder {
     pub block_ctx: BlockContext,
     #[cfg(feature = "scroll")]
     /// Initial Zktrie Status for a incremental updating
-    pub mpt_init_state: ZktrieState,
+    pub mpt_init_state: Option<ZktrieState>,
 }
 
 impl<'a> CircuitInputBuilder {
@@ -298,14 +298,25 @@ impl<'a> CircuitInputBuilder {
         for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
             let chunk_tx_idx = self.block.txs.len();
             if self.block.txs.len() >= self.block.circuits_params.max_txs {
-                log::error!(
-                    "tx num overflow, MAX_TX limit {}, {}th tx(inner idx: {}) {:?}",
-                    self.block.circuits_params.max_txs,
-                    chunk_tx_idx,
-                    tx.transaction_index.unwrap_or_default(),
-                    tx.hash
-                );
-                return Err(Error::InternalError("tx num overflow"));
+                if self.block.is_relaxed() {
+                    log::warn!(
+                        "tx num overflow, MAX_TX limit {}, {}th tx(inner idx: {}) {:?}, would process for partial block",
+                        self.block.circuits_params.max_txs,
+                        chunk_tx_idx,
+                        tx.transaction_index.unwrap_or_default(),
+                        tx.hash
+                    );
+                    break;
+                } else {
+                    log::error!(
+                        "tx num overflow, MAX_TX limit {}, {}th tx(inner idx: {}) {:?}",
+                        self.block.circuits_params.max_txs,
+                        chunk_tx_idx,
+                        tx.transaction_index.unwrap_or_default(),
+                        tx.hash
+                    );
+                    return Err(Error::InternalError("tx num overflow"));
+                }
             }
             let geth_trace = &geth_traces[tx_index];
             log::info!(
@@ -485,7 +496,7 @@ impl<'a> CircuitInputBuilder {
             RW::READ,
             StorageOp::new(
                 *MESSAGE_QUEUE,
-                *WITHDRAW_TRIE_ROOT_SLOT,
+                WITHDRAW_TRIE_ROOT_SLOT,
                 withdraw_root,
                 withdraw_root,
                 dummy_tx_id,
@@ -571,39 +582,32 @@ impl<'a> CircuitInputBuilder {
         }
 
         // Generate BeginTx step
-        let mut begin_tx_step = gen_associated_steps(
+        let begin_tx_steps = gen_associated_steps(
             &mut self.state_ref(&mut tx, &mut tx_ctx),
             ExecState::BeginTx,
         )?;
 
         // check gas cost
         {
+            let steps_gas_cost: u64 = begin_tx_steps.iter().map(|st| st.gas_cost.0).sum();
             let real_gas_cost = if geth_trace.struct_logs.is_empty() {
                 GasCost(geth_trace.gas.0)
             } else {
                 GasCost(tx.gas - geth_trace.struct_logs[0].gas.0)
             };
-            if real_gas_cost != begin_tx_step.gas_cost {
-                let is_precompile = tx.to.map(|ref addr| is_precompiled(addr)).unwrap_or(false);
-                if is_precompile {
-                    // FIXME after we implement all precompiles
-                    if begin_tx_step.gas_cost != real_gas_cost {
-                        log::warn!(
-                            "change begin tx precompile gas from {:?} to {real_gas_cost:?}, step {begin_tx_step:?}",
-                            begin_tx_step.gas_cost
-                        );
-                        begin_tx_step.gas_cost = real_gas_cost;
-                    }
-                } else {
-                    // EIP2930 not implemented
-                    if tx.access_list.is_none() {
-                        debug_assert_eq!(begin_tx_step.gas_cost, real_gas_cost);
-                    }
-                }
+            // EIP2930 not implemented
+            if tx.access_list.is_none() {
+                debug_assert_eq!(
+                    steps_gas_cost,
+                    real_gas_cost.as_u64(),
+                    "begin step cost {:?}, precompile step cost {:?}",
+                    begin_tx_steps[0].gas_cost,
+                    begin_tx_steps.get(1).map(|st| st.gas_cost),
+                );
             }
         }
 
-        tx.steps_mut().push(begin_tx_step);
+        tx.steps_mut().extend(begin_tx_steps);
 
         for (index, geth_step) in geth_trace.struct_logs.iter().enumerate() {
             let tx_gas = tx.gas;
@@ -627,7 +631,7 @@ impl<'a> CircuitInputBuilder {
                 } else if geth_step.op.is_call_without_value() {
                     format!(
                         "{:?} {:40x} {:?} {:?} {:?} {:?}",
-                        geth_step.stack.nth_last(0),
+                        geth_step.stack.last(),
                         geth_step.stack.nth_last(1).unwrap_or_default(),
                         geth_step.stack.nth_last(2),
                         geth_step.stack.nth_last(3),
@@ -637,7 +641,7 @@ impl<'a> CircuitInputBuilder {
                 } else if geth_step.op.is_call_with_value() {
                     format!(
                         "{:?} {:40x} {:?} {:?} {:?} {:?} {:?}",
-                        geth_step.stack.nth_last(0),
+                        geth_step.stack.last(),
                         geth_step.stack.nth_last(1).unwrap_or_default(),
                         geth_step.stack.nth_last(2),
                         geth_step.stack.nth_last(3),
@@ -648,7 +652,7 @@ impl<'a> CircuitInputBuilder {
                 } else if geth_step.op.is_create() {
                     format!(
                         "value {:?} offset {:?} size {:?} {}",
-                        geth_step.stack.nth_last(0),
+                        geth_step.stack.last(),
                         geth_step.stack.nth_last(1),
                         geth_step.stack.nth_last(2),
                         if geth_step.op == OpcodeId::CREATE2 {
@@ -661,12 +665,12 @@ impl<'a> CircuitInputBuilder {
                     format!(
                         "{:?} {:?} {:?}",
                         state_ref.call().map(|c| c.address),
-                        geth_step.stack.nth_last(0),
+                        geth_step.stack.last(),
                         geth_step.stack.nth_last(1),
                     )
                 } else {
                     let stack_input_num = 1024 - geth_step.op.valid_stack_ptr_range().1 as usize;
-                    (0..stack_input_num).into_iter().map(|i|
+                    (0..stack_input_num).map(|i|
                         format!("{:?}",  geth_step.stack.nth_last(i))
                     ).collect_vec().join(" ")
                 }
@@ -688,9 +692,9 @@ impl<'a> CircuitInputBuilder {
 
         // Generate EndTx step
         log::trace!("gen_end_tx_ops");
-        let end_tx_step =
+        let end_tx_steps =
             gen_associated_steps(&mut self.state_ref(&mut tx, &mut tx_ctx), ExecState::EndTx)?;
-        tx.steps_mut().push(end_tx_step);
+        tx.steps_mut().extend(end_tx_steps);
 
         self.sdb.commit_tx();
         self.block.txs.push(tx);
@@ -708,6 +712,12 @@ impl CircuitInputBuilder {
             .txs
             .iter()
             .any(|tx| tx.has_l2_different_evm_behaviour_step())
+    }
+
+    /// enable relax mode for testing
+    pub fn enable_relax_mode(mut self) -> Self {
+        self.block = self.block.relax();
+        self
     }
 }
 
@@ -950,7 +960,7 @@ pub struct BuilderClient<P: JsonRpcClient> {
 pub fn get_state_accesses(
     eth_block: &EthBlock,
     geth_traces: &[eth_types::GethExecTrace],
-) -> Result<Vec<Access>, Error> {
+) -> Result<AccessSet, Error> {
     let mut block_access_trace = vec![Access::new(
         None,
         RW::WRITE,
@@ -966,7 +976,7 @@ pub fn get_state_accesses(
         block_access_trace.extend(tx_access_trace);
     }
 
-    Ok(block_access_trace)
+    Ok(AccessSet::from(block_access_trace))
 }
 
 /// Build a partial StateDB from step 3
@@ -1060,26 +1070,11 @@ impl<P: JsonRpcClient> BuilderClient<P> {
     }
 
     /// Step 2. Get State Accesses from TxExecTraces
-    pub async fn get_state_accesses(&self, eth_block: &EthBlock) -> Result<AccessSet, Error> {
-        let mut access_set = AccessSet::default();
-        access_set.add_account(
-            eth_block
-                .author
-                .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
-        );
-        let traces = self
-            .cli
-            .trace_block_prestate_by_hash(
-                eth_block
-                    .hash
-                    .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
-            )
-            .await?;
-        for trace in traces.into_iter() {
-            access_set.extend_from_traces(&trace);
-        }
-
-        Ok(access_set)
+    pub fn get_state_accesses(
+        eth_block: &EthBlock,
+        geth_traces: &[eth_types::GethExecTrace],
+    ) -> Result<AccessSet, Error> {
+        get_state_accesses(eth_block, geth_traces)
     }
 
     /// Step 3. Query geth for all accounts, storage keys, and codes from
@@ -1116,6 +1111,117 @@ impl<P: JsonRpcClient> BuilderClient<P> {
             codes.insert(address, code);
         }
         Ok((proofs, codes))
+    }
+
+    /// Yet-another Step 3. Get the account state and codes from pre-state tracing
+    /// the account state is limited since proof is not included,
+    /// but it is enough to build the sdb/cdb
+    /// if a hash for tx is provided, would return the prestate for this tx
+    pub async fn get_pre_state(
+        &self,
+        eth_block: &EthBlock,
+        tx_hash: Option<H256>,
+    ) -> Result<
+        (
+            Vec<eth_types::EIP1186ProofResponse>,
+            HashMap<Address, Vec<u8>>,
+        ),
+        Error,
+    > {
+        let traces = if let Some(tx_hash) = tx_hash {
+            vec![self.cli.trace_tx_prestate_by_hash(tx_hash).await?]
+        } else {
+            self.cli
+                .trace_block_prestate_by_hash(
+                    eth_block
+                        .hash
+                        .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
+                )
+                .await?
+        };
+
+        let mut account_set =
+            HashMap::<Address, (eth_types::EIP1186ProofResponse, HashMap<Word, Word>)>::new();
+        let mut code_set = HashMap::new();
+
+        for trace in traces.into_iter() {
+            for (addr, prestate) in trace.into_iter() {
+                let (_, storages) = account_set.entry(addr).or_insert_with(|| {
+                    let code_size =
+                        Word::from(prestate.code.as_ref().map(|bt| bt.len()).unwrap_or(0));
+                    let (code_hash, keccak_code_hash) = if let Some(bt) = prestate.code {
+                        let h = CodeDB::hash(&bt);
+                        // only require for L2
+                        let keccak_h = if cfg!(feature = "scroll") {
+                            hash_code_keccak(&bt)
+                        } else {
+                            h
+                        };
+                        code_set.insert(addr, Vec::from(bt.as_ref()));
+                        (h, keccak_h)
+                    } else {
+                        (CodeDB::empty_code_hash(), *KECCAK_CODE_HASH_EMPTY)
+                    };
+
+                    (
+                        eth_types::EIP1186ProofResponse {
+                            address: addr,
+                            balance: prestate.balance.unwrap_or_default(),
+                            nonce: prestate.nonce.unwrap_or_default().into(),
+                            code_hash,
+                            keccak_code_hash,
+                            code_size,
+                            ..Default::default()
+                        },
+                        HashMap::new(),
+                    )
+                });
+
+                if let Some(stg) = prestate.storage {
+                    for (k, v) in stg {
+                        storages.entry(k).or_insert(v);
+                    }
+                }
+            }
+        }
+
+        // a hacking? since the coinbase address is not touch in prestate
+        let coinbase_addr = eth_block
+            .author
+            .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?;
+        let block_num = eth_block
+            .number
+            .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?;
+        assert_ne!(
+            block_num.as_u64(),
+            0,
+            "is not expected to access genesis block"
+        );
+        if let std::collections::hash_map::Entry::Vacant(e) = account_set.entry(coinbase_addr) {
+            let coinbase_proof = self
+                .cli
+                .get_proof(coinbase_addr, Vec::new(), (block_num - 1).into())
+                .await?;
+            e.insert((coinbase_proof, HashMap::new()));
+        }
+
+        Ok((
+            account_set
+                .into_iter()
+                .map(|(_, (mut acc_resp, storage_proofs))| {
+                    acc_resp.storage_proof = storage_proofs
+                        .into_iter()
+                        .map(|(key, value)| eth_types::StorageProof {
+                            key,
+                            value,
+                            ..Default::default()
+                        })
+                        .collect();
+                    acc_resp
+                })
+                .collect::<Vec<_>>(),
+            code_set,
+        ))
     }
 
     /// Step 4. Build a partial StateDB from step 3
@@ -1184,8 +1290,8 @@ impl<P: JsonRpcClient> BuilderClient<P> {
     > {
         let (mut eth_block, mut geth_traces, history_hashes, prev_state_root) =
             self.get_block(block_num).await?;
-        let access_set = self.get_state_accesses(&eth_block).await?;
-        let (proofs, codes) = self.get_state(block_num, access_set).await?;
+        //let access_set = Self::get_state_accesses(&eth_block, &geth_traces)?;
+        let (proofs, codes) = self.get_pre_state(&eth_block, None).await?;
         let (state_db, code_db) = Self::build_state_code_db(proofs, codes);
         if eth_block.transactions.len() > self.circuits_params.max_txs {
             log::error!(
@@ -1220,7 +1326,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         let mut access_set = AccessSet::default();
         for block_num in block_num_begin..block_num_end {
             let (eth_block, geth_traces, _, _) = self.get_block(block_num).await?;
-            let mut access_list = self.get_state_accesses(&eth_block).await?;
+            let mut access_list = Self::get_state_accesses(&eth_block, &geth_traces)?;
             access_set.extend(&mut access_list);
             blocks_and_traces.push((eth_block, geth_traces));
         }
@@ -1243,7 +1349,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
 
         let mut tx: eth_types::Transaction = self.cli.get_tx_by_hash(tx_hash).await?;
         tx.transaction_index = Some(0.into());
-        let geth_traces = self.cli.trace_tx_by_hash(tx_hash).await?;
+        let geth_trace = self.cli.trace_tx_by_hash(tx_hash).await?;
         let mut eth_block = self
             .cli
             .get_block_by_number(tx.block_number.unwrap().into())
@@ -1251,32 +1357,13 @@ impl<P: JsonRpcClient> BuilderClient<P> {
 
         eth_block.transactions = vec![tx.clone()];
 
-        let mut block_access_trace = vec![Access::new(
-            None,
-            RW::WRITE,
-            AccessValue::Account {
-                address: eth_block.author.unwrap(),
-            },
-        )];
-        let geth_trace = &geth_traces[0];
-        let tx_access_trace = gen_state_access_trace(
-            &eth_types::Block::<eth_types::Transaction>::default(),
-            &tx,
-            geth_trace,
-        )?;
-        block_access_trace.extend(tx_access_trace);
-
-        let access_set = AccessSet::from(block_access_trace);
-
-        let (proofs, codes) = self
-            .get_state(tx.block_number.unwrap().as_u64(), access_set)
-            .await?;
+        let (proofs, codes) = self.get_pre_state(&eth_block, Some(tx_hash)).await?;
         let (state_db, code_db) = Self::build_state_code_db(proofs, codes);
         let builder = self.gen_inputs_from_state(
             state_db,
             code_db,
             &eth_block,
-            &geth_traces,
+            &[geth_trace],
             Default::default(),
             Default::default(),
         )?;

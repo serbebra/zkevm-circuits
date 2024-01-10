@@ -12,7 +12,7 @@ use crate::{
 use bus_mapping::{
     circuit_input_builder::{
         self, BigModExp, CircuitsParams, CopyEvent, EcAddOp, EcMulOp, EcPairingOp, ExpEvent,
-        PrecompileEvents,
+        PrecompileEvents, SHA256,
     },
     Error,
 };
@@ -58,6 +58,8 @@ pub struct Block<F> {
     pub sha3_inputs: Vec<Vec<u8>>,
     /// State root of the previous block
     pub prev_state_root: Word, // TODO: Make this H256
+    /// State root after the block, is set if block_apply_mpt_state is called
+    pub state_root: Option<Word>, // TODO: Make this H256
     /// Withdraw root
     pub withdraw_root: Word,
     /// Withdraw roof of the previous block
@@ -79,6 +81,8 @@ pub struct Block<F> {
 pub struct BlockContexts {
     /// Hashmap that maps block number to its block context.
     pub ctxs: BTreeMap<u64, BlockContext>,
+    /// relax mode flag inherited from block builder
+    pub relax_mode: bool,
 }
 
 impl<F: Field> Block<F> {
@@ -132,6 +136,11 @@ impl<F: Field> Block<F> {
     /// Get BigModexp operations from all precompiled contract calls in this block.
     pub(crate) fn get_big_modexp(&self) -> Vec<BigModExp> {
         self.precompile_events.get_modexp_events()
+    }
+
+    /// Get sha256 operations from all precompiled contract calls in this block.
+    pub(crate) fn get_sha256(&self) -> Vec<SHA256> {
+        self.precompile_events.get_sha256_events()
     }
 
     pub(crate) fn print_evm_circuit_row_usage(&self) {
@@ -446,6 +455,7 @@ impl From<&circuit_input_builder::Block> for BlockContexts {
                     )
                 })
                 .collect::<BTreeMap<_, _>>(),
+            relax_mode: block.is_relaxed(),
         }
     }
 }
@@ -461,8 +471,7 @@ pub fn block_convert<F: Field>(
     let last_block_num = block
         .headers
         .iter()
-        .rev()
-        .next()
+        .next_back()
         .map(|(k, _)| *k)
         .unwrap_or_default();
     let chain_id = block.chain_id();
@@ -480,8 +489,8 @@ pub fn block_convert<F: Field>(
         block.circuits_params.max_rws
     };
 
-    let mpt_updates = MptUpdates::from_rws_with_mock_state_roots(
-        &rws.table_assignments(),
+    let mpt_updates = MptUpdates::from_unsorted_rws_with_mock_state_roots(
+        &rws.table_assignments_unsorted(),
         block.prev_state_root,
         block.end_state_root(),
     );
@@ -495,7 +504,7 @@ pub fn block_convert<F: Field>(
     let withdraw_root_entry = mpt_updates.get(&super::rw::Rw::AccountStorage {
         tx_id: total_tx_as_txid,
         account_address: *bus_mapping::l2_predeployed::message_queue::ADDRESS,
-        storage_key: *bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT,
+        storage_key: bus_mapping::l2_predeployed::message_queue::WITHDRAW_TRIE_ROOT_SLOT,
         // following field is not used in Mpt::Key so we just fill them arbitrarily
         rw_counter: 0,
         is_write: false,
@@ -558,6 +567,7 @@ pub fn block_convert<F: Field>(
             ..block.circuits_params
         },
         prev_state_root: block.prev_state_root,
+        state_root: None,
         withdraw_root: block.withdraw_root,
         prev_withdraw_root: block.prev_withdraw_root,
         keccak_inputs: circuit_input_builder::keccak_inputs(block, code_db)?,
@@ -586,4 +596,12 @@ pub fn block_convert_with_l1_queue_index<F: Field>(
 /// Attach witness block with mpt states
 pub fn block_apply_mpt_state<F: Field>(block: &mut Block<F>, mpt_state: &MptState) {
     block.mpt_updates.fill_state_roots(mpt_state);
+    block.state_root = Some(block.mpt_updates.new_root());
+}
+
+/// Mocking generate mpt witness from mpt states
+pub fn block_mocking_apply_mpt<F: Field>(block: &mut Block<F>) {
+    block.mpt_updates.mock_fill_state_roots();
+    block.state_root = Some(block.mpt_updates.new_root());
+    block.prev_state_root = block.mpt_updates.old_root();
 }

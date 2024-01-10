@@ -24,16 +24,21 @@ pub fn calculate_row_usage_of_witness_block(
     unimplemented!("Must build with feature scroll")
 }
 
+#[allow(clippy::ptr_arg)]
 pub fn check_batch_capacity(_block_traces: &mut Vec<BlockTrace>) -> Result<()> {
     unimplemented!("Must build with feature scroll")
 }
 
-pub fn block_traces_to_witness_block(_block_traces: &[BlockTrace]) -> Result<Block<Fr>> {
+pub fn block_trace_to_witness_block(_block_traces: BlockTrace) -> Result<Block<Fr>> {
+    unimplemented!("Must build with feature scroll")
+}
+
+pub fn block_traces_to_witness_block(_block_traces: Vec<BlockTrace>) -> Result<Block<Fr>> {
     unimplemented!("Must build with feature scroll")
 }
 
 pub fn block_traces_to_witness_block_with_updated_state(
-    _block_traces: &[BlockTrace],
+    _block_traces: Vec<BlockTrace>,
     _builder: &mut CircuitInputBuilder,
     _light_mode: bool,
 ) -> Result<Block<Fr>> {
