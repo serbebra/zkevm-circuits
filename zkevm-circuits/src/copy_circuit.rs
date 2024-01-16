@@ -26,7 +26,7 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use itertools::Itertools;
-use std::{array, collections::BTreeMap, marker::PhantomData};
+use std::{array, collections::BTreeMap, iter, marker::PhantomData};
 
 use gadgets::less_than::{LtChip, LtConfig};
 #[cfg(feature = "onephase")]
@@ -242,26 +242,28 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             let is_not_back_mask_exprs = is_inbound_read.clone().map(|chip| chip.is_lt(meta, None));
             let is_inbound_read_exprs = is_inbound_read.clone().map(|chip| chip.is_lt(meta, None));
 
-            constrain_id(
-                cb,
-                meta,
-                //is_bytecode,
-                is_tx_log,
-                is_tx_calldata,
-                is_memory,
-                id,
-                is_pad,
-            );
+            // TODO: feat/copy-hi-lo
+            // constrain_id(
+            //     cb,
+            //     meta,
+            //     //is_bytecode,
+            //     is_tx_log,
+            //     is_tx_calldata,
+            //     is_memory,
+            //     id,
+            //     is_pad,
+            // );
 
             let is_tx_log = meta.query_advice(is_tx_log, CURRENT);
             let is_access_list = meta.query_advice(is_access_list_address, CURRENT)
                 + meta.query_advice(is_access_list_storage_key, CURRENT);
-
-            constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
-
-            constrain_must_terminate(cb, meta, q_enable, &tag);
-
-            constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
+            // TODO: feat/copy-hi-lo
+            //
+            // constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
+            //
+            // constrain_must_terminate(cb, meta, q_enable, &tag);
+            //
+            // constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
 
             // let (is_pad, is_pad_next) = constrain_is_pad(
             //     cb,
@@ -292,6 +294,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             //     )
             // };
 
+            // TODO: feat/copy-hi-lo
             constrain_non_pad_non_mask(
                 cb,
                 meta,
@@ -303,20 +306,21 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
             //constrain_masked_value(cb, meta, mask.expr(), value, value_prev);
 
-            constrain_value_rlc(
-                cb,
-                meta,
-                is_first.expr(),
-                is_continue.expr(),
-                is_last_col,
-                non_pad_non_mask,
-                is_inbound_read.clone(),
-                value_acc,
-                value_limbs,
-                challenges.keccak_input(),
-            );
-
-            constrain_event_rlc_acc(cb, meta, is_last_col, value_acc, rlc_acc, is_bytecode, tag);
+            // TODO: feat/copy-hi-lo
+            // constrain_value_rlc(
+            //     cb,
+            //     meta,
+            //     is_first.expr(),
+            //     is_continue.expr(),
+            //     is_last_col,
+            //     non_pad_non_mask,
+            //     is_inbound_read.clone(),
+            //     value_acc,
+            //     value_limbs,
+            //     challenges.keccak_input(),
+            // );
+            //
+            // constrain_event_rlc_acc(cb, meta, is_last_col, value_acc, rlc_acc, is_bytecode, tag);
 
             // no word_rlc required after word hi lo
             // Apply the same constraints for the RLCs of words before and after the write.
@@ -334,21 +338,22 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             //     );
             // }
 
-            constrain_address(cb, meta, is_continue.expr(), addr);
-
-            {
-                let is_rw_word_type = meta.query_advice(is_memory, CURRENT) + is_tx_log.expr();
-                let is_rw_type = is_rw_word_type.expr() + is_access_list.expr();
-
-                constrain_rw_counter(
-                    cb,
-                    meta,
-                    is_last.expr(),
-                    is_rw_type.expr(),
-                    rw_counter,
-                    rwc_inc_left,
-                );
-            }
+            // TODO: feat/copy-hi-lo
+            // constrain_address(cb, meta, is_continue.expr(), addr);
+            //
+            // {
+            //     let is_rw_word_type = meta.query_advice(is_memory, CURRENT) + is_tx_log.expr();
+            //     let is_rw_type = is_rw_word_type.expr() + is_access_list.expr();
+            //
+            //     constrain_rw_counter(
+            //         cb,
+            //         meta,
+            //         is_last.expr(),
+            //         is_rw_type.expr(),
+            //         rw_counter,
+            //         rwc_inc_left,
+            //     );
+            // }
 
             cb.gate(meta.query_fixed(q_enable, CURRENT))
         });
@@ -749,20 +754,28 @@ impl<F: Field> CopyCircuitConfig<F> {
                 region.name_column(|| "value_word", self.value_word);
                 region.name_column(|| "value_word_prev", self.value_word_prev);
                 region.name_column(|| "value_acc", self.value_acc);
+                for (idx, (chip, name)) in self
+                    .is_front_mask
+                    .iter()
+                    .zip(iter::repeat("is_front_mask"))
+                    .enumerate()
+                    .chain(
+                        self.is_not_back_mask
+                            .iter()
+                            .zip(iter::repeat("is_not_back_mask"))
+                            .enumerate(),
+                    )
+                    .chain(
+                        self.is_inbound_read
+                            .iter()
+                            .zip(iter::repeat("is_inbound_read"))
+                            .enumerate(),
+                    )
+                {
+                    chip.annotate(&mut region, || format!("{}[{}]", name, idx))
+                }
                 for i in 0..16 {
                     region.name_column(|| format!("value_limbs[{}]", i), self.value_limbs[i]);
-                    region.name_column(
-                        || format!("is_front_mask[{}].lt", i),
-                        self.is_front_mask[i].lt,
-                    );
-                    region.name_column(
-                        || format!("is_not_back_mask[{}].lt", i),
-                        self.is_not_back_mask[i].lt,
-                    );
-                    region.name_column(
-                        || format!("is_inbound_read[{}].lt", i),
-                        self.is_inbound_read[i].lt,
-                    );
                     region.name_column(
                         || format!("non_pad_non_mask[{}]", i),
                         self.non_pad_non_mask[i],
@@ -890,6 +903,20 @@ impl<F: Field> CopyCircuitConfig<F> {
             *offset,
             || Value::known(F::one()),
         )?;
+        // addr_copy_start
+        region.assign_advice(
+            || format!("assign addr_copy_start {}", *offset),
+            self.copy_table.addr_copy_start,
+            *offset,
+            || Value::known(F::zero()),
+        )?;
+        // addr_copy_end
+        region.assign_advice(
+            || format!("assign addr_copy_end {}", *offset),
+            self.copy_table.addr_copy_end,
+            *offset,
+            || Value::known(F::zero()),
+        )?;
         // real_bytes_left
         region.assign_advice(
             || format!("assign bytes_left {}", *offset),
@@ -953,14 +980,16 @@ impl<F: Field> CopyCircuitConfig<F> {
         // tag
         tag_chip.assign(region, *offset, &CopyDataType::Padding)?;
 
-        for ((is_front_mask, is_not_back_mask), is_inbound_read) in is_front_mask_chip
+        for (idx, ((is_front_mask, is_not_back_mask), is_inbound_read)) in is_front_mask_chip
             .iter()
             .zip(is_not_back_mask_chip)
             .zip(is_inbound_read_chip)
+            .enumerate()
         {
-            is_front_mask.assign(region, *offset, F::one(), F::zero())?;
-            is_not_back_mask.assign(region, *offset, F::one(), F::zero())?;
-            is_inbound_read.assign(region, *offset, F::one(), F::zero())?;
+            let address = F::from(idx as u64);
+            is_front_mask.assign(region, *offset, address, F::zero())?;
+            is_not_back_mask.assign(region, *offset, address, F::zero())?;
+            is_inbound_read.assign(region, *offset, address, F::zero())?;
         }
 
         for (idx, non_pad_non_mask) in self.non_pad_non_mask.iter().enumerate() {

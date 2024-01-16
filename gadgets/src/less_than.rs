@@ -53,6 +53,18 @@ impl<F: Field, const N_BYTES: usize> LtConfig<F, N_BYTES> {
         let rotation = rotation.unwrap_or_else(Rotation::cur);
         sum::expr(self.diff.iter().map(|c| meta.query_advice(*c, rotation)))
     }
+
+    /// Annotates the Lt chip's columns.
+    pub fn annotate<N, AR>(&self, region: &mut Region<'_, F>, name: N)
+    where
+        N: Fn() -> AR,
+        AR: Into<String>,
+    {
+        region.name_column(|| format!("{}.lt", name().into()), self.lt);
+        for (idx, diff_column) in self.diff.iter().enumerate() {
+            region.name_column(|| format!("{}.diff[{}]", name().into(), idx), *diff_column);
+        }
+    }
 }
 
 /// Chip that compares lhs < rhs.
