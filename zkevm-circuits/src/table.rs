@@ -210,7 +210,8 @@ pub struct TxTable {
     /// Index for Tag = CallData
     pub index: Column<Advice>,
     /// Value
-    pub value: Column<Advice>,
+    //pub value: Column<Advice>,
+    pub value: word::Word<Column<Advice>>,
 }
 
 impl TxTable {
@@ -223,7 +224,8 @@ impl TxTable {
             tx_id: meta.advice_column(),
             tag,
             index: meta.advice_column(),
-            value: meta.advice_column_in(SecondPhase),
+            //value: meta.advice_column_in(SecondPhase),
+            value: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
 
@@ -237,7 +239,7 @@ impl TxTable {
         max_calldata: usize,
         chain_id: u64,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<Vec<word::Word<AssignedCell<F, F>>>, Error> {
         assert!(
             txs.len() <= max_txs,
             "txs.len() <= max_txs: txs.len()={}, max_txs={}",
@@ -260,10 +262,11 @@ impl TxTable {
             q_enable: Column<Fixed>,
             advice_columns: &[Column<Advice>],
             tag: &Column<Fixed>,
-            row: &[Value<F>; 4],
+            row: &[Value<F>; 5],
             msg: &str,
-        ) -> Result<AssignedCell<F, F>, Error> {
-            let mut value_cell = None;
+        ) -> Result<word::Word<AssignedCell<F, F>>, Error> {
+            let mut value_cell_lo: Option<AssignedCell<F, F>> = None;
+            let mut value_cell_hi: Option<AssignedCell<F, F>> = None;
             for (index, column) in advice_columns.iter().enumerate() {
                 let cell = region.assign_advice(
                     || format!("tx table {msg} row {offset}"),
@@ -271,11 +274,15 @@ impl TxTable {
                     offset,
                     || row[if index > 0 { index + 1 } else { index }],
                 )?;
-                // tx_id, index, value
+                // tx_id, index, value_lo, value_hi
                 if index == 2 {
-                    value_cell = Some(cell);
+                    value_cell_lo = Some(cell.clone());
+                }
+                if index == 3 {
+                    value_cell_hi = Some(cell);
                 }
             }
+
             region.assign_fixed(
                 || format!("tx table q_enable row {offset}"),
                 q_enable,
@@ -288,7 +295,10 @@ impl TxTable {
                 offset,
                 || row[1],
             )?;
-            Ok(value_cell.unwrap())
+            Ok(word::Word::new([
+                value_cell_lo.unwrap(),
+                value_cell_hi.unwrap(),
+            ]))
         }
 
         layouter.assign_region(
@@ -296,14 +306,14 @@ impl TxTable {
             |mut region| {
                 let mut offset = 0;
                 let mut tx_value_cells = vec![];
-                let advice_columns = [self.tx_id, self.index, self.value];
+                let advice_columns = [self.tx_id, self.index, self.value.lo(), self.value.hi()];
                 assign_row(
                     &mut region,
                     offset,
                     self.q_enable,
                     &advice_columns,
                     &self.tag,
-                    &[(); 4].map(|_| Value::known(F::zero())),
+                    &[(); 5].map(|_| Value::known(F::zero())),
                     "all-zero",
                 )?;
                 offset += 1;
@@ -313,7 +323,7 @@ impl TxTable {
                 // region that has a size parametrized by max_calldata with all
                 // the tx calldata.  This is required to achieve a constant fixed column tag
                 // regardless of the number of input txs or the calldata size of each tx.
-                let mut calldata_assignments: Vec<[Value<F>; 4]> = Vec::new();
+                let mut calldata_assignments: Vec<[Value<F>; 5]> = Vec::new();
                 // Assign Tx data (all tx fields except for calldata)
                 let padding_txs = (txs.len()..max_txs)
                     .map(|tx_id| {
@@ -367,7 +377,8 @@ impl<F: Field> LookupTable<F> for TxTable {
             self.tx_id.into(),
             self.tag.into(),
             self.index.into(),
-            self.value.into(),
+            self.value.lo().into(),
+            self.value.hi().into(),
         ]
     }
 
@@ -377,7 +388,8 @@ impl<F: Field> LookupTable<F> for TxTable {
             String::from("tx_id"),
             String::from("tag"),
             String::from("index"),
-            String::from("value"),
+            String::from("value lo"),
+            String::from("value hi"),
         ]
     }
 
@@ -387,7 +399,8 @@ impl<F: Field> LookupTable<F> for TxTable {
             meta.query_advice(self.tx_id, Rotation::cur()),
             meta.query_fixed(self.tag, Rotation::cur()),
             meta.query_advice(self.index, Rotation::cur()),
-            meta.query_advice(self.value, Rotation::cur()),
+            meta.query_advice(self.value.lo(), Rotation::cur()),
+            meta.query_advice(self.value.hi(), Rotation::cur()),
         ]
     }
 }
@@ -1459,7 +1472,7 @@ impl KeccakTable {
         &self,
         region: &mut Region<F>,
         offset: usize,
-        values: [Value<F>; 4],
+        values: [Value<F>; 6],
     ) -> Result<Vec<AssignedCell<F, F>>, Error> {
         let mut res = vec![];
         for (&column, value) in <KeccakTable as LookupTable<F>>::advice_columns(self)
@@ -2443,7 +2456,9 @@ pub struct SigTable {
     /// Indicates whether or not the gates are enabled on the current row.
     pub q_enable: Column<Fixed>,
     /// Random-linear combination of the Keccak256 hash of the message that's signed.
+    /// do not change to word hi lo (msg_hash_word) becuase it is related to ecc chip.
     pub msg_hash_rlc: Column<Advice>,
+    // TODO: sig_r_rlc, sig_s_rlc to word as well ?
     /// should be in range [0, 1]
     pub sig_v: Column<Advice>,
     /// Random-linear combination of the signature's `r` component.
@@ -2462,6 +2477,7 @@ impl SigTable {
         Self {
             q_enable: meta.fixed_column(),
             msg_hash_rlc: meta.advice_column_in(SecondPhase),
+            // msg_hash_word: word::Word::new([meta.advice_column(), meta.advice_column()]),
             sig_v: meta.advice_column(),
             sig_s_rlc: meta.advice_column_in(SecondPhase),
             sig_r_rlc: meta.advice_column_in(SecondPhase),
@@ -2490,6 +2506,11 @@ impl SigTable {
                             challenge,
                         )
                     });
+
+                    // let msg_hash_word =
+                    //     word::Word::from(Word::from_big_endian(&sign_data.msg_hash.to_bytes()))
+                    //         .map(Value::<F>::known);
+
                     let sig_r_rlc = evm_word.map(|challenge| {
                         rlc::value(
                             sign_data.signature.0.to_bytes().iter().collect_vec(),
@@ -2529,6 +2550,13 @@ impl SigTable {
                             || value,
                         )?;
                     }
+
+                    // msg_hash_word.assign_advice(
+                    //     &mut region,
+                    //     || format!("sig table msg_hash_word {offset}"),
+                    //     self.msg_hash_word,
+                    //     offset,
+                    // )?;
                 }
 
                 Ok(())
@@ -2544,6 +2572,8 @@ impl<F: Field> LookupTable<F> for SigTable {
         vec![
             self.q_enable.into(),
             self.msg_hash_rlc.into(),
+            // self.msg_hash_word.lo().into(),
+            // self.msg_hash_word.hi().into(),
             self.sig_v.into(),
             self.sig_r_rlc.into(),
             self.sig_s_rlc.into(),
@@ -2556,6 +2586,8 @@ impl<F: Field> LookupTable<F> for SigTable {
         vec![
             String::from("q_enable"),
             String::from("msg_hash_rlc"),
+            String::from("msg_hash_word lo"),
+            String::from("msg_hash_word hi"),
             String::from("sig_v"),
             String::from("sig_r_rlc"),
             String::from("sig_s_rlc"),
@@ -3142,7 +3174,9 @@ impl<const MAX: usize> From<RangeTable<MAX>> for TableColumn {
 /// Lookup table for max n bits range check
 #[derive(Clone, Copy, Debug)]
 pub struct UXTable<const N_BITS: usize> {
-    col: Column<Fixed>,
+    /// content col in the table
+    pub col: Column<Fixed>,
+    // col: TableColumn,
 }
 
 impl<const N_BITS: usize> UXTable<N_BITS> {
@@ -3150,14 +3184,17 @@ impl<const N_BITS: usize> UXTable<N_BITS> {
     pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
         Self {
             col: meta.fixed_column(),
+            // col: meta.lookup_table_column(),
         }
     }
 
     /// Load the `UXTable` for range check
     pub fn load<F: Field>(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        //layouter.assign_table(
         layouter.assign_region(
             || format!("assign u{} fixed column", 8),
             |mut region| {
+                // |mut table| {
                 for i in 0..(1 << N_BITS) {
                     region.assign_fixed(
                         || format!("assign {i} in u{N_BITS} fixed column"),
@@ -3165,6 +3202,12 @@ impl<const N_BITS: usize> UXTable<N_BITS> {
                         i,
                         || Value::known(F::from(i as u64)),
                     )?;
+                    // table.assign_cell(
+                    //     || format!("range at offset = {i}"),
+                    //     self.col,
+                    //     i,
+                    //     || Value::known(F::from(i as u64)),
+                    // )?;
                 }
                 Ok(())
             },
@@ -3175,6 +3218,7 @@ impl<const N_BITS: usize> UXTable<N_BITS> {
 
 impl<F: Field, const N_BITS: usize> LookupTable<F> for UXTable<N_BITS> {
     fn columns(&self) -> Vec<Column<Any>> {
+        // vec![self.col.into()]
         vec![self.col.into()]
     }
 
@@ -3186,3 +3230,12 @@ impl<F: Field, const N_BITS: usize> LookupTable<F> for UXTable<N_BITS> {
         vec![meta.query_fixed(self.col, Rotation::cur())]
     }
 }
+
+// impl<const N_BITS: usize> From<UXTable<N_BITS>> for TableColumn {
+//     fn from(table: UXTable<N_BITS>) -> TableColumn {
+//        //table.col
+//        TableColumn {
+//         inner: table.col,
+//        }
+//     }
+// }

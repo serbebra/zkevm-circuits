@@ -10,7 +10,10 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{CallContextFieldTag, TxContextFieldTag},
-    util::{word::WordExpr, Expr},
+    util::{
+        word::{Word, WordExpr},
+        Expr,
+    },
 };
 use bus_mapping::evm::OpcodeId;
 use eth_types::Field;
@@ -30,16 +33,18 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
         let origin = cb.query_account_address();
+        // let address_rlc = cb.word_rlc(origin.limbs.clone().map(|l| l.expr()));
 
         // Lookup in call_ctx the TxId
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
+        let address_value = from_bytes::expr(&origin.limbs);
         // Lookup rw_table -> call_context with tx origin address
         cb.tx_context_lookup(
             tx_id.expr(),
             TxContextFieldTag::CallerAddress,
             None, // None because unrelated to calldata
-            //origin.to_word(), used in word hi lo stage2
-            from_bytes::expr(&origin.limbs),
+            //origin.to_word(),
+            Word::from_lo_unchecked(address_value),
         );
 
         // Push the value to the stack
@@ -78,7 +83,7 @@ impl<F: Field> ExecutionGadget<F> for OriginGadget<F> {
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
 
-        // Assign Origin addr RLC.
+        // Assign Origin addr word.
         self.origin.assign_u256(region, offset, origin)?;
 
         // Assign SameContextGadget witnesses.

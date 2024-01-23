@@ -24,11 +24,11 @@ use crate::{
             Gas, GasPrice, IsCreate, Nonce, SigR, SigS, SigV, TxDataGasCost, TxHashLength,
             TxHashRLC, TxSignHash, TxSignLength, TxSignRLC,
         },
-        TxTable, U16Table, U8Table,
+        TxTable, UXTable,
     },
     util::{
         is_zero::{IsZeroChip, IsZeroConfig},
-        keccak, rlc_be_bytes, SubCircuit, SubCircuitConfig,
+        keccak, rlc_be_bytes, word, SubCircuit, SubCircuitConfig,
     },
     witness,
     witness::{
@@ -47,7 +47,7 @@ use eth_types::{
         TxType::{Eip155, L1Msg, PreEip155},
     },
     sign_types::SignData,
-    Address, Field, ToAddress, ToBigEndian, ToScalar,
+    Address, Field, ToAddress, ToBigEndian, ToScalar, ToWord, U256,
 };
 use ethers_core::utils::{keccak256, rlp::Encodable};
 use gadgets::{
@@ -78,6 +78,8 @@ use halo2_proofs::plonk::Fixed;
 #[cfg(not(feature = "onephase"))]
 use halo2_proofs::plonk::SecondPhase;
 use itertools::Itertools;
+
+use halo2_proofs::dev::unwrap_value;
 
 /// Number of rows of one tx occupies in the fixed part of tx table
 pub const TX_LEN: usize = 26;
@@ -126,21 +128,29 @@ pub struct TxCircuitConfig<F: Field> {
     // Whether tag's RLP-encoded value is 0x80 = rlp([])
     is_none: Column<Advice>,
     tx_value_length: Column<Advice>,
+    // keccak rlc
     tx_value_rlc: Column<Advice>,
+    // evm word rlc, use for rlp table lookup
+    tx_value_evm_rlc: Column<Advice>,
+    // keccak lookup needs additional output word field, this word field targets for it.
+    tx_hash_word: word::Word<Column<Advice>>,
 
-    u8_table: U8Table,
-    u16_table: U16Table,
+    //u8_table: U8Table,
+    u8_table: UXTable<8>,
+    u16_table: UXTable<16>,
 
     /// Verify if the tx_id is zero or not.
     tx_id_is_zero: IsZeroConfig<F>,
     /// Primarily used to verify if the `CallDataLength` is zero or non-zero
     ///  and `CallData` byte is zero or non-zero.
-    value_is_zero: IsZeroConfig<F>,
+    value_limb_is_zero: [IsZeroConfig<F>; 2],
+
     /// We use an equality gadget to know whether the tx id changes between
     /// subsequent rows or not.
     tx_id_unchanged: IsEqualConfig<F>,
 
     /// Columns used to reduce degree
+    is_value_zero: Column<Advice>,
     is_tag_block_num: Column<Advice>,
     is_calldata: Column<Advice>,
     is_caller_address: Column<Advice>,
@@ -205,9 +215,10 @@ pub struct TxCircuitConfigArgs<F: Field> {
     /// SigTable
     pub sig_table: SigTable,
     /// Reusable u8 lookup table,
-    pub u8_table: U8Table,
+    // pub u8_table: U8Table,
+    pub u8_table: UXTable<8>,
     /// Reusable u16 lookup table,
-    pub u16_table: U16Table,
+    pub u16_table: UXTable<16>,
     /// Challenges
     pub challenges: crate::util::Challenges<Expression<F>>,
 }
@@ -260,7 +271,9 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         let tx_type = meta.advice_column();
         let rlp_tag = meta.advice_column();
         let tx_value_rlc = meta.advice_column_in(SecondPhase);
+        let tx_value_evm_rlc = meta.advice_column_in(SecondPhase);
         let tx_value_length = meta.advice_column();
+        let tx_hash_word = word::Word::new([meta.advice_column(), meta.advice_column()]);
         let is_none = meta.advice_column();
         let tag_bits = BinaryNumberChip::configure(meta, q_enable, Some(tx_table.tag.into()));
         let tx_type_bits = BinaryNumberChip::configure(meta, q_enable, Some(tx_type.into()));
@@ -282,6 +295,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         let is_calldata = meta.advice_column();
         let is_caller_address = meta.advice_column();
         let is_chain_id = meta.advice_column();
+        let is_value_zero = meta.advice_column();
         let is_tag_block_num = meta.advice_column();
         let lookup_conditions = [
             LookupCondition::TxCalldata,
@@ -296,9 +310,11 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
 
         // TODO: add lookup to SignVerify table for sv_address
         let sv_address = meta.advice_column();
-        meta.enable_equality(tx_table.value);
+        meta.enable_equality(tx_table.value.lo());
+        meta.enable_equality(tx_table.value.hi());
 
         let log_deg = |s: &'static str, meta: &mut ConstraintSystem<F>| {
+            //TODO： decrease degree to old nubmer 9.
             debug_assert!(meta.degree() <= 9);
             log::info!("after {}, meta.degree: {}", s, meta.degree());
         };
@@ -358,7 +374,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         );
 
         // testing if value is zero for tags
-        let value_is_zero = IsZeroChip::configure(
+        let value_is_zero_lo = IsZeroChip::configure(
             meta,
             |meta| {
                 and::expr(vec![
@@ -373,7 +389,25 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     ]),
                 ])
             },
-            tx_table.value,
+            tx_table.value.lo(),
+            |meta| meta.advice_column_in(SecondPhase), // value is at 2nd phase
+        );
+        let value_is_zero_hi = IsZeroChip::configure(
+            meta,
+            |meta| {
+                and::expr(vec![
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    sum::expr(vec![
+                        // if caller_address is zero, then skip the sig verify.
+                        is_caller_addr(meta),
+                        // if call_data_length is zero, then skip lookup to tx table for call data
+                        is_data_length(meta),
+                        // if call data byte is zero, then gas_cost = 4 (16 otherwise)
+                        is_data(meta),
+                    ]),
+                ])
+            },
+            tx_table.value.hi(),
             |meta| meta.advice_column_in(SecondPhase), // value is at 2nd phase
         );
 
@@ -500,7 +534,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 cb.require_equal(
                     "associated tx type to tag",
                     meta.query_advice(tx_type, Rotation::cur()),
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // tx type value only uses lo column
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                 );
             });
 
@@ -516,7 +551,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 cb.require_equal(
                     "is_create == is_none",
                     // we rely on the assumption that IsCreate is next to CalleeAddress
-                    meta.query_advice(tx_table.value, Rotation::next()),
+                    meta.query_advice(tx_table.value.lo(), Rotation::next()),
                     meta.query_advice(is_none, Rotation::cur()),
                 );
             });
@@ -525,10 +560,10 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             // is_none == true
             cb.condition(is_none_expr.expr(), |cb| {
                 // value == 0
-                cb.require_equal(
-                    "is_none is true => value == 0",
-                    meta.query_advice(tx_table.value, Rotation::cur()),
-                    0.expr(),
+                cb.require_equal_word(
+                    "is_none is true => value == 0 (value_hi = value_lo = 0)",
+                    tx_table.value.query_advice(meta, Rotation::cur()),
+                    word::Word::zero(),
                 );
             });
 
@@ -538,15 +573,15 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             cb.condition(and::expr([is_data_rlc(meta), is_none_expr.expr()]), |cb| {
                 // we rely on the assumption that CallDataLength and CallDataGasCost are after
                 // CallDataRLC
-                cb.require_equal(
+                cb.require_equal_word(
                     "CallDataLength.value == 0",
-                    meta.query_advice(tx_table.value, Rotation::next()),
-                    0.expr(),
+                    tx_table.value.query_advice(meta, Rotation::next()),
+                    word::Word::zero(),
                 );
-                cb.require_equal(
+                cb.require_equal_word(
                     "CallDataGasCost.value == 0",
-                    meta.query_advice(tx_table.value, Rotation(2)),
-                    0.expr(),
+                    tx_table.value.query_advice(meta, Rotation(2)),
+                    word::Word::zero(),
                 );
             });
 
@@ -556,7 +591,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 |cb| {
                     cb.require_zero(
                         "CallDataLength != 0",
-                        value_is_zero.expr(Rotation::next())(meta),
+                        meta.query_advice(is_value_zero, Rotation::next()),
                     );
                 },
             );
@@ -618,6 +653,23 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             cb.gate(meta.query_fixed(q_enable, Rotation::cur()))
         });
 
+        meta.create_gate("is_value_zero", |meta| {
+            let mut cb = BaseConstraintBuilder::default();
+
+            cb.require_boolean(
+                "is_value_zero is bool",
+                meta.query_advice(is_value_zero, Rotation::cur()),
+            );
+            cb.require_equal(
+                "is_value_zero = value_is_zero_lo && value_is_zero_hi",
+                meta.query_advice(is_value_zero, Rotation::cur()),
+                value_is_zero_lo.expr(Rotation::cur())(meta)
+                    * value_is_zero_hi.expr(Rotation::cur())(meta),
+            );
+
+            cb.gate(meta.query_fixed(q_enable, Rotation::cur()))
+        });
+
         meta.create_gate("is_l1_msg", |meta| {
             let mut cb = BaseConstraintBuilder::default();
 
@@ -637,7 +689,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 "condition",
                 and::expr([
                     is_data_length(meta),
-                    not::expr(value_is_zero.expr(Rotation::cur())(meta)),
+                    not::expr(meta.query_advice(is_value_zero, Rotation::cur())),
                 ]),
                 meta.query_advice(
                     lookup_conditions[&LookupCondition::TxCalldata],
@@ -767,7 +819,9 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             q_enable,
             rlp_tag,
             tx_value_rlc,
+            tx_value_evm_rlc,
             tx_value_length,
+            tx_hash_word,
             tx_type_bits,
             tx_id_is_zero.clone(),
             is_none,
@@ -776,6 +830,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             is_calldata,
             is_chain_id,
             is_l1_msg,
+            //is_value,
             sv_address,
             calldata_gas_cost_acc,
             calldata_rlc,
@@ -789,9 +844,9 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             let mut cb = BaseConstraintBuilder::default();
 
             cb.condition(is_tx_gas_cost(meta), |cb| {
-                cb.require_zero(
+                cb.require_zero_word(
                     "tx_gas_cost == 0",
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    tx_table.value.query_advice(meta, Rotation::cur()),
                 );
             });
 
@@ -810,7 +865,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             cb.condition(is_nonce(meta), |cb| {
                 cb.require_equal(
                     "tx_nonce = tx_table.value if tag == Nonce",
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // value.lo() should cover tx_nonce value.
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(tx_nonce, Rotation::cur()),
                 );
             });
@@ -824,7 +880,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             cb.condition(meta.query_advice(is_tag_block_num, Rotation::cur()), |cb| {
                 cb.require_equal(
                     "block_num = tx_table.value if tag == BlockNum",
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(block_num, Rotation::cur()),
                 );
             });
@@ -848,7 +904,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             |meta| meta.query_advice(block_num, Rotation::cur()),
         );
 
-        meta.lookup("block_num is non-decreasing till padding txs", |meta| {
+        meta.lookup_any("block_num is non-decreasing till padding txs", |meta| {
             // Block nums like this [1, 3, 5, 4, 0] is rejected by this. But [1, 2, 3, 5, 0] is
             // acceptable.
             let lookup_condition = and::expr([
@@ -862,7 +918,10 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             let block_num_diff = meta.query_advice(block_num, Rotation::next())
                 - meta.query_advice(block_num, Rotation::cur());
 
-            vec![(lookup_condition * block_num_diff, u16_table.into())]
+            vec![(
+                lookup_condition * block_num_diff,
+                meta.query_fixed(u16_table.col, Rotation::cur()),
+            )]
         });
 
         meta.create_gate("num_all_txs in a block", |meta| {
@@ -975,7 +1034,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
 
         meta.lookup_any("num_all_txs in block table", |meta| {
             let is_tag_block_num = meta.query_advice(is_tag_block_num, Rotation::cur());
-            let block_num = meta.query_advice(tx_table.value, Rotation::cur());
+            //  tx_table.value.lo can cover block_num
+            let block_num = meta.query_advice(tx_table.value.lo(), Rotation::cur());
             let num_all_txs_acc = meta.query_advice(num_all_txs_acc, Rotation::cur());
 
             let input_expr = vec![NumAllTxs.expr(), block_num, num_all_txs_acc];
@@ -1005,7 +1065,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 cb.require_equal(
                     "is_padding_tx = true if caller_address = 0",
                     meta.query_advice(is_padding_tx, Rotation::cur()),
-                    value_is_zero.expr(Rotation::cur())(meta),
+                    meta.query_advice(is_value_zero, Rotation::cur()),
                 );
             });
             cb.gate(meta.query_fixed(q_enable, Rotation::cur()))
@@ -1027,7 +1087,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 cum_num_txs - num_txs
             },
             |meta| meta.query_advice(tx_table.tx_id, Rotation::cur()),
-            u8_table.into(),
+            u8_table.col,
         );
 
         // last non-padding tx must have tx_id == cum_num_txs
@@ -1065,7 +1125,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             },
             |meta| meta.query_advice(tx_table.tx_id, Rotation::cur()),
             |meta| meta.query_advice(cum_num_txs, Rotation::cur()),
-            u8_table.into(),
+            u8_table.col,
         );
 
         meta.create_gate("tx_id <= cum_num_txs", |meta| {
@@ -1084,7 +1144,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
 
         meta.lookup_any("num_txs in block table", |meta| {
             let is_tag_block_num = meta.query_advice(is_tag_block_num, Rotation::cur());
-            let block_num = meta.query_advice(tx_table.value, Rotation::cur());
+            // TODO: check why block_num come from tx table ?
+            let block_num = meta.query_advice(tx_table.value.lo(), Rotation::cur());
             let num_txs = meta.query_advice(num_txs, Rotation::cur());
 
             let input_expr = vec![NumTxs.expr(), block_num, num_txs];
@@ -1104,7 +1165,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
 
         meta.lookup_any("cum_num_txs in block table", |meta| {
             let is_tag_block_num = meta.query_advice(is_tag_block_num, Rotation::cur());
-            let block_num = meta.query_advice(tx_table.value, Rotation::cur());
+            let block_num = meta.query_advice(tx_table.value.lo(), Rotation::cur());
             let cum_num_txs = meta.query_advice(cum_num_txs, Rotation::cur());
 
             let input_expr = vec![CumNumTxs.expr(), block_num, cum_num_txs];
@@ -1125,7 +1186,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         ////////////////////////////////////////////////////////////////////////
         ///////////  CallData length and gas_cost calculation  /////////////////
         ////////////////////////////////////////////////////////////////////////
-        meta.lookup("tx_id_diff must in u16", |meta| {
+        meta.lookup_any("tx_id_diff must in u16", |meta| {
             let q_enable = meta.query_fixed(q_enable, Rotation::next());
             let is_calldata = meta.query_advice(is_calldata, Rotation::cur());
             let tx_id = meta.query_advice(tx_table.tx_id, Rotation::cur());
@@ -1134,8 +1195,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
 
             let lookup_condition =
                 and::expr([q_enable, is_calldata, not::expr(tx_id_next_is_zero)]);
-
-            vec![(lookup_condition * (tx_id_next - tx_id), u16_table.into())]
+            let u16_expr = meta.query_fixed(u16_table.col, Rotation::cur());
+            vec![(lookup_condition * (tx_id_next - tx_id), u16_expr)]
         });
 
         meta.create_gate("last row of call data", |meta| {
@@ -1152,7 +1213,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 cb.require_equal(
                     "calldata_byte == tx_table.value",
                     meta.query_advice(calldata_byte, Rotation::cur()),
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // byte only use value.lo
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                 );
             });
 
@@ -1161,8 +1223,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
 
         meta.create_gate("tx call data init", |meta| {
             let mut cb = BaseConstraintBuilder::default();
+            let value_is_zero = meta.query_advice(is_value_zero, Rotation::cur());
 
-            let value_is_zero = value_is_zero.expr(Rotation::cur())(meta);
             let gas_cost = select::expr(value_is_zero, 4.expr(), 16.expr());
 
             cb.require_equal(
@@ -1178,7 +1240,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             cb.require_equal(
                 "calldata_rlc == byte",
                 meta.query_advice(calldata_rlc, Rotation::cur()),
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             );
 
             cb.gate(and::expr([
@@ -1206,7 +1268,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     1.expr(),
                 );
 
-                let value_next_is_zero = value_is_zero.expr(Rotation::next())(meta);
+                let value_next_is_zero = meta.query_advice(is_value_zero, Rotation::next());
+
                 let gas_cost_next = select::expr(value_next_is_zero, 4.expr(), 16.expr());
                 // call data gas cost accumulator check.
                 cb.require_equal(
@@ -1218,7 +1281,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     "calldata_rlc' = calldata_rlc * r + byte'",
                     meta.query_advice(calldata_rlc, Rotation::next()),
                     meta.query_advice(calldata_rlc, Rotation::cur()) * challenges.keccak_input()
-                        + meta.query_advice(tx_table.value, Rotation::next()),
+                    // TODO: check if value.lo() can cover calldata_rlc
+                        + meta.query_advice(tx_table.value.lo(), Rotation::next()),
                 );
             });
 
@@ -1236,7 +1300,9 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     not::expr(tx_id_is_zero.expr(Rotation::next())(meta)),
                 ]),
                 |cb| {
-                    let value_next_is_zero = value_is_zero.expr(Rotation::next())(meta);
+                    //let value_next_is_zero = value_is_zero.expr(Rotation::next())(meta);
+                    let value_next_is_zero = meta.query_advice(is_value_zero, Rotation::next());
+
                     let gas_cost_next = select::expr(value_next_is_zero, 4.expr(), 16.expr());
 
                     cb.require_equal(
@@ -1252,7 +1318,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     cb.require_equal(
                         "calldata_rlc' == byte'",
                         meta.query_advice(calldata_rlc, Rotation::next()),
-                        meta.query_advice(tx_table.value, Rotation::next()),
+                        meta.query_advice(tx_table.value.lo(), Rotation::next()),
                     );
                 },
             );
@@ -1279,8 +1345,9 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 ]),
                 |cb| {
                     // we rely on the assumption that SigV is on the next of ChainID
-                    let v = meta.query_advice(tx_table.value, Rotation::next());
-                    let chain_id = meta.query_advice(tx_table.value, Rotation::cur());
+                    let v = meta.query_advice(tx_table.value.lo(), Rotation::next());
+                    // tx_table.value.lo() can cover chain_id range.
+                    let chain_id = meta.query_advice(tx_table.value.lo(), Rotation::cur());
 
                     cb.require_boolean(
                         "V - (chain_id * 2 + 35) Є {0, 1}",
@@ -1296,7 +1363,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     tx_type_bits.value_equals(PreEip155, Rotation::cur())(meta),
                 ]),
                 |cb| {
-                    let v = meta.query_advice(tx_table.value, Rotation::next());
+                    // use value.lo() for v
+                    let v = meta.query_advice(tx_table.value.lo(), Rotation::next());
                     cb.require_boolean("V - 27 Є {0, 1}", v - 27.expr());
                 },
             );
@@ -1308,8 +1376,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                     tx_type_bits.value_equals(L1Msg, Rotation::cur())(meta),
                 ]),
                 |cb| {
-                    let v = meta.query_advice(tx_table.value, Rotation::next());
-                    cb.require_zero("V == 0", v);
+                    let v = tx_table.value.query_advice(meta, Rotation::next());
+                    cb.require_zero_word("V == 0", v);
                 },
             );
 
@@ -1324,11 +1392,13 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             "caller address == sv_address if it's not zero and tx_type != L1Msg",
             |meta| {
                 let mut cb = BaseConstraintBuilder::default();
+                let value_is_zero = meta.query_advice(is_value_zero, Rotation::cur());
 
-                cb.condition(not::expr(value_is_zero.expr(Rotation::cur())(meta)), |cb| {
+                cb.condition(not::expr(value_is_zero), |cb| {
                     cb.require_equal(
                         "caller address == sv_address",
-                        meta.query_advice(tx_table.value, Rotation::cur()),
+                        // TODO: check if value.lo can cover address in this case
+                        meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                         meta.query_advice(sv_address, Rotation::cur()),
                     );
                 });
@@ -1354,12 +1424,15 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             rlp_tag,
             is_none,
             tx_value_rlc,
+            tx_value_evm_rlc,
             tx_value_length,
+            tx_hash_word,
             u8_table,
             u16_table,
             tx_id_is_zero,
-            value_is_zero,
+            value_limb_is_zero: [value_is_zero_lo, value_is_zero_hi],
             tx_id_unchanged,
+            is_value_zero,
             is_calldata,
             is_caller_address,
             tx_id_cmp_cum_num_txs,
@@ -1398,7 +1471,9 @@ impl<F: Field> TxCircuitConfig<F> {
         q_enable: Column<Fixed>,
         rlp_tag: Column<Advice>,
         tx_value_rlc: Column<Advice>,
+        tx_value_evm_rlc: Column<Advice>,
         tx_value_length: Column<Advice>,
+        tx_hash_word: word::Word<Column<Advice>>,
         tx_type_bits: BinaryNumberConfig<TxType, 3>,
         tx_id_is_zero: IsZeroConfig<F>,
         is_none: Column<Advice>,
@@ -1407,6 +1482,7 @@ impl<F: Field> TxCircuitConfig<F> {
         is_calldata: Column<Advice>,
         is_chain_id: Column<Advice>,
         is_l1_msg_col: Column<Advice>,
+        //is_value: VirtualCells<>, // is tx field tag::value
         sv_address: Column<Advice>,
         calldata_gas_cost_acc: Column<Advice>,
         calldata_rlc: Column<Advice>,
@@ -1444,8 +1520,9 @@ impl<F: Field> TxCircuitConfig<F> {
             vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 CallData.expr(),
-                meta.query_advice(tx_table.value, Rotation::next()), // calldata_gas_cost
-                1.expr(),                                            // is_final = 1
+                //TODO: check if lo covers calldata_gas_cost_acc
+                meta.query_advice(tx_table.value.lo(), Rotation::next()), // calldata_gas_cost
+                1.expr(),                                                 // is_final = 1
             ]
             .into_iter()
             .zip(vec![
@@ -1472,8 +1549,8 @@ impl<F: Field> TxCircuitConfig<F> {
             vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 CallData.expr(),
-                meta.query_advice(tx_table.value, Rotation::cur()) - 1.expr(), /* index starts
-                                                                                * from 0 */
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()) - 1.expr(), /* index starts
+                                                                                     * from 0 */
                 1.expr(), // is_final = true
             ]
             .into_iter()
@@ -1504,7 +1581,8 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                //TODO: check lo covers calldata_rlc ?
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
             input_exprs
@@ -1562,14 +1640,14 @@ impl<F: Field> TxCircuitConfig<F> {
             let is_none = meta.query_advice(is_none, Rotation::cur());
             let sign_format = is_pre_eip155(meta) * TxSignPreEip155.expr()
                 + is_eip155(meta) * TxSignEip155.expr();
-
             // q_enable, tx_id, format, rlp_tag, tag_value, is_output, is_none
             vec![
                 1.expr(), // q_enable = true
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 sign_format,
                 rlp_tag,
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                //meta.query_advice(tx_table.value.lo(), Rotation::cur()), // lo covers tag
+                meta.query_advice(tx_value_evm_rlc, Rotation::cur()),
                 meta.query_advice(tx_value_rlc, Rotation::cur()),
                 meta.query_advice(tx_value_length, Rotation::cur()),
                 1.expr(), // is_output = true
@@ -1607,7 +1685,8 @@ impl<F: Field> TxCircuitConfig<F> {
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 hash_format,
                 rlp_tag,
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                //meta.query_advice(tx_table.value.lo(), Rotation::cur()),
+                meta.query_advice(tx_value_evm_rlc, Rotation::cur()),
                 meta.query_advice(tx_value_rlc, Rotation::cur()),
                 meta.query_advice(tx_value_length, Rotation::cur()),
                 1.expr(), // is_output = true
@@ -1632,22 +1711,26 @@ impl<F: Field> TxCircuitConfig<F> {
                 meta.query_advice(is_chain_id, Rotation::cur()),
             ]);
 
-            let msg_hash_rlc = meta.query_advice(tx_table.value, Rotation(6));
-            let chain_id = meta.query_advice(tx_table.value, Rotation::cur());
-            let sig_v = meta.query_advice(tx_table.value, Rotation(1));
-            let sig_r = meta.query_advice(tx_table.value, Rotation(2));
-            let sig_s = meta.query_advice(tx_table.value, Rotation(3));
+            // TODO: check if lo covers msg_hash_rlc, sig(v,r,s)
+            let msg_hash_lo = meta.query_advice(tx_table.value.lo(), Rotation(6));
+            // let msg_hash_hi = meta.query_advice(tx_table.value.hi(), Rotation(6));
+            let chain_id = meta.query_advice(tx_table.value.lo(), Rotation::cur());
+            let sig_v = meta.query_advice(tx_table.value.lo(), Rotation(1));
+            let sig_r = meta.query_advice(tx_table.value.lo(), Rotation(2));
+            let sig_s = meta.query_advice(tx_table.value.lo(), Rotation(3));
             let sv_address = meta.query_advice(sv_address, Rotation::cur());
 
             let v = is_eip155(meta) * (sig_v.expr() - 2.expr() * chain_id - 35.expr())
                 + is_pre_eip155(meta) * (sig_v.expr() - 27.expr());
 
             let input_exprs = vec![
-                1.expr(),     // q_enable = true
-                msg_hash_rlc, // msg_hash_rlc
-                v,            // sig_v
-                sig_r,        // sig_r
-                sig_s,        // sig_s
+                1.expr(), // q_enable = true
+                // msg_hash_rlc, // msg_hash_rlc
+                msg_hash_lo,
+                // msg_hash_hi,
+                v,     // sig_v
+                sig_r, // sig_r
+                sig_s, // sig_s
                 sv_address,
                 1.expr(), // is_valid
             ];
@@ -1657,6 +1740,8 @@ impl<F: Field> TxCircuitConfig<F> {
                 meta.query_fixed(sig_table.q_enable, Rotation::cur()),
                 // msg_hash_rlc not needed to be looked up for tx circuit?
                 meta.query_advice(sig_table.msg_hash_rlc, Rotation::cur()),
+                // meta.query_advice(sig_table.msg_hash_word.lo(), Rotation::cur()),
+                // meta.query_advice(sig_table.msg_hash_word.hi(), Rotation::cur()),
                 meta.query_advice(sig_table.sig_v, Rotation::cur()),
                 meta.query_advice(sig_table.sig_r_rlc, Rotation::cur()),
                 meta.query_advice(sig_table.sig_s_rlc, Rotation::cur()),
@@ -1684,11 +1769,13 @@ impl<F: Field> TxCircuitConfig<F> {
             ]);
 
             vec![
-                1.expr(),                                            // q_enable
-                1.expr(),                                            // is_final
-                meta.query_advice(tx_table.value, Rotation::next()), // input_rlc
-                meta.query_advice(tx_table.value, Rotation::cur()),  // input_len
-                meta.query_advice(tx_table.value, Rotation(2)),      // output_rlc
+                1.expr(),                                                 // q_enable
+                1.expr(),                                                 // is_final
+                meta.query_advice(tx_table.value.lo(), Rotation::next()), // input_rlc
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()),  // input_len
+                meta.query_advice(tx_table.value.lo(), Rotation(2)),      // output_rlc
+                meta.query_advice(tx_hash_word.lo(), Rotation::cur()),    // output_word lo
+                meta.query_advice(tx_hash_word.hi(), Rotation::cur()),    // output_word hi
             ]
             .into_iter()
             .zip(keccak_table.table_exprs(meta))
@@ -1706,7 +1793,7 @@ impl<F: Field> TxCircuitConfig<F> {
             1,
             TxFieldTag::Null,
             0,
-            Value::known(F::zero()),
+            word::Word::new([Value::known(F::zero()), Value::known(F::zero())]),
         )?;
         let (col_anno, col, col_val) = ("rlp_tag", self.rlp_tag, F::from(usize::from(Null) as u64));
         region.assign_advice(|| col_anno, col, *offset, || Value::known(col_val))?;
@@ -1729,7 +1816,7 @@ impl<F: Field> TxCircuitConfig<F> {
         num_txs: u64,
         cum_num_txs: u64,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<Vec<word::Word<AssignedCell<F, F>>>, Error> {
         let keccak_input = challenges.keccak_input();
         let evm_word = challenges.evm_word();
         let zero_rlc = keccak_input.map(|_| F::zero());
@@ -1758,7 +1845,7 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.nonce.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.nonce.to_be_bytes(), keccak_input),
                 }),
-                Value::known(F::from(tx.nonce)),
+                word::Word::new([Value::known(F::from(tx.nonce)), Value::known(F::zero())]),
             ),
             (
                 GasPrice,
@@ -1768,7 +1855,12 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.gas_price.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.gas_price.to_be_bytes(), keccak_input),
                 }),
-                rlc_be_bytes(&tx.gas_price.to_be_bytes(), evm_word),
+                // rlc_be_bytes(&tx.gas_price.to_be_bytes(), evm_word),
+                // word::Word::from(tx.gas_price).map(Value::known),
+                word::Word::new([
+                    rlc_be_bytes(&tx.gas_price.to_be_bytes(), evm_word),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 Gas,
@@ -1778,7 +1870,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.gas.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.gas.to_be_bytes(), keccak_input),
                 }),
-                Value::known(F::from(tx.gas)),
+                //Value::known(F::from(tx.gas)),
+                word::Word::new([Value::known(F::from(tx.gas)), Value::known(F::zero())]),
             ),
             (
                 CallerAddress,
@@ -1788,7 +1881,14 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.caller_address.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.caller_address.to_fixed_bytes(), keccak_input),
                 }),
-                Value::known(tx.caller_address.to_scalar().expect("tx.from too big")),
+                //Value::known(tx.caller_address.to_scalar().expect("tx.from too big")),
+                // word::Word::from(tx.caller_address.to_word()).map(Value::known),
+
+                //let caller_addrss = tx.caller_address.to_scalar();
+                word::Word::new([
+                    Value::known(tx.caller_address.to_scalar().expect("fx from")),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 CalleeAddress,
@@ -1803,14 +1903,32 @@ impl<F: Field> TxCircuitConfig<F> {
                         keccak_input,
                     ),
                 }),
-                Value::known(
-                    tx.callee_address
-                        .unwrap_or(Address::zero())
-                        .to_scalar()
-                        .expect("tx.to too big"),
-                ),
+                // Value::known(
+                //     tx.callee_address
+                //         .unwrap_or(Address::zero())
+                //         .to_scalar()
+                //         .expect("tx.to too big"),
+                // ),
+                // word::Word::from(tx.callee_address.unwrap_or(Address::zero()).to_word())
+                //     .map(Value::known),
+                word::Word::new([
+                    Value::known(
+                        tx.callee_address
+                            .unwrap_or(Address::zero())
+                            .to_scalar()
+                            .expect("fx to"),
+                    ),
+                    Value::known(F::zero()),
+                ]),
             ),
-            (IsCreate, None, Value::known(F::from(tx.is_create as u64))),
+            (
+                IsCreate,
+                None,
+                word::Word::new([
+                    Value::known(F::from(tx.is_create as u64)),
+                    Value::known(F::zero()),
+                ]),
+            ),
             (
                 TxFieldTag::Value,
                 Some(RlpTableInputValue {
@@ -1819,7 +1937,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.value.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.value.to_be_bytes(), keccak_input),
                 }),
-                rlc_be_bytes(&tx.value.to_be_bytes(), evm_word),
+                //rlc_be_bytes(&tx.value.to_be_bytes(), evm_word),
+                word::Word::from(tx.value.to_word()).map(Value::known),
             ),
             (
                 CallDataRLC,
@@ -1829,17 +1948,29 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.call_data.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.call_data, keccak_input),
                 }),
-                rlc_be_bytes(&tx.call_data, keccak_input),
+                //rlc_be_bytes(&tx.call_data, keccak_input)
+                word::Word::new([
+                    rlc_be_bytes(&tx.call_data, keccak_input),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 CallDataLength,
                 None,
-                Value::known(F::from(tx.call_data.len() as u64)),
+                //Value::known(F::from(tx.call_data.len() as u64)),
+                word::Word::new([
+                    Value::known(F::from(tx.call_data.len() as u64)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 CallDataGasCost,
                 None,
-                Value::known(F::from(tx.call_data_gas_cost)),
+                //Value::known(F::from(tx.call_data_gas_cost)),
+                word::Word::new([
+                    Value::known(F::from(tx.call_data_gas_cost)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 TxDataGasCost,
@@ -1849,7 +1980,11 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: 0,
                     be_bytes_rlc: zero_rlc,
                 }),
-                Value::known(F::from(tx.tx_data_gas_cost)),
+                //Value::known(F::from(tx.tx_data_gas_cost)),
+                word::Word::new([
+                    Value::known(F::from(tx.tx_data_gas_cost)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 ChainID,
@@ -1859,7 +1994,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.chain_id.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.chain_id.to_be_bytes(), keccak_input),
                 }),
-                Value::known(F::from(tx.chain_id)),
+                //Value::known(F::from(tx.chain_id)),
+                word::Word::new([Value::known(F::from(tx.chain_id)), Value::known(F::zero())]),
             ),
             (
                 SigV,
@@ -1869,7 +2005,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.v.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.v.to_be_bytes(), keccak_input),
                 }),
-                Value::known(F::from(tx.v)),
+                //Value::known(F::from(tx.v)),
+                word::Word::new([Value::known(F::from(tx.v)), Value::known(F::zero())]),
             ),
             (
                 SigR,
@@ -1879,7 +2016,13 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.r.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.r.to_be_bytes(), keccak_input),
                 }),
-                rlc_be_bytes(&tx.r.to_be_bytes(), evm_word),
+                //rlc_be_bytes(&tx.r.to_be_bytes(), evm_word),
+                //word::Word::from(tx.r.to_word()).map(Value::known),
+                word::Word::new([
+                    Value::known(unwrap_value(rlc_be_bytes(&tx.r.to_be_bytes(), evm_word))),
+                    Value::known(F::zero()),
+                    //F::zero(),
+                ]),
             ),
             (
                 SigS,
@@ -1889,7 +2032,17 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.s.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.s.to_be_bytes(), keccak_input),
                 }),
-                rlc_be_bytes(&tx.s.to_be_bytes(), evm_word),
+                //rlc_be_bytes(&tx.s.to_be_bytes(), evm_word),
+                //word::Word::from(tx.s.to_word()).map(Value::known),
+                // word::Word::new([
+                //     Value::known(rlc_be_bytes(&tx.s.to_be_bytes(), evm_word)),
+                //     Value::known(F::zero()),
+                // ]),
+                word::Word::new([
+                    Value::known(unwrap_value(rlc_be_bytes(&tx.s.to_be_bytes(), evm_word))),
+                    Value::known(F::zero()),
+                    //F::zero(),
+                ]),
             ),
             (
                 TxSignLength,
@@ -1899,7 +2052,11 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: rlp_sign_tag_length,
                     be_bytes_rlc: zero_rlc,
                 }),
-                Value::known(F::from(tx.rlp_unsigned.len() as u64)),
+                //Value::known(F::from(tx.rlp_unsigned.len() as u64)),
+                word::Word::new([
+                    Value::known(F::from(tx.rlp_unsigned.len() as u64)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 TxSignRLC,
@@ -1909,9 +2066,19 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: 0,
                     be_bytes_rlc: zero_rlc,
                 }),
-                rlc_be_bytes(&tx.rlp_unsigned, keccak_input),
+                //rlc_be_bytes(&tx.rlp_unsigned, keccak_input),
+                word::Word::new([
+                    rlc_be_bytes(&tx.rlp_unsigned, keccak_input),
+                    Value::known(F::zero()),
+                ]),
             ),
-            (TxSignHash, None, sign_hash_rlc),
+            //(TxSignHash, None, sign_hash_rlc),
+            (
+                TxSignHash,
+                None,
+                //word::Word::from(U256::from_big_endian(&sign_hash)).map(Value::known),
+                word::Word::new([sign_hash_rlc, Value::known(F::zero())]),
+            ),
             (
                 TxHashLength,
                 Some(RlpTableInputValue {
@@ -1920,7 +2087,11 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: get_rlp_len_tag_length(&tx.rlp_signed),
                     be_bytes_rlc: zero_rlc,
                 }),
-                Value::known(F::from(tx.rlp_signed.len() as u64)),
+                //Value::known(F::from(tx.rlp_signed.len() as u64)),
+                word::Word::new([
+                    Value::known(F::from(tx.rlp_signed.len() as u64)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 TxHashRLC,
@@ -1930,23 +2101,45 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: 0,
                     be_bytes_rlc: zero_rlc,
                 }),
-                rlc_be_bytes(&tx.rlp_signed, keccak_input),
+                //rlc_be_bytes(&tx.rlp_signed, keccak_input),
+                word::Word::new([
+                    rlc_be_bytes(&tx.rlp_signed, keccak_input),
+                    Value::known(F::zero()),
+                ]),
             ),
-            (TxFieldTag::TxHash, None, hash_rlc),
+            //(TxFieldTag::TxHash, None, hash_rlc),
+            (
+                TxFieldTag::TxHash,
+                None,
+                //word::Word::from(U256::from_big_endian(&hash)).map(Value::known),
+                word::Word::new([hash_rlc, Value::known(F::zero())]),
+            ),
             (
                 TxFieldTag::TxType,
                 None,
-                Value::known(F::from(tx.tx_type as u64)),
+                //Value::known(F::from(tx.tx_type as u64)),
+                word::Word::new([
+                    Value::known(F::from(tx.tx_type as u64)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 AccessListAddressesLen,
                 None,
-                Value::known(F::from(access_list_address_size)),
+                //Value::known(F::from(access_list_address_size)),
+                word::Word::new([
+                    Value::known(F::from(access_list_address_size)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 AccessListStorageKeysLen,
                 None,
-                Value::known(F::from(access_list_storage_key_size)),
+                //Value::known(F::from(access_list_storage_key_size)),
+                word::Word::new([
+                    Value::known(F::from(access_list_storage_key_size)),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 AccessListRLC,
@@ -1957,16 +2150,33 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_rlc: zero_rlc,
                 }),
                 // TODO: need to check if it's correct with RLP.
-                rlc_be_bytes(
-                    &tx.access_list
-                        .as_ref()
-                        .map(|access_list| access_list.rlp_bytes())
-                        .unwrap_or_default(),
-                    keccak_input,
-                ),
+                {
+                    let access_list_rlc = rlc_be_bytes(
+                        &tx.access_list
+                            .as_ref()
+                            .map(|access_list| access_list.rlp_bytes())
+                            .unwrap_or_default(),
+                        keccak_input,
+                    );
+
+                    word::Word::new([access_list_rlc, Value::known(F::zero())])
+                },
             ),
-            (BlockNumber, None, Value::known(F::from(tx.block_number))),
+            (
+                BlockNumber,
+                None,
+                word::Word::new([
+                    Value::known(F::from(tx.block_number)),
+                    Value::known(F::zero()),
+                ]),
+            ),
+            //Value::known(F::from(tx.block_number))),
         ];
+
+        // constructs two hashes' word
+        let sign_hash_word = word::Word::from(U256::from_big_endian(&sign_hash)).map(Value::known);
+        let tx_hash_word = word::Word::from(U256::from_big_endian(&hash)).map(Value::known);
+        let tx_value_evm_rlc = rlc_be_bytes(&tx.value.to_be_bytes(), evm_word);
 
         for (tx_tag, rlp_input, tx_value) in fixed_rows {
             let rlp_tag = rlp_input.clone().map_or(Null, |input| input.tag);
@@ -2030,7 +2240,7 @@ impl<F: Field> TxCircuitConfig<F> {
                 ),
                 (
                     "sv_address",
-                    self.sv_address,
+                    self.sv_address, // not change to word
                     sign_data.get_addr().to_scalar().unwrap(),
                 ),
                 // tx_tag related indicator columns
@@ -2063,6 +2273,17 @@ impl<F: Field> TxCircuitConfig<F> {
                 let (col_anno, col, col_val) =
                     ("tx_value_rlc", self.tx_value_rlc, rlp_be_bytes_rlc);
                 region.assign_advice(|| col_anno, col, *offset, || col_val)?;
+                let value_evm_rlc = if tx_tag == TxFieldTag::Value {
+                    tx_value_evm_rlc
+                } else {
+                    tx_value.lo()
+                };
+                region.assign_advice(
+                    || "tx_value_evm_rlc",
+                    self.tx_value_evm_rlc,
+                    *offset,
+                    || value_evm_rlc,
+                )?;
             }
 
             // lookup conditions
@@ -2169,6 +2390,24 @@ impl<F: Field> TxCircuitConfig<F> {
                 F::from(tx.id as u64),
             )?;
 
+            let hash_word_assign = if tx_tag == TxFieldTag::TxSignLength {
+                sign_hash_word
+            } else if tx_tag == TxFieldTag::TxHashLength {
+                tx_hash_word
+            } else {
+                // for non TxSignLength & non TxHashLength tag, this word value won't lookup, hence
+                // all set zero limbs. word::Word::default() will panic as default
+                // limbs are none.
+                word::Word::new([F::zero(), F::zero()]).map(Value::known)
+            };
+
+            hash_word_assign.assign_advice(
+                region,
+                || "assign sign_hash_word",
+                self.tx_hash_word,
+                *offset,
+            )?;
+
             *offset += 1;
         }
         Ok(tx_value_cells)
@@ -2206,7 +2445,7 @@ impl<F: Field> TxCircuitConfig<F> {
                 tx_id_next,
                 CallData,
                 idx as u64,
-                Value::known(F::from(*byte as u64)),
+                word::Word::new([Value::known(F::from(*byte as u64)), Value::known(F::zero())]),
             )?;
 
             // 1st phase columns
@@ -2247,8 +2486,8 @@ impl<F: Field> TxCircuitConfig<F> {
         tx_id_next: usize,
         tag: TxFieldTag,
         index: u64,
-        value: Value<F>,
-    ) -> Result<AssignedCell<F, F>, Error> {
+        value: word::Word<Value<F>>,
+    ) -> Result<word::Word<AssignedCell<F, F>>, Error> {
         let (tx_type, tx_id) = if let Some(tx) = tx {
             (tx.tx_type, tx.id)
         } else {
@@ -2265,9 +2504,19 @@ impl<F: Field> TxCircuitConfig<F> {
         let tx_id_is_zero_chip = IsZeroChip::construct(self.tx_id_is_zero.clone());
         tx_id_is_zero_chip.assign(region, offset, Value::known(F::from(tx_id as u64)))?;
 
-        let value_is_zero_chip = IsZeroChip::construct(self.value_is_zero.clone());
-        value_is_zero_chip.assign(region, offset, value)?;
+        let value_word_zero =
+            unwrap_value(value.lo()) == F::zero() && unwrap_value(value.hi()) == F::zero();
+        let value_is_zero_lo_chip = IsZeroChip::construct(self.value_limb_is_zero[0].clone());
+        value_is_zero_lo_chip.assign(region, offset, value.lo())?;
+        let value_is_zero_hi_chip = IsZeroChip::construct(self.value_limb_is_zero[1].clone());
+        value_is_zero_hi_chip.assign(region, offset, value.hi())?;
 
+        region.assign_advice(
+            || "tx circuit: is_value_zero",
+            self.is_value_zero,
+            offset,
+            || Value::known(F::from(value_word_zero as u64)),
+        )?;
         let tx_id_unchanged_chip = IsEqualChip::construct(self.tx_id_unchanged.clone());
         tx_id_unchanged_chip.assign(
             region,
@@ -2299,10 +2548,12 @@ impl<F: Field> TxCircuitConfig<F> {
             region.assign_advice(|| col_anno, col, offset, || Value::known(col_val))?;
         }
         // 2nd phase columns
-        let tx_value_cell =
-            region.assign_advice(|| "tx_value", self.tx_table.value, offset, || value)?;
+        // let tx_value_cell =
+        //     region.assign_advice(|| "tx_value", self.tx_table.value, offset, || value)?;
 
-        Ok(tx_value_cell)
+        let tx_value_cells =
+            value.assign_advice(region, || "tx_value", self.tx_table.value, offset)?;
+        Ok(tx_value_cells)
     }
 
     fn assign_calldata_zeros(
@@ -2311,10 +2562,11 @@ impl<F: Field> TxCircuitConfig<F> {
         start: usize,
         end: usize,
     ) -> Result<(), Error> {
-        // let rlp_data = F::from( as u64);
         let tag = F::from(CallData as u64);
         let tx_id_is_zero_chip = IsZeroChip::construct(self.tx_id_is_zero.clone());
-        let value_is_zero_chip = IsZeroChip::construct(self.value_is_zero.clone());
+        let value_is_zero_lo_chip = IsZeroChip::construct(self.value_limb_is_zero[0].clone());
+        let value_is_zero_hi_chip = IsZeroChip::construct(self.value_limb_is_zero[1].clone());
+
         let tx_id_unchanged = IsEqualChip::construct(self.tx_id_unchanged.clone());
         let tag_chip = BinaryNumberChip::construct(self.tx_tag_bits);
 
@@ -2336,7 +2588,9 @@ impl<F: Field> TxCircuitConfig<F> {
             // no need to assign tx_id_is_zero_chip for real prover as tx_id = 0
             tx_id_is_zero_chip.assign(region, offset, Value::known(F::zero()))?;
             // no need to assign value_is_zero_chip for real prover as value = 0
-            value_is_zero_chip.assign(region, offset, Value::known(F::zero()))?;
+            value_is_zero_lo_chip.assign(region, offset, Value::known(F::zero()))?;
+            value_is_zero_hi_chip.assign(region, offset, Value::known(F::zero()))?;
+
             tx_id_unchanged.assign(
                 region,
                 offset,
@@ -2347,7 +2601,10 @@ impl<F: Field> TxCircuitConfig<F> {
             for (col, value) in [
                 (self.tx_table.tx_id, F::zero()),
                 (self.tx_table.index, F::zero()),
-                (self.tx_table.value, F::zero()),
+                (self.tx_table.value.lo(), F::zero()),
+                (self.tx_table.value.hi(), F::zero()),
+                // when value is zero, is_value_zero is true
+                (self.is_value_zero, F::one()),
                 (self.is_final, F::one()),
                 (self.is_calldata, F::one()),
                 (self.calldata_gas_cost_acc, F::zero()),
@@ -2405,7 +2662,8 @@ pub struct TxCircuit<F: Field> {
     /// Size
     pub size: usize,
     /// Tx value cells (exported for PI circuit)
-    pub value_cells: RefCell<Option<Vec<AssignedCell<F, F>>>>,
+    #[allow(clippy::type_complexity)]
+    pub value_cells: RefCell<Option<Vec<word::Word<AssignedCell<F, F>>>>>,
     _marker: PhantomData<F>,
 }
 
@@ -2581,12 +2839,11 @@ impl<F: Field> TxCircuit<F> {
         start_l1_queue_index: u64,
         sign_datas: Vec<SignData>,
         padding_txs: &[Transaction],
-    ) -> Result<Vec<AssignedCell<F, F>>, Error> {
+    ) -> Result<Vec<word::Word<AssignedCell<F, F>>>, Error> {
         layouter.assign_region(
             || "tx table aux",
             |mut region| {
                 let mut offset = 0;
-
                 let sigs = &sign_datas;
 
                 debug_assert_eq!(padding_txs.len() + self.txs.len(), sigs.len());
@@ -2779,7 +3036,6 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
         layouter: &mut impl Layouter<F>,
     ) -> Result<(), Error> {
         assert!(self.txs.len() <= self.max_txs);
-
         let padding_txs = (self.txs.len()..self.max_txs)
             .map(|i| {
                 let mut tx = Transaction::dummy(self.chain_id);

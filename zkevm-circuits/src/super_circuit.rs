@@ -82,7 +82,7 @@ use crate::{
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
         MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SHA256Table,
-        SigTable, TxTable, U16Table, U8Table, UXTable,
+        SigTable, TxTable, UXTable,
     },
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
@@ -113,10 +113,10 @@ pub struct SuperCircuitConfig<F: Field> {
     rlp_table: RlpTable,
     tx_table: TxTable,
     poseidon_table: PoseidonTable,
-    u8_table: U8Table,
-    u16_table: U16Table,
+    // u8_table: U8Table,
+    // u16_table: U16Table,
     ux8_table: UXTable<8>,
-    u10_table: UXTable<10>,
+    ux10_table: UXTable<10>,
     ux16_table: UXTable<16>,
     evm_circuit: EvmCircuitConfig<F>,
     state_circuit: StateCircuitConfig<F>,
@@ -208,9 +208,9 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
         log_circuit_info(meta, "power of randomness table");
 
-        let u8_table = U8Table::construct(meta);
+        // let u8_table = U8Table::construct(meta);
         // log_circuit_info(meta, "u8 table");
-        let u16_table = U16Table::construct(meta);
+        // let u16_table = U16Table::construct(meta);
         // log_circuit_info(meta, "u16 table");
 
         let ux8_table = UXTable::construct(meta);
@@ -244,7 +244,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             meta,
             RlpCircuitConfigArgs {
                 rlp_table,
-                u8_table,
+                //u8_table,
+                u8_table: ux8_table,
                 challenges: challenges_expr.clone(),
             },
         );
@@ -269,8 +270,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
                 keccak_table: keccak_table.clone(),
                 rlp_table,
                 sig_table,
-                u8_table,
-                u16_table,
+                u8_table: ux8_table,
+                u16_table: ux16_table,
                 challenges: challenges_expr.clone(),
             },
         );
@@ -344,7 +345,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             meta,
             ExpCircuitArgs {
                 exp_table,
-                u16_table,
+                u16_table: ux16_table,
             },
         );
         log_circuit_info(meta, "exp circuit");
@@ -402,10 +403,10 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             tx_table,
             rlp_table,
             poseidon_table,
-            u8_table,
+            // u8_table,
             ux8_table,
-            u10_table,
-            u16_table,
+            ux10_table: u10_table,
+            // u16_table,
             ux16_table,
             evm_circuit,
             state_circuit,
@@ -780,8 +781,9 @@ impl<
     ) -> Result<(), Error> {
         let challenges = challenges.values(&layouter);
 
-        config.u8_table.load(&mut layouter)?;
-        config.u16_table.load(&mut layouter)?;
+        config.ux8_table.load(&mut layouter)?;
+        config.ux10_table.load(&mut layouter)?;
+        config.ux16_table.load(&mut layouter)?;
 
         self.synthesize_sub(&config, &challenges, &mut layouter)
     }
