@@ -7,7 +7,7 @@ mod test;
 
 use crate::{
     evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
-    table::{LookupTable, RlpFsmRlpTable, U8Table},
+    table::{LookupTable, RlpFsmRlpTable, UXTable},
     util::{
         is_zero::{IsZeroChip, IsZeroConfig},
         Challenges, SubCircuit, SubCircuitConfig,
@@ -284,7 +284,8 @@ pub struct RlpCircuitConfig<F> {
     /// ROM table
     rom_table: RlpFsmRomTable,
     /// Range u8 table
-    u8_table: U8Table,
+    // u8_table: U8Table,
+    u8_table: UXTable<8>,
 }
 
 impl<F: Field> RlpCircuitConfig<F> {
@@ -293,7 +294,8 @@ impl<F: Field> RlpCircuitConfig<F> {
         meta: &mut ConstraintSystem<F>,
         rom_table: RlpFsmRomTable,
         data_table: RlpFsmDataTable,
-        u8_table: U8Table,
+        //u8_table: U8Table,
+        u8_table: UXTable<8>,
         rlp_table: RlpFsmRlpTable,
         challenges: &Challenges<Expression<F>>,
     ) -> Self {
@@ -562,7 +564,7 @@ impl<F: Field> RlpCircuitConfig<F> {
             cb.gate(meta.query_fixed(q_enabled, Rotation::cur()))
         });
 
-        meta.lookup("byte value check", |meta| {
+        meta.lookup_any("byte value check", |meta| {
             let cond = and::expr([
                 meta.query_fixed(q_enabled, Rotation::cur()),
                 not::expr(is_padding_in_dt.expr(Rotation::cur())(meta)),
@@ -570,7 +572,7 @@ impl<F: Field> RlpCircuitConfig<F> {
 
             vec![(
                 cond * meta.query_advice(data_table.byte_value, Rotation::cur()),
-                u8_table.into(),
+                meta.query_fixed(u8_table.col, Rotation::cur()),
             )]
         });
 
@@ -643,7 +645,7 @@ impl<F: Field> RlpCircuitConfig<F> {
                     cmp_enabled,
                     |meta| meta.query_advice(byte_value, Rotation::cur()),
                     |_| $value.expr(),
-                    u8_table.into(),
+                    u8_table.col,
                 );
             };
         }
@@ -654,7 +656,7 @@ impl<F: Field> RlpCircuitConfig<F> {
                     cmp_enabled,
                     |_| $value.expr(),
                     |meta| meta.query_advice(byte_value, Rotation::cur()),
-                    u8_table.into(),
+                    u8_table.col,
                 );
             };
         }
@@ -737,21 +739,21 @@ impl<F: Field> RlpCircuitConfig<F> {
             cmp_enabled,
             |meta| meta.query_advice(tag_idx, Rotation::cur()),
             |meta| meta.query_advice(tag_length, Rotation::cur()),
-            u8_table.into(),
+            u8_table.col,
         );
         let mlength_lte_0x20 = ComparatorChip::configure(
             meta,
             cmp_enabled,
             |meta| meta.query_advice(max_length, Rotation::cur()),
             |_meta| 0x20.expr(),
-            u8_table.into(),
+            u8_table.col,
         );
         let tlength_lte_mlength = ComparatorChip::configure(
             meta,
             cmp_enabled,
             |meta| meta.query_advice(tag_length, Rotation::cur()),
             |meta| meta.query_advice(max_length, Rotation::cur()),
-            u8_table.into(),
+            u8_table.col,
         );
         let depth_check = IsEqualChip::configure(
             meta,
@@ -1894,7 +1896,8 @@ pub struct RlpCircuitConfigArgs<F: Field> {
     /// RLP table.
     pub rlp_table: RlpFsmRlpTable,
     /// u8 table
-    pub u8_table: U8Table,
+    // pub u8_table: U8Table,
+    pub u8_table: UXTable<8>,
     /// Challenge API.
     pub challenges: Challenges<Expression<F>>,
 }

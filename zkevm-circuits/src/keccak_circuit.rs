@@ -950,10 +950,15 @@ impl<F: Field> KeccakCircuitConfig<F> {
                 row.data_rlc,
                 Value::known(F::from(row.length as u64)),
                 row.hash_rlc,
-                //row.hash.lo(),
-                //row.hash.hi(),
+                row.hash.lo(),
+                row.hash.hi(),
             ],
         )?;
+
+        // work around to remove last two items(hi + lo parts), avoid to mistake hash output cells
+        // in method `extract_hash_cells` of aggregation circuit.
+        res.remove(res.len() - 1);
+        res.remove(res.len() - 1);
 
         // Cell values
         for (idx, (bit, column)) in row

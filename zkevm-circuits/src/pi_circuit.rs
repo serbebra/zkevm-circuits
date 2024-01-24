@@ -33,7 +33,7 @@ use crate::{
     },
     state_circuit::StateCircuitExports,
     tx_circuit::{CHAIN_ID_OFFSET as CHAIN_ID_OFFSET_IN_TX, TX_HASH_OFFSET, TX_LEN},
-    //util::word,
+    util::word,
     witness::{self, Block, BlockContext, BlockContexts, Transaction},
 };
 use bus_mapping::util::read_env_var;
@@ -343,8 +343,8 @@ pub struct PiCircuitConfig<F: Field> {
     rpi_field_bytes: Column<Advice>,   // rpi in bytes
     rpi_field_bytes_acc: Column<Advice>,
     rpi_rlc_acc: Column<Advice>, // RLC(rpi) as the input to Keccak table
-    // the input word type to Keccak table, TODO: enable rpi_rlc_acc_word in stage2
-    // rpi_rlc_acc_word: word::Word<Column<Advice>>,
+    // the input word type to Keccak table
+    rpi_rlc_acc_word: word::Word<Column<Advice>>,
     rpi_length_acc: Column<Advice>,
 
     // columns for padding in block context and tx hashes
@@ -423,7 +423,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
         let rpi_bytes_acc = meta.advice_column_in(SecondPhase);
         // hold the accumulated value of rlc(rpi_bytes, keccak_input)
         let rpi_rlc_acc = meta.advice_column_in(SecondPhase);
-        //let rpi_rlc_acc_word = word::Word::new([meta.advice_column(), meta.advice_column()]);
+        let rpi_rlc_acc_word = word::Word::new([meta.advice_column(), meta.advice_column()]);
 
         // hold the accumulated length of rpi_bytes for looking into keccak table
         let rpi_length_acc = meta.advice_column();
@@ -465,9 +465,12 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
         meta.enable_equality(real_rpi);
         meta.enable_equality(block_table.value); // copy block to rpi
         meta.enable_equality(block_table.index);
-        meta.enable_equality(tx_table.value); // copy tx hashes to rpi
+        meta.enable_equality(tx_table.value.lo()); // copy tx hashes to rpi
+        meta.enable_equality(tx_table.value.hi()); // copy tx hashes to rpi
         meta.enable_equality(cum_num_txs);
         meta.enable_equality(pi);
+        meta.enable_equality(rpi_rlc_acc_word.lo());
+        meta.enable_equality(rpi_rlc_acc_word.hi());
 
         // 1. constrain rpi_bytes, rpi_bytes_acc, and rpi for each field
         meta.create_gate(
@@ -638,33 +641,32 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
         // q_keccak = 1     |pi_bs_rlc|     ..    |      ...      | pi_hash_rlc |      136       |
         //   pi hash        |   hi    |     ..    |      ...      |     ...     |       16       |
         //                  |   lo    |     ..    |      ...      | pi_hash_rlc |       32       |
-        // TODO: enable this lookup in stage2
-        // meta.lookup_any("keccak(rpi)", |meta| {
-        //     let q_keccak = meta.query_selector(q_keccak);
+        meta.lookup_any("keccak(rpi)", |meta| {
+            let q_keccak = meta.query_selector(q_keccak);
 
-        //     let rpi_rlc = meta.query_advice(rpi, Rotation::cur());
-        //     let rpi_length = meta.query_advice(rpi_length_acc, Rotation::cur());
-        //     let output = meta.query_advice(rpi_rlc_acc, Rotation::cur());
-        //     //let output_word = rpi_rlc_acc_word.query_advice(meta, Rotation::cur());
+            let rpi_rlc = meta.query_advice(rpi, Rotation::cur());
+            let rpi_length = meta.query_advice(rpi_length_acc, Rotation::cur());
+            let output = meta.query_advice(rpi_rlc_acc, Rotation::cur());
+            let output_word = rpi_rlc_acc_word.query_advice(meta, Rotation::cur());
 
-        //     let input_exprs = vec![
-        //         1.expr(), // q_enable = true
-        //         1.expr(), // is_final = true
-        //         rpi_rlc,
-        //         rpi_length,
-        //         output,
-        //         //output_word.lo(),
-        //         //soutput_word.hi(),
-        //     ];
-        //     let keccak_table_exprs = keccak_table.table_exprs(meta);
-        //     assert_eq!(input_exprs.len(), keccak_table_exprs.len());
+            let input_exprs = vec![
+                1.expr(), // q_enable = true
+                1.expr(), // is_final = true
+                rpi_rlc,
+                rpi_length,
+                output,
+                output_word.lo(),
+                output_word.hi(),
+            ];
+            let keccak_table_exprs = keccak_table.table_exprs(meta);
+            assert_eq!(input_exprs.len(), keccak_table_exprs.len());
 
-        //     input_exprs
-        //         .into_iter()
-        //         .zip(keccak_table_exprs)
-        //         .map(|(input, table)| (q_keccak.expr() * input, table))
-        //         .collect()
-        // });
+            input_exprs
+                .into_iter()
+                .zip(keccak_table_exprs)
+                .map(|(input, table)| (q_keccak.expr() * input, table))
+                .collect()
+        });
 
         // 3. constrain block_table
         meta.create_gate(
@@ -707,7 +709,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
             rpi_field_bytes: rpi_bytes,
             rpi_field_bytes_acc: rpi_bytes_acc,
             rpi_rlc_acc,
-            //rpi_rlc_acc_word,
+            rpi_rlc_acc_word,
             rpi_length_acc,
             is_rpi_padding,
             real_rpi,
@@ -732,10 +734,10 @@ type PiHashExport<F> = Vec<AssignedCell<F, F>>;
 
 #[derive(Debug, Clone)]
 struct Connections<F: Field> {
-    //start_state_root: word::Word<AssignedCell<F, F>>,
-    start_state_root: AssignedCell<F, F>,
-    //end_state_root: word::Word<AssignedCell<F, F>>,
-    end_state_root: AssignedCell<F, F>,
+    start_state_root: word::Word<AssignedCell<F, F>>,
+    //start_state_root: AssignedCell<F, F>,
+    end_state_root: word::Word<AssignedCell<F, F>>,
+    //end_state_root: AssignedCell<F, F>,
     withdraw_root: AssignedCell<F, F>,
 }
 
@@ -802,7 +804,7 @@ impl<F: Field> PiCircuitConfig<F> {
         region: &mut Region<'_, F>,
         public_data: &PublicData,
         block_value_cells: &[AssignedCell<F, F>],
-        tx_value_cells: &[AssignedCell<F, F>],
+        tx_value_cells: &[word::Word<AssignedCell<F, F>>],
         challenges: &Challenges<Value<F>>,
     ) -> Result<(PiHashExport<F>, Connections<F>), Error> {
         // 1. Assign data bytes.
@@ -849,7 +851,7 @@ impl<F: Field> PiCircuitConfig<F> {
         offset: usize,
         public_data: &PublicData,
         block_value_cells: &[AssignedCell<F, F>],
-        tx_value_cells: &[AssignedCell<F, F>],
+        tx_value_cells: &[word::Word<AssignedCell<F, F>>],
         challenges: &Challenges<Value<F>>,
     ) -> Result<(usize, AssignedCell<F, F>), Error> {
         // Initialise the RLC accumulator and length values.
@@ -983,6 +985,7 @@ impl<F: Field> PiCircuitConfig<F> {
             rpi_rlc_acc = tmp_rpi_rlc_acc;
             rpi_length = tmp_rpi_length;
             tx_copy_cells.push(cells[RPI_CELL_IDX].clone());
+
             if i == public_data.max_txs - 1 {
                 data_bytes_rlc = Some(cells[RPI_RLC_ACC_CELL_IDX].clone());
                 data_bytes_length = Some(cells[RPI_LENGTH_ACC_CELL_IDX].clone());
@@ -990,9 +993,10 @@ impl<F: Field> PiCircuitConfig<F> {
         }
         // Copy tx_hashes to tx table
         for (i, tx_hash_cell) in tx_copy_cells.into_iter().enumerate() {
+            // tx hash value still use rlc format in tx circuit.
             region.constrain_equal(
                 tx_hash_cell.cell(),
-                tx_value_cells[i * TX_LEN + TX_HASH_OFFSET - 1].cell(),
+                tx_value_cells[i * TX_LEN + TX_HASH_OFFSET - 1].lo().cell(),
             )?;
         }
 
@@ -1015,6 +1019,15 @@ impl<F: Field> PiCircuitConfig<F> {
                 &public_data.get_data_hash().to_fixed_bytes(),
                 challenges.evm_word(),
             );
+
+            let data_hash_word =
+                word::Word::from(public_data.get_data_hash().to_word()).map(Value::known);
+            data_hash_word.assign_advice(
+                region,
+                || "assign rpi_rlc_acc_word",
+                self.rpi_rlc_acc_word,
+                offset,
+            )?;
             region.assign_advice(
                 || "data_hash_rlc",
                 self.rpi_rlc_acc,
@@ -1037,7 +1050,7 @@ impl<F: Field> PiCircuitConfig<F> {
         offset: usize,
         public_data: &PublicData,
         block_value_cells: &[AssignedCell<F, F>],
-        tx_value_cells: &[AssignedCell<F, F>],
+        tx_value_cells: &[word::Word<AssignedCell<F, F>>],
         data_hash_rlc_cell: &AssignedCell<F, F>,
         challenges: &Challenges<Value<F>>,
     ) -> Result<(usize, AssignedCell<F, F>, Connections<F>), Error> {
@@ -1068,29 +1081,43 @@ impl<F: Field> PiCircuitConfig<F> {
                 rpi_length,
                 challenges,
             )?;
-            Ok(cells[RPI_CELL_IDX].clone())
+            Ok((cells[0].clone(), cells[3].clone(), cells[4].clone()))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
         // copy chain_id to block table
         for block_idx in 0..public_data.max_inner_blocks {
             region.constrain_equal(
-                rpi_cells[0].cell(),
+                rpi_cells[0].0.cell(),
                 block_value_cells[block_idx * BLOCK_LEN + CHAIN_ID_OFFSET].cell(),
             )?;
         }
         // copy chain_id to tx table
         for tx_id in 0..public_data.max_txs {
+            // region.constrain_equal(
+            //     rpi_cells[0].0.cell(),
+            //     tx_value_cells[tx_id * TX_LEN + CHAIN_ID_OFFSET_IN_TX - 1].cell(),
+            // )?;
             region.constrain_equal(
-                rpi_cells[0].cell(),
-                tx_value_cells[tx_id * TX_LEN + CHAIN_ID_OFFSET_IN_TX - 1].cell(),
+                rpi_cells[0].1.cell(),
+                tx_value_cells[tx_id * TX_LEN + CHAIN_ID_OFFSET_IN_TX - 1]
+                    .lo()
+                    .cell(),
+            )?;
+            region.constrain_equal(
+                rpi_cells[0].2.cell(),
+                tx_value_cells[tx_id * TX_LEN + CHAIN_ID_OFFSET_IN_TX - 1]
+                    .hi()
+                    .cell(),
             )?;
         }
         // connections to be done with other sub-circuits.
         let connections = Connections {
-            start_state_root: rpi_cells[1].clone(),
-            end_state_root: rpi_cells[2].clone(),
-            withdraw_root: rpi_cells[3].clone(),
+            //start_state_root: rpi_cells[1].clone(),
+            start_state_root: word::Word::new([rpi_cells[1].1.clone(), rpi_cells[1].2.clone()]),
+            // end_state_root: rpi_cells[2].clone(),
+            end_state_root: word::Word::new([rpi_cells[2].1.clone(), rpi_cells[2].2.clone()]),
+            withdraw_root: rpi_cells[3].0.clone(),
         };
 
         // Assign data_hash
@@ -1123,6 +1150,14 @@ impl<F: Field> PiCircuitConfig<F> {
             || "pi_bytes_length in the rpi_length_acc col",
             region,
             self.rpi_length_acc,
+            offset,
+        )?;
+
+        let pi_hash_word = word::Word::from(public_data.get_pi().to_word()).map(Value::known);
+        pi_hash_word.assign_advice(
+            region,
+            || "assign rpi_rlc_acc_word",
+            self.rpi_rlc_acc_word,
             offset,
         )?;
         let pi_hash_rlc_cell = {
@@ -1165,7 +1200,7 @@ impl<F: Field> PiCircuitConfig<F> {
             challenges,
         )?;
         (offset, rpi_rlc_acc, rpi_length) = (tmp_offset, tmp_rpi_rlc_acc, tmp_rpi_length);
-        let pi_hash_hi_cells = cells[3..].to_vec();
+        let pi_hash_hi_cells = cells[5..].to_vec();
 
         // the low 16 bytes of keccak output
         let (tmp_offset, _, _, cells) = self.assign_field(
@@ -1179,7 +1214,7 @@ impl<F: Field> PiCircuitConfig<F> {
             challenges,
         )?;
         offset = tmp_offset;
-        let pi_hash_lo_cells = cells[3..].to_vec();
+        let pi_hash_lo_cells = cells[5..].to_vec();
 
         // Copy pi_hash value we collected from assigning pi bytes.
         region.constrain_equal(pi_hash_rlc_cell.cell(), cells[RPI_RLC_ACC_CELL_IDX].cell())?;
@@ -1254,7 +1289,6 @@ impl<F: Field> PiCircuitConfig<F> {
             F::zero(),
         )?;
 
-        //let rpi_rlc_acc_word = word::Word::new([F::zero(), F::zero()]);
         region.assign_advice_from_constant(
             || "rpi_length_acc[0]",
             self.rpi_length_acc,
@@ -1320,9 +1354,13 @@ impl<F: Field> PiCircuitConfig<F> {
             self.q_field_step.enable(region, q_offset)?;
         }
 
-        let (mut final_rpi_cell, mut final_rpi_rlc_cell, mut final_rpi_length_cell) =
-            (None, None, None);
-        let cells =
+        let (
+            mut final_rpi_cell,
+            mut final_rpi_rlc_cell,
+            mut final_rpi_word_cells,
+            mut final_rpi_length_cell,
+        ) = (None, None, None, None);
+        let cells: Vec<(AssignedCell<F, F>, (AssignedCell<F, F>, AssignedCell<F, F>))> =
             value_be_bytes
                 .iter()
                 .zip(rpi_bytes_acc.iter())
@@ -1386,6 +1424,30 @@ impl<F: Field> PiCircuitConfig<F> {
                         row_offset,
                         || rpi_rlc_acc,
                     )?;
+
+                    let rpi_word = if value_be_bytes.len() >= 32 {
+                        let value_word = Word::from_big_endian(&value_be_bytes[..32]);
+                        word::Word::from(value_word).map(Value::known)
+                    } else {
+                        // no meaningful, just for final_rpi_word_cells dummy value
+                        let len = value_be_bytes.len();
+                        let zero_iter = std::iter::repeat(0); // 生成一个无限重复0的迭代器
+                        let value_bytes_with_zero = zero_iter
+                            .take(32 - len)
+                            .chain(value_be_bytes.to_vec())
+                            .collect::<Vec<u8>>();
+                        // pad zero and take 32 bytes
+                        let value_word = Word::from_big_endian(&value_bytes_with_zero[..32]);
+                        word::Word::from(value_word).map(Value::known)
+                    };
+
+                    final_rpi_word_cells = Some(rpi_word.assign_advice(
+                        region,
+                        || "assign rpi_rlc_acc_word",
+                        self.rpi_rlc_acc_word,
+                        row_offset,
+                    )?);
+
                     let rpi_length_cell = region.assign_advice(
                         || "rpi_length_acc",
                         self.rpi_length_acc,
@@ -1452,6 +1514,7 @@ impl<F: Field> PiCircuitConfig<F> {
         //      ...
         //      byte_cell[n_bytes - 1]
         // ]
+        let final_rpi_word_cells_unwrap = final_rpi_word_cells.unwrap();
         Ok((
             offset + n_bytes,
             rpi_rlc_acc,
@@ -1461,6 +1524,8 @@ impl<F: Field> PiCircuitConfig<F> {
                     final_rpi_cell.unwrap(),
                     final_rpi_rlc_cell.unwrap(),
                     final_rpi_length_cell.unwrap(),
+                    final_rpi_word_cells_unwrap.lo(),
+                    final_rpi_word_cells_unwrap.hi(),
                 ],
                 byte_cells,
             ]
@@ -1627,7 +1692,8 @@ pub struct PiCircuit<F: Field> {
     _marker: PhantomData<F>,
 
     connections: RefCell<Option<Connections<F>>>,
-    tx_value_cells: RefCell<Option<Vec<AssignedCell<F, F>>>>,
+    #[allow(clippy::type_complexity)]
+    tx_value_cells: RefCell<Option<Vec<word::Word<AssignedCell<F, F>>>>>,
 }
 
 impl<F: Field> PiCircuit<F> {
@@ -1679,7 +1745,7 @@ impl<F: Field> PiCircuit<F> {
     }
 
     /// Import tx value cells from Tx circuit
-    pub fn import_tx_values(&self, values: Vec<AssignedCell<F, F>>) {
+    pub fn import_tx_values(&self, values: Vec<word::Word<AssignedCell<F, F>>>) {
         *self.tx_value_cells.borrow_mut() = Some(values);
     }
 
@@ -1706,15 +1772,22 @@ impl<F: Field> PiCircuit<F> {
                         (&state_roots.start_state_root, &state_roots.end_state_root)
                     );
 
-                    // TODO: enable this constraint later after pi circuit, tx circuit updated
-                    // region.constrain_equal(
-                    //     local_conn.start_state_root.cell(),
-                    //     state_roots.start_state_root.0,
-                    // )?;
-                    // region.constrain_equal(
-                    //     local_conn.end_state_root.cell(),
-                    //     state_roots.end_state_root.0,
-                    // )?;
+                    region.constrain_equal(
+                        local_conn.start_state_root.lo().cell(),
+                        state_roots.start_state_root.0.lo(),
+                    )?;
+                    region.constrain_equal(
+                        local_conn.start_state_root.hi().cell(),
+                        state_roots.start_state_root.0.hi(),
+                    )?;
+                    region.constrain_equal(
+                        local_conn.end_state_root.lo().cell(),
+                        state_roots.end_state_root.0.lo(),
+                    )?;
+                    region.constrain_equal(
+                        local_conn.end_state_root.hi().cell(),
+                        state_roots.end_state_root.0.hi(),
+                    )?;
                 } else {
                     log::warn!("state roots are not set, skip connection with state circuit");
                 }
