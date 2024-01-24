@@ -39,7 +39,7 @@ use crate::{
     evm_circuit::util::{constraint_builder::BaseConstraintBuilder, math_gadget::LtGadget},
     table::{
         BytecodeFieldTag, BytecodeTable, CopyTable, LookupTable, RwTable, RwTableTag,
-        TxContextFieldTag, TxTable, U8Table,
+        TxContextFieldTag, TxTable, U8Table, UXTable,
     },
     util::{Challenges, SubCircuit, SubCircuitConfig},
     witness,
@@ -120,7 +120,7 @@ pub struct CopyCircuitConfig<F> {
     /// BytecodeTable
     pub bytecode_table: BytecodeTable,
     /// u8 lookup Table
-    pub u8_table: U8Table,
+    pub u8_table: UXTable<8>,
 }
 
 /// Circuit configuration arguments
@@ -138,7 +138,7 @@ pub struct CopyCircuitConfigArgs<F: Field> {
     /// Challenges
     pub challenges: Challenges<Expression<F>>,
     /// u8 lookup Table
-    pub u8_table: U8Table,
+    pub u8_table: UXTable<8>,
 }
 
 impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
@@ -186,7 +186,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     |meta| meta.query_selector(q_step),
                     |meta| meta.query_advice(lhs_base, CURRENT) + idx.expr(),
                     |meta| meta.query_advice(rhs, CURRENT),
-                    u8_table.into(),
+                    u8_table.col,
                 )
             })
         };
