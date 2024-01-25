@@ -137,6 +137,9 @@ impl<F: Field> SubCircuitConfig<F> for StateCircuitConfig<F> {
             lookups,
         );
 
+        //let storage_key_hi = MpiChip::configure(meta, selector, rw_table.storage_key.hi(),
+        // lookups);
+
         let initial_value = word::Word::new([meta.advice_column(), meta.advice_column()]);
         // If the rw lookup is for an Account with field tag = CodeHash and both values are 0, we
         // actually want to do an mpt lookup for an non-existing account instead of an mpt lookup
