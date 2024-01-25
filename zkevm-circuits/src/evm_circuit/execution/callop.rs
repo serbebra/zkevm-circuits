@@ -349,6 +349,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                         CallContextFieldTag::CallerId,
                         Word::from_lo_unchecked(cb.curr.state.call_id.expr()),
                     ),
+                    (CallContextFieldTag::IsRoot, Word::zero()),
                     (
                         CallContextFieldTag::CallDataOffset,
                         Word::from_lo_unchecked(call_gadget.cd_address.offset()),
@@ -368,7 +369,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 ] {
                     cb.call_context_lookup_write(Some(callee_call_id.expr()), field_tag, value);
                 }
-                // rwc_delta = 25 + is_call_or_callcode + transfer + is_delegatecall * 2
+                // rwc_delta = 26 + is_call_or_callcode + transfer + is_delegatecall * 2
 
                 // Save caller's call state
                 for (field_tag, value) in [
@@ -420,7 +421,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                 ] {
                     cb.call_context_lookup_write(None, field_tag, value);
                 }
-                // rwc_delta = 33 + is_call_or_callcode + transfer + is_delegatecall * 2
+                // rwc_delta = 34 + is_call_or_callcode + transfer + is_delegatecall * 2
 
                 // copy table lookup to verify the copying of bytes:
                 // - from caller's memory (`call_data_length` bytes starting at `call_data_offset`)
@@ -498,8 +499,8 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                     },
                 );
 
-                // +15 call context lookups for precompile.
-                let rw_counter_delta = 15.expr()
+                // +16 call context lookups for precompile.
+                let rw_counter_delta = 16.expr()
                     + rw_counter_delta.expr()
                     + precompile_input_rws.expr()
                     + precompile_output_rws.expr()
@@ -527,8 +528,8 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
                     cb,
                     call_gadget.callee_address(),
                     precompile_input_bytes_rlc.expr(),
-                    precompile_output_bytes_rlc.expr(),
-                    precompile_return_bytes_rlc.expr(),
+                    Some(precompile_output_bytes_rlc.expr()),
+                    Some(precompile_return_bytes_rlc.expr()),
                 );
 
                 (
@@ -1001,7 +1002,7 @@ impl<F: Field> ExecutionGadget<F> for CallOpGadget<F> {
 
         log::trace!("callop is precompile call {}", is_precompile_call);
         let precompile_return_length = if is_precompile_call && is_precheck_ok {
-            rws.offset_add(14); // skip
+            rws.offset_add(15); // skip
             let value_rw = rws.next();
             assert_eq!(
                 value_rw.field_tag(),

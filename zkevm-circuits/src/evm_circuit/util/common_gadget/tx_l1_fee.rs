@@ -22,8 +22,9 @@ use halo2_proofs::plonk::{Error, Expression};
 /// Transaction L1 fee gadget for L1GasPriceOracle contract
 #[derive(Clone, Debug)]
 pub(crate) struct TxL1FeeGadget<F> {
-    // TODO: construct Word9 type to replace old U64Word ?
-    /// Calculated L1 fee of transaction
+    /// Transaction L1 fee
+    /// It should be an Uint64, but it's also used to check sender balance which
+    /// needs to be added as a Word.
     tx_l1_fee_word: Word32Cell<F>,
     /// Remainder when calculating L1 fee
     remainder_word: Word32Cell<F>,
@@ -136,7 +137,11 @@ impl<F: Field> TxL1FeeGadget<F> {
     }
 
     pub(crate) fn tx_l1_fee(&self) -> Expression<F> {
-        from_bytes::expr(&self.tx_l1_fee_word.limbs[..31])
+        from_bytes::expr(&self.tx_l1_fee_word.limbs[..N_BYTES_U64])
+    }
+
+    pub(crate) fn tx_l1_fee_word(&self) -> &Word<F> {
+        &self.tx_l1_fee_word
     }
 
     fn raw_construct(cb: &mut EVMConstraintBuilder<F>, tx_data_gas_cost: Expression<F>) -> Self {
@@ -147,8 +152,8 @@ impl<F: Field> TxL1FeeGadget<F> {
         let fee_overhead_word = cb.query_word32();
         let fee_scalar_word = cb.query_word32();
 
-        let [tx_l1_fee, remainder, base_fee, fee_overhead, fee_scalar] = [
-            &tx_l1_fee_word,
+        let tx_l1_fee = from_bytes::expr(&tx_l1_fee_word.cells[..N_BYTES_U64]);
+        let [remainder, base_fee, fee_overhead, fee_scalar] = [
             &remainder_word,
             &base_fee_word,
             &fee_overhead_word,

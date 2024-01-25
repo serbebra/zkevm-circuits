@@ -186,6 +186,10 @@ pub enum TxFieldTag {
     AccessListRLC,
     /// The block number in which this tx is included.
     BlockNumber,
+    /// Max Priority Fee Per Gas (EIP1559)
+    MaxPriorityFeePerGas,
+    /// Max Fee Per Gas (EIP1559)
+    MaxFeePerGas,
 }
 impl_expr!(TxFieldTag);
 
@@ -212,6 +216,8 @@ pub struct TxTable {
     /// Value
     //pub value: Column<Advice>,
     pub value: word::Word<Column<Advice>>,
+    /// Access list address
+    pub access_list_address: Column<Advice>,
 }
 
 impl TxTable {
@@ -226,6 +232,7 @@ impl TxTable {
             index: meta.advice_column(),
             //value: meta.advice_column_in(SecondPhase),
             value: word::Word::new([meta.advice_column(), meta.advice_column()]),
+            access_list_address: meta.advice_column(),
         }
     }
 
@@ -319,12 +326,13 @@ impl TxTable {
                 offset += 1;
 
                 // Tx Table contains an initial region that has a size parametrized by max_txs
-                // with all the tx data except for calldata, and then a second
+                // with all the tx data except for calldata and access list, and then a second
                 // region that has a size parametrized by max_calldata with all
-                // the tx calldata.  This is required to achieve a constant fixed column tag
-                // regardless of the number of input txs or the calldata size of each tx.
-                let mut calldata_assignments: Vec<[Value<F>; 5]> = Vec::new();
-                // Assign Tx data (all tx fields except for calldata)
+                // the tx calldata and access list.  This is required to achieve a constant fixed
+                // column tag regardless of the number of input txs or the
+                // calldata/access list size of each tx.
+
+                // Assign Tx data (all tx fields except for calldata and access list)
                 let padding_txs = (txs.len()..max_txs)
                     .map(|tx_id| {
                         let mut padding_tx = Transaction::dummy(chain_id);
@@ -336,7 +344,6 @@ impl TxTable {
                 for (i, tx) in txs.iter().chain(padding_txs.iter()).enumerate() {
                     debug_assert_eq!(i + 1, tx.id);
                     let tx_data = tx.table_assignments_fixed(*challenges);
-                    let tx_calldata = tx.table_assignments_dyn(*challenges);
                     for row in tx_data {
                         tx_value_cells.push(assign_row(
                             &mut region,
@@ -349,21 +356,39 @@ impl TxTable {
                         )?);
                         offset += 1;
                     }
-                    calldata_assignments.extend(tx_calldata.iter());
                 }
-                // Assign Tx calldata
-                for row in calldata_assignments.into_iter() {
-                    assign_row(
-                        &mut region,
-                        offset,
-                        self.q_enable,
-                        &advice_columns,
-                        &self.tag,
-                        &row,
-                        "",
-                    )?;
-                    offset += 1;
+
+                // Assign dynamic calldata and access list section
+                for tx in txs.iter().chain(padding_txs.iter()) {
+                    for row in tx.table_assignments_dyn(*challenges).into_iter() {
+                        assign_row(
+                            &mut region,
+                            offset,
+                            self.q_enable,
+                            &advice_columns,
+                            &self.tag,
+                            &row,
+                            "",
+                        )?;
+                        offset += 1;
+                    }
+                    for row in tx
+                        .table_assignments_access_list_dyn(*challenges)
+                        .into_iter()
+                    {
+                        assign_row(
+                            &mut region,
+                            offset,
+                            self.q_enable,
+                            &advice_columns,
+                            &self.tag,
+                            &row,
+                            "",
+                        )?;
+                        offset += 1;
+                    }
                 }
+
                 Ok(tx_value_cells)
             },
         )
@@ -379,6 +404,7 @@ impl<F: Field> LookupTable<F> for TxTable {
             self.index.into(),
             self.value.lo().into(),
             self.value.hi().into(),
+            self.access_list_address.into(),
         ]
     }
 
@@ -390,6 +416,7 @@ impl<F: Field> LookupTable<F> for TxTable {
             String::from("index"),
             String::from("value lo"),
             String::from("value hi"),
+            String::from("access_list_address"),
         ]
     }
 
@@ -401,6 +428,7 @@ impl<F: Field> LookupTable<F> for TxTable {
             meta.query_advice(self.index, Rotation::cur()),
             meta.query_advice(self.value.lo(), Rotation::cur()),
             meta.query_advice(self.value.hi(), Rotation::cur()),
+            meta.query_advice(self.access_list_address, Rotation::cur()),
         ]
     }
 }
@@ -857,6 +885,46 @@ impl MptTable {
             || "mpt table zkevm",
             |mut region| self.load_with_region(&mut region, updates, max_mpt_rows),
         )
+    }
+
+    pub(crate) fn load_par<F: Field>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        updates: &MptUpdates,
+        max_mpt_rows: usize,
+        randomness: Value<F>,
+    ) -> Result<(), Error> {
+        let num_threads = std::thread::available_parallelism().unwrap().get();
+        let chunk_size = (max_mpt_rows + num_threads - 1) / num_threads;
+        let mpt_update_rows = updates
+            .table_assignments(randomness)
+            .into_iter()
+            .chain(repeat(MptUpdateRow::padding()))
+            .take(max_mpt_rows)
+            .collect_vec();
+        let mut is_first_passes = vec![true; num_threads];
+        let assignments = mpt_update_rows
+            .chunks(chunk_size)
+            .zip(is_first_passes.iter_mut())
+            .map(|(mpt_update_rows, is_first_pass)| {
+                |mut region: Region<'_, F>| -> Result<(), Error> {
+                    if *is_first_pass {
+                        *is_first_pass = false;
+                        let last_off = mpt_update_rows.len() - 1;
+                        self.assign(&mut region, last_off, &mpt_update_rows[last_off])?;
+                        return Ok(());
+                    }
+                    for (offset, row) in mpt_update_rows.iter().enumerate() {
+                        self.assign(&mut region, offset, row)?;
+                    }
+                    Ok(())
+                }
+            })
+            .collect_vec();
+
+        layouter.assign_regions(|| "mpt table zkevm", assignments)?;
+
+        Ok(())
     }
 
     pub(crate) fn load_with_region<F: Field>(
@@ -1880,10 +1948,14 @@ impl CopyTable {
             let is_pad = is_read_step && thread.addr >= thread.addr_end;
 
             let [value, value_prev] = if is_access_list {
-                let address_pair = copy_event.access_list[step_idx / 2];
+                // Save address, storage_key, storage_key_index and is_warm_prev
+                // to column value_word_rlc, value_word_rlc_prev, value and
+                // value_prev in copy circuit.
+                let access_list = &copy_event.access_list[step_idx / 2];
+
                 [
-                    address_pair.0.to_scalar().unwrap(),
-                    address_pair.1.to_scalar().unwrap(),
+                    F::from(access_list.storage_key_index),
+                    F::from(access_list.is_warm_prev),
                 ]
             } else {
                 [
@@ -1928,10 +2000,28 @@ impl CopyTable {
             };
 
             if is_access_list {
-                let address_pair = copy_event.access_list[step_idx / 2];
-                thread.value_word = word::Word::from(address_pair.0).into_value();
-                thread.value_word_prev = word::Word::from(address_pair.1).into_value();
+                // let address_pair = copy_event.access_list[step_idx / 2];
+                // thread.value_word = word::Word::new(access_list.address.to_scalar().unwrap());
+                // thread.value_word_prev = word::Word::from(address_pair.1).into_value();
+
+                // Save address, storage_key, storage_key_index and is_warm_prev
+                // to column value_word_rlc, value_word_rlc_prev, value and
+                // value_prev in copy circuit.
+                let access_list = &copy_event.access_list[step_idx / 2];
+                thread.value_word =
+                    word::Word::new([access_list.address.to_scalar().unwrap(), F::zero()])
+                        .into_value();
+                // TODO: check if take use of storage_key rlc value ?
+                thread.value_word_prev = word::Word::from(access_list.storage_key).into_value();
+
+                // thread.word_rlc = Value::known(access_list.address.to_scalar().unwrap());
+                // thread.word_rlc_prev = challenges
+                //     .evm_word()
+                //     .map(|challenge| rlc::value(&access_list.storage_key.to_le_bytes(),
+                // challenge));
             }
+
+            let word_index = (step_idx as u64 / 2) % 32;
 
             // For LOG, format the address including the log_id.
             let addr = if thread.tag == CopyDataType::TxLog {
@@ -2324,6 +2414,10 @@ pub struct RlpFsmRlpTable {
     pub is_output: Column<Advice>,
     /// Whether or not the current tag's value was nil.
     pub is_none: Column<Advice>,
+    /// Index of access list address
+    pub access_list_idx: Column<Advice>,
+    /// Index of storage key in an access list item
+    pub storage_key_idx: Column<Advice>,
 }
 
 impl<F: Field> LookupTable<F> for RlpFsmRlpTable {
@@ -2338,6 +2432,8 @@ impl<F: Field> LookupTable<F> for RlpFsmRlpTable {
             self.tag_length.into(),
             self.is_output.into(),
             self.is_none.into(),
+            self.access_list_idx.into(),
+            self.storage_key_idx.into(),
         ]
     }
 
@@ -2352,6 +2448,8 @@ impl<F: Field> LookupTable<F> for RlpFsmRlpTable {
             String::from("tag_length"),
             String::from("is_output"),
             String::from("is_none"),
+            String::from("access_list_idx"),
+            String::from("storage_key_idx"),
         ]
     }
 }
@@ -2369,6 +2467,8 @@ impl RlpFsmRlpTable {
             tag_length: meta.advice_column(),
             is_output: meta.advice_column(),
             is_none: meta.advice_column(),
+            access_list_idx: meta.advice_column(),
+            storage_key_idx: meta.advice_column(),
         }
     }
 
@@ -2435,6 +2535,16 @@ impl RlpFsmRlpTable {
                             "is_none",
                             self.is_none.into(),
                             Value::known(F::from(row.is_none as u64)),
+                        ),
+                        (
+                            "access_list_idx",
+                            self.access_list_idx.into(),
+                            Value::known(F::from(row.access_list_idx)),
+                        ),
+                        (
+                            "storage_key_idx",
+                            self.storage_key_idx.into(),
+                            Value::known(F::from(row.storage_key_idx)),
                         ),
                     ];
 

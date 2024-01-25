@@ -76,62 +76,93 @@ impl<F: Field, const N: usize> Queries<F, N> {
     }
 }
 
-impl<T, const N: usize> Config<T, N>
-where
-    T: ToLimbs<N>,
-{
+// address configs
+impl Config<Address, N_LIMBS_ACCOUNT_ADDRESS> {
     pub fn assign<F: Field>(
         &self,
         region: &mut Region<'_, F>,
         offset: usize,
-        value: T,
+        value: Address,
     ) -> Result<(), Error> {
-        for (i, &limb) in value.to_limbs().iter().enumerate() {
-            region.assign_advice(
-                || format!("limb[{}] in {} mpi", i, T::annotation()),
-                self.limbs[i],
-                offset,
-                || Value::known(F::from(limb as u64)),
-            )?;
-        }
-        Ok(())
+        assign_to_config(region, self, value, offset, "address")
     }
 
     /// Annotates columns of this gadget embedded within a circuit region.
     pub fn annotate_columns_in_region<F: Field>(&self, region: &mut Region<F>, prefix: &str) {
-        let mut annotations = Vec::new();
-        for (i, _) in self.limbs.iter().enumerate() {
-            annotations.push(format!("MPI_limbs_address_{i}"));
-        }
-        self.limbs
-            .iter()
-            .zip(annotations.iter())
-            .for_each(|(col, ann)| region.name_column(|| format!("{prefix}_{ann}"), *col));
+        annotate_columns_in_config(region, self, prefix, "address")
     }
 }
 
-pub struct Chip<F: Field, T, const N_LIMBS: usize, const N_VALUES: usize>
+impl Config<u32, N_LIMBS_RW_COUNTER> {
+    pub fn assign<F: Field>(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        value: u32,
+    ) -> Result<(), Error> {
+        assign_to_config(region, self, value, offset, "u32")
+    }
+
+    /// Annotates columns of this gadget embedded within a circuit region.
+    pub fn annotate_columns_in_region<F: Field>(&self, region: &mut Region<F>, prefix: &str) {
+        annotate_columns_in_config(region, self, prefix, "u32")
+    }
+}
+
+fn assign_to_config<T: ToLimbs<N>, const N: usize, F: Field>(
+    region: &mut Region<'_, F>,
+    config: &Config<T, N>,
+    value: T,
+    offset: usize,
+    prefix: &str,
+) -> Result<(), Error> {
+    for (i, &limb) in value.to_limbs().iter().enumerate() {
+        region.assign_advice(
+            || format!("limb[{i}] in {prefix} mpi"),
+            config.limbs[i],
+            offset,
+            || Value::known(F::from(limb as u64)),
+        )?;
+    }
+    Ok(())
+}
+
+fn annotate_columns_in_config<T: ToLimbs<N>, const N: usize, F: Field>(
+    region: &mut Region<'_, F>,
+    config: &Config<T, N>,
+    prefix: &str,
+    type_ann: &str,
+) {
+    let mut annotations = Vec::new();
+    for (i, _) in config.limbs.iter().enumerate() {
+        annotations.push(format!("MPI_limbs_{type_ann}_{i}"));
+    }
+    config
+        .limbs
+        .iter()
+        .zip(annotations.iter())
+        .for_each(|(col, ann)| region.name_column(|| format!("{prefix}_{ann}"), *col));
+}
+
+pub struct Chip<F: Field, T, const N: usize>
 where
-    T: ToLimbs<N_LIMBS>,
+    T: ToLimbs<N>,
 {
-    _config: Config<T, N_LIMBS>,
+    _config: Config<T, N>,
     _marker: PhantomData<F>,
 }
 
-impl<F: Field, T, const N_LIMBS: usize, const N_VALUES: usize> Chip<F, T, N_LIMBS, N_VALUES>
+impl<F: Field, T, const N: usize> Chip<F, T, N>
 where
-    T: ToLimbs<N_LIMBS>,
+    T: ToLimbs<N>,
 {
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         selector: Column<Fixed>,
-        values: [Column<Advice>; N_VALUES],
+        value: Column<Advice>,
         lookup: lookups::Config,
-    ) -> Config<T, N_LIMBS> {
-        assert_eq!(N_LIMBS & N_VALUES, 0);
-        let limbs_per_value = N_LIMBS / N_VALUES;
-
-        let limbs = [0; N_LIMBS].map(|_| meta.advice_column());
+    ) -> Config<T, N> {
+        let limbs = [0; N].map(|_| meta.advice_column());
 
         for &limb in &limbs {
             lookup.range_check_u16(meta, "mpi limb fits into u16", |meta| {
@@ -139,17 +170,25 @@ where
             });
         }
 
-        for (n, value) in values.iter().enumerate() {
-            meta.create_gate("mpi value matches claimed limbs", |meta| {
-                let selector = meta.query_fixed(selector, Rotation::cur());
-                let value_expr = meta.query_advice(*value, Rotation::cur());
-                let value_limbs = &limbs[n * limbs_per_value..(n + 1) * limbs_per_value];
-                let limbs_expr = value_limbs
-                    .iter()
-                    .map(|limb| meta.query_advice(*limb, Rotation::cur()));
-                vec![selector * (value_expr - value_from_limbs(&limbs_expr.collect::<Vec<_>>()))]
-            });
-        }
+        // TODO: will remove later
+        // for (n, value) in values.iter().enumerate() {
+        //     meta.create_gate("mpi value matches claimed limbs", |meta| {
+        //         let selector = meta.query_fixed(selector, Rotation::cur());
+        //         let value_expr = meta.query_advice(*value, Rotation::cur());
+        //         let value_limbs = &limbs[n * limbs_per_value..(n + 1) * limbs_per_value];
+        //         let limbs_expr = value_limbs
+        //             .iter()
+        //             .map(|limb| meta.query_advice(*limb, Rotation::cur()));
+        //         vec![selector * (value_expr - value_from_limbs(&limbs_expr.collect::<Vec<_>>()))]
+        //     });
+        // }
+
+        meta.create_gate("mpi value matches claimed limbs", |meta| {
+            let selector = meta.query_fixed(selector, Rotation::cur());
+            let value = meta.query_advice(value, Rotation::cur());
+            let limbs = limbs.map(|limb| meta.query_advice(limb, Rotation::cur()));
+            vec![selector * (value - value_from_limbs(&limbs))]
+        });
 
         Config {
             limbs,
@@ -170,4 +209,19 @@ fn value_from_limbs<F: Field>(limbs: &[Expression<F>]) -> Expression<F> {
     limbs.iter().rev().fold(0u64.expr(), |result, limb| {
         limb.clone() + result * (1u64 << 16).expr()
     })
+}
+
+#[cfg(test)]
+mod test {
+    use super::ToLimbs;
+    use eth_types::Address;
+
+    #[test]
+    pub fn display_limbs() {
+        let val = 10u32;
+        assert_eq!(val.to_limbs(), [10, 0]);
+
+        let val = Address::from_low_u64_be(10);
+        assert_eq!(val.to_limbs(), [10, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    }
 }

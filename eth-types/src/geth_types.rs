@@ -52,14 +52,24 @@ impl TxType {
         matches!(*self, Self::L1Msg)
     }
 
-    /// If this type is EIP-155 or not
-    pub fn is_eip155_tx(&self) -> bool {
-        matches!(*self, Self::Eip155)
+    /// If this type is PreEip155
+    pub fn is_pre_eip155(&self) -> bool {
+        matches!(*self, TxType::PreEip155)
     }
 
-    /// If this type is EIP-2930 or not
-    pub fn is_eip2930_tx(&self) -> bool {
-        matches!(*self, Self::Eip2930)
+    /// If this type is EIP155 or not
+    pub fn is_eip155(&self) -> bool {
+        matches!(*self, TxType::Eip155)
+    }
+
+    /// If this type is Eip1559 or not
+    pub fn is_eip1559(&self) -> bool {
+        matches!(*self, TxType::Eip1559)
+    }
+
+    /// If this type is Eip2930 or not
+    pub fn is_eip2930(&self) -> bool {
+        matches!(*self, TxType::Eip2930)
     }
 
     /// Get the type of transaction
@@ -254,11 +264,11 @@ pub struct Transaction {
     /// Transfered value
     pub value: Word,
     /// Gas Price
-    pub gas_price: Word,
+    pub gas_price: Option<Word>,
     /// Gas fee cap
-    pub gas_fee_cap: Word,
+    pub gas_fee_cap: Option<Word>,
     /// Gas tip cap
-    pub gas_tip_cap: Word,
+    pub gas_tip_cap: Option<Word>,
     /// The compiled code of a contract OR the first 4 bytes of the hash of the
     /// invoked method signature and encoded parameters. For details see
     /// Ethereum Contract ABI
@@ -290,9 +300,9 @@ impl From<&Transaction> for crate::Transaction {
             nonce: tx.nonce,
             gas: tx.gas_limit,
             value: tx.value,
-            gas_price: Some(tx.gas_price),
-            max_priority_fee_per_gas: Some(tx.gas_fee_cap),
-            max_fee_per_gas: Some(tx.gas_tip_cap),
+            gas_price: tx.gas_price,
+            max_priority_fee_per_gas: tx.gas_tip_cap,
+            max_fee_per_gas: tx.gas_fee_cap,
             input: tx.call_data.clone(),
             access_list: tx.access_list.clone(),
             v: tx.v.into(),
@@ -313,9 +323,9 @@ impl From<&crate::Transaction> for Transaction {
             nonce: tx.nonce,
             gas_limit: tx.gas,
             value: tx.value,
-            gas_price: tx.gas_price.unwrap_or_default(),
-            gas_fee_cap: tx.max_priority_fee_per_gas.unwrap_or_default(),
-            gas_tip_cap: tx.max_fee_per_gas.unwrap_or_default(),
+            gas_price: tx.gas_price,
+            gas_tip_cap: tx.max_priority_fee_per_gas,
+            gas_fee_cap: tx.max_fee_per_gas,
             call_data: tx.input.clone(),
             access_list: tx.access_list.clone(),
             v: tx.v.as_u64(),
@@ -334,7 +344,7 @@ impl From<&Transaction> for TransactionRequest {
             from: Some(tx.from),
             to: tx.to.map(NameOrAddress::Address),
             gas: Some(tx.gas_limit),
-            gas_price: Some(tx.gas_price),
+            gas_price: tx.gas_price,
             value: Some(tx.value),
             data: Some(tx.call_data.clone()),
             nonce: Some(tx.nonce),

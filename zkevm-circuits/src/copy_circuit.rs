@@ -478,37 +478,37 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             .collect()
         });
 
-        /* TODO: enable tx lookup for access list after merging EIP-1559 PR with tx-table update.
+        meta.lookup_any("Tx access list address lookup", |meta| {
+            let cond = meta.query_fixed(q_enable, CURRENT)
+                * meta.query_advice(is_access_list_address, CURRENT);
 
-                meta.lookup_any("Tx access list address lookup", |meta| {
-                    let cond = meta.query_fixed(q_enable, CURRENT)
-                        * meta.query_advice(is_access_list_address, CURRENT);
+            let tx_id = meta.query_advice(id.lo(), CURRENT);
+            let index = meta.query_advice(addr, CURRENT);
+            //TODO: update per value_word columns
+            let address = meta.query_advice(value_word.lo(), CURRENT);
 
-                    let tx_id = meta.query_advice(id, CURRENT);
-                    let index = meta.query_advice(addr, CURRENT);
-                    let address = meta.query_advice(value, CURRENT);
-
-                    vec![
-                        1.expr(),
-                        tx_id,
-                        TxContextFieldTag::AccessListAddress.expr(),
-                        index,
-                        address.expr(),
-                        address,
-                    ]
-                    .into_iter()
-                    .zip(tx_table.table_exprs(meta))
-                    .map(|(arg, table)| (cond.clone() * arg, table))
-                    .collect()
-                });
-        */
+            vec![
+                1.expr(),
+                tx_id,
+                TxContextFieldTag::AccessListAddress.expr(),
+                index,
+                address,
+                // address ?
+            ]
+            .into_iter()
+            .zip(tx_table.table_exprs(meta))
+            .map(|(arg, table)| (cond.clone() * arg, table))
+            .collect()
+        });
 
         meta.lookup_any("Rw access list address lookup", |meta| {
             let cond = meta.query_fixed(q_enable, CURRENT)
                 * meta.query_advice(is_access_list_address, CURRENT);
 
+            // let address = meta.query_advice(value, CURRENT);
             let tx_id = meta.query_advice(id.lo(), CURRENT);
-            let address = meta.query_advice(value, CURRENT);
+            let address = meta.query_advice(value_word.lo(), CURRENT);
+            let is_warm_prev = meta.query_advice(value_prev, CURRENT);
 
             vec![
                 1.expr(),
@@ -520,10 +520,10 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 0.expr(),
                 0.expr(),
                 0.expr(),
-                1.expr(), // is_warm_lo
-                0.expr(), // is_warm_hi
-                0.expr(), // is_warm_prev_lo
-                0.expr(), // is_warm_prev_hi
+                1.expr(),     // is_warm_lo
+                0.expr(),     // is_warm_hi
+                is_warm_prev, // is_warm_prev_lo
+                0.expr(),     // is_warm_prev_hi
                 0.expr(),
                 0.expr(),
                 0.expr(),
@@ -535,40 +535,40 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             .collect()
         });
 
-        /* TODO: enable tx lookup for access list after merging EIP-1559 PR with tx-table update.
+        meta.lookup_any("Tx access list storage key lookup", |meta| {
+            let cond = meta.query_fixed(q_enable, CURRENT)
+                * meta.query_advice(is_access_list_storage_key, CURRENT);
 
-                meta.lookup_any("Tx access list storage key lookup", |meta| {
-                    let cond = meta.query_fixed(q_enable, CURRENT)
-                        * meta.query_advice(is_access_list_storage_key, CURRENT);
+            let tx_id = meta.query_advice(id.lo(), CURRENT);
+            // index in copy table 'value' column ?
+            let index = meta.query_advice(value, CURRENT);
+            // value_word column? put address in ? TODO: check lo() covers storage key ?
+            let storage_key = meta.query_advice(value_word_prev.lo(), CURRENT);
 
-                    let tx_id = meta.query_advice(id, CURRENT);
-                    let index = meta.query_advice(addr, CURRENT);
-                    let address = meta.query_advice(value, CURRENT);
-                    let storage_key = meta.query_advice(value_prev, CURRENT);
-
-                    vec![
-                        1.expr(),
-                        tx_id,
-                        TxContextFieldTag::AccessListStorageKey.expr(),
-                        index,
-                        storage_key,
-                        address,
-                    ]
-                    .into_iter()
-                    .zip(tx_table.table_exprs(meta))
-                    .map(|(arg, table)| (cond.clone() * arg, table))
-                    .collect()
-                });
-        */
+            vec![
+                1.expr(),
+                tx_id,
+                TxContextFieldTag::AccessListStorageKey.expr(),
+                index,
+                storage_key,
+            ]
+            .into_iter()
+            .zip(tx_table.table_exprs(meta))
+            .map(|(arg, table)| (cond.clone() * arg, table))
+            .collect()
+        });
 
         meta.lookup_any("Rw access list storage key lookup", |meta| {
             let cond = meta.query_fixed(q_enable, CURRENT)
                 * meta.query_advice(is_access_list_storage_key, CURRENT);
 
             let tx_id = meta.query_advice(id.lo(), CURRENT);
-            let address = meta.query_advice(value, CURRENT);
+            let address = meta.query_advice(value_word.lo(), CURRENT);
             let storage_key_lo = meta.query_advice(value_word_prev.lo(), CURRENT);
             let storage_key_hi = meta.query_advice(value_word_prev.hi(), CURRENT);
+
+            // reserve ?
+            let is_warm_prev = meta.query_advice(value_prev, CURRENT);
 
             vec![
                 1.expr(),
@@ -582,7 +582,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 storage_key_hi, // access list storage_key_hi
                 1.expr(),       // is_warm_lo
                 0.expr(),       // is_warm_hi
-                0.expr(),       // is_warm_prev_lo
+                is_warm_prev,   // is_warm_prev_lo
                 0.expr(),       // is_warm_prev_hi
                 0.expr(),
                 0.expr(),
