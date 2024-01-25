@@ -897,7 +897,7 @@ impl MptTable {
         let num_threads = std::thread::available_parallelism().unwrap().get();
         let chunk_size = (max_mpt_rows + num_threads - 1) / num_threads;
         let mpt_update_rows = updates
-            .table_assignments(randomness)
+            .table_assignments()
             .into_iter()
             .chain(repeat(MptUpdateRow::padding()))
             .take(max_mpt_rows)

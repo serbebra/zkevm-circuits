@@ -1566,7 +1566,8 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 );
                 cb.require_equal(
                     "access_list_address = value",
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // TODO: check if lo is correct ?
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(tx_table.access_list_address, Rotation::cur()),
                 );
                 cb.require_zero(
@@ -1947,7 +1948,8 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                // TODO: check if lo is correct here ?
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
             input_exprs
@@ -1971,7 +1973,8 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                // TODO: check if lo is correct ?
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
             input_exprs
@@ -2020,7 +2023,8 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                meta.query_advice(tx_table.value, Rotation::cur()),
+                //TODO: check if lo correct ?
+                meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
             input_exprs
@@ -2041,9 +2045,10 @@ impl<F: Field> TxCircuitConfig<F> {
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 1.expr(),
                 1.expr(),
-                meta.query_advice(tx_table.value, Rotation(0)), // al_idx
-                meta.query_advice(tx_table.value, Rotation(1)), // sks_acc
-                meta.query_advice(tx_table.value, Rotation(2)), // section_rlc for access list
+                // TODO: check if lo is correct ?
+                meta.query_advice(tx_table.value.lo(), Rotation(0)), // al_idx
+                meta.query_advice(tx_table.value.lo(), Rotation(1)), // sks_acc
+                meta.query_advice(tx_table.value.lo(), Rotation(2)), // section_rlc for access list
             ];
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
@@ -2199,7 +2204,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     sign_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // TODO: check if lo correct ?
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     20.expr(),                                  // 20 bytes for address
                     1.expr(),                                   // is_output = true
@@ -2232,7 +2238,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     hash_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // check if lo is correct ?
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     20.expr(),                                  // 20 bytes for address
                     1.expr(),                                   // is_output = true
@@ -2268,7 +2275,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     sign_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    //TODO: check if lo is correct ?
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     32.expr(),                                  // 32 bytes for storage keys
                     1.expr(),                                   // is_output = true
@@ -2301,7 +2309,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     hash_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    meta.query_advice(tx_table.value, Rotation::cur()),
+                    // TODO: check if lo covers ?
+                    meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     32.expr(),                                  // 32 bytes for storage keys
                     1.expr(),                                   // is_output = true
@@ -2412,7 +2421,7 @@ impl<F: Field> TxCircuitConfig<F> {
             TxFieldTag::Null,
             0,
             word::Word::new([Value::known(F::zero()), Value::known(F::zero())]),
-            // Value::known(F::zero()),
+            Value::known(F::zero()),
             // Value::known(F::zero()),
         )?;
         let (col_anno, col, col_val) = ("rlp_tag", self.rlp_tag, F::from(usize::from(Null) as u64));
@@ -2783,7 +2792,11 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.max_fee_per_gas.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.max_fee_per_gas.to_be_bytes(), keccak_input),
                 }),
-                rlc_be_bytes(&tx.max_fee_per_gas.to_be_bytes(), evm_word),
+                // rlc_be_bytes(&tx.max_fee_per_gas.to_be_bytes(), evm_word),
+                word::Word::new([
+                    rlc_be_bytes(&tx.max_fee_per_gas.to_be_bytes(), evm_word),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 MaxPriorityFeePerGas,
@@ -2796,7 +2809,11 @@ impl<F: Field> TxCircuitConfig<F> {
                         keccak_input,
                     ),
                 }),
-                rlc_be_bytes(&tx.max_priority_fee_per_gas.to_be_bytes(), evm_word),
+                //rlc_be_bytes(&tx.max_priority_fee_per_gas.to_be_bytes(), evm_word),
+                word::Word::new([
+                    rlc_be_bytes(&tx.max_priority_fee_per_gas.to_be_bytes(), evm_word),
+                    Value::known(F::zero()),
+                ]),
             ),
             (
                 BlockNumber,
@@ -3101,7 +3118,7 @@ impl<F: Field> TxCircuitConfig<F> {
                 idx as u64,
                 word::Word::new([Value::known(F::from(*byte as u64)), Value::known(F::zero())]),
                 //Value::known(F::from(*byte as u64)),
-                //Value::known(F::zero()),
+                Value::known(F::zero()),
             )?;
 
             // 1st phase columns
@@ -3181,7 +3198,10 @@ impl<F: Field> TxCircuitConfig<F> {
                     tx_id_next,
                     TxFieldTag::AccessListAddress,
                     (al_idx + 1) as u64,
-                    Value::known(al.address.to_scalar().unwrap()),
+                    word::Word::new([
+                        Value::known(al.address.to_scalar().unwrap()),
+                        Value::known(F::zero()),
+                    ]),
                     Value::known(al.address.to_scalar().unwrap()),
                 )?;
 
@@ -3239,7 +3259,11 @@ impl<F: Field> TxCircuitConfig<F> {
                         tx_id_next,
                         TxFieldTag::AccessListStorageKey,
                         sks_acc as u64,
-                        rlc_be_bytes(&sk.to_fixed_bytes(), challenges.evm_word()),
+                        //rlc_be_bytes(&sk.to_fixed_bytes(), challenges.evm_word()),
+                        word::Word::new([
+                            rlc_be_bytes(&sk.to_fixed_bytes(), challenges.evm_word()),
+                            Value::known(F::zero()),
+                        ]),
                         Value::known(al.address.to_scalar().unwrap()),
                     )?;
 
