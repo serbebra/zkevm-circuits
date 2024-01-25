@@ -140,7 +140,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         from_bytes::expr(&self.tx_l1_fee_word.limbs[..N_BYTES_U64])
     }
 
-    pub(crate) fn tx_l1_fee_word(&self) -> &Word<F> {
+    pub(crate) fn tx_l1_fee_word(&self) -> &Word32Cell<F> {
         &self.tx_l1_fee_word
     }
 
@@ -152,7 +152,7 @@ impl<F: Field> TxL1FeeGadget<F> {
         let fee_overhead_word = cb.query_word32();
         let fee_scalar_word = cb.query_word32();
 
-        let tx_l1_fee = from_bytes::expr(&tx_l1_fee_word.cells[..N_BYTES_U64]);
+        let tx_l1_fee = from_bytes::expr(&tx_l1_fee_word.limbs[..N_BYTES_U64]);
         let [remainder, base_fee, fee_overhead, fee_scalar] = [
             &remainder_word,
             &base_fee_word,

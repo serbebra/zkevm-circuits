@@ -804,28 +804,27 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         cell
     }
 
-    // TODO: enable tx_context_as_word in word hi lo stage2
-    // pub(crate) fn tx_context_as_word(
-    //     &mut self,
-    //     id: Expression<F>,
-    //     field_tag: TxContextFieldTag,
-    //     index: Option<Expression<F>>,
-    // ) -> WordCell<F> {
-    //     let word = self.query_word_unchecked();
-    //     self.tx_context_lookup(id, field_tag, index, word.to_word());
-    //     word
-    // }
+    pub(crate) fn tx_context_as_word(
+        &mut self,
+        id: Expression<F>,
+        field_tag: TxContextFieldTag,
+        index: Option<Expression<F>>,
+    ) -> WordCell<F> {
+        let word = self.query_word_unchecked();
+        self.tx_context_lookup(id, field_tag, index, word.to_word());
+        word
+    }
 
-    // pub(crate) fn tx_context_as_word32(
-    //     &mut self,
-    //     id: Expression<F>,
-    //     field_tag: TxContextFieldTag,
-    //     index: Option<Expression<F>>,
-    // ) -> Word32Cell<F> {
-    //     let word = self.query_word32();
-    //     self.tx_context_lookup(id, field_tag, index, word.to_word());
-    //     word
-    // }
+    pub(crate) fn tx_context_as_word32(
+        &mut self,
+        id: Expression<F>,
+        field_tag: TxContextFieldTag,
+        index: Option<Expression<F>>,
+    ) -> Word32Cell<F> {
+        let word = self.query_word32();
+        self.tx_context_lookup(id, field_tag, index, word.to_word());
+        word
+    }
 
     pub(crate) fn tx_context_lookup(
         &mut self,

@@ -635,7 +635,7 @@ impl<F: Field> TransferFromWithGasFeeGadget<F> {
     }
 
     /// Return sender balance before subtracting fee and value.
-    pub(crate) fn sender_balance_prev(&self) -> &Word<F> {
+    pub(crate) fn sender_balance_prev(&self) -> &Word32Cell<F> {
         // Fee is subtracted before value.
         self.sender_sub_fee.balance_prev()
     }
@@ -962,7 +962,7 @@ impl<F: Field> TransferWithGasFeeGadget<F> {
     }
 
     /// Return sender balance before subtracting fee and value.
-    pub(crate) fn sender_balance_prev(&self) -> &Word<F> {
+    pub(crate) fn sender_balance_prev(&self) -> &Word32Cell<F> {
         self.from.sender_balance_prev()
     }
 }

@@ -599,7 +599,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                     (CallContextFieldTag::Depth, Word::one()),
                     (
                         CallContextFieldTag::CallerAddress,
-                        Word::from_lo_unchecked(tx_caller_address.expr()),
+                        tx_caller_address.to_word(),
                     ),
                     (
                         CallContextFieldTag::CalleeAddress,
@@ -636,9 +636,9 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 // - to the precompile input.
                 let precompile_input_bytes_rlc = cb.query_cell_phase2();
                 cb.copy_table_lookup(
-                    tx_id.expr(), //cb.curr.state.call_id.expr(),
+                    Word::from_lo_unchecked(tx_id.expr()),
                     CopyDataType::TxCalldata.expr(),
-                    call_id.expr(),
+                    Word::from_lo_unchecked(call_id.expr()),
                     CopyDataType::RlcAcc.expr(),
                     0.expr(),
                     precompile_input_len.expr(),
@@ -698,7 +698,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
 
                 let precompile_gadget = PrecompileGadget::construct(
                     cb,
-                    call_callee_address.expr(),
+                    call_callee_address.to_word(),
                     precompile_input_bytes_rlc.expr(),
                     None,
                     None,
