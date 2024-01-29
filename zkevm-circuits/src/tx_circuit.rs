@@ -350,7 +350,6 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         meta.enable_equality(tx_table.value.hi());
 
         let log_deg = |s: &'static str, meta: &mut ConstraintSystem<F>| {
-            //TODO： decrease degree to old nubmer 9.
             debug_assert!(meta.degree() <= 9);
             log::info!("after {}, meta.degree: {}", s, meta.degree());
         };
@@ -1566,7 +1565,6 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 );
                 cb.require_equal(
                     "access_list_address = value",
-                    // TODO: check if lo is correct ?
                     meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(tx_table.access_list_address, Rotation::cur()),
                 );
@@ -1746,7 +1744,6 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 cb.condition(not::expr(value_is_zero), |cb| {
                     cb.require_equal(
                         "caller address == sv_address",
-                        // TODO: check if value.lo can cover address in this case
                         meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                         meta.query_advice(sv_address, Rotation::cur()),
                     );
@@ -1998,7 +1995,6 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                //TODO: check lo covers calldata_rlc ?
                 meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
