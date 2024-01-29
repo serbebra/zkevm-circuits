@@ -50,9 +50,20 @@ impl<F: Field> TxEip1559Gadget<F> {
     ) -> Self {
         let is_eip1559_tx = IsEqualGadget::construct(cb, tx_type, (TxType::Eip1559 as u64).expr());
 
-        let [gas_fee_cap, gas_tip_cap] =
-            [TxFieldTag::MaxFeePerGas, TxFieldTag::MaxPriorityFeePerGas]
-                .map(|field_tag| cb.tx_context_as_word32(tx_id.expr(), field_tag, None));
+        let [gas_fee_cap, gas_tip_cap] = [cb.query_word32(), cb.query_word32()];
+        let gas_fee_cap_rlc = cb.word_rlc(gas_fee_cap.limbs.clone().map(|l| l.expr()));
+        let gas_tip_cap_rlc = cb.word_rlc(gas_tip_cap.limbs.clone().map(|cell| cell.expr()));
+        for (field_tag, value) in [
+            (TxFieldTag::MaxFeePerGas, gas_fee_cap_rlc),
+            (TxFieldTag::MaxPriorityFeePerGas, gas_tip_cap_rlc),
+        ] {
+            cb.tx_context_lookup(
+                tx_id.expr(),
+                field_tag,
+                None,
+                Word::from_lo_unchecked(value),
+            );
+        }
 
         let (
             mul_gas_fee_cap_by_gas,

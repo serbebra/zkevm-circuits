@@ -80,9 +80,15 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let [tx_type, tx_data_gas_cost] =
             [TxContextFieldTag::TxType, TxContextFieldTag::TxDataGasCost]
                 .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
-        //let tx_gas_price = cb.tx_context_as_word32(tx_id.expr(), TxContextFieldTag::GasPrice,
-        // None);
+
         let tx_gas_price = cb.query_word32();
+        let tx_gas_price_rlc = cb.word_rlc(tx_gas_price.limbs.clone().map(|cell| cell.expr()));
+        cb.tx_context_lookup(
+            tx_id.expr(),
+            TxContextFieldTag::GasPrice,
+            None,
+            Word::from_lo_unchecked(tx_gas_price_rlc),
+        );
 
         let tx_is_l1msg =
             IsEqualGadget::construct(cb, tx_type.expr(), (TxType::L1Msg as u64).expr());

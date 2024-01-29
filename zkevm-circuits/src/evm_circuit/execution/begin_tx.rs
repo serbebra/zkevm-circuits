@@ -28,7 +28,7 @@ use crate::{
         TxFieldTag as TxContextFieldTag,
     },
     util::{
-        word::{Word, Word32Cell, WordCell, WordExpr},
+        word::{self, Word, Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };
@@ -144,7 +144,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let [tx_caller_address, tx_callee_address] =
             [cb.query_word_unchecked(), cb.query_word_unchecked()];
 
-        // let tx_eip2930 = TxEip2930Gadget::construct(cb, tx_id.expr(), tx_type.expr());
         let tx_access_list = TxAccessListGadget::construct(cb, tx_id.expr(), tx_type.expr());
         let is_call_data_empty = IsZeroGadget::construct(cb, tx_call_data_length.expr());
 
@@ -191,10 +190,17 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         ); // rwc_delta += 1
 
         // enable this after tx table changed to word type
-        // let [tx_gas_price, tx_value] = [TxContextFieldTag::GasPrice, TxContextFieldTag::Value]
-        //     .map(|field_tag| cb.tx_context_as_word32(tx_id.expr(), field_tag, None));
+        let tx_value = cb.tx_context_as_word32(tx_id.expr(), TxContextFieldTag::Value, None);
 
-        let [tx_gas_price, tx_value] = [cb.query_word32(), cb.query_word32()];
+        let tx_gas_price = cb.query_word32();
+        let tx_gas_price_rlc = cb.word_rlc(tx_gas_price.limbs.clone().map(|cell| cell.expr()));
+        cb.tx_context_lookup(
+            tx_id.expr(),
+            TxContextFieldTag::GasPrice,
+            None,
+            word::Word::from_lo_unchecked(tx_gas_price_rlc),
+        );
+
         let tx_caller_address_is_zero = IsZeroWordGadget::construct(cb, &tx_caller_address);
         cb.require_equal(
             "CallerAddress != 0 (not a padding tx)",
