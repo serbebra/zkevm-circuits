@@ -7,7 +7,7 @@ use halo2_proofs::{
 use std::{collections::HashMap, sync::LazyLock};
 
 /// Step dimension
-pub(crate) const STEP_WIDTH: usize = 152;
+pub(crate) const STEP_WIDTH: usize = 153;
 /// Step height
 pub const MAX_STEP_HEIGHT: usize = 22;
 
