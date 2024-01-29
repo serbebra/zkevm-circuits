@@ -48,8 +48,8 @@ use crate::{
 
 use self::copy_gadgets::{
     constrain_address, constrain_event_rlc_acc, constrain_first_last, constrain_forward_parameters,
-    constrain_id, constrain_is_pad, constrain_must_terminate, constrain_non_pad_non_mask,
-    constrain_rw_counter, constrain_tag, constrain_value_rlc,
+    constrain_id, constrain_must_terminate, constrain_non_pad_non_mask, constrain_rw_counter,
+    constrain_tag, constrain_value_rlc,
 };
 
 /// The current row.
@@ -169,7 +169,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let value_word_prev = meta.advice_column();
         let value_acc = meta.advice_column_in(SecondPhase);
 
-        let [is_pad, is_tx_calldata, is_bytecode, is_memory, is_tx_log, is_access_list_address, is_access_list_storage_key] =
+        let [is_tx_calldata, is_bytecode, is_memory, is_tx_log, is_access_list_address, is_access_list_storage_key] =
             array::from_fn(|_| meta.advice_column());
         let is_first = copy_table.is_first;
         let id = copy_table.id;
@@ -242,29 +242,27 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             let is_not_back_mask_exprs = is_inbound_read.clone().map(|chip| chip.is_lt(meta, None));
             let is_inbound_read_exprs = is_inbound_read.clone().map(|chip| chip.is_lt(meta, None));
 
-            // TODO: feat/copy-hi-lo
-            // constrain_id(
-            //     cb,
-            //     meta,
-            //     //is_bytecode,
-            //     is_tx_log,
-            //     is_tx_calldata,
-            //     is_memory,
-            //     id,
-            //     is_pad,
-            // );
+            constrain_id(
+                cb,
+                meta,
+                //is_bytecode,
+                is_tx_log,
+                is_tx_calldata,
+                is_memory,
+                id,
+            );
 
             let is_tx_log = meta.query_advice(is_tx_log, CURRENT);
             let is_access_list = meta.query_advice(is_access_list_address, CURRENT)
                 + meta.query_advice(is_access_list_storage_key, CURRENT);
-            // TODO: feat/copy-hi-lo
-            //
-            // constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
-            //
-            // constrain_must_terminate(cb, meta, q_enable, &tag);
-            //
-            // constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
 
+            constrain_first_last(cb, is_reader.expr(), is_first.expr(), is_last.expr());
+
+            constrain_must_terminate(cb, meta, q_enable, &tag);
+
+            constrain_forward_parameters(cb, meta, is_continue.expr(), id, tag, src_addr_end);
+
+            // no need for this, lt gadget handles it
             // let (is_pad, is_pad_next) = constrain_is_pad(
             //     cb,
             //     meta,
@@ -277,6 +275,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             //     &is_src_end,
             // );
 
+            // no need for this, lt gadget handles it
             // let (mask, mask_next, front_mask) = {
             //     // The first 31 bytes may be front_mask, but not the last byte of the first word.
             //     // LOG, access-list address and storage-key have no front mask at all.
@@ -294,7 +293,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             //     )
             // };
 
-            // TODO: feat/copy-hi-lo
             constrain_non_pad_non_mask(
                 cb,
                 meta,
@@ -304,21 +302,21 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 is_inbound_read_exprs.clone(),
             );
 
-            //constrain_masked_value(cb, meta, mask.expr(), value, value_prev);
+            // constrain_masked_value(cb, meta, mask.expr(), value, value_prev);
 
             // TODO: feat/copy-hi-lo
-            // constrain_value_rlc(
-            //     cb,
-            //     meta,
-            //     is_first.expr(),
-            //     is_continue.expr(),
-            //     is_last_col,
-            //     non_pad_non_mask,
-            //     is_inbound_read.clone(),
-            //     value_acc,
-            //     value_limbs,
-            //     challenges.keccak_input(),
-            // );
+            constrain_value_rlc(
+                cb,
+                meta,
+                is_first.expr(),
+                is_continue.expr(),
+                is_last_col,
+                non_pad_non_mask,
+                is_inbound_read.clone(),
+                value_acc,
+                value_limbs,
+                challenges.keccak_input(),
+            );
             //
             // constrain_event_rlc_acc(cb, meta, is_last_col, value_acc, rlc_acc, is_bytecode, tag);
 
@@ -914,6 +912,12 @@ impl<F: Field> CopyCircuitConfig<F> {
         region.assign_advice(
             || format!("assign addr_copy_end {}", *offset),
             self.copy_table.addr_copy_end,
+            *offset,
+            || Value::known(F::zero()),
+        )?;
+        region.assign_advice(
+            || format!("assign src_addr_end {}", *offset),
+            self.copy_table.src_addr_end,
             *offset,
             || Value::known(F::zero()),
         )?;

@@ -128,55 +128,55 @@ pub fn constrain_forward_parameters<F: Field>(
     });
 }
 
-/// Verify that when and after the address reaches the limit src_addr_end, zero-padding is enabled.
-/// Return (is_pad, is_pad at NEXT_STEP).
-#[allow(clippy::too_many_arguments)]
-pub fn constrain_is_pad<F: Field>(
-    cb: &mut BaseConstraintBuilder<F>,
-    meta: &mut VirtualCells<'_, F>,
-    is_reader: Expression<F>,
-    is_first: Expression<F>,
-    is_last: Column<Advice>,
-    is_pad: Column<Advice>,
-    addr: Column<Advice>,
-    src_addr_end: Column<Advice>,
-    is_src_end: &IsEqualConfig<F>,
-) -> (Expression<F>, Expression<F>) {
-    let [is_pad, is_pad_writer, is_pad_next] =
-        [CURRENT, NEXT_ROW, NEXT_STEP].map(|at| meta.query_advice(is_pad, at));
+// /// Verify that when and after the address reaches the limit src_addr_end, zero-padding is
+// enabled. /// Return (is_pad, is_pad at NEXT_STEP).
+// #[allow(clippy::too_many_arguments)]
+// pub fn constrain_is_pad<F: Field>(
+//     cb: &mut BaseConstraintBuilder<F>,
+//     meta: &mut VirtualCells<'_, F>,
+//     is_reader: Expression<F>,
+//     is_first: Expression<F>,
+//     is_last: Column<Advice>,
+//     is_pad: Column<Advice>,
+//     addr: Column<Advice>,
+//     src_addr_end: Column<Advice>,
+//     is_src_end: &IsEqualConfig<F>,
+// ) -> (Expression<F>, Expression<F>) {
+//     let [is_pad, is_pad_writer, is_pad_next] =
+//         [CURRENT, NEXT_ROW, NEXT_STEP].map(|at| meta.query_advice(is_pad, at));
 
-    cb.require_boolean("is_pad is boolean", is_pad.expr());
+//     cb.require_boolean("is_pad is boolean", is_pad.expr());
 
-    cb.condition(is_reader.expr(), |cb| {
-        cb.require_zero("is_pad == 0 on writer rows", is_pad_writer);
-    });
+//     cb.condition(is_reader.expr(), |cb| {
+//         cb.require_zero("is_pad == 0 on writer rows", is_pad_writer);
+//     });
 
-    // Detect when addr == src_addr_end
-    let [is_src_end, is_src_end_next] = [CURRENT, NEXT_STEP].map(|at| {
-        let addr = meta.query_advice(addr, at);
-        let src_addr_end = meta.query_advice(src_addr_end, at);
-        is_src_end.expr_at(meta, at, addr, src_addr_end)
-    });
+//     // Detect when addr == src_addr_end
+//     let [is_src_end, is_src_end_next] = [CURRENT, NEXT_STEP].map(|at| {
+//         let addr = meta.query_advice(addr, at);
+//         let src_addr_end = meta.query_advice(src_addr_end, at);
+//         is_src_end.expr_at(meta, at, addr, src_addr_end)
+//     });
 
-    cb.condition(is_first, |cb| {
-        cb.require_equal(
-            "is_pad starts at src_addr == src_addr_end",
-            is_pad.expr(),
-            is_src_end.expr(),
-        );
-    });
+//     cb.condition(is_first, |cb| {
+//         cb.require_equal(
+//             "is_pad starts at src_addr == src_addr_end",
+//             is_pad.expr(),
+//             is_src_end.expr(),
+//         );
+//     });
 
-    let not_last_reader = is_reader * not::expr(meta.query_advice(is_last, NEXT_ROW));
-    cb.condition(not_last_reader, |cb| {
-        cb.require_equal(
-            "is_pad=1 when src_addr == src_addr_end, otherwise it keeps the previous value",
-            select::expr(is_src_end_next, 1.expr(), is_pad.expr()),
-            is_pad_next.expr(),
-        );
-    });
+//     let not_last_reader = is_reader * not::expr(meta.query_advice(is_last, NEXT_ROW));
+//     cb.condition(not_last_reader, |cb| {
+//         cb.require_equal(
+//             "is_pad=1 when src_addr == src_addr_end, otherwise it keeps the previous value",
+//             select::expr(is_src_end_next, 1.expr(), is_pad.expr()),
+//             is_pad_next.expr(),
+//         );
+//     });
 
-    (is_pad, is_pad_next)
-}
+//     (is_pad, is_pad_next)
+// }
 
 // /// Verify the shape of the mask.
 // /// Return (mask, mask at NEXT_STEP, front_mask).
@@ -471,14 +471,13 @@ pub fn constrain_id<F: Field>(
     is_tx_calldata: Column<Advice>,
     is_memory: Column<Advice>,
     id: word::Word<Column<Advice>>,
-    is_pad: Column<Advice>,
 ) {
     let cond = or::expr([
         //meta.query_advice(is_bytecode, CURRENT),
         meta.query_advice(is_tx_log, CURRENT),
         meta.query_advice(is_tx_calldata, CURRENT),
         meta.query_advice(is_memory, CURRENT),
-    ]) * not::expr(meta.query_advice(is_pad, CURRENT));
+    ]);
     cb.condition(cond, |cb| {
         cb.require_zero("id_hi == 0", meta.query_advice(id.hi(), CURRENT))
     });
