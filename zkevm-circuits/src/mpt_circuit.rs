@@ -145,7 +145,7 @@ impl SubCircuit<Fr> for MptCircuit<Fr> {
                 layouter,
                 &self.mpt_updates,
                 self.row_limit,
-                challenges.evm_word(),
+                //challenges.evm_word(),
             )?;
         } else {
             config.1.load(

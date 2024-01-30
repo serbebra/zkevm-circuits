@@ -38,7 +38,7 @@ use bus_mapping::{
     precompile::{is_precompiled, PrecompileCalls},
     state_db::CodeDB,
 };
-use eth_types::{Address, Field, ToLittleEndian, ToScalar, ToWord, U256};
+use eth_types::{Address, Field, ToScalar, ToWord, U256};
 use ethers_core::utils::{get_contract_address, keccak256, rlp::RlpStream};
 use gadgets::util::{not, select};
 use halo2_proofs::{

@@ -892,7 +892,6 @@ impl MptTable {
         layouter: &mut impl Layouter<F>,
         updates: &MptUpdates,
         max_mpt_rows: usize,
-        randomness: Value<F>,
     ) -> Result<(), Error> {
         let num_threads = std::thread::available_parallelism().unwrap().get();
         let chunk_size = (max_mpt_rows + num_threads - 1) / num_threads;

@@ -1,7 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
-        param::{N_BYTES_MEMORY_WORD_SIZE, N_BYTES_WORD},
+        param::N_BYTES_MEMORY_WORD_SIZE,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -22,9 +22,8 @@ use crate::{
     },
 };
 
-use array_init::array_init;
 use eth_types::{evm_types::OpcodeId, Field, U256};
-use halo2_proofs::plonk::{Error, Expression};
+use halo2_proofs::plonk::Error;
 
 // MemoryGadget handles mload/mstore/mstore8 op codes gadget
 #[derive(Clone, Debug)]

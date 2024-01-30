@@ -17,7 +17,7 @@ use crate::{
     table::TxFieldTag,
     util::word::{Word32Cell, WordExpr},
 };
-use eth_types::{geth_types::TxType, Field, ToLittleEndian, U256};
+use eth_types::{geth_types::TxType, Field, U256};
 use halo2_proofs::plonk::{Error, Expression};
 
 /// Transaction EIP-1559 gadget to check sender balance before transfer
