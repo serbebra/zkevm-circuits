@@ -115,12 +115,10 @@ impl<F: Field> ExecutionGadget<F> for MemoryGadget<F> {
             let first_byte = value.limbs[0].expr();
             mask.require_equal_unaligned_byte(cb, first_byte, &value_left);
         });
-        let value_bytes: [Expression<F>; N_BYTES_WORD] = array_init(|i| value.limbs[i].expr());
 
-        let value_rlc = cb.word_rlc(value_bytes);
         cb.condition(is_not_mstore8, |cb| {
             // Check the bytes that are read or written from the left and right words.
-            mask.require_equal_unaligned_word(cb, value_rlc, &value_left, &value_right);
+            mask.require_equal_unaligned_word(cb, &value, &value_left, &value_right);
 
             // Read or update the right word.
             cb.memory_lookup(

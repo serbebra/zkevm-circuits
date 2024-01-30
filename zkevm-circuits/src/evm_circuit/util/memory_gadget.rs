@@ -551,11 +551,11 @@ impl<F: Field> MemoryMask<F> {
     pub(crate) fn require_equal_unaligned_word(
         &self,
         cb: &mut EVMConstraintBuilder<F>,
-        value_rlc: Expression<F>,
-        //value_left: &Word<F>,
+        value: &Word32Cell<F>,
         value_left: &Word32Cell<F>,
         value_right: &Word32Cell<F>,
     ) {
+        let value_rlc = cb.word_rlc(value.limbs.clone().map(|l| l.expr()));
         let b = self.right_rlc(cb, value_left);
         let c = self.left_rlc(cb, value_right);
 

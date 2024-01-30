@@ -178,7 +178,6 @@ impl Transaction {
         // let caller_address_word = word::Word::from(self.caller_address).map(Value::known);
         // let callee_address_word =
         //     word::Word::from(self.callee_address.unwrap_or(Address::zero())).map(Value::known);
-        println!("Transaction table_assignments_fixed");
 
         let ret = vec![
             [

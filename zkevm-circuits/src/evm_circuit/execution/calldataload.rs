@@ -203,11 +203,7 @@ impl<F: Field> ExecutionGadget<F> for CallDataLoadGadget<F> {
 
                 // Get the memory word the same way as MLOAD.
                 // Check the bytes that are read from the left and right memory words.
-                let value_bytes: [Expression<F>; N_BYTES_WORD] =
-                    array_init(|i| value.limbs[i].expr());
-
-                let value_rlc = cb.word_rlc(value_bytes);
-                mask.require_equal_unaligned_word(cb, value_rlc, &value_left, &value_right);
+                mask.require_equal_unaligned_word(cb, &value, &value_left, &value_right);
 
                 // Read the left and right words.
                 cb.memory_lookup(
