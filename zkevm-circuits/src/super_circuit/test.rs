@@ -278,36 +278,36 @@ fn serial_test_super_circuit_1tx_1max_tx() {
     );
 }
 
-// #[ignore]
-// #[cfg(feature = "scroll")]
-// #[test]
-// fn serial_test_super_circuit_1tx_deploy_2max_tx() {
-//     let block = block_1tx_deploy();
-//     const MAX_TXS: usize = 2;
-//     const MAX_CALLDATA: usize = 256;
-//     const MAX_INNER_BLOCKS: usize = 1;
-//     const MAX_RWS: usize = 256;
-//     const MAX_COPY_ROWS: usize = 256;
-//     let circuits_params = CircuitsParams {
-//         max_txs: MAX_TXS,
-//         max_calldata: MAX_CALLDATA,
-//         max_rws: MAX_RWS,
-//         max_copy_rows: MAX_COPY_ROWS,
-//         max_mpt_rows: 2049,
-//         max_poseidon_rows: 1024,
-//         max_bytecode: 512,
-//         max_keccak_rows: 0,
-//         max_inner_blocks: MAX_INNER_BLOCKS,
-//         max_exp_steps: 256,
-//         max_evm_rows: 0,
-//         max_rlp_rows: 500,
-//         ..Default::default()
-//     };
-//     test_super_circuit::<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>(
-//         block,
-//         circuits_params,
-//     );
-// }
+#[ignore]
+#[cfg(feature = "scroll")]
+#[test]
+fn serial_test_super_circuit_1tx_deploy_2max_tx() {
+    let block = block_1tx_deploy();
+    const MAX_TXS: usize = 2;
+    const MAX_CALLDATA: usize = 256;
+    const MAX_INNER_BLOCKS: usize = 1;
+    const MAX_RWS: usize = 256;
+    const MAX_COPY_ROWS: usize = 256;
+    let circuits_params = CircuitsParams {
+        max_txs: MAX_TXS,
+        max_calldata: MAX_CALLDATA,
+        max_rws: MAX_RWS,
+        max_copy_rows: MAX_COPY_ROWS,
+        max_mpt_rows: 2049,
+        max_poseidon_rows: 1024,
+        max_bytecode: 512,
+        max_keccak_rows: 0,
+        max_inner_blocks: MAX_INNER_BLOCKS,
+        max_exp_steps: 256,
+        max_evm_rows: 0,
+        max_rlp_rows: 500,
+        ..Default::default()
+    };
+    test_super_circuit::<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>(
+        block,
+        circuits_params,
+    );
+}
 
 #[ignore]
 #[cfg(feature = "scroll")]
