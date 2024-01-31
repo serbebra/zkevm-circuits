@@ -1,6 +1,7 @@
 use crate::{
     evm_circuit::{
         execution::ExecutionGadget,
+        param::N_BYTES_ACCOUNT_ADDRESS,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
@@ -8,24 +9,27 @@ use crate::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
                 Transition::Delta,
             },
+            from_bytes,
             math_gadget::IsZeroWordGadget,
-            not, select, AccountAddress, CachedRegion, Cell,
+            not, select, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
     util::{
-        word::{Word32Cell, WordCell, WordExpr},
+        word::{Word, Word32Cell, WordCell, WordExpr},
         Expr,
     },
 };
-use eth_types::{evm_types::GasCost, Field, ToAddress};
+use eth_types::{evm_types::GasCost, Field};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 #[derive(Clone, Debug)]
 pub(crate) struct BalanceGadget<F> {
     same_context: SameContextGadget<F>,
-    address: AccountAddress<F>,
+    // use Word32 instead of AccountAddress since address popped from stack can be bigger than
+    // normal H160 type.
+    address: Word32Cell<F>,
     reversion_info: ReversionInfo<F>,
     tx_id: Cell<F>,
     is_warm: Cell<F>,
@@ -40,15 +44,20 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::BALANCE;
 
     fn configure(cb: &mut EVMConstraintBuilder<F>) -> Self {
-        let address = cb.query_account_address();
-        cb.stack_pop(address.to_word());
+        // use Word32 instead of AccountAddress since address popped from stack can be bigger than
+        // normal H160 type.
+        let address_word = cb.query_word32();
+
+        cb.stack_pop(address_word.to_word());
+        // valid address
+        let address = from_bytes::expr(&address_word.limbs[..N_BYTES_ACCOUNT_ADDRESS]);
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
         let is_warm = cb.query_bool();
         cb.account_access_list_write_unchecked(
             tx_id.expr(),
-            address.to_word(),
+            Word::from_lo_unchecked(address.clone()),
             1.expr(),
             is_warm.expr(),
             Some(&mut reversion_info),
@@ -56,7 +65,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let code_hash = cb.query_word_unchecked();
         // For non-existing accounts the code_hash must be 0 in the rw_table.
         cb.account_read(
-            address.to_word(),
+            Word::from_lo_unchecked(address.clone()),
             AccountFieldTag::CodeHash,
             code_hash.to_word(),
         );
@@ -66,7 +75,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         let balance = cb.query_word32();
         cb.condition(exists.expr(), |cb| {
             cb.account_read(
-                address.to_word(),
+                Word::from_lo_unchecked(address),
                 AccountFieldTag::Balance,
                 balance.to_word(),
             );
@@ -97,7 +106,7 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
 
         Self {
             same_context,
-            address,
+            address: address_word,
             reversion_info,
             tx_id,
             is_warm,
@@ -119,8 +128,9 @@ impl<F: Field> ExecutionGadget<F> for BalanceGadget<F> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
         let address = block.rws[step.rw_indices[0]].stack_value();
-        self.address
-            .assign_h160(region, offset, address.to_address())?;
+        // self.address
+        //     .assign_h160(region, offset, address.to_address())?;
+        self.address.assign_u256(region, offset, address)?;
         self.tx_id
             .assign(region, offset, Value::known(F::from(tx.id as u64)))?;
 
