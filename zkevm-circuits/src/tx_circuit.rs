@@ -2480,8 +2480,8 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.gas_price.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.gas_price.to_be_bytes(), keccak_input),
                 }),
-                // rlc_be_bytes(&tx.gas_price.to_be_bytes(), evm_word),
-                // word::Word::from(tx.gas_price).map(Value::known),
+                // use rlc format for `gas_price` since rlp/sig circuit requires.
+                // consider to change to word type in the future.
                 word::Word::new([
                     rlc_be_bytes(&tx.gas_price.to_be_bytes(), evm_word),
                     Value::known(F::zero()),
@@ -2506,10 +2506,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.caller_address.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.caller_address.to_fixed_bytes(), keccak_input),
                 }),
-                //Value::known(tx.caller_address.to_scalar().expect("tx.from too big")),
-                // word::Word::from(tx.caller_address.to_word()).map(Value::known),
-
-                //let caller_addrss = tx.caller_address.to_scalar();
                 word::Word::new([
                     Value::known(tx.caller_address.to_scalar().expect("fx from")),
                     Value::known(F::zero()),
@@ -2528,14 +2524,6 @@ impl<F: Field> TxCircuitConfig<F> {
                         keccak_input,
                     ),
                 }),
-                // Value::known(
-                //     tx.callee_address
-                //         .unwrap_or(Address::zero())
-                //         .to_scalar()
-                //         .expect("tx.to too big"),
-                // ),
-                // word::Word::from(tx.callee_address.unwrap_or(Address::zero()).to_word())
-                //     .map(Value::known),
                 word::Word::new([
                     Value::known(
                         tx.callee_address
@@ -2562,7 +2550,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.value.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.value.to_be_bytes(), keccak_input),
                 }),
-                //rlc_be_bytes(&tx.value.to_be_bytes(), evm_word),
                 word::Word::from(tx.value.to_word()).map(Value::known),
             ),
             (
@@ -2630,7 +2617,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.v.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.v.to_be_bytes(), keccak_input),
                 }),
-                //Value::known(F::from(tx.v)),
                 word::Word::new([Value::known(F::from(tx.v)), Value::known(F::zero())]),
             ),
             (
@@ -2641,12 +2627,11 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.r.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.r.to_be_bytes(), keccak_input),
                 }),
-                //rlc_be_bytes(&tx.r.to_be_bytes(), evm_word),
-                //word::Word::from(tx.r.to_word()).map(Value::known),
+                // use rlc format for `SigR` since rlp/sig circuit requires.
+                // consider to change to word type in the future.
                 word::Word::new([
                     Value::known(unwrap_value(rlc_be_bytes(&tx.r.to_be_bytes(), evm_word))),
                     Value::known(F::zero()),
-                    //F::zero(),
                 ]),
             ),
             (
@@ -2657,16 +2642,11 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: tx.s.tag_length(),
                     be_bytes_rlc: rlc_be_bytes(&tx.s.to_be_bytes(), keccak_input),
                 }),
-                //rlc_be_bytes(&tx.s.to_be_bytes(), evm_word),
-                //word::Word::from(tx.s.to_word()).map(Value::known),
-                // word::Word::new([
-                //     Value::known(rlc_be_bytes(&tx.s.to_be_bytes(), evm_word)),
-                //     Value::known(F::zero()),
-                // ]),
+                // use rlc format for `SigS` since rlp/sig circuit requires.
+                // consider to change to word type in the future.
                 word::Word::new([
                     Value::known(unwrap_value(rlc_be_bytes(&tx.s.to_be_bytes(), evm_word))),
                     Value::known(F::zero()),
-                    //F::zero(),
                 ]),
             ),
             (
@@ -2677,7 +2657,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: rlp_sign_tag_length,
                     be_bytes_rlc: zero_rlc,
                 }),
-                //Value::known(F::from(tx.rlp_unsigned.len() as u64)),
                 word::Word::new([
                     Value::known(F::from(tx.rlp_unsigned.len() as u64)),
                     Value::known(F::zero()),
@@ -2697,11 +2676,9 @@ impl<F: Field> TxCircuitConfig<F> {
                     Value::known(F::zero()),
                 ]),
             ),
-            //(TxSignHash, None, sign_hash_rlc),
             (
                 TxSignHash,
                 None,
-                //word::Word::from(U256::from_big_endian(&sign_hash)).map(Value::known),
                 word::Word::new([sign_hash_rlc, Value::known(F::zero())]),
             ),
             (
@@ -2712,7 +2689,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     be_bytes_len: get_rlp_len_tag_length(&tx.rlp_signed),
                     be_bytes_rlc: zero_rlc,
                 }),
-                //Value::known(F::from(tx.rlp_signed.len() as u64)),
                 word::Word::new([
                     Value::known(F::from(tx.rlp_signed.len() as u64)),
                     Value::known(F::zero()),
@@ -2732,17 +2708,16 @@ impl<F: Field> TxCircuitConfig<F> {
                     Value::known(F::zero()),
                 ]),
             ),
-            //(TxFieldTag::TxHash, None, hash_rlc),
             (
                 TxFieldTag::TxHash,
                 None,
-                //word::Word::from(U256::from_big_endian(&hash)).map(Value::known),
+                // use rlc format for `SigS` since keccak lookup requires.
+                // consider to change to word type in the future.
                 word::Word::new([hash_rlc, Value::known(F::zero())]),
             ),
             (
                 TxFieldTag::TxType,
                 None,
-                //Value::known(F::from(tx.tx_type as u64)),
                 word::Word::new([
                     Value::known(F::from(tx.tx_type as u64)),
                     Value::known(F::zero()),
@@ -2819,7 +2794,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     Value::known(F::zero()),
                 ]),
             ),
-            //Value::known(F::from(tx.block_number))),
         ];
 
         // constructs two hashes' words

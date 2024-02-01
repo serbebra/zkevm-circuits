@@ -169,15 +169,14 @@ impl Transaction {
         let tx_sign_hash_be_bytes = keccak256(&self.rlp_unsigned);
         let (access_list_address_size, access_list_storage_key_size) =
             access_list_size(&self.access_list);
-        // let gas_price_word = word::Word::from(self.gas_price.to_word()).map(Value::known);
         let value_word = word::Word::from(self.value.to_word()).map(Value::known);
+        // currently fields like gas_price, tx_hash, tx_sign_hash still use rlc format for keccak
+        // lookup usage, can be changed to word type later.
+        // let gas_price_word = word::Word::from(self.gas_price.to_word()).map(Value::known);
         // let tx_hash_word =
         //     word::Word::from(Word::from_big_endian(&tx_hash_be_bytes)).map(Value::known);
         // let tx_sign_hash_word =
         //     word::Word::from(Word::from_big_endian(&tx_sign_hash_be_bytes)).map(Value::known);
-        // let caller_address_word = word::Word::from(self.caller_address).map(Value::known);
-        // let callee_address_word =
-        //     word::Word::from(self.callee_address.unwrap_or(Address::zero())).map(Value::known);
 
         let ret = vec![
             [
@@ -212,8 +211,6 @@ impl Transaction {
                 Value::known(F::zero()),
                 Value::known(self.caller_address.to_scalar().unwrap()),
                 Value::known(F::zero()),
-                // caller_address_word.lo(),
-                // caller_address_word.hi(),
             ],
             [
                 Value::known(F::from(self.id as u64)),
@@ -226,8 +223,6 @@ impl Transaction {
                         .unwrap(),
                 ),
                 Value::known(F::zero()),
-                // callee_address_word.lo(),
-                // callee_address_word.hi(),
             ],
             [
                 Value::known(F::from(self.id as u64)),
@@ -292,7 +287,8 @@ impl Transaction {
                 Value::known(F::from(self.id as u64)),
                 Value::known(F::from(TxContextFieldTag::SigR as u64)),
                 Value::known(F::zero()),
-                // TODO: check if change r to word hi lo ?
+                // still use rlc format for `SigR` since rlp/sig circuit requires.
+                // consider to change to word type in the future.
                 rlc_be_bytes(&self.r.to_be_bytes(), challenges.evm_word()),
                 Value::known(F::zero()),
             ],
@@ -300,7 +296,8 @@ impl Transaction {
                 Value::known(F::from(self.id as u64)),
                 Value::known(F::from(TxContextFieldTag::SigS as u64)),
                 Value::known(F::zero()),
-                // TODO: check if change s to word hi lo ?
+                // still use rlc format for `SigS` since rlp/sig circuit requires.
+                // consider to change to word type in the future.
                 rlc_be_bytes(&self.s.to_be_bytes(), challenges.evm_word()),
                 Value::known(F::zero()),
             ],
@@ -322,11 +319,10 @@ impl Transaction {
                 Value::known(F::from(self.id as u64)),
                 Value::known(F::from(TxContextFieldTag::TxSignHash as u64)),
                 Value::known(F::zero()),
-                // TODO: check if change to word hi lo ?
+                // still use rlc format for TxSignHash since keccak lookup requires.
+                // consider to change to word type in the future.
                 rlc_be_bytes(&tx_sign_hash_be_bytes, challenges.evm_word()),
                 Value::known(F::zero()),
-                // tx_sign_hash_word.lo(),
-                // tx_sign_hash_word.hi(),
             ],
             [
                 Value::known(F::from(self.id as u64)),
@@ -346,10 +342,10 @@ impl Transaction {
                 Value::known(F::from(self.id as u64)),
                 Value::known(F::from(TxContextFieldTag::TxHash as u64)),
                 Value::known(F::zero()),
+                // still use rlc format for TxHash since keccak lookup requires.
+                // consider to change to word type in the future.
                 rlc_be_bytes(&tx_hash_be_bytes, challenges.evm_word()),
                 Value::known(F::zero()),
-                // tx_hash_word.lo(),
-                // tx_hash_word.hi(),
             ],
             [
                 Value::known(F::from(self.id as u64)),
