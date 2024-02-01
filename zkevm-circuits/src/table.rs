@@ -2565,9 +2565,10 @@ pub struct SigTable {
     /// Indicates whether or not the gates are enabled on the current row.
     pub q_enable: Column<Fixed>,
     /// Random-linear combination of the Keccak256 hash of the message that's signed.
-    /// do not change to word hi lo (msg_hash_word) becuase it is related to ecc chip.
+    /// currently do not change to word hi-lo type (msg_hash_word) becuase it is related to ecc
+    /// chip. ecc chip requires rlc value to check.
     pub msg_hash_rlc: Column<Advice>,
-    // TODO: sig_r_rlc, sig_s_rlc to word as well ?
+    // TODO: sig_r_rlc, sig_s_rlc to word in the future.
     /// should be in range [0, 1]
     pub sig_v: Column<Advice>,
     /// Random-linear combination of the signature's `r` component.

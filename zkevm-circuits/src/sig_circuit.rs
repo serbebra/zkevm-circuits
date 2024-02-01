@@ -154,6 +154,7 @@ impl<F: Field> SubCircuitConfig<F> for SigCircuitConfig<F> {
         meta.enable_equality(sig_table.sig_v);
         meta.enable_equality(sig_table.is_valid);
         meta.enable_equality(sig_table.msg_hash_rlc);
+        // consider to change msg_hash_rlc to word hi lo type in the future.
         // meta.enable_equality(sig_table.msg_hash_word.lo());
         // meta.enable_equality(sig_table.msg_hash_word.hi());
 
@@ -740,7 +741,6 @@ impl<F: Field> SigCircuit<F> {
             evm_challenge_powers.clone(),
         );
 
-        // TODO：calculate pk hash word [QuantumCell<F>;32]
         // step 4: r,s rlc
         let r_rlc = rlc_chip.gate.inner_product(
             ctx,

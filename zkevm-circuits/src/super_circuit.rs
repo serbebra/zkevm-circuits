@@ -208,14 +208,12 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
         log_circuit_info(meta, "power of randomness table");
 
-        // let u8_table = U8Table::construct(meta);
-        // log_circuit_info(meta, "u8 table");
-        // let u16_table = U16Table::construct(meta);
-        // log_circuit_info(meta, "u16 table");
-
         let ux8_table = UXTable::construct(meta);
+        log_circuit_info(meta, "u8 table");
         let u10_table = UXTable::construct(meta);
+        log_circuit_info(meta, "u10 table");
         let ux16_table = UXTable::construct(meta);
+        log_circuit_info(meta, "u16 table");
 
         assert!(get_num_rows_per_round() == 12);
         let keccak_circuit = KeccakCircuitConfig::new(
@@ -403,10 +401,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
             tx_table,
             rlp_table,
             poseidon_table,
-            // u8_table,
             ux8_table,
             ux10_table: u10_table,
-            // u16_table,
             ux16_table,
             evm_circuit,
             state_circuit,
