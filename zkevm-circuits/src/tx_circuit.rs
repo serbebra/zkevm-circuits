@@ -1884,7 +1884,6 @@ impl<F: Field> TxCircuitConfig<F> {
             vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 CallData.expr(),
-                //TODO: check if lo covers calldata_gas_cost_acc
                 meta.query_advice(tx_table.value.lo(), Rotation::next()), // calldata_gas_cost
                 1.expr(),                                                 // is_final = 1
             ]
@@ -1945,7 +1944,6 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                // TODO: check if lo is correct here ?
                 meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
@@ -1970,7 +1968,7 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                // TODO: check if lo is correct ?
+                //  value.lo represents rlc of access list.
                 meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
@@ -2019,7 +2017,6 @@ impl<F: Field> TxCircuitConfig<F> {
             let table_exprs = vec![
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 meta.query_fixed(tx_table.tag, Rotation::cur()),
-                //TODO: check if lo correct ?
                 meta.query_advice(tx_table.value.lo(), Rotation::cur()),
             ];
 
@@ -2041,7 +2038,6 @@ impl<F: Field> TxCircuitConfig<F> {
                 meta.query_advice(tx_table.tx_id, Rotation::cur()),
                 1.expr(),
                 1.expr(),
-                // TODO: check if lo is correct ?
                 meta.query_advice(tx_table.value.lo(), Rotation(0)), // al_idx
                 meta.query_advice(tx_table.value.lo(), Rotation(1)), // sks_acc
                 meta.query_advice(tx_table.value.lo(), Rotation(2)), // section_rlc for access list
@@ -2200,7 +2196,7 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     sign_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    // TODO: check if lo correct ?
+                    // value.lo represents rlc value used in RLP table.
                     meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     20.expr(),                                  // 20 bytes for address
@@ -2271,7 +2267,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     sign_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    //TODO: check if lo is correct ?
                     meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     32.expr(),                                  // 32 bytes for storage keys
@@ -2305,7 +2300,6 @@ impl<F: Field> TxCircuitConfig<F> {
                     meta.query_advice(tx_table.tx_id, Rotation::cur()),
                     hash_format,
                     meta.query_advice(rlp_tag, Rotation::cur()),
-                    // TODO: check if lo covers ?
                     meta.query_advice(tx_table.value.lo(), Rotation::cur()),
                     meta.query_advice(field_rlc, Rotation::cur()),
                     32.expr(),                                  // 32 bytes for storage keys
@@ -2334,7 +2328,7 @@ impl<F: Field> TxCircuitConfig<F> {
                 meta.query_advice(is_chain_id, Rotation::cur()),
             ]);
 
-            // TODO: check if lo covers msg_hash_rlc, sig(v,r,s)
+            // value.lo can cover msg_hash_rlc, sig(v,r,s) as they are in rlc format.
             let msg_hash_lo = meta.query_advice(tx_table.value.lo(), Rotation(6));
             // let msg_hash_hi = meta.query_advice(tx_table.value.hi(), Rotation(6));
             let chain_id = meta.query_advice(tx_table.value.lo(), Rotation::cur());
