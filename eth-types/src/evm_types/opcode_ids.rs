@@ -1240,7 +1240,7 @@ impl FromStr for OpcodeId {
             "BASEFEE" => OpcodeId::BASEFEE,
             #[cfg(feature = "scroll")]
             "BASEFEE" => OpcodeId::INVALID(0x48),
-            "BLOBHASH" => OpcodeId::INVALID(0x49)
+            "BLOBHASH" => OpcodeId::INVALID(0x49),
             "BLOBBASEFEE" => OpcodeId::INVALID(0x4a),
             "TLOAD" => OpcodeId::INVALID(0x5c),
             "TSTORE" => OpcodeId::INVALID(0x5d),
