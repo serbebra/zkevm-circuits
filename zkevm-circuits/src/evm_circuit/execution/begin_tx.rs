@@ -183,11 +183,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             Word::from_lo_unchecked(l1_fee_cost.expr()),
         ); // rwc_delta += 1
 
-        cb.call_context_lookup_write(
-            Some(call_id.expr()),
-            CallContextFieldTag::TxId,
-            Word::from_lo_unchecked(tx_id.expr()),
-        ); // rwc_delta += 1
         let mut reversion_info = cb.reversion_info_write_unchecked(None);
         // rwc_delta += 2
         cb.call_context_lookup_write(
