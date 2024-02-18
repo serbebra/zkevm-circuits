@@ -71,15 +71,14 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let is_persistent = cb.call_context(None, CallContextFieldTag::IsPersistent);
         let tx_l1_fee = cb.call_context(None, CallContextFieldTag::L1Fee);
-
-        let tx_gas = cb.tx_context(tx_id.expr(), TxContextFieldTag::Gas, None);
-        // let tx_caller_address =
-        //     cb.tx_context_as_word(tx_id.expr(), TxContextFieldTag::CallerAddress, None);
         let tx_caller_address = cb.query_word_unchecked();
 
-        let [tx_type, tx_data_gas_cost] =
-            [TxContextFieldTag::TxType, TxContextFieldTag::TxDataGasCost]
-                .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
+        let [tx_gas, tx_type, tx_data_gas_cost] = [
+            TxContextFieldTag::Gas,
+            TxContextFieldTag::TxType,
+            TxContextFieldTag::TxDataGasCost,
+        ]
+        .map(|field_tag| cb.tx_context(tx_id.expr(), field_tag, None));
 
         let tx_gas_price = cb.query_word32();
         let tx_gas_price_rlc = cb.word_rlc(tx_gas_price.limbs.clone().map(|cell| cell.expr()));
@@ -118,6 +117,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 None,
             )
         });
+        // rwc_delta = 4 + !tx_is_l1msg
 
         // Add gas_used * effective_tip to coinbase's balance
         let coinbase = cb.query_cell();
@@ -165,14 +165,16 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         let coinbase_codehash = cb.query_word_unchecked();
         let coinbase_codehash_is_zero = IsZeroWordGadget::construct(cb, &coinbase_codehash);
 
-        #[cfg(feature = "scroll")]
-        let coinbase_keccak_codehash = cb.query_word_unchecked();
-
         cb.account_read(
             Word::from_lo_unchecked(coinbase.expr()),
             AccountFieldTag::CodeHash,
             coinbase_codehash.to_word(),
         );
+
+        // rwc_delta = 5 + !tx_is_l1msg
+        #[cfg(feature = "scroll")]
+        let coinbase_keccak_codehash = cb.query_word_unchecked();
+
         // If coinbase account balance will become positive because of this tx, update its codehash
         // from 0 to the empty codehash.
         let coinbase_transfer = cb.condition(not::expr(tx_is_l1msg.expr()), |cb| {
@@ -188,6 +190,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 None,
             )
         });
+        // rwc_delta = 5 + !tx_is_l1msg + !tx_is_l1msg * coinbase_transfer.rw_delta
 
         // constrain tx receipt fields
         cb.tx_receipt_lookup(
@@ -202,6 +205,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             TxReceiptFieldTag::LogLength,
             cb.curr.state.log_id.expr(),
         );
+        // rwc_delta = 7 + !tx_is_l1msg * (coinbase_transfer.rw_delta + 1)
 
         let is_first_tx = IsEqualGadget::construct(cb, tx_id.expr(), 1.expr());
 
@@ -213,7 +217,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             );
         });
 
-        cb.condition(1.expr() - is_first_tx.expr(), |cb| {
+        cb.condition(not::expr(is_first_tx.expr()), |cb| {
             cb.tx_receipt_lookup(
                 0.expr(),
                 tx_id.expr() - 1.expr(),
@@ -221,6 +225,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                 current_cumulative_gas_used.expr(),
             );
         });
+        // rwc_delta = 8 - is_first_tx + !tx_is_l1msg * (coinbase_transfer.rw_delta + 1)
 
         cb.tx_receipt_lookup(
             1.expr(),
@@ -228,35 +233,37 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             TxReceiptFieldTag::CumulativeGasUsed,
             gas_used + current_cumulative_gas_used.expr(),
         );
+        // rwc_delta = 9 - is_first_tx + !tx_is_l1msg * (coinbase_transfer.rw_delta + 1)
 
+        // The next state of `end_tx` can only be 'begin_tx' or 'end_inner_block'
+
+        let rw_counter_offset = 9.expr() - is_first_tx.expr()
+            + not::expr(tx_is_l1msg.expr()) * (coinbase_transfer.rw_delta() + 1.expr());
         cb.condition(
             cb.next.execution_state_selector([ExecutionState::BeginTx]),
             |cb| {
-                cb.call_context_lookup(
-                    true.expr(),
-                    Some(cb.next.state.rw_counter.expr()),
+                let next_step_rwc = cb.next.state.rw_counter.expr();
+                // lookup use next step initial rwc, thus lead to same record on rw table
+                cb.call_context_lookup_write_with_counter(
+                    next_step_rwc.clone(),
+                    Some(next_step_rwc),
                     CallContextFieldTag::TxId,
                     Word::from_lo_unchecked(tx_id.expr() + 1.expr()),
                 );
 
                 cb.require_step_state_transition(StepStateTransition {
-                    rw_counter: Delta(
-                        10.expr() - is_first_tx.expr()
-                            + not::expr(tx_is_l1msg.expr())
-                                * (coinbase_transfer.rw_delta() + 1.expr()),
-                    ),
+                    rw_counter: Delta(rw_counter_offset.clone()),
                     ..StepStateTransition::any()
                 });
             },
         );
 
-        let rw_counter_delta = 9.expr() - is_first_tx.expr()
-            + not::expr(tx_is_l1msg.expr()) * (coinbase_transfer.rw_delta() + 1.expr());
         cb.condition(
-            cb.next.execution_state_selector([ExecutionState::EndBlock]),
+            cb.next
+                .execution_state_selector([ExecutionState::EndInnerBlock]),
             |cb| {
                 cb.require_step_state_transition(StepStateTransition {
-                    rw_counter: Delta(rw_counter_delta),
+                    rw_counter: Delta(rw_counter_offset),
                     // We propagate call_id so that EndBlock can get the last tx_id
                     // in order to count processed txs.
                     call_id: Same,

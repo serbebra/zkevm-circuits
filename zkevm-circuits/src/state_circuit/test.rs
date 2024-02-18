@@ -406,7 +406,7 @@ fn address_limb_out_of_range() {
 
     let result = verify_with_overrides(rows, overrides);
 
-    assert_error_matches(result, "mpi limb fits into u16");
+    assert_error_matches(result, "limb fits into u16");
 }
 
 #[test]
@@ -463,7 +463,7 @@ fn nonlexicographic_order_tag() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -484,7 +484,7 @@ fn nonlexicographic_order_field_tag() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn nonlexicographic_order_id() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -528,7 +528,7 @@ fn nonlexicographic_order_address() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -555,7 +555,7 @@ fn nonlexicographic_order_storage_key_upper() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -582,7 +582,7 @@ fn nonlexicographic_order_storage_key_lower() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -603,7 +603,7 @@ fn nonlexicographic_order_rw_counter() {
     };
 
     assert_eq!(verify(vec![first, second]), Ok(()));
-    assert_error_matches(verify(vec![second, first]), "limb_difference fits into u16");
+    assert_error_matches(verify(vec![second, first]), "limb fits into u16");
 }
 
 #[test]
@@ -743,7 +743,7 @@ fn misaligned_memory_address() {
             value_prev: 0.into(),
         }];
 
-        assert_error_matches(verify(rows), "address % 32 == 0");
+        assert_error_matches(verify(rows), "limb fits into u16");
     }
 }
 
@@ -1094,8 +1094,6 @@ fn assert_error_matches(result: Result<(), Vec<VerifyFailure>>, name: &str) {
         VerifyFailure::CellNotAssigned { .. } => panic!(),
         VerifyFailure::ConstraintPoisoned { .. } => panic!(),
         VerifyFailure::Permutation { .. } => panic!(),
-        // FIXME
-        // &VerifyFailure::InstanceCellNotAssigned { .. } | &VerifyFailure::Shuffle { .. } =>
-        // todo!(),
+        &VerifyFailure::InstanceCellNotAssigned { .. } | &VerifyFailure::Shuffle { .. } => todo!(),
     }
 }

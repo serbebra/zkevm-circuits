@@ -143,7 +143,7 @@ where
         let limbs = [0; N_LIMBS].map(|_| meta.advice_column());
 
         for &limb in &limbs {
-            lookup.range_check_u16(meta, "mpi limb fits into u16", |meta| {
+            lookup.range_check_u16(meta, "limb fits into u16", |meta| {
                 meta.query_advice(limb, Rotation::cur())
             });
         }
