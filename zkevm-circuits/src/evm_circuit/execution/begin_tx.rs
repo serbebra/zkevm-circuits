@@ -456,8 +456,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             let keccak_code_hash = cb.query_word32();
 
             let init_code_rlc = cb.query_cell_phase2();
-            let keccak_code_hash_rlc =
-                cb.word_rlc(keccak_code_hash.limbs.clone().map(|l| l.expr()));
+
             // keccak table lookup for init code.
             cb.keccak_table_lookup(
                 init_code_rlc.expr(),
