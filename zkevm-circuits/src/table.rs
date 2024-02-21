@@ -1458,7 +1458,7 @@ pub struct KeccakTable {
     /// Byte array input length
     pub input_len: Column<Advice>,
     /// RLC of the hash result
-    pub output_rlc: Column<Advice>, // RLC of hash of input bytes
+    // pub output_rlc: Column<Advice>, // RLC of hash of input bytes
     /// TODO: finally remove output_rlc and use Word hi lo
     pub output: word::Word<Column<Advice>>,
 }
@@ -1470,7 +1470,7 @@ impl<F: Field> LookupTable<F> for KeccakTable {
             self.is_final.into(),
             self.input_rlc.into(),
             self.input_len.into(),
-            self.output_rlc.into(),
+            // self.output_rlc.into(),
             self.output.lo().into(),
             self.output.hi().into(),
         ]
@@ -1497,7 +1497,7 @@ impl KeccakTable {
             is_final: meta.advice_column(),
             input_rlc: meta.advice_column_in(SecondPhase),
             input_len: meta.advice_column(),
-            output_rlc: meta.advice_column_in(SecondPhase),
+            //output_rlc: meta.advice_column_in(SecondPhase),
             output: word::Word::new([meta.advice_column(), meta.advice_column()]),
         }
     }
