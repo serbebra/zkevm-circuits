@@ -115,7 +115,7 @@ impl<F: Field> ExecutionGadget<F> for BlockHashGadget<F> {
                         .unwrap(),
                 ),
                 (2 * N_BYTES_U64).expr(),
-                block_hash_rlc,
+                //block_hash_rlc,
                 block_hash.to_word(),
             );
         });

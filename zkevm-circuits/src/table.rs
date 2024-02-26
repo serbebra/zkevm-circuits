@@ -1516,7 +1516,7 @@ impl KeccakTable {
         keccak.update(input);
         let output = keccak.digest();
         let output_word = Word::from_big_endian(output.as_slice());
-        let output_bytes = output_word.to_le_bytes();
+        // let output_bytes = output_word.to_le_bytes();
         // let output_rlc = challenges
         //     .evm_word()
         //     .map(|challenge| rlc::value(&output_bytes, challenge));

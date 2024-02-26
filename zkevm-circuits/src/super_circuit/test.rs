@@ -421,67 +421,67 @@ fn precomiple_super_circuits_params(max_txs: usize, max_calldata: usize) -> Circ
     }
 }
 
-#[ignore]
-#[cfg(feature = "scroll")]
-#[test]
-fn serial_test_super_circuit_ec_ops_txs() {
-    const MAX_TXS: usize = 4;
-    const MAX_CALLDATA: usize = 0x320;
+// #[ignore]
+// #[cfg(feature = "scroll")]
+// #[test]
+// fn serial_test_super_circuit_ec_ops_txs() {
+//     const MAX_TXS: usize = 4;
+//     const MAX_CALLDATA: usize = 0x320;
 
-    let block = precompile_block_trace::block_ec_ops();
-    let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
+//     let block = precompile_block_trace::block_ec_ops();
+//     let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
 
-    test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
-}
+//     test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
+// }
 
-#[ignore]
-#[cfg(feature = "scroll")]
-#[test]
-fn serial_test_super_circuit_precompile_oog() {
-    const MAX_TXS: usize = 4;
-    const MAX_CALLDATA: usize = 0x260;
+// #[ignore]
+// #[cfg(feature = "scroll")]
+// #[test]
+// fn serial_test_super_circuit_precompile_oog() {
+//     const MAX_TXS: usize = 4;
+//     const MAX_CALLDATA: usize = 0x260;
 
-    let block = precompile_block_trace::block_precompile_oog();
-    let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
+//     let block = precompile_block_trace::block_precompile_oog();
+//     let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
 
-    test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
-}
+//     test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
+// }
 
-#[ignore]
-#[cfg(feature = "scroll")]
-#[test]
-fn serial_test_super_circuit_invalid_precompile() {
-    const MAX_TXS: usize = 3;
-    const MAX_CALLDATA: usize = 0x8a6;
+// #[ignore]
+// #[cfg(feature = "scroll")]
+// #[test]
+// fn serial_test_super_circuit_invalid_precompile() {
+//     const MAX_TXS: usize = 3;
+//     const MAX_CALLDATA: usize = 0x8a6;
 
-    let block = precompile_block_trace::block_invalid_precompile();
-    let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
+//     let block = precompile_block_trace::block_invalid_precompile();
+//     let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
 
-    test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
-}
+//     test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
+// }
 
-#[ignore]
-#[cfg(feature = "scroll")]
-#[test]
-fn serial_test_super_circuit_precompile_invalid_ec_pairing_fq_overflow() {
-    const MAX_TXS: usize = 1;
-    const MAX_CALLDATA: usize = 0x180;
+// #[ignore]
+// #[cfg(feature = "scroll")]
+// #[test]
+// fn serial_test_super_circuit_precompile_invalid_ec_pairing_fq_overflow() {
+//     const MAX_TXS: usize = 1;
+//     const MAX_CALLDATA: usize = 0x180;
 
-    let block = precompile_block_trace::block_precompile_invalid_ec_pairing_fq_overflow();
-    let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
+//     let block = precompile_block_trace::block_precompile_invalid_ec_pairing_fq_overflow();
+//     let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
 
-    test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
-}
+//     test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
+// }
 
-#[ignore]
-#[cfg(feature = "scroll")]
-#[test]
-fn serial_test_super_circuit_precompile_sha256() {
-    const MAX_TXS: usize = 1;
-    const MAX_CALLDATA: usize = 0x180;
+// #[ignore]
+// #[cfg(feature = "scroll")]
+// #[test]
+// fn serial_test_super_circuit_precompile_sha256() {
+//     const MAX_TXS: usize = 1;
+//     const MAX_CALLDATA: usize = 0x180;
 
-    let block = precompile_block_trace::block_precompile_sha256();
-    let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
+//     let block = precompile_block_trace::block_precompile_sha256();
+//     let circuits_params = precomiple_super_circuits_params(MAX_TXS, MAX_CALLDATA);
 
-    test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
-}
+//     test_super_circuit::<MAX_TXS, MAX_CALLDATA, 1, TEST_MOCK_RANDOMNESS>(block, circuits_params);
+// }
