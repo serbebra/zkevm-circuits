@@ -654,7 +654,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
                 1.expr(), // is_final = true
                 rpi_rlc,
                 rpi_length,
-                output,
+                //output,
                 output_word.lo(),
                 output_word.hi(),
             ];

@@ -461,7 +461,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             cb.keccak_table_lookup(
                 init_code_rlc.expr(),
                 tx_call_data_length.expr(),
-               // keccak_code_hash_rlc,
+                // keccak_code_hash_rlc,
                 keccak_code_hash.to_word(),
             );
             // copy table lookup for init code.
