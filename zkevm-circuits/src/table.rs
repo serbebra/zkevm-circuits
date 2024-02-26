@@ -1507,7 +1507,7 @@ impl KeccakTable {
     pub fn assignments<F: Field>(
         input: &[u8],
         challenges: &Challenges<Value<F>>,
-    ) -> Vec<[Value<F>; 6]> {
+    ) -> Vec<[Value<F>; 5]> {
         let input_rlc = challenges
             .keccak_input()
             .map(|challenge| rlc::value(input.iter().rev(), challenge));
@@ -1517,16 +1517,16 @@ impl KeccakTable {
         let output = keccak.digest();
         let output_word = Word::from_big_endian(output.as_slice());
         let output_bytes = output_word.to_le_bytes();
-        let output_rlc = challenges
-            .evm_word()
-            .map(|challenge| rlc::value(&output_bytes, challenge));
+        // let output_rlc = challenges
+        //     .evm_word()
+        //     .map(|challenge| rlc::value(&output_bytes, challenge));
         let output_lo_hi = word::Word::from(output_word);
 
         vec![[
             Value::known(F::one()),
             input_rlc,
             Value::known(input_len),
-            output_rlc,
+            // output_rlc,
             Value::known(output_lo_hi.lo()),
             Value::known(output_lo_hi.hi()),
         ]]
