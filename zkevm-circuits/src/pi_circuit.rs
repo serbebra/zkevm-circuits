@@ -646,7 +646,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
 
             let rpi_rlc = meta.query_advice(rpi, Rotation::cur());
             let rpi_length = meta.query_advice(rpi_length_acc, Rotation::cur());
-            let output = meta.query_advice(rpi_rlc_acc, Rotation::cur());
+            // let output = meta.query_advice(rpi_rlc_acc, Rotation::cur());
             let output_word = rpi_word.query_advice(meta, Rotation::cur());
 
             let input_exprs = vec![
