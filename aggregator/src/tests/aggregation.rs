@@ -11,7 +11,6 @@ use crate::{
     tests::mock_chunk::MockChunkCircuit, ChunkHash,
 };
 
-#[ignore = "TODO: renable it later after other test fixed for keccal rlc removal"]
 #[test]
 fn test_aggregation_circuit() {
     env_logger::init();

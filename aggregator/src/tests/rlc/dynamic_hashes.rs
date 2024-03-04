@@ -192,15 +192,15 @@ impl Circuit<Fr> for DynamicHashCircuit {
 impl CircuitExt<Fr> for DynamicHashCircuit {}
 
 // TODO: enable it later after other test pass.
-// #[test]
-// fn test_hash_circuit() {
-//     const LEN: usize = 100;
-//     let a = (0..LEN).map(|x| x as u8).collect::<Vec<u8>>();
-//     let circuit = DynamicHashCircuit { inputs: a };
-//     let prover = MockProver::run(LOG_DEGREE, &circuit, vec![]).unwrap();
-//     prover.assert_satisfied_par();
-//     println!("circuit satisfied");
-//}
+#[test]
+fn test_hash_circuit() {
+    const LEN: usize = 100;
+    let a = (0..LEN).map(|x| x as u8).collect::<Vec<u8>>();
+    let circuit = DynamicHashCircuit { inputs: a };
+    let prover = MockProver::run(LOG_DEGREE, &circuit, vec![]).unwrap();
+    prover.assert_satisfied_par();
+    println!("circuit satisfied");
+}
 
 #[ignore = "it takes too much time"]
 #[test]
