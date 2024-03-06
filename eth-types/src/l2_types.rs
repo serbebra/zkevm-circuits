@@ -47,7 +47,7 @@ impl From<BlockTrace> for EthBlock {
         let mut txs = Vec::new();
         for (idx, tx_data) in b.transactions.iter().enumerate() {
             let tx_idx = Some(U64::from(idx));
-            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx);
+            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx, b.header.base_fee_per_gas);
             txs.push(tx)
         }
         EthBlock {
@@ -63,7 +63,7 @@ impl From<&BlockTrace> for EthBlock {
         let mut txs = Vec::new();
         for (idx, tx_data) in b.transactions.iter().enumerate() {
             let tx_idx = Some(U64::from(idx));
-            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx);
+            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx, b.header.base_fee_per_gas);
             txs.push(tx)
         }
         EthBlock {
@@ -129,7 +129,15 @@ impl TransactionTrace {
         block_hash: Option<H256>,
         block_number: Option<U64>,
         transaction_index: Option<U64>,
+        base_fee_per_gas: Option<U256>,
     ) -> Transaction {
+        let gas_price = if self.type_ == 2 {
+            let priority_fee_per_gas = std::cmp::min(self.gas_tip_cap.unwrap(), self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap());
+            let effective_gas_price = priority_fee_per_gas + base_fee_per_gas.unwrap();
+            effective_gas_price
+        } else {
+            self.gas_price
+        };
         Transaction {
             hash: self.tx_hash,
             nonce: U256::from(self.nonce),
@@ -139,7 +147,7 @@ impl TransactionTrace {
             from: self.from,
             to: self.to,
             value: self.value,
-            gas_price: Some(self.gas_price),
+            gas_price: Some(gas_price),
             gas: U256::from(self.gas),
             input: self.data.clone(),
             v: self.v,
