@@ -5,7 +5,7 @@ use crate::{
     Block, GethCallTrace, GethExecError, GethExecStep, GethExecTrace, GethPrestateTrace, Hash,
     Transaction, Word, H256,
 };
-use ethers_core::types::{Address, Bytes, U256, U64};
+use ethers_core::types::{transaction::eip2930::{AccessList, AccessListItem}, Address, Bytes, U256, U64};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -91,6 +91,12 @@ pub struct TransactionTrace {
     #[serde(rename = "gasPrice")]
     /// gas price
     pub gas_price: U256,
+    #[serde(rename = "gasTipCap")]
+    /// gas tip cap
+    pub gas_tip_cap: Option<U256>,
+    #[serde(rename = "gasFeeCap")]
+    /// gas fee cap
+    pub gas_fee_cap: Option<U256>,
     /// from
     pub from: Address,
     /// to, NONE for creation (0 addr)
@@ -105,6 +111,9 @@ pub struct TransactionTrace {
     /// is creation
     #[serde(rename = "isCreate")]
     pub is_create: bool,
+    /// access list
+    #[serde(rename = "accessList")]
+    pub access_list: Option<Vec<AccessListItem>>,
     /// signature v
     pub v: U64,
     /// signature r
@@ -137,9 +146,9 @@ impl TransactionTrace {
             r: self.r,
             s: self.s,
             transaction_type: Some(U64::from(self.type_ as u64)),
-            access_list: None,
-            max_priority_fee_per_gas: None,
-            max_fee_per_gas: None,
+            access_list: self.access_list.as_ref().map(|al|AccessList(al.clone())),
+            max_priority_fee_per_gas: self.gas_tip_cap,
+            max_fee_per_gas: self.gas_fee_cap,
             chain_id: Some(self.chain_id),
             other: Default::default(),
         }
