@@ -106,9 +106,6 @@ func transferTxs(txs []Transaction, chainID *big.Int) types.Transactions {
 				}
 				t_txs = append(t_txs, types.NewTx(t))
 			case "Eip2930":
-				//v := big.NewInt(tx.V - 35)
-				//chainId := tx.ChainId.ToInt()
-				//v.Sub(v, chainId.Mul(chainId, big.NewInt(2)))
 				t := &types.AccessListTx{
 					ChainID:    chainID,
 					Nonce:      uint64(tx.Nonce),
@@ -123,23 +120,23 @@ func transferTxs(txs []Transaction, chainID *big.Int) types.Transactions {
 					S:          tx.S.ToInt(),
 				}
 				t_txs = append(t_txs, types.NewTx(t))
+			case "Eip1559":
+				t := &types.DynamicFeeTx{
+					ChainID:    chainID,
+					Nonce:      uint64(tx.Nonce),
+					GasTipCap:  (*big.Int)(tx.GasTipCap),
+					GasFeeCap:  (*big.Int)(tx.GasFeeCap),
+					Gas:        uint64(tx.GasLimit),
+					To:         tx.To,
+					Value:      toBigInt(tx.Value),
+					Data:       tx.CallData,
+					AccessList: tx.AccessList,
+					V:          big.NewInt(tx.V),
+					R:          tx.R.ToInt(),
+					S:          tx.S.ToInt(),
+				}
+				t_txs = append(t_txs, types.NewTx(t))
 			default:
-				// if tx.GasPrice != nil {
-				// 	// Set GasFeeCap and GasTipCap to GasPrice if not exist.
-				// 	if tx.GasFeeCap == nil {
-				// 		tx.GasFeeCap = tx.GasPrice
-				// 	}
-				// 	if tx.GasTipCap == nil {
-				// 		tx.GasTipCap = tx.GasPrice
-				// 	}
-				// }
-
-				// txAccessList := make(types.AccessList, len(tx.AccessList))
-				// for i, accessList := range tx.AccessList {
-				// 	txAccessList[i].Address = accessList.Address
-				// 	txAccessList[i].StorageKeys = accessList.StorageKeys
-				// }
-
 				panic(fmt.Errorf("not implement tx type [%s]", tx.Type))
 			}
 
@@ -169,6 +166,9 @@ func Trace(config TraceConfig) (*types.BlockTrace, error) {
 		LondonBlock:         big.NewInt(0),
 		ShanghaiBlock:       big.NewInt(0),
 		BanachBlock:         big.NewInt(0),
+		Scroll: params.ScrollConfig{
+			FeeVaultAddress: &config.Block.Coinbase,
+		},
 	}
 
 	if config.ChainConfig != nil {

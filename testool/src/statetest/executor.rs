@@ -548,10 +548,10 @@ pub fn run_test(
     let test_id = st.id.clone();
 
     // FIXME
-    if st.max_priority_fee_per_gas.is_some() {
-        log::warn!("SKIP TXTYPE {test_id} {st:?}");
-        return Ok(())
-    }
+    //if st.max_priority_fee_per_gas.is_some() {
+    //    log::warn!("SKIP TXTYPE {test_id} {st:?}");
+    //    return Ok(())
+    //}
 
     log::info!("{test_id}: run-test BEGIN - {circuits_config:?}");
 
