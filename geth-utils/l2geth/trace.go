@@ -76,7 +76,7 @@ func transferTxs(txs []Transaction, chainID *big.Int) types.Transactions {
 
 	t_txs := make([]*types.Transaction, 0, len(txs))
 	for _, tx := range txs {
-		fmt.Println("tx is %v", tx)
+		// fmt.Println("tx is %v", tx)
 		// if no signature, we can only handle it as l1msg tx
 		// notice the type is defined in geth_types
 		if tx.Type == "L1Msg" || tx.R == nil || tx.R.ToInt().Cmp(big.NewInt(0)) == 0 {

@@ -375,7 +375,6 @@ fn trace_config_to_witness_block_l1(
             ..eth_types::Transaction::default()
         })
         .collect();
-        log::error!("txs {:?}", transactions);
     let eth_block = eth_types::Block {
         author: Some(trace_config.block_constants.coinbase),
         timestamp: trace_config.block_constants.timestamp,
@@ -546,13 +545,6 @@ pub fn run_test(
     circuits_config: CircuitsConfig,
 ) -> Result<(), StateTestError> {
     let test_id = st.id.clone();
-
-    // FIXME
-    //if st.max_priority_fee_per_gas.is_some() {
-    //    log::warn!("SKIP TXTYPE {test_id} {st:?}");
-    //    return Ok(())
-    //}
-
     log::info!("{test_id}: run-test BEGIN - {circuits_config:?}");
 
     // get the geth traces

@@ -51,12 +51,9 @@ impl TestSuite {
 
 impl Config {
     pub fn load() -> Result<Self> {
-println!("loading config");
         let content = std::fs::read_to_string(CONFIG_FILE)
             .context(format!("Unable to open {CONFIG_FILE}"))?;
-log::debug!("loading config");
-        let config: Config = toml::from_str(&content).unwrap();
-log::debug!("load config done");
+        let config: Config = toml::from_str(&content).context("parsing toml")?;
         Ok(config)
     }
     pub fn suite(&self, name: &str) -> Result<&TestSuite> {

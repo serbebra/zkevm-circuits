@@ -74,14 +74,6 @@ impl LoggerConfig {
     }
 }
 
-/// Configuration structure for `params.ChainConfig.Scroll`
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct ScrollTraceConfig {
-    /// fee vault address
-    pub fee_vault_address: Address,
-}
-
 /// Configuration structure for `params.ChainConfig`
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -98,9 +90,6 @@ pub struct ChainConfig {
     /// passed the terminal total difficulty. Its purpose is to disable legacy sync
     /// even without having seen the TTD locally (safer long term).
     pub terminal_total_difficulty_passed: bool,
-    // scroll specific config
-    //#[cfg(feature = "scroll")]
-    //pub scroll: ScrollTraceConfig,
 }
 
 impl ChainConfig {
@@ -111,10 +100,6 @@ impl ChainConfig {
             shanghai_time: Some(0),
             terminal_total_difficulty: Some(0),
             terminal_total_difficulty_passed: true,
-            //#[cfg(feature = "scroll")]
-            //scroll: ScrollTraceConfig {
-            //    fee_vault_address: 
-            //}
         }
     }
 }

@@ -128,7 +128,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             MulWordByU64Gadget::construct(
                 cb,
                 if cfg!(feature = "scroll") {
-                    // For Scroll moden, basefee will not be burned.
+                    // For Scroll mode, basefee will not be burned.
                     // It will also be sent to coinbase(fee_valut)
                     tx_gas_price
                 } else {
@@ -365,7 +365,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
             )?;
         }
         let context = &block.context.ctxs[&tx.block_number];
-        let effective_tip = if cfg!(feature = "scroll") { 
+        let effective_tip = if cfg!(feature = "scroll") {
             tx.gas_price
         } else {
             tx.gas_price - context.base_fee

@@ -5,7 +5,10 @@ use crate::{
     Block, GethCallTrace, GethExecError, GethExecStep, GethExecTrace, GethPrestateTrace, Hash,
     Transaction, Word, H256,
 };
-use ethers_core::types::{transaction::eip2930::{AccessList, AccessListItem}, Address, Bytes, U256, U64};
+use ethers_core::types::{
+    transaction::eip2930::{AccessList, AccessListItem},
+    Address, Bytes, U256, U64,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -47,7 +50,12 @@ impl From<BlockTrace> for EthBlock {
         let mut txs = Vec::new();
         for (idx, tx_data) in b.transactions.iter().enumerate() {
             let tx_idx = Some(U64::from(idx));
-            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx, b.header.base_fee_per_gas);
+            let tx = tx_data.to_eth_tx(
+                b.header.hash,
+                b.header.number,
+                tx_idx,
+                b.header.base_fee_per_gas,
+            );
             txs.push(tx)
         }
         EthBlock {
@@ -63,7 +71,12 @@ impl From<&BlockTrace> for EthBlock {
         let mut txs = Vec::new();
         for (idx, tx_data) in b.transactions.iter().enumerate() {
             let tx_idx = Some(U64::from(idx));
-            let tx = tx_data.to_eth_tx(b.header.hash, b.header.number, tx_idx, b.header.base_fee_per_gas);
+            let tx = tx_data.to_eth_tx(
+                b.header.hash,
+                b.header.number,
+                tx_idx,
+                b.header.base_fee_per_gas,
+            );
             txs.push(tx)
         }
         EthBlock {
@@ -132,7 +145,10 @@ impl TransactionTrace {
         base_fee_per_gas: Option<U256>,
     ) -> Transaction {
         let gas_price = if self.type_ == 2 {
-            let priority_fee_per_gas = std::cmp::min(self.gas_tip_cap.unwrap(), self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap());
+            let priority_fee_per_gas = std::cmp::min(
+                self.gas_tip_cap.unwrap(),
+                self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap(),
+            );
             let effective_gas_price = priority_fee_per_gas + base_fee_per_gas.unwrap();
             effective_gas_price
         } else {
@@ -154,7 +170,7 @@ impl TransactionTrace {
             r: self.r,
             s: self.s,
             transaction_type: Some(U64::from(self.type_ as u64)),
-            access_list: self.access_list.as_ref().map(|al|AccessList(al.clone())),
+            access_list: self.access_list.as_ref().map(|al| AccessList(al.clone())),
             max_priority_fee_per_gas: self.gas_tip_cap,
             max_fee_per_gas: self.gas_fee_cap,
             chain_id: Some(self.chain_id),
