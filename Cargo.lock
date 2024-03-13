@@ -2357,8 +2357,8 @@ dependencies = [
 
 [[package]]
 name = "halo2_gadgets"
-version = "0.2.0"
-source = "git+https://github.com/scroll-tech/halo2.git?branch=develop#1070391642dd64b2d68b47ec246cba9e35bd3c15"
+version = "1.1.0"
+source = "git+https://github.com/scroll-tech/halo2.git?branch=fix_mockprover_memory#ddea0028e0fb2764f3d8ef9693a66eec3f61aca4"
 dependencies = [
  "arrayvec",
  "bitvec",
@@ -2374,7 +2374,7 @@ dependencies = [
 
 [[package]]
 name = "halo2_proofs"
-version = "0.2.0"
+version = "1.1.0"
 dependencies = [
  "ark-std 0.3.0",
  "blake2b_simd",
