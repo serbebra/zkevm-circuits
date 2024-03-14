@@ -3234,7 +3234,7 @@ dependencies = [
 [[package]]
 name = "misc-precompiled-circuit"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/misc-precompiled-circuit.git?tag=v0.1.0#f647341f9951f5c2399035728d4f6765564e2e02"
+source = "git+https://github.com/scroll-tech/misc-precompiled-circuit.git?tag=v0.1.1#62e7b967cea1c81a5924437e763e6782b1048515"
 dependencies = [
  "halo2-gate-generator",
  "halo2_proofs",
