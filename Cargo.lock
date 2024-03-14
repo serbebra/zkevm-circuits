@@ -2448,7 +2448,7 @@ dependencies = [
 [[package]]
 name = "halo2-gate-generator"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/halo2gategen.git#35b137de2f71c37dfbd236842b868013c46739d1"
+source = "git+https://github.com/scroll-tech/halo2gategen.git?tag=v0.1.1#eb64ad555a5adaa441426986ba77173460eb4138"
 dependencies = [
  "halo2_proofs",
  "lazy_static",
@@ -3234,7 +3234,7 @@ dependencies = [
 [[package]]
 name = "misc-precompiled-circuit"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/misc-precompiled-circuit.git?tag=v0.1.1#62e7b967cea1c81a5924437e763e6782b1048515"
+source = "git+https://github.com/scroll-tech/misc-precompiled-circuit.git?tag=v0.1.2#7f8b5ba122f8c5ccbd60cfacb34292c96cc8cbbc"
 dependencies = [
  "halo2-gate-generator",
  "halo2_proofs",
