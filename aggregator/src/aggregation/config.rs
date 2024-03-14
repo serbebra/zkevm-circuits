@@ -19,7 +19,7 @@ use zkevm_circuits::{
 use crate::{
     constants::{BITS, LIMBS},
     param::ConfigParams,
-    RlcConfig,
+    VanillaPlonkConfig,
 };
 
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ pub struct AggregationConfig {
     /// Keccak circuit configurations
     pub keccak_circuit_config: KeccakCircuitConfig<Fr>,    
     /// RLC config
-    pub rlc_config: RlcConfig,
+    pub plonk_config: VanillaPlonkConfig,
     /// Instance for public input; stores
     /// - accumulator from aggregation (12 elements)
     /// - batch_public_input_hash (32 elements)
@@ -53,7 +53,7 @@ impl AggregationConfig {
         );
 
         // RLC configuration
-        let rlc_config = RlcConfig::configure(meta, challenges);
+        let plonk_config = VanillaPlonkConfig::configure(meta, challenges);
 
         // hash configuration for aggregation circuit
         let keccak_circuit_config = {
@@ -106,7 +106,7 @@ impl AggregationConfig {
 
         Self {
             base_field_config,
-            rlc_config,
+            plonk_config,
             keccak_circuit_config,
             instance,
         }

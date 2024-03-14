@@ -16,7 +16,7 @@ use zkevm_circuits::{
     util::{Challenges, SubCircuitConfig},
 };
 
-use crate::{aggregation::RlcConfig, constants::LOG_DEGREE};
+use crate::{aggregation::VanillaPlonkConfig, constants::LOG_DEGREE};
 
 #[derive(Default, Debug, Clone)]
 struct DynamicHashCircuit {
@@ -28,7 +28,7 @@ struct DynamicHashCircuitConfig {
     /// Keccak circuit configurations
     pub keccak_circuit_config: KeccakCircuitConfig<Fr>,
     /// RLC config
-    pub rlc_config: RlcConfig,
+    pub plonk_config: VanillaPlonkConfig,
 }
 
 impl Circuit<Fr> for DynamicHashCircuit {
@@ -43,7 +43,7 @@ impl Circuit<Fr> for DynamicHashCircuit {
         let challenges = Challenges::construct(meta);
 
         // RLC configuration
-        let rlc_config = RlcConfig::configure(meta, challenges);
+        let plonk_config = VanillaPlonkConfig::configure(meta, challenges);
 
         // hash config
         // hash configuration for aggregation circuit
@@ -62,7 +62,7 @@ impl Circuit<Fr> for DynamicHashCircuit {
         meta.enable_equality(keccak_circuit_config.keccak_table.input_rlc);
 
         let config = DynamicHashCircuitConfig {
-            rlc_config,
+            plonk_config,
             keccak_circuit_config,
         };
 
@@ -100,7 +100,7 @@ impl Circuit<Fr> for DynamicHashCircuit {
         layouter.assign_region(
             || "mock circuit",
             |mut region| -> Result<(), Error> {
-                config.rlc_config.init(&mut region)?;
+                config.plonk_config.init(&mut region)?;
 
                 // ==============================
                 // keccak part
@@ -130,7 +130,7 @@ impl Circuit<Fr> for DynamicHashCircuit {
                     let mut tmp = Fr::zero();
                     challenge.keccak_input().map(|x| tmp = x);
                     config
-                        .rlc_config
+                        .plonk_config
                         .load_private(&mut region, &tmp, &mut offset)?
                 };
 
@@ -138,7 +138,7 @@ impl Circuit<Fr> for DynamicHashCircuit {
                     .iter()
                     .map(|&x| {
                         config
-                            .rlc_config
+                            .plonk_config
                             .load_private(&mut region, &Fr::from(x as u64), &mut offset)
                             .unwrap()
                     })
@@ -146,7 +146,7 @@ impl Circuit<Fr> for DynamicHashCircuit {
 
                 let rlc_cell =
                     config
-                        .rlc_config
+                        .plonk_config
                         .rlc(&mut region, &rlc_inputs, &challenge, &mut offset)?;
 
                 // rlc should be either one of data_rlc_cells[1], data_rlc_cells[2] and
@@ -155,32 +155,32 @@ impl Circuit<Fr> for DynamicHashCircuit {
                 //        * (data_rlc_cells[2]-rlc)
                 //        * (data_rlc_cells[3]-rlc)
                 // and constraint prod is zero
-                let tmp1 = config.rlc_config.sub(
+                let tmp1 = config.plonk_config.sub(
                     &mut region,
                     &data_rlc_cells[1],
                     &rlc_cell,
                     &mut offset,
                 )?;
-                let tmp2 = config.rlc_config.sub(
+                let tmp2 = config.plonk_config.sub(
                     &mut region,
                     &data_rlc_cells[2],
                     &rlc_cell,
                     &mut offset,
                 )?;
-                let tmp3 = config.rlc_config.sub(
+                let tmp3 = config.plonk_config.sub(
                     &mut region,
                     &data_rlc_cells[3],
                     &rlc_cell,
                     &mut offset,
                 )?;
                 let tmp = config
-                    .rlc_config
+                    .plonk_config
                     .mul(&mut region, &tmp1, &tmp2, &mut offset)?;
                 let tmp = config
-                    .rlc_config
+                    .plonk_config
                     .mul(&mut region, &tmp, &tmp3, &mut offset)?;
 
-                config.rlc_config.enforce_zero(&mut region, &tmp)?;
+                config.plonk_config.enforce_zero(&mut region, &tmp)?;
 
                 Ok(())
             },

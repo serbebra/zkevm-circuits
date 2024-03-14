@@ -10,7 +10,7 @@ use halo2_proofs::{
 use rand::RngCore;
 use zkevm_circuits::util::Challenges;
 
-use crate::{aggregation::RlcConfig, util::rlc};
+use crate::{aggregation::VanillaPlonkConfig, util::rlc};
 
 #[derive(Default, Debug, Clone, Copy)]
 struct ArithTestCircuit {
@@ -25,7 +25,7 @@ struct ArithTestCircuit {
 }
 
 impl Circuit<Fr> for ArithTestCircuit {
-    type Config = RlcConfig;
+    type Config = VanillaPlonkConfig;
     type FloorPlanner = SimpleFloorPlanner;
     fn without_witnesses(&self) -> Self {
         Self::default()
@@ -33,7 +33,7 @@ impl Circuit<Fr> for ArithTestCircuit {
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         let challenges = Challenges::construct(meta);
-        RlcConfig::configure(meta, challenges)
+        VanillaPlonkConfig::configure(meta, challenges)
     }
 
     fn synthesize(

@@ -8,22 +8,27 @@ use halo2_proofs::{
 use halo2_proofs::plonk::FirstPhase;
 use zkevm_circuits::util::Challenges;
 
+use super::lookup::HashValueLookupTable;
+
 /// This config is used to compute RLCs for bytes.
 /// It requires a phase 2 column
 #[derive(Debug, Clone, Copy)]
-pub struct RlcConfig {
+pub struct VanillaPlonkConfig {
     #[cfg(test)]
     // Test requires a phase 1 column before proceed to phase 2.
     pub(crate) _phase_1_column: Column<Advice>,
     pub(crate) phase_2_column: Column<Advice>,
-    pub(crate) selector: Selector,
     pub(crate) fixed: Column<Fixed>,
+    pub(crate) plonk_gate_selector: Selector,
+    pub(crate) lookup_gate_selector: Selector,
     pub(crate) enable_challenge: Selector,
+    pub(crate) lookup_table: HashValueLookupTable,
 }
 
-impl RlcConfig {
+impl VanillaPlonkConfig {
     pub(crate) fn configure(meta: &mut ConstraintSystem<Fr>, challenge: Challenges) -> Self {
-        let selector = meta.complex_selector();
+        let plonk_gate_selector = meta.complex_selector();
+        let lookup_gate_selector = meta.complex_selector();
         let enable_challenge = meta.complex_selector();
         let challenge_expr = challenge.exprs(meta);
 
@@ -42,20 +47,20 @@ impl RlcConfig {
         let fixed = meta.fixed_column();
         meta.enable_equality(fixed);
 
-        meta.create_gate("rlc_gate", |meta| {
-            // phase_2_column | advice | enable_challenge
-            // ---------------|--------|------------------
-            // a              | q1     | q2
-            // b              | 0      | 0
-            // c              | 0      | 0
-            // d              | 0      | 0
+        meta.create_gate("vanilla_plonk_gate", |meta| {
+            // phase_2_column | plonk_gate_selector | enable_challenge
+            // ---------------|---------------------|------------------
+            // a              | q1                  | q2
+            // b              | 0                   | 0
+            // c              | 0                   | 0
+            // d              | 0                   | 0
             //
             // constraint: q1*(a*b+c-d) = 0
             let a = meta.query_advice(phase_2_column, Rotation(0));
             let b = meta.query_advice(phase_2_column, Rotation(1));
             let c = meta.query_advice(phase_2_column, Rotation(2));
             let d = meta.query_advice(phase_2_column, Rotation(3));
-            let q1 = meta.query_selector(selector);
+            let q1 = meta.query_selector(plonk_gate_selector);
             let cs1 = q1 * (a.clone() * b + c - d);
 
             // constraint: q2*(a-challenge) = 0
@@ -66,13 +71,35 @@ impl RlcConfig {
 
             vec![cs1, cs2]
         });
+
+        let lookup_table = HashValueLookupTable::construct(meta);
+
+        meta.lookup_any("hash values lookup", |meta| {
+            let q = meta.query_selector(lookup_gate_selector);
+            let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
+            let output_rlc = meta.query_advice(phase_2_column, Rotation::next());
+            let table_enabled = meta.query_any(lookup_table.q_enable, Rotation::cur());
+            let table_input_value = meta.query_any(lookup_table.input_rlcs, Rotation::cur());
+            let table_output_value = meta.query_any(lookup_table.output_rlcs, Rotation::cur());
+
+            vec![
+                (
+                    q.clone() * input_rlc,
+                    table_enabled.clone() * table_input_value,
+                ),
+                (q * output_rlc, table_enabled * table_output_value),
+            ]
+        });
+
         Self {
             #[cfg(test)]
             _phase_1_column,
             phase_2_column,
-            selector,
             fixed,
+            plonk_gate_selector,
+            lookup_gate_selector,
             enable_challenge,
+            lookup_table,
         }
     }
 }

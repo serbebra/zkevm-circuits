@@ -8,9 +8,9 @@ use zkevm_circuits::util::Challenges;
 
 use crate::{constants::LOG_DEGREE, util::assert_equal};
 
-use super::RlcConfig;
+use super::VanillaPlonkConfig;
 
-impl RlcConfig {
+impl VanillaPlonkConfig {
     /// initialize the chip with fixed cells
     pub(crate) fn init(&self, region: &mut Region<Fr>) -> Result<(), Error> {
         region.assign_fixed(|| "const zero", self.fixed, 0, || Value::known(Fr::zero()))?;
@@ -179,7 +179,7 @@ impl RlcConfig {
         b: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        self.selector.enable(region, *offset)?;
+        self.plonk_gate_selector.enable(region, *offset)?;
         let one_cell = self.one_cell(a.cell().region_index);
 
         a.copy_advice(|| "a", region, self.phase_2_column, *offset)?;
@@ -210,7 +210,7 @@ impl RlcConfig {
         b: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        self.selector.enable(region, *offset)?;
+        self.plonk_gate_selector.enable(region, *offset)?;
         let one_cell = self.one_cell(a.cell().region_index);
 
         let res = region.assign_advice(
@@ -241,7 +241,7 @@ impl RlcConfig {
         b: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        self.selector.enable(region, *offset)?;
+        self.plonk_gate_selector.enable(region, *offset)?;
         let zero_cell = self.zero_cell(a.cell().region_index);
 
         a.copy_advice(|| "a", region, self.phase_2_column, *offset)?;
@@ -273,7 +273,7 @@ impl RlcConfig {
         c: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        self.selector.enable(region, *offset)?;
+        self.plonk_gate_selector.enable(region, *offset)?;
 
         a.copy_advice(|| "a", region, self.phase_2_column, *offset)?;
         b.copy_advice(|| "b", region, self.phase_2_column, *offset + 1)?;
@@ -501,7 +501,7 @@ impl RlcConfig {
         let a_inv_cell = self.load_private(region, &a_inv, offset)?;
         {
             // - res + a * a_inv = 1
-            self.selector.enable(region, *offset)?;
+            self.plonk_gate_selector.enable(region, *offset)?;
             a.copy_advice(|| "a", region, self.phase_2_column, *offset)?;
             a_inv_cell.copy_advice(|| "b", region, self.phase_2_column, *offset + 1)?;
             res_cell.copy_advice(|| "c", region, self.phase_2_column, *offset + 2)?;
@@ -516,7 +516,7 @@ impl RlcConfig {
         }
         {
             // - res * a = 0
-            self.selector.enable(region, *offset)?;
+            self.plonk_gate_selector.enable(region, *offset)?;
             a.copy_advice(|| "a", region, self.phase_2_column, *offset)?;
             res_cell.copy_advice(|| "b", region, self.phase_2_column, *offset + 1)?;
             let c = region.assign_advice(

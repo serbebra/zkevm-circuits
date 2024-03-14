@@ -13,14 +13,14 @@ use zkevm_circuits::util::Challenges;
 
 use crate::{
     constants::{ACC_LEN, DIGEST_LEN},
-    ChunkHash, RlcConfig, LOG_DEGREE,
+    ChunkHash, VanillaPlonkConfig, LOG_DEGREE,
 };
 
 /// This config is used to compute RLCs for bytes.
 /// It requires a phase 2 column
 #[derive(Debug, Clone, Copy)]
 pub struct MockConfig {
-    pub(crate) rlc_config: RlcConfig,
+    pub(crate) plonk_config: VanillaPlonkConfig,
     /// Instance for public input; stores
     /// - accumulator from aggregation (12 elements); if not fresh
     /// - batch_public_input_hash (32 elements)
@@ -83,12 +83,12 @@ impl Circuit<Fr> for MockChunkCircuit {
         meta.set_minimum_degree(4);
 
         let challenges = Challenges::construct(meta);
-        let rlc_config = RlcConfig::configure(meta, challenges);
+        let plonk_config = VanillaPlonkConfig::configure(meta, challenges);
         let instance = meta.instance_column();
         meta.enable_equality(instance);
 
         MockConfig {
-            rlc_config,
+            plonk_config,
             instance,
         }
     }
@@ -117,7 +117,7 @@ impl Circuit<Fr> for MockChunkCircuit {
                     .enumerate()
                 {
                     let cell = config
-                        .rlc_config
+                        .plonk_config
                         .load_private(&mut region, &Fr::from(byte as u64), &mut index)
                         .unwrap();
                     cells.push(cell)

@@ -72,7 +72,7 @@ The padded snarks are identical the the last valid snark, so the aggregator does
 There will be three configurations for Aggregation circuit.
 - FpConfig; used for snark aggregation
 - KeccakConfig: used to build keccak table
-- RlcConfig: used to compute RLC of hash inputs
+- VanillaPlonkConfig: used to compute RLC of hash inputs
 
 ### Public Input
 The public input of the aggregation circuit consists of
