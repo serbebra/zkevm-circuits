@@ -480,12 +480,12 @@ impl<
         };
         let evm = EvmCircuit::min_num_rows_block(block);
         push("evm", evm);
-        if evm.1 >= warning_limit {
+        if evm.0 >= warning_limit {
             block.print_evm_circuit_row_usage();
         }
         let state = StateCircuit::min_num_rows_block(block);
         push("state", state);
-        if state.1 >= warning_limit {
+        if state.0 >= warning_limit {
             block.print_rw_usage();
         }
         let bytecode = BytecodeCircuit::min_num_rows_block(block);
