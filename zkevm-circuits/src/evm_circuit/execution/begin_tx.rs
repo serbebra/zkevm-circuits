@@ -153,6 +153,10 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         });
         cb.condition(tx_l1_msg.is_l1_msg(), |cb| {
             cb.require_zero("l1fee is 0 for l1msg", tx_data_gas_cost.expr());
+            cb.require_zero(
+                "l1fee is 0 for tx_l1_fee gadget",
+                tx_l1_fee.tx_l1_fee_word().expr(),
+            );
         });
         // the rw delta caused by l1 related handling
         let l1_rw_delta = select::expr(
