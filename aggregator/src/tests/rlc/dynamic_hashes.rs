@@ -1,4 +1,5 @@
 use ark_std::test_rng;
+use ethers_core::utils::keccak256;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     dev::MockProver,
@@ -9,8 +10,8 @@ use snark_verifier::loader::halo2::halo2_ecc::halo2_base::utils::fs::gen_srs;
 use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
 use zkevm_circuits::{
     keccak_circuit::{
-        keccak_packed_multi::{self, multi_keccak},
-        KeccakCircuit, KeccakCircuitConfig, KeccakCircuitConfigArgs,
+        keccak_packed_multi::multi_keccak, KeccakCircuit, KeccakCircuitConfig,
+        KeccakCircuitConfigArgs,
     },
     table::{KeccakTable, LookupTable},
     util::{Challenges, SubCircuitConfig},
@@ -56,12 +57,9 @@ impl Circuit<Fr> for DynamicHashCircuit {
             KeccakCircuitConfig::new(meta, keccak_circuit_config_args)
         };
 
-        // RLC configuration
+        // plonk configuration
         let plonk_config =
             VanillaPlonkConfig::configure(meta, keccak_circuit_config.keccak_table, challenges);
-
-        // enable equality for the data RLC column
-        meta.enable_equality(keccak_circuit_config.keccak_table.input_rlc);
 
         let config = DynamicHashCircuitConfig {
             plonk_config,
@@ -77,23 +75,16 @@ impl Circuit<Fr> for DynamicHashCircuit {
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let (config, challenges) = config;
-        let keccak_f_rows = keccak_packed_multi::get_num_rows_per_update();
 
         config
             .keccak_circuit_config
             .load_aux_tables(&mut layouter)?;
 
         let challenge = challenges.values(&layouter);
-
-        let hash_preimage = self
-            .inputs
-            .iter()
-            .chain(vec![0; 320 - self.inputs.len()].iter())
-            .copied()
-            .collect::<Vec<_>>();
+        let hash_digest = keccak256(self.inputs.as_slice());
 
         let witness = multi_keccak(
-            &[hash_preimage.clone()],
+            &[self.inputs.clone()],
             challenge,
             KeccakCircuit::<Fr>::capacity_for_row(1 << LOG_DEGREE),
         )
@@ -107,82 +98,94 @@ impl Circuit<Fr> for DynamicHashCircuit {
                 // ==============================
                 // keccak part
                 // ==============================
-                let mut data_rlc_cells = vec![];
                 for (offset, keccak_row) in witness.iter().enumerate() {
-                    let row =
+                    let _ =
                         config
                             .keccak_circuit_config
                             .set_row(&mut region, offset, keccak_row)?;
-                    if offset % keccak_f_rows == 0 && data_rlc_cells.len() < 4 {
-                        // second element is data rlc
-                        data_rlc_cells.push(row[1].clone());
-                    }
+
+                    // if offset < 1000 {
+                    //     println!(
+                    //         "{offset}-th keccak row:{:?} {:?} {:?} {:?}",
+                    //         row[0].value(),
+                    //         row[1].value(),
+                    //         row[2].value(),
+                    //         row[3].value(),
+                    //     );
+                    // }
                 }
+
                 config
                     .keccak_circuit_config
                     .keccak_table
                     .annotate_columns_in_region(&mut region);
+
                 config.keccak_circuit_config.annotate_circuit(&mut region);
 
                 // ==============================
                 // rlc part
                 // ==============================
                 let mut offset = 0;
-                let challenge = {
-                    let mut tmp = Fr::zero();
-                    challenge.keccak_input().map(|x| tmp = x);
-                    config
-                        .plonk_config
-                        .load_private(&mut region, &tmp, &mut offset)?
-                };
 
-                let rlc_inputs = hash_preimage
-                    .iter()
-                    .map(|&x| {
+                let rlc_input_cell = {
+                    let input_rlc_challenge = {
+                        let mut tmp = Fr::zero();
+                        challenge.keccak_input().map(|x| tmp = x);
                         config
                             .plonk_config
-                            .load_private(&mut region, &Fr::from(x as u64), &mut offset)
-                            .unwrap()
-                    })
-                    .collect::<Vec<_>>();
+                            .load_private(&mut region, &tmp, &mut offset)?
+                    };
 
-                let rlc_cell =
-                    config
-                        .plonk_config
-                        .rlc(&mut region, &rlc_inputs, &challenge, &mut offset)?;
+                    let rlc_inputs = self
+                        .inputs
+                        .iter()
+                        .map(|&x| {
+                            config
+                                .plonk_config
+                                .load_private(&mut region, &Fr::from(x as u64), &mut offset)
+                                .unwrap()
+                        })
+                        .collect::<Vec<_>>();
 
-                // rlc should be either one of data_rlc_cells[1], data_rlc_cells[2] and
-                // data_rlc_cells[3] so we compute
-                //   prod = (data_rlc_cells[1]-rlc)
-                //        * (data_rlc_cells[2]-rlc)
-                //        * (data_rlc_cells[3]-rlc)
-                // and constraint prod is zero
-                let tmp1 = config.plonk_config.sub(
+                    config.plonk_config.rlc(
+                        &mut region,
+                        &rlc_inputs,
+                        &input_rlc_challenge,
+                        &mut offset,
+                    )?
+                };
+
+                let rlc_output_cell = {
+                    let output_rlc_challenge = {
+                        let mut tmp = Fr::zero();
+                        challenge.evm_word().map(|x| tmp = x);
+                        config
+                            .plonk_config
+                            .load_private(&mut region, &tmp, &mut offset)?
+                    };
+                    let rlc_outputs = hash_digest
+                        .iter()
+                        .map(|&x| {
+                            config
+                                .plonk_config
+                                .load_private(&mut region, &Fr::from(x as u64), &mut offset)
+                                .unwrap()
+                        })
+                        .collect::<Vec<_>>();
+                    config.plonk_config.rlc(
+                        &mut region,
+                        &rlc_outputs,
+                        &output_rlc_challenge,
+                        &mut offset,
+                    )?
+                };
+
+                config.plonk_config.lookup_keccak_rlcs(
                     &mut region,
-                    &data_rlc_cells[1],
-                    &rlc_cell,
+                    &rlc_input_cell,
+                    &rlc_output_cell,
                     &mut offset,
                 )?;
-                let tmp2 = config.plonk_config.sub(
-                    &mut region,
-                    &data_rlc_cells[2],
-                    &rlc_cell,
-                    &mut offset,
-                )?;
-                let tmp3 = config.plonk_config.sub(
-                    &mut region,
-                    &data_rlc_cells[3],
-                    &rlc_cell,
-                    &mut offset,
-                )?;
-                let tmp = config
-                    .plonk_config
-                    .mul(&mut region, &tmp1, &tmp2, &mut offset)?;
-                let tmp = config
-                    .plonk_config
-                    .mul(&mut region, &tmp, &tmp3, &mut offset)?;
-
-                config.plonk_config.enforce_zero(&mut region, &tmp)?;
 
                 Ok(())
             },

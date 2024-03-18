@@ -22,8 +22,6 @@ pub struct VanillaPlonkConfig {
     pub(crate) plonk_gate_selector: Selector,
     pub(crate) lookup_gate_selector: Selector,
     pub(crate) enable_challenge: Selector,
-    // this muist be same keccak table that is used by AggregationConfig::keccak_circuit_config
-    pub(crate) keccak_table: KeccakTable,
 }
 
 impl VanillaPlonkConfig {
@@ -87,9 +85,9 @@ impl VanillaPlonkConfig {
 
             //        keccak table config
             //
-            // q_enable      | input_rlc            | output_rlc
-            // --------------|----------------------|------------
-            // table_enabled | table_input_value    |table_output_value
+            // q_enable      | input_rlc            | output_rlc         | is_final
+            // --------------|----------------------|--------------------|----------
+            // table_enabled | table_input_value    | table_output_value | q_final
 
             // constraint:
             //
@@ -101,13 +99,17 @@ impl VanillaPlonkConfig {
             let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
             let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
             let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
+            let table_final = meta.query_any(keccak_table.is_final, Rotation::cur());
 
             vec![
                 (
                     q.clone() * input_rlc,
-                    table_enabled.clone() * table_input_value,
+                    table_enabled.clone() * table_final.clone() * table_input_value,
                 ),
-                (q * output_rlc, table_enabled * table_output_value),
+                (
+                    q * output_rlc,
+                    table_enabled * table_final * table_output_value,
+                ),
             ]
         });
 
@@ -119,7 +121,6 @@ impl VanillaPlonkConfig {
             plonk_gate_selector,
             lookup_gate_selector,
             enable_challenge,
-            keccak_table,
         }
     }
 }

@@ -334,7 +334,6 @@ impl VanillaPlonkConfig {
     }
 
     // Returns inputs[0] + challenge * inputs[1] + ... + challenge^k * inputs[k]
-    #[allow(dead_code)]
     pub(crate) fn rlc(
         &self,
         region: &mut Region<Fr>,
@@ -369,7 +368,6 @@ impl VanillaPlonkConfig {
     }
 
     // padded the columns
-    #[allow(dead_code)]
     pub(crate) fn pad(&self, region: &mut Region<Fr>, offset: &usize) -> Result<(), Error> {
         for index in *offset..(1 << LOG_DEGREE) - 1 {
             region.assign_advice(
