@@ -120,7 +120,6 @@ impl<F: Field> ExecutionGadget<F> for AddModGadget<F> {
         let same_context = SameContextGadget::construct(cb, opcode, step_state_transition);
 
         Self {
-            same_context,
             a,
             b,
             r,
@@ -128,13 +127,14 @@ impl<F: Field> ExecutionGadget<F> for AddModGadget<F> {
             k,
             d,
             a_reduced,
-            muladd_k_n_areduced,
-            sum_areduced_b,
-            sum_areduced_b_overflow,
             muladd_d_n_r,
-            n_is_zero,
+            muladd_k_n_areduced,
+            same_context,
             cmp_r_n,
             cmp_areduced_n,
+            n_is_zero,
+            sum_areduced_b,
+            sum_areduced_b_overflow,
         }
     }
 

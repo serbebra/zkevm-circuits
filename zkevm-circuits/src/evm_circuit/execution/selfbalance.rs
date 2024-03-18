@@ -52,8 +52,8 @@ impl<F: Field> ExecutionGadget<F> for SelfbalanceGadget<F> {
 
         Self {
             same_context,
-            callee_address,
             phase2_self_balance,
+            callee_address,
         }
     }
 

@@ -51,8 +51,8 @@ impl<F: Field> CmpWordsGadget<F> {
         Self {
             comparison_lo,
             comparison_hi,
-            eq,
             lt,
+            eq,
         }
     }
 

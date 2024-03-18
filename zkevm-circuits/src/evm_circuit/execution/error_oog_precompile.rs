@@ -137,13 +137,13 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGPrecompileGadget<F> {
 
         Self {
             precompile_addr,
-            addr_bits,
-            call_data_length,
-            is_root,
-            n_pairs,
-            n_words,
             required_gas,
             insufficient_gas,
+            n_pairs,
+            n_words,
+            addr_bits,
+            is_root,
+            call_data_length,
             restore_context,
         }
     }

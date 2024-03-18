@@ -401,8 +401,8 @@ mod test {
             }
 
             Self {
-                gas_cost,
                 bytecode,
+                gas_cost,
                 ..Default::default()
             }
         }

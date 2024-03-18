@@ -796,7 +796,6 @@ arith:
 
         Ok(())
     }
-
     #[test]
     fn bad_balance() -> Result<()> {
         let mut tc = YamlStateTestBuilder::new(&Compiler::default()).load_yaml(
