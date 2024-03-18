@@ -12,7 +12,6 @@ mod l2;
 mod tracer_tests;
 mod transaction;
 
-use self::access::gen_state_access_trace;
 pub use self::block::BlockHead;
 use crate::{
     error::Error,
@@ -28,10 +27,10 @@ pub use call::{Call, CallContext, CallKind};
 use core::fmt::Debug;
 use eth_types::{
     self,
-    evm_types::{GasCost, OpcodeId},
+    evm_types::GasCost,
     geth_types,
     sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
-    Address, GethExecStep, GethExecTrace, ToBigEndian, ToWord, Word, H256,
+    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256,
 };
 use ethers_providers::JsonRpcClient;
 pub use execution::{
@@ -55,6 +54,9 @@ use std::{
 pub use transaction::{
     Transaction, TransactionContext, TxL1Fee, TX_L1_COMMIT_EXTRA_COST, TX_L1_FEE_PRECISION,
 };
+
+#[cfg(feature = "enable-stack")]
+use eth_types::evm_types::OpcodeId;
 
 /// Setup parameters for ECC-related precompile calls.
 #[derive(Debug, Clone, Copy)]
@@ -617,53 +619,58 @@ impl<'a> CircuitInputBuilder {
                 state_ref.call().map(|c| c.call_id).unwrap_or(0),
                 state_ref.call_ctx()?.memory.len(),
                 geth_step.refund.0,
-                if geth_step.op.is_push_with_data() {
-                    format!("{:?}", geth_trace.struct_logs.get(index + 1).map(|step| step.stack.last()))
-                } else if geth_step.op.is_call_without_value() {
-                    format!(
-                        "{:?} {:40x} {:?} {:?} {:?} {:?}",
-                        geth_step.stack.last(),
-                        geth_step.stack.nth_last(1).unwrap_or_default(),
-                        geth_step.stack.nth_last(2),
-                        geth_step.stack.nth_last(3),
-                        geth_step.stack.nth_last(4),
-                        geth_step.stack.nth_last(5)
-                    )
-                } else if geth_step.op.is_call_with_value() {
-                    format!(
-                        "{:?} {:40x} {:?} {:?} {:?} {:?} {:?}",
-                        geth_step.stack.last(),
-                        geth_step.stack.nth_last(1).unwrap_or_default(),
-                        geth_step.stack.nth_last(2),
-                        geth_step.stack.nth_last(3),
-                        geth_step.stack.nth_last(4),
-                        geth_step.stack.nth_last(5),
-                        geth_step.stack.nth_last(6),
-                    )
-                } else if geth_step.op.is_create() {
-                    format!(
-                        "value {:?} offset {:?} size {:?} {}",
-                        geth_step.stack.last(),
-                        geth_step.stack.nth_last(1),
-                        geth_step.stack.nth_last(2),
-                        if geth_step.op == OpcodeId::CREATE2 {
-                            format!("salt {:?}", geth_step.stack.nth_last(3))
-                        } else {
-                            "".to_string()
-                        }
-                    )
-                } else if matches!(geth_step.op, OpcodeId::SSTORE) {
-                    format!(
-                        "{:?} {:?} {:?}",
-                        state_ref.call().map(|c| c.address),
-                        geth_step.stack.last(),
-                        geth_step.stack.nth_last(1),
-                    )
-                } else {
-                    let stack_input_num = 1024 - geth_step.op.valid_stack_ptr_range().1 as usize;
-                    (0..stack_input_num).map(|i|
-                        format!("{:?}",  geth_step.stack.nth_last(i))
-                    ).collect_vec().join(" ")
+                {
+                    #[cfg(feature = "enable-stack")]
+                    if geth_step.op.is_push_with_data() {
+                        format!("{:?}", geth_trace.struct_logs.get(index + 1).map(|step| step.stack.last()))
+                    } else if geth_step.op.is_call_without_value() {
+                        format!(
+                            "{:?} {:40x} {:?} {:?} {:?} {:?}",
+                            geth_step.stack.last(),
+                            geth_step.stack.nth_last(1).unwrap_or_default(),
+                            geth_step.stack.nth_last(2),
+                            geth_step.stack.nth_last(3),
+                            geth_step.stack.nth_last(4),
+                            geth_step.stack.nth_last(5)
+                        )
+                    } else if geth_step.op.is_call_with_value() {
+                        format!(
+                            "{:?} {:40x} {:?} {:?} {:?} {:?} {:?}",
+                            geth_step.stack.last(),
+                            geth_step.stack.nth_last(1).unwrap_or_default(),
+                            geth_step.stack.nth_last(2),
+                            geth_step.stack.nth_last(3),
+                            geth_step.stack.nth_last(4),
+                            geth_step.stack.nth_last(5),
+                            geth_step.stack.nth_last(6),
+                        )
+                    } else if geth_step.op.is_create() {
+                        format!(
+                            "value {:?} offset {:?} size {:?} {}",
+                            geth_step.stack.last(),
+                            geth_step.stack.nth_last(1),
+                            geth_step.stack.nth_last(2),
+                            if geth_step.op == OpcodeId::CREATE2 {
+                                format!("salt {:?}", geth_step.stack.nth_last(3))
+                            } else {
+                                "".to_string()
+                            }
+                        )
+                    } else if matches!(geth_step.op, OpcodeId::SSTORE) {
+                        format!(
+                            "{:?} {:?} {:?}",
+                            state_ref.call().map(|c| c.address),
+                            geth_step.stack.last(),
+                            geth_step.stack.nth_last(1),
+                        )
+                    } else {
+                        let stack_input_num = 1024 - geth_step.op.valid_stack_ptr_range().1 as usize;
+                        (0..stack_input_num).map(|i|
+                            format!("{:?}",  geth_step.stack.nth_last(i))
+                        ).collect_vec().join(" ")
+                    }
+                    #[cfg(not(feature = "enable-stack"))]
+                    "N/A".to_string()
                 }
             );
             debug_assert_eq!(
@@ -911,9 +918,9 @@ pub fn keccak_inputs_tx_circuit(txs: &[geth_types::Transaction]) -> Result<Vec<V
 }
 
 /// Retrieve the init_code from memory for {CREATE, CREATE2}
-pub fn get_create_init_code(call_ctx: &CallContext, step: &GethExecStep) -> Result<Vec<u8>, Error> {
-    let offset = step.stack.nth_last(1)?.low_u64() as usize;
-    let length = step.stack.nth_last(2)?.as_usize();
+pub fn get_create_init_code(call_ctx: &CallContext) -> Result<Vec<u8>, Error> {
+    let offset = call_ctx.stack.nth_last(1)?.low_u64() as usize;
+    let length = call_ctx.stack.nth_last(2)?.as_usize();
 
     let mem_len = call_ctx.memory.0.len();
     let mut result = vec![0u8; length];
@@ -926,9 +933,12 @@ pub fn get_create_init_code(call_ctx: &CallContext, step: &GethExecStep) -> Resu
 }
 
 /// Retrieve the memory offset and length of call.
-pub fn get_call_memory_offset_length(step: &GethExecStep, nth: usize) -> Result<(u64, u64), Error> {
-    let offset = step.stack.nth_last(nth)?;
-    let length = step.stack.nth_last(nth + 1)?;
+pub fn get_call_memory_offset_length(
+    call_ctx: &CallContext,
+    nth: usize,
+) -> Result<(u64, u64), Error> {
+    let offset = call_ctx.stack.nth_last(nth)?;
+    let length = call_ctx.stack.nth_last(nth + 1)?;
     if length.is_zero() {
         Ok((0, 0))
     } else {
@@ -945,29 +955,6 @@ pub struct BuilderClient<P: JsonRpcClient> {
     cli: GethClient<P>,
     chain_id: u64,
     circuits_params: CircuitsParams,
-}
-
-/// Get State Accesses from TxExecTraces
-pub fn get_state_accesses(
-    eth_block: &EthBlock,
-    geth_traces: &[eth_types::GethExecTrace],
-) -> Result<AccessSet, Error> {
-    let mut block_access_trace = vec![Access::new(
-        None,
-        RW::WRITE,
-        AccessValue::Account {
-            address: eth_block
-                .author
-                .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
-        },
-    )];
-    for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
-        let geth_trace = &geth_traces[tx_index];
-        let tx_access_trace = gen_state_access_trace(eth_block, tx, geth_trace)?;
-        block_access_trace.extend(tx_access_trace);
-    }
-
-    Ok(AccessSet::from(block_access_trace))
 }
 
 /// Build a partial StateDB from step 3
@@ -1061,11 +1048,26 @@ impl<P: JsonRpcClient> BuilderClient<P> {
     }
 
     /// Step 2. Get State Accesses from TxExecTraces
-    pub fn get_state_accesses(
-        eth_block: &EthBlock,
-        geth_traces: &[eth_types::GethExecTrace],
-    ) -> Result<AccessSet, Error> {
-        get_state_accesses(eth_block, geth_traces)
+    pub async fn get_state_accesses(&self, eth_block: &EthBlock) -> Result<AccessSet, Error> {
+        let mut access_set = AccessSet::default();
+        access_set.add_account(
+            eth_block
+                .author
+                .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
+        );
+        let traces = self
+            .cli
+            .trace_block_prestate_by_hash(
+                eth_block
+                    .hash
+                    .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
+            )
+            .await?;
+        for trace in traces.into_iter() {
+            access_set.extend_from_traces(&trace);
+        }
+
+        Ok(access_set)
     }
 
     /// Step 3. Query geth for all accounts, storage keys, and codes from
@@ -1317,7 +1319,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         let mut access_set = AccessSet::default();
         for block_num in block_num_begin..block_num_end {
             let (eth_block, geth_traces, _, _) = self.get_block(block_num).await?;
-            let mut access_list = Self::get_state_accesses(&eth_block, &geth_traces)?;
+            let mut access_list = self.get_state_accesses(&eth_block).await?;
             access_set.extend(&mut access_list);
             blocks_and_traces.push((eth_block, geth_traces));
         }

@@ -420,6 +420,7 @@ impl Transaction {
         let mut assignments: Vec<[Value<F>; 5]> = vec![];
 
         if self.access_list.is_some() {
+            let mut sks_acc: usize = 0;
             for (al_idx, al) in self.access_list.as_ref().unwrap().0.iter().enumerate() {
                 assignments.push([
                     Value::known(F::from(self.id as u64)),
@@ -429,11 +430,12 @@ impl Transaction {
                     Value::known(al.address.to_scalar().unwrap()),
                 ]);
 
-                for (sk_idx, sk) in al.storage_keys.iter().enumerate() {
+                for sk in al.storage_keys.iter() {
+                    sks_acc += 1;
                     assignments.push([
                         Value::known(F::from(self.id as u64)),
                         Value::known(F::from(TxContextFieldTag::AccessListStorageKey as u64)),
-                        Value::known(F::from(sk_idx as u64)),
+                        Value::known(F::from(sks_acc as u64)),
                         rlc_be_bytes(&sk.to_fixed_bytes(), challenges.evm_word()),
                         Value::known(al.address.to_scalar().unwrap()),
                     ]);
@@ -1288,13 +1290,18 @@ pub(super) fn tx_convert(
             .iter()
             .map(|step| step_convert(step, tx.block_num))
             .chain({
-                let rw_counter = tx.steps().last().unwrap().rwc.0 + 9 - (id == 1) as usize;
+                // TODO: it is a bit counter-intuitive to treat EndInnerBlock step, even multiple
+                // EndInnerBlock steps to belong to the last prev tx.
+                // We can change design later to make it easier to understand.
+                let last_step = tx.steps().last().unwrap();
+                let rw_counter = last_step.rwc.0 + last_step.bus_mapping_instance.len();
                 debug_assert!(next_block_num >= tx.block_num);
                 (tx.block_num..next_block_num)
                     .map(|block_num| ExecStep {
                         rw_counter,
                         execution_state: ExecutionState::EndInnerBlock,
                         block_num,
+                        call_index: last_step.call_index,
                         ..Default::default()
                     })
                     .collect::<Vec<ExecStep>>()

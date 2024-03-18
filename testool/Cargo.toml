@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bus-mapping = { path = "../bus-mapping" }
-clap = { version = "3.1", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 env_logger.workspace = true
 eth-types = { path="../eth-types" }
 ethers-core.workspace = true
@@ -40,7 +40,7 @@ urlencoding = "2.1.2"
 ctor.workspace = true
 
 [features]
-default = ["ignore-test-docker", "skip-self-destruct", "shanghai", "enable-stack", "enable-storage"]
+default = ["ignore-test-docker", "skip-self-destruct", "shanghai", "enable-storage"]
 onephase = ["zkevm-circuits/onephase"]
 ignore-test-docker = []
 skip-self-destruct = []

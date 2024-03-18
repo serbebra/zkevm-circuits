@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     circuit_input_builder::{
-        CircuitInputStateRef, CopyAccessList, CopyBytes, CopyDataType, CopyEvent, ExecStep,
+        Call, CircuitInputStateRef, CopyAccessList, CopyBytes, CopyDataType, CopyEvent, ExecStep,
         NumberOrHash,
     },
     l2_predeployed::l1_gas_price_oracle,
@@ -44,12 +44,15 @@ use ethers_core::utils::get_contract_address;
 
 pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<Vec<ExecStep>, Error> {
     let mut exec_step = state.new_begin_tx_step();
+    let call = state.call()?.clone();
+
+    // write tx_id
+    begin_tx(state, &mut exec_step, &call)?;
 
     // Add two copy-events for tx access-list addresses and storage keys for
     // EIP-1559 and EIP-2930.
     gen_tx_access_list_ops(state, &mut exec_step)?;
 
-    let call = state.call()?.clone();
     let caller_address = call.caller_address;
     if state.tx.tx_type.is_l1_msg() {
         // for l1 message, no need to add rw op, but we must check
@@ -114,7 +117,6 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<Vec<ExecSt
     // * write l1fee call context
 
     for (field, value) in [
-        (CallContextField::TxId, state.tx_ctx.id().into()),
         (
             CallContextField::RwCounterEndOfReversion,
             call.rw_counter_end_of_reversion.into(),
@@ -369,7 +371,15 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<Vec<ExecSt
                 state.call_context_write(&mut exec_step, call.call_id, field, value)?;
             }
         }
-        // 2. Call to precompiled.
+        /*
+         2. Call to precompiled.
+
+           + Set up the root call's context like the tx is calling non-empty code
+           + Add an additional copy event like we have done in the `CallOp` step.
+             It copied the `TxCalldata` into the root calls, with form of `RlcAcc`.
+           + Prepare a precompile step to be returned, so in this case `gen_begin_tx_steps`
+             would return 2 steps instead of 1
+        */
         (_, true, _) => {
             // some *pre-handling* for precompile address, like what we have done in callop
             // the generation of precompile step is in `handle_tx`, right after the generation
@@ -493,7 +503,7 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<Vec<ExecSt
                 state.handle_reversion(&mut [&mut exec_step, &mut next_step]);
             }
             // 2.pop call ctx
-            state.tx_ctx.pop_call_ctx();
+            state.tx_ctx.pop_call_ctx(call_success);
             precompile_step.replace(next_step);
         }
         (_, _, is_empty_code_hash) => {
@@ -601,7 +611,11 @@ pub fn gen_end_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
         .get(&state.tx.block_num)
         .unwrap()
         .clone();
-    let effective_tip = state.tx.gas_price - block_info.base_fee;
+    let effective_tip = if cfg!(feature = "scroll") {
+        state.tx.gas_price
+    } else {
+        state.tx.gas_price - block_info.base_fee
+    };
     let gas_cost = state.tx.gas - exec_step.gas_left.0 - effective_refund;
     let coinbase_reward = if state.tx.tx_type.is_l1_msg() {
         Word::zero()
@@ -646,17 +660,53 @@ pub fn gen_end_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
         )?;
     }
 
+    end_tx(state, &mut exec_step, &call)?;
+
+    Ok(exec_step)
+}
+
+pub(crate) fn begin_tx(
+    state: &mut CircuitInputStateRef,
+    exec_step: &mut ExecStep,
+    call: &Call,
+) -> Result<(), Error> {
+    // Write the transaction id
+    state.call_context_write(
+        exec_step,
+        call.call_id,
+        CallContextField::TxId,
+        state.tx_ctx.id().into(),
+    )?;
+    Ok(())
+}
+
+pub(crate) fn end_tx(
+    state: &mut CircuitInputStateRef,
+    exec_step: &mut ExecStep,
+    call: &Call,
+) -> Result<(), Error> {
+    // Write the tx receipt
+    write_tx_receipt(state, exec_step, call.is_persistent)?;
+
+    Ok(())
+}
+
+fn write_tx_receipt(
+    state: &mut CircuitInputStateRef,
+    exec_step: &mut ExecStep,
+    is_persistent: bool,
+) -> Result<(), Error> {
     // handle tx receipt tag
     state.tx_receipt_write(
-        &mut exec_step,
+        exec_step,
         state.tx_ctx.id(),
         TxReceiptField::PostStateOrStatus,
-        call.is_persistent as u64,
+        is_persistent as u64,
     )?;
 
     let log_id = exec_step.log_id;
     state.tx_receipt_write(
-        &mut exec_step,
+        exec_step,
         state.tx_ctx.id(),
         TxReceiptField::LogLength,
         log_id as u64,
@@ -665,7 +715,7 @@ pub fn gen_end_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
     if state.tx_ctx.id() > 1 {
         // query pre tx cumulative gas
         state.tx_receipt_read(
-            &mut exec_step,
+            exec_step,
             state.tx_ctx.id() - 1,
             TxReceiptField::CumulativeGasUsed,
             state.block_ctx.cumulative_gas_used,
@@ -674,22 +724,13 @@ pub fn gen_end_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
 
     state.block_ctx.cumulative_gas_used += state.tx.gas - exec_step.gas_left.0;
     state.tx_receipt_write(
-        &mut exec_step,
+        exec_step,
         state.tx_ctx.id(),
         TxReceiptField::CumulativeGasUsed,
         state.block_ctx.cumulative_gas_used,
     )?;
 
-    if !state.tx_ctx.is_last_tx() {
-        state.call_context_write(
-            &mut exec_step,
-            state.block_ctx.rwc.0 + 1,
-            CallContextField::TxId,
-            (state.tx_ctx.id() + 1).into(),
-        )?;
-    }
-
-    Ok(exec_step)
+    Ok(())
 }
 
 // Add 3 RW read operations for transaction L1 fee.
@@ -836,6 +877,7 @@ fn add_access_list_storage_key_copy_event(
     let rw_counter_start = state.block_ctx.rwc;
 
     // Build copy access list including addresses and storage keys.
+    let mut sks_acc: usize = 0;
     let access_list = state
         .tx
         .access_list
@@ -845,9 +887,9 @@ fn add_access_list_storage_key_copy_event(
                 .map(|item| {
                     item.storage_keys
                         .iter()
-                        .enumerate()
-                        .map(|(idx, &sk)| {
+                        .map(|&sk| {
                             let sk = sk.to_word();
+                            sks_acc += 1;
 
                             // Add RW write operations for access list address storage keys
                             // (will lookup in copy circuit).
@@ -869,7 +911,7 @@ fn add_access_list_storage_key_copy_event(
                             Ok(CopyAccessList::new(
                                 item.address,
                                 sk,
-                                idx as u64,
+                                sks_acc as u64,
                                 is_warm_prev,
                             ))
                         })

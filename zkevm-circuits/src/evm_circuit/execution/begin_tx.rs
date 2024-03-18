@@ -116,6 +116,13 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         let call_id = cb.curr.state.rw_counter.clone();
 
         let tx_id = cb.query_cell();
+        cb.call_context_lookup(
+            1.expr(),
+            Some(call_id.expr()),
+            CallContextFieldTag::TxId,
+            tx_id.expr(),
+        ); // rwc_delta += 1
+
         let sender_nonce = cb.query_cell();
 
         let [tx_type, tx_nonce, tx_gas, tx_caller_address, tx_callee_address, tx_is_create, tx_call_data_length, tx_call_data_gas_cost, tx_data_gas_cost] =
@@ -163,12 +170,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             l1_fee_cost.expr(),
         ); // rwc_delta += 1
 
-        cb.call_context_lookup(
-            1.expr(),
-            Some(call_id.expr()),
-            CallContextFieldTag::TxId,
-            tx_id.expr(),
-        ); // rwc_delta += 1
         let mut reversion_info = cb.reversion_info_write(None); // rwc_delta += 2
         let is_persistent = reversion_info.is_persistent();
         cb.call_context_lookup(
@@ -521,7 +522,21 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             (init_code_rlc, keccak_code_hash)
         });
 
-        // 2. Handle call to precompiled contracts.
+        /*
+        2. Handle call to precompiled contracts:
+           + Set up the root call's context like the tx is calling non-empty code
+           + constructed the base precompile gadget
+           + connected the additional copy event and the base precompile gadget with a lookup to copy table with following constraints:
+              * copy source is from the `TxCalldata` of current tx id
+              * copy target is the root call we have setup, and with the form of `RlcAcc`
+              * The copied len and rlc of copied bytes would be passed to base precompile gadget,
+                so the base precompile gadget verify the RLC of the call data against its input bytes.
+
+            Notice we need an additional copy event like we have done in the `CallOp` step
+
+            We simply drop any checks to the output bytes which precompile would return,
+            since they are ommited as the return data from a transaction.
+        */
         let (precompile_gadget, precompile_input_bytes_rlc) =
             cb.condition(is_precompile.expr(), |cb| {
                 cb.require_equal(
@@ -775,8 +790,8 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         Self {
             tx_id,
             tx_type,
-            tx_nonce,
             sender_nonce,
+            tx_nonce,
             tx_gas,
             tx_gas_price,
             mul_gas_fee_by_gas,
@@ -794,6 +809,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             tx_call_data_gas_cost,
             tx_data_gas_cost,
             reversion_info,
+            intrinsic_gas_cost,
             sufficient_gas_left,
             transfer_with_gas_fee,
             account_code_hash,
@@ -804,14 +820,13 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
             call_code_hash,
             call_code_hash_is_empty,
             call_code_hash_is_zero,
-            intrinsic_gas_cost,
             is_precompile_lt,
             precompile_gadget,
             precompile_input_len,
             precompile_input_bytes_rlc,
             caller_nonce_hash_bytes,
-            init_code_rlc,
             keccak_code_hash,
+            init_code_rlc,
             create,
             is_caller_warm,
             is_callee_warm,
@@ -841,6 +856,9 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         */
 
         let mut rws = StepRws::new(block, step);
+        let rw = rws.next();
+        debug_assert_eq!(rw.tag(), RwTableTag::CallContext);
+        debug_assert_eq!(rw.field_tag(), Some(CallContextFieldTag::TxId as u64));
 
         let tx_type = tx.tx_type;
         let caller_code_hash = if tx_type.is_l1_msg() {
@@ -865,7 +883,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         //              KeccakCodeHash
         // else:
         //      3 l1 fee rw
-        // TxId
         // RwCounterEndOfReversion
         // IsPersistent
         // IsSuccess
@@ -900,9 +917,6 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         debug_assert_eq!(rw.tag(), RwTableTag::CallContext);
         debug_assert_eq!(rw.field_tag(), Some(CallContextFieldTag::L1Fee as u64));
 
-        let rw = rws.next();
-        debug_assert_eq!(rw.tag(), RwTableTag::CallContext);
-        debug_assert_eq!(rw.field_tag(), Some(CallContextFieldTag::TxId as u64));
         rws.offset_add(3);
 
         let rw = rws.next();
@@ -1209,7 +1223,13 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
         )?;
 
         self.tx_access_list.assign(region, offset, tx)?;
-
+        // get base_fee from block context
+        let base_fee = block
+            .context
+            .ctxs
+            .get(&tx.block_number)
+            .expect("cound not find block with number = {tx.block_number}")
+            .base_fee;
         self.tx_eip1559.assign(
             region,
             offset,
@@ -1219,6 +1239,7 @@ impl<F: Field> ExecutionGadget<F> for BeginTxGadget<F> {
                 .sender_balance_sub_fee_pair
                 .unwrap()
                 .1,
+            base_fee,
         )
     }
 }
@@ -1614,6 +1635,27 @@ mod test {
                     .from(accs[0].address)
                     .to(address!("0x0000000000000000000000000000000000000003"))
                     .input(Bytes::from(vec![0x01, 0x02, 0x03]));
+            },
+            |block, _tx| block.number(0xcafeu64),
+        )
+        .unwrap();
+
+        CircuitTestBuilder::new_from_test_ctx(ctx).run();
+    }
+
+    /// from failed testtool case
+    #[test]
+    fn begin_tx_precompile_fail_modexp() {
+        let ctx = TestContext::<1, 1>::new(
+            None,
+            |accs| {
+                accs[0].address(MOCK_ACCOUNTS[0]).balance(eth(20));
+            },
+            |mut txs, accs| {
+                txs[0]
+                    .from(accs[0].address)
+                    .to(address!("0x0000000000000000000000000000000000000005"))
+                    .input(Bytes::from_str("0x00000000008000000000000000000000000000000000000000000000000000000000000400000000000000000000000a").unwrap());
             },
             |block, _tx| block.number(0xcafeu64),
         )

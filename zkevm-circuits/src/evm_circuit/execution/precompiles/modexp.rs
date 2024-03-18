@@ -75,10 +75,10 @@ impl<F: Field, const BIT_LIMIT: usize> RandPowRepresent<F, BIT_LIMIT> {
         };
 
         Self {
-            pow_lookup,
             bits,
-            pow,
+            pow_lookup,
             cache_for_degree,
+            pow,
         }
     }
 
@@ -524,8 +524,8 @@ impl<F: Field> Limbs<F> {
         ];
 
         Self {
-            byte14_split_hi,
             byte14_split_lo,
+            byte14_split_hi,
             limbs,
         }
     }
@@ -627,8 +627,8 @@ impl<F: Field> ModExpGasCost<F> {
             words,
             exp_is_zero,
             exp_byte_size,
-            exp_msb,
             exp_msb_bit_length,
+            exp_msb,
             calc_gas,
             dynamic_gas,
         }
@@ -825,7 +825,7 @@ impl<F: Field> ExecutionGadget<F> for ModExpGadget<F> {
             cb.curr.state.gas_left.expr(),
         );
 
-        let required_input_len = 192.expr();
+        let required_input_len = MODEXP_INPUT_LIMIT.expr();
         let pad_right = LtGadget::construct(cb, call_data_length.expr(), required_input_len.expr());
         let padding = cb.condition(pad_right.expr(), |cb| {
             PaddingGadget::construct(
@@ -1533,6 +1533,26 @@ mod test {
                 ret_size: 0x21.into(),
                 address: PrecompileCalls::Modexp.address().to_word(),
                 gas: 1000.into(),
+                ..Default::default()
+            },
+            PrecompileCallArgs {
+                name: "from test tool: zero padding and invalid size",
+                setup_code: bytecode! {
+                    // Base size
+                    PUSH32(word!("0x0000000000800000000000000000000000000000000000000000000000000000"))
+                    PUSH1(0x00)
+                    MSTORE
+                    // Esize
+                    PUSH32(word!("0x000000400000000000000000000000a000000000000000000000000000000000"))
+                    PUSH1(0x20)
+                    MSTORE
+                },
+                call_data_offset: 0x0.into(),
+                call_data_length: 0x30.into(),
+                ret_offset: 0xe0.into(),
+                ret_size: 0x20.into(),
+                address: PrecompileCalls::Modexp.address().to_word(),
+                gas: 100000.into(),
                 ..Default::default()
             },
         ]
