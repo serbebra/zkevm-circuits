@@ -247,3 +247,17 @@ pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
 
     acc
 }
+
+// the hash table uses different endianess for inputs and outputs....
+pub(crate) fn map_hash_outputs_to_inputs(
+    digest: &[AssignedCell<Fr, Fr>],
+) -> Vec<AssignedCell<Fr, Fr>> {
+    assert_eq!(digest.len(), 32);
+
+    let mut res = vec![];
+    for i in 0..4 {
+        res.extend_from_slice(digest[(3 - i) * 8..(4 - i) * 8].as_ref());
+    }
+    res.reverse();
+    res
+}

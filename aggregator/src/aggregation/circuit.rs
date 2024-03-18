@@ -145,7 +145,6 @@ impl Circuit<Fr> for AggregationCircuit {
         (config, challenges)
     }
 
-    #[allow(clippy::type_complexity)]
     fn synthesize(
         &self,
         config: Self::Config,
@@ -384,28 +383,6 @@ impl Circuit<Fr> for AggregationCircuit {
                 )?;
             }
         }
-
-        // ==============================================
-        // step 5: load hashes into the table
-        // ==============================================
-
-        // // order of the hashes
-        // // - batch_public_input_hash
-        // // - chunk\[i\].piHash for i in \[0, MAX_AGG_SNARKS)
-        // // - batch_data_hash_preimage
-        // let hash_inputs = self.batch_hash.extract_hash_preimages();
-        // let hash_inputs = hash_inputs
-        //     .iter()
-        //     .map(|v| v.iter().map(|x| Fr::from(*x as u64)).collect::<Vec<_>>())
-        //     .collect::<Vec<_>>();
-        // let hash_digests = vec![self.batch_hash.public_input_hash, self.batch_hash.data_hash];
-
-        // config.plonk_config.lookup_table.load(
-        //     &mut layouter,
-        //     &hash_inputs,
-        //     hash_digests,
-        //     &challenges,
-        // );
 
         end_timer!(witness_time);
         Ok(())

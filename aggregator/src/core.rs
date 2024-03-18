@@ -37,7 +37,8 @@ use crate::{
     constants::{CHAIN_ID_LEN, DIGEST_LEN, INPUT_LEN_PER_ROUND, LOG_DEGREE, MAX_AGG_SNARKS},
     util::{
         assert_conditional_equal, assert_equal, assert_exist, get_indices, get_max_keccak_updates,
-        parse_hash_digest_cells, parse_hash_preimage_cells, parse_pi_hash_rlc_cells,
+        map_hash_outputs_to_inputs, parse_hash_digest_cells, parse_hash_preimage_cells,
+        parse_pi_hash_rlc_cells,
     },
     AggregationConfig, VanillaPlonkConfig, BITS, CHUNK_DATA_HASH_INDEX, LIMBS,
     POST_STATE_ROOT_INDEX, PREV_STATE_ROOT_INDEX, WITHDRAW_ROOT_INDEX,
@@ -218,7 +219,19 @@ impl ExtractedHashCells2 {
         for (input_rlcs, output_rlcs) in self.input_rlcs.iter().zip_eq(self.output_rlcs.iter()) {
             plonk_config.lookup_keccak_rlcs(region, input_rlcs, output_rlcs, offset)?;
         }
-
+        for (i, (input_rlcs, output_rlcs)) in self
+            .input_rlcs
+            .iter()
+            .zip_eq(self.output_rlcs.iter())
+            .enumerate()
+        {
+            println!(
+                "{}-th rlc {:?} {:?}",
+                i,
+                input_rlcs.value(),
+                output_rlcs.value()
+            );
+        }
         Ok(())
     }
 }
@@ -259,12 +272,12 @@ pub(crate) fn assign_batch_hashes(
         preimages,
     )?;
 
-    // // 2. batch_pi_hash used same roots as chunk_pi_hash
-    // // 2.1. batch_pi_hash and chunk[0] use a same prev_state_root
-    // // 2.2. batch_pi_hash and chunk[MAX_AGG_SNARKS-1] use a same post_state_root
-    // // 2.3. batch_pi_hash and chunk[MAX_AGG_SNARKS-1] use a same withdraw_root
-    // // 5. batch and all its chunks use a same chain id
-    // copy_constraints(layouter, &extracted_hash_cells.hash_input_cells)?;
+    // 2. batch_pi_hash used same roots as chunk_pi_hash
+    // 2.1. batch_pi_hash and chunk[0] use a same prev_state_root
+    // 2.2. batch_pi_hash and chunk[MAX_AGG_SNARKS-1] use a same post_state_root
+    // 2.3. batch_pi_hash and chunk[MAX_AGG_SNARKS-1] use a same withdraw_root
+    // 5. batch and all its chunks use a same chain id
+    copy_constraints(layouter, &extracted_hash_cells.hash_input_cells)?;
 
     // 1. batch_data_hash digest is reused for public input hash
     // 3. batch_data_hash and chunk[i].pi_hash use a same chunk[i].data_hash when chunk[i] is not
@@ -285,9 +298,6 @@ pub(crate) fn assign_batch_hashes(
         &extracted_hash_cells,
         preimages,
     )?;
-
-    //
-    // load_hash_lookup_table(layouter, &config, &extracted_hash_cells);
 
     Ok(extracted_hash_cells.hash_output_cells)
 }
@@ -610,6 +620,11 @@ pub(crate) fn conditional_constraints(
 
                 plonk_config.init(&mut region)?;
                 let mut offset = 0;
+
+                // ====================================================
+                // extract the RLCs for the input and output of the hash
+                // this validates the hash inputs and outputs as they are looked up from the table
+                // ====================================================
                 let rlcs = ExtractedHashCells2::assign_hash_rlc_cells(
                     plonk_config,
                     &mut region,
@@ -625,6 +640,69 @@ pub(crate) fn conditional_constraints(
                     println!("{}-th output rlcs: {:?}", i, e.value());
                 }
                 rlcs.check_rlc_cells(plonk_config, &mut region, &mut offset)?;
+
+                // ====================================================
+                // parse the hashes
+                // ====================================================
+                // preimages
+                let (
+                    batch_pi_hash_preimage,
+                    chunk_pi_hash_preimages,
+                    potential_batch_data_hash_preimage,
+                ) = parse_hash_preimage_cells(hash_input_cells);
+
+                // ====================================================
+                // 1. batch_data_hash digest is reused for public input hash
+                // ====================================================
+                //
+                //
+                // public input hash is build as
+                // public_input_hash = keccak(
+                //      chain_id ||
+                //      chunk[0].prev_state_root ||
+                //      chunk[k-1].post_state_root ||
+                //      chunk[k-1].withdraw_root ||
+                //      batch_data_hash )
+                //
+                // batchDataHash = keccak(chunk[0].dataHash || ... || chunk[k-1].dataHash)
+
+                // 3 batch_data_hash and chunk[i].pi_hash use a same chunk[i].data_hash when
+                // chunk[i] is not padded
+                //
+                // batchDataHash = keccak(chunk[0].dataHash || ... || chunk[k-1].dataHash)
+                //
+                // chunk[i].piHash =
+                //     keccak(
+                //        &chain id ||
+                //        chunk[i].prevStateRoot ||
+                //        chunk[i].postStateRoot ||
+                //        chunk[i].withdrawRoot  ||
+                //        chunk[i].datahash)
+
+                // the strategy here is to generate the RLCs of the chunk[0].dataHash and compare it
+                // with batchDataHash's input RLC
+
+                // todo! merge this
+                let [keccak_input_challenge, evm_word_challenge] =
+                    plonk_config.read_challenges(&mut region, challenges, &mut offset)?;
+
+                for (i, e) in potential_batch_data_hash_preimage.iter().enumerate() {
+                    println!("{i}-th potential {:?}", e.value());
+                }
+
+                let chunk_data = potential_batch_data_hash_preimage
+                    .chunks(32)
+                    .flat_map(|digest| map_hash_outputs_to_inputs(digest))
+                    .collect::<Vec<_>>();
+
+                let chunk_data_hash_rlc = plonk_config.rlc(
+                    &mut region,
+                    chunk_data[..64].as_ref(),
+                    &keccak_input_challenge,
+                    &mut offset,
+                )?;
+
+                println!("chunk data hash rlc {:?}", chunk_data_hash_rlc.value());
 
                 // // ====================================================
                 // // build the flags to indicate the chunks are empty or not
@@ -883,7 +961,7 @@ pub(crate) fn conditional_constraints(
                 //             format!(
                 //                 "chunk_{i} is not continuous: {:?} {:?} {:?}",
                 //                 &chunk_pi_hash_preimages[i + 1][PREV_STATE_ROOT_INDEX +
-                // j].value(),                 
+                // j].value(),
                 // &chunk_pi_hash_preimages[i][POST_STATE_ROOT_INDEX + j].value(),
                 //                 &chunk_is_valid_cells[i + 1].value(),
                 //             )
@@ -945,7 +1023,7 @@ pub(crate) fn conditional_constraints(
                 //         region.constrain_equal(
                 //             cur_hash_len.cell(),
                 //             plonk_config
-                //                 
+                //
                 // .one_hundred_and_thirty_six_cell(cur_hash_len.cell().region_index),
                 //         )
                 //     })?;

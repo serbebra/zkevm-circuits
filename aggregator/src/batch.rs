@@ -188,6 +188,8 @@ impl BatchHash {
             .flat_map(|x| x.data_hash.as_bytes().iter())
             .cloned()
             .collect();
+
+        println!("batch_data_hash_preimage: {:?}", batch_data_hash_preimage);
         res.push(batch_data_hash_preimage);
 
         res
