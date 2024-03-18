@@ -27,6 +27,9 @@ pub(crate) struct TxEip1559Gadget<F> {
     gas_fee_cap: Word<F>,
     // MaxPriorityFeePerGas
     gas_tip_cap: Word<F>,
+    // std::cmp::min(
+    // gas_tip_cap, gas_fee_cap.unwrap() - base_fee_per_gas)
+    lt_gas_tip_gas_fee_sub_base_fee: LtWordGadget<F>,
     mul_gas_fee_cap_by_gas: MulWordByU64Gadget<F>,
     balance_check: AddWordsGadget<F, 3, true>,
     // Error condition
@@ -48,6 +51,7 @@ impl<F: Field> TxEip1559Gadget<F> {
         tx_id: Expression<F>,
         tx_type: Expression<F>,
         tx_gas: Expression<F>,
+        tx_gas_price: Expression<F>,
         tx_l1_fee: &Word<F>,
         value: &Word<F>,
         sender_balance: &Word<F>,
@@ -68,6 +72,13 @@ impl<F: Field> TxEip1559Gadget<F> {
         ) = cb.condition(is_eip1559_tx.expr(), |cb| {
             let mul_gas_fee_cap_by_gas =
                 MulWordByU64Gadget::construct(cb, gas_fee_cap.clone(), tx_gas);
+
+            // let priority_fee_per_gas = std::cmp::min(
+            //     self.gas_tip_cap.unwrap(),
+            //     self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap(),
+            // );
+            // let effective_gas_price = priority_fee_per_gas + base_fee_per_gas.unwrap();
+            // effective_gas_price
 
             let min_balance = cb.query_word_rlc();
             let balance_check = AddWordsGadget::construct(
