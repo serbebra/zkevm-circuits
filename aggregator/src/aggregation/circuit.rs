@@ -29,7 +29,7 @@ use crate::{
     batch::BatchHash,
     constants::{ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS},
     core::{assign_batch_hashes, extract_proof_and_instances_with_pairing_check},
-    util::parse_hash_digest_cells,
+    util::{parse_hash_digest_cells, rlc},
     ConfigParams,
 };
 
@@ -286,6 +286,7 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // step 3: assert public inputs to the snarks are correct
         // ==============================================
+
         for (i, chunk) in chunk_pi_hash_digests.iter().enumerate() {
             let hash = self.batch_hash.chunks_with_padding[i].public_input_hash();
             for j in 0..4 {
@@ -297,6 +298,18 @@ impl Circuit<Fr> for AggregationCircuit {
                     );
                 }
             }
+            let random = challenges.evm_word();
+            let mut randomness = Fr::default();
+            random.map(|x| randomness = x);
+            let rlc = rlc(
+                hash.0
+                    .iter()
+                    .map(|x| Fr::from(*x as u64))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                &randomness,
+            );
+            println!("rlc in the clear: {:?}", rlc);
         }
 
         #[cfg(not(feature = "disable_proof_aggregation"))]

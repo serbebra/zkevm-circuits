@@ -64,15 +64,16 @@ impl VanillaPlonkConfig {
             let c = meta.query_advice(phase_2_column, Rotation(2));
             let d = meta.query_advice(phase_2_column, Rotation(3));
             let q1 = meta.query_selector(plonk_gate_selector);
-            let cs1 = q1 * (a.clone() * b + c - d);
+            let cs1 = q1 * (a.clone() * b.clone() + c - d);
 
-            // constraint: q2*(a-challenge) = 0
+            // constraint: q2*(a-keccak_challenge) = 0 and q2*(a-evm_challenge) = 0
             // FIXME later: Pretty wasteful to have a dedicated custom gate and selector column just
-            // to extract the keccak challenge cell...
+            // to extract the keccak challenge cells...
             let q2 = meta.query_selector(enable_challenge);
-            let cs2 = q2 * (a - challenge_expr.keccak_input());
+            let cs2 = q2.clone() * (a - challenge_expr.keccak_input());
+            let cs3 = q2 * (b - challenge_expr.evm_word());
 
-            vec![cs1, cs2]
+            vec![cs1, cs2, cs3]
         });
 
         meta.lookup_any("keccak lookup", |meta| {

@@ -131,22 +131,34 @@ impl VanillaPlonkConfig {
         res
     }
 
-    pub(crate) fn read_challenge(
+    /// Returns the keccak_input (used for input RLCs) and evm_word (used for output RLCs)
+    /// challenges.
+    pub(crate) fn read_challenges(
         &self,
         region: &mut Region<Fr>,
         challenge_value: Challenges<Value<Fr>>,
         offset: &mut usize,
-    ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        let challenge_value = challenge_value.keccak_input();
-        let challenge_cell = region.assign_advice(
-            || "assign challenge",
+    ) -> Result<[AssignedCell<Fr, Fr>; 2], Error> {
+        let keccak_input_value = challenge_value.keccak_input();
+        let keccak_input_cell = region.assign_advice(
+            || "assign keccak input challenge",
             self.phase_2_column,
             *offset,
-            || challenge_value,
+            || keccak_input_value,
         )?;
+
+        let evm_word_value = challenge_value.evm_word();
+        let evm_word_cell = region.assign_advice(
+            || "assign evm word challenge",
+            self.phase_2_column,
+            *offset + 1,
+            || evm_word_value,
+        )?;
+
         self.enable_challenge.enable(region, *offset)?;
-        *offset += 1;
-        Ok(challenge_cell)
+        *offset += 2;
+
+        Ok([keccak_input_cell, evm_word_cell])
     }
 
     /// Enforce the element in f is a zero element.
@@ -341,6 +353,7 @@ impl VanillaPlonkConfig {
         challenge: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
+        assert!(inputs.len() != 0);
         let mut acc = inputs[0].clone();
         for input in inputs.iter().skip(1) {
             acc = self.mul_add(region, &acc, challenge, input, offset)?;

@@ -1294,7 +1294,7 @@ impl<F: Field> LookupTable<F> for BlockTable {
 }
 
 /// Keccak Table, used to verify keccak hashing from RLC'ed input.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct KeccakTable {
     /// True when the row is enabled
     pub q_enable: Column<Fixed>,
