@@ -16,7 +16,7 @@ use ethers_core::utils::keccak256;
 use halo2_proofs::plonk::{Assigned, Expression, Fixed, Instance};
 
 use crate::{
-    table::{BlockTable, LookupTable, TxTable, PowOfRandTable},
+    table::{BlockTable, LookupTable, PowOfRandTable, TxTable},
     util::{Challenges, SubCircuit, SubCircuitConfig},
 };
 #[cfg(feature = "onephase")]
@@ -788,12 +788,13 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
                 not::expr(meta.query_advice(is_rpi_padding, Rotation::cur())),
             ]);
 
-            let len = meta.query_advice(rpi_length_acc, Rotation::cur()) - meta.query_advice(rpi_length_acc, Rotation::prev());
+            let len = meta.query_advice(rpi_length_acc, Rotation::cur())
+                - meta.query_advice(rpi_length_acc, Rotation::prev());
             let pow_of_rand = meta.query_advice(pow_of_rand, Rotation::cur());
 
             vec![
-                1.expr(), // q_enable
-                len, // exponent
+                1.expr(),    // q_enable
+                len,         // exponent
                 pow_of_rand, // pow_of_rand
             ]
             .into_iter()
@@ -1197,7 +1198,6 @@ impl<F: Field> PiCircuitConfig<F> {
         self.q_keccak.enable(region, offset)?;
 
         Ok((offset + 1, data_hash_rlc_cell))
-
     }
 
     /// Assign chunk txbytes, the pre-image to chunk_txbytes_hash
@@ -1236,8 +1236,8 @@ impl<F: Field> PiCircuitConfig<F> {
         let (mut offset, mut rpi_rlc_acc, mut rpi_length) = self.assign_rlc_init(region, offset)?;
 
         // Enable fixed columns for l2 tx hashRLC
-        for q_offset in
-            (public_data.q_chunk_txbytes_start_offset() + 1)..public_data.q_chunk_txbytes_end_offset()
+        for q_offset in (public_data.q_chunk_txbytes_start_offset() + 1)
+            ..public_data.q_chunk_txbytes_end_offset()
         {
             region.assign_fixed(
                 || "q_chunk_txbytes",
@@ -1400,12 +1400,7 @@ impl<F: Field> PiCircuitConfig<F> {
 
             let pow_of_rand = pows_of_rand[tx_hash_len];
 
-            region.assign_advice(
-                || "pow_of_rand",
-                self.pow_of_rand,
-                offset,
-                || pow_of_rand
-            )?;
+            region.assign_advice(|| "pow_of_rand", self.pow_of_rand, offset, || pow_of_rand)?;
 
             rpi_rlc_acc = rpi_rlc_acc * pow_of_rand + tx_hash_rlc;
             rpi_length = rpi_length + Value::known(F::from(tx_hash_len as u64));

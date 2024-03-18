@@ -135,24 +135,28 @@ impl<F: Field, const MAX_TXS: usize, const MAX_CALLDATA: usize, const MAX_INNER_
             vec![&data_bytes, &chunk_txbytes, &pi_bytes],
             &challenges,
         )?;
-        let lens = self.0.public_data.transactions
+        let lens = self
+            .0
+            .public_data
+            .transactions
             .iter()
             .filter(|&tx| tx.is_chunk_l2_tx())
             .map(|tx| tx.rlp_signed.len())
             .collect::<Vec<usize>>();
         log::trace!("=> lens: {:?}", lens);
 
-        let tx_max_challenge_pow = self.0.public_data.transactions
+        let tx_max_challenge_pow = self
+            .0
+            .public_data
+            .transactions
             .iter()
             .filter(|&tx| tx.is_chunk_l2_tx())
             .map(|tx| tx.rlp_signed.len())
             .max();
 
-        config.pow_of_rand_table.assign(
-            &mut layouter, 
-            &challenges, 
-            tx_max_challenge_pow,
-        )?;
+        config
+            .pow_of_rand_table
+            .assign(&mut layouter, &challenges, tx_max_challenge_pow)?;
 
         self.0.import_tx_values(tx_value_cells);
         self.0.synthesize_sub(&config, &challenges, &mut layouter)?;
