@@ -151,6 +151,7 @@ pub(crate) struct ExtractedHashCells {
     hash_input_cells: Vec<AssignedCell<Fr, Fr>>,
     hash_output_cells: Vec<AssignedCell<Fr, Fr>>,
     data_rlc_cells: Vec<AssignedCell<Fr, Fr>>,
+    hash_rlc_cells: Vec<AssignedCell<Fr, Fr>>,
     hash_input_len_cells: Vec<AssignedCell<Fr, Fr>>,
     is_final_cells: Vec<AssignedCell<Fr, Fr>>,
 }
@@ -216,6 +217,9 @@ pub(crate) fn assign_batch_hashes(
         &extracted_hash_cells,
     )?;
 
+    //
+    // load_hash_lookup_table(layouter, &config, &extracted_hash_cells);
+
     Ok(extracted_hash_cells.hash_output_cells)
 }
 
@@ -277,6 +281,7 @@ pub(crate) fn extract_hash_cells(
                 let mut data_rlc_cells = vec![];
                 let mut hash_input_len_cells = vec![];
                 let mut is_final_cells = vec![];
+                let mut hash_rlc_cells = vec![];
 
                 let timer = start_timer!(|| "assign row");
                 log::trace!("witness length: {}", witness.len());
@@ -300,10 +305,12 @@ pub(crate) fn extract_hash_cells(
                     if offset % keccak_f_rows == 0 && offset / keccak_f_rows <= max_keccak_updates {
                         // first column is is_final
                         is_final_cells.push(row[0].clone());
-                        // second column is data rlc
+                        // second column is data rlc (i.e, input rlc)
                         data_rlc_cells.push(row[1].clone());
                         // third column is hash len
                         hash_input_len_cells.push(row[2].clone());
+                        // fourth column is hash rlc (i.e, output rlc)
+                        hash_rlc_cells.push(row[3].clone());
                     }
                 }
                 end_timer!(timer);
@@ -322,12 +329,26 @@ pub(crate) fn extract_hash_cells(
                     .keccak_table
                     .annotate_columns_in_region(&mut region);
                 keccak_config.annotate_circuit(&mut region);
+
+                println!("{}", data_rlc_cells.len());
+                println!("{}", hash_rlc_cells.len());
+
+                for i in 0..data_rlc_cells.len() {
+                    println!(
+                        "rlcs: {} {:?} {:?}",
+                        i,
+                        data_rlc_cells[i].value(),
+                        hash_rlc_cells[i].value(),
+                    )
+                }
+
                 Ok(ExtractedHashCells {
                     hash_input_cells,
                     hash_output_cells,
                     data_rlc_cells,
                     hash_input_len_cells,
                     is_final_cells,
+                    hash_rlc_cells,
                 })
             },
         )
@@ -505,6 +526,7 @@ pub(crate) fn conditional_constraints(
         hash_input_len_cells,
         data_rlc_cells,
         is_final_cells,
+        hash_rlc_cells,
     } = extracted_hash_cells;
 
     layouter
@@ -1106,3 +1128,16 @@ fn constrain_flags(
     }
     Ok(res)
 }
+
+// pub(crate) fn load_hash_lookup_table(
+//     layouter: &mut impl Layouter<Fr>,
+//     config: &AggregationConfig,
+//     extracted_hash_cells: &ExtractedHashCells,
+// ) {
+
+//     config.plonk_config.keccak_table.load(
+//         layouter,
+//         &extracted_hash_cells.data_rlc_cells,
+//         &extracted_hash_cells.hash_rlc_cells,
+//     ).unwrap();
+// }

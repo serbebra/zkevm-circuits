@@ -31,7 +31,7 @@ pub struct AggregationConfig {
     pub base_field_config: FpConfig<Fr, Fq>,
     /// Keccak circuit configurations
     pub keccak_circuit_config: KeccakCircuitConfig<Fr>,    
-    /// RLC config
+    /// Vanilla plonk config
     pub plonk_config: VanillaPlonkConfig,
     /// Instance for public input; stores
     /// - accumulator from aggregation (12 elements)
@@ -52,9 +52,6 @@ impl AggregationConfig {
             "For now we fix limb_bits = {BITS}, otherwise change code",
         );
 
-        // RLC configuration
-        let plonk_config = VanillaPlonkConfig::configure(meta, challenges);
-
         // hash configuration for aggregation circuit
         let keccak_circuit_config = {
             let keccak_table = KeccakTable::construct(meta);
@@ -67,6 +64,10 @@ impl AggregationConfig {
 
             KeccakCircuitConfig::new(meta, keccak_circuit_config_args)
         };
+
+        // RLC configuration
+        let plonk_config =
+            VanillaPlonkConfig::configure(meta, keccak_circuit_config.keccak_table, challenges);
 
         // base field configuration for aggregation circuit
         let base_field_config = FpConfig::configure(
@@ -91,11 +92,13 @@ impl AggregationConfig {
         // enable equality for the digest column
         meta.enable_equality(columns.last().unwrap().advice);
         // enable equality for the data RLC column
-        meta.enable_equality(keccak_circuit_config.keccak_table.input_rlc);
+        meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().input_rlc);
         // enable equality for the input data len column
-        meta.enable_equality(keccak_circuit_config.keccak_table.input_len);
+        meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().input_len);
         // enable equality for the is_final column
-        meta.enable_equality(keccak_circuit_config.keccak_table.is_final);
+        meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().is_final);
+        // // enable equality for the hash RLC column
+        // meta.enable_equality(keccak_circuit_config.keccak_table.output_rlc);
 
         // Instance column stores public input column
         // - the accumulator

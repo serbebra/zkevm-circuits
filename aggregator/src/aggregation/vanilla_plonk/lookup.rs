@@ -2,14 +2,12 @@
 #![allow(dead_code)]
 
 use halo2_proofs::{
-    circuit::{Layouter, Region, Value},
+    circuit::{AssignedCell, Layouter, Region, Value},
     halo2curves::bn256::Fr,
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, SecondPhase},
 };
 use itertools::Itertools;
-use zkevm_circuits::util::Challenges;
-
-use crate::util::rlc;
+use zkevm_circuits::table::LookupTable;
 
 /// Lookup table for the hash input and output RLCs
 #[derive(Debug, Clone, Copy)]
@@ -25,7 +23,7 @@ pub(crate) struct HashValueLookupTable {
 
 impl HashValueLookupTable {
     /// Construct a new HashValueLookupTable
-    pub(crate) fn construct(meta: &mut ConstraintSystem<Fr>) -> Self {
+    pub(crate) fn construct(lookup_table: LookupTable) -> Self {
         Self {
             q_enable: meta.fixed_column(),
             input_rlcs: meta.advice_column_in(SecondPhase),
@@ -37,58 +35,27 @@ impl HashValueLookupTable {
     pub fn load(
         &self,
         layouter: &mut impl Layouter<Fr>,
-        input_rlcs: &[Fr],
-        output_rlcs: &[Fr],
+        input_rlc_cells: &[AssignedCell<Fr, Fr>],
+        output_rlc_cells: &[AssignedCell<Fr, Fr>],
     ) -> Result<(), Error> {
-        fn assign_row(
-            region: &mut Region<'_, Fr>,
-            offset: usize,
-            q_enable: Column<Fixed>,
-            input_rlc: &Fr,
-            input_rlc_column: Column<Advice>,
-            output_rlc: &Fr,
-            output_rlc_column: Column<Advice>,
-        ) -> Result<(), Error> {
-            let _ = region.assign_fixed(
-                || format!("lookup table q_enable row {offset}"),
-                q_enable,
-                offset,
-                || Value::known(Fr::one()),
-            )?;
-
-            let _ = region.assign_advice(
-                || format!("lookup table input rlc row {offset}"),
-                input_rlc_column,
-                offset,
-                || Value::known(*input_rlc),
-            );
-            let _ = region.assign_advice(
-                || format!("lookup table output rlc row {offset}"),
-                output_rlc_column,
-                offset,
-                || Value::known(*output_rlc),
-            );
-            Ok(())
-        }
-
-        assert_eq!(input_rlcs.len(), output_rlcs.len());
+        assert_eq!(input_rlc_cells.len(), output_rlc_cells.len());
 
         // assign the RLC cells
         layouter.assign_region(
             || "hash lookup table",
             |mut region| {
-                input_rlcs
+                input_rlc_cells
                     .iter()
-                    .zip_eq(output_rlcs.iter())
+                    .zip_eq(output_rlc_cells.iter())
                     .enumerate()
-                    .for_each(|(offset, (input_rlc, output_rlc))| {
+                    .for_each(|(offset, (input_rlc_cell, output_rlc_cell))| {
                         assign_row(
                             &mut region,
                             offset,
                             self.q_enable,
-                            input_rlc,
+                            input_rlc_cell,
                             self.input_rlcs,
-                            output_rlc,
+                            output_rlc_cell,
                             self.output_rlcs,
                         )
                         .unwrap();
@@ -98,4 +65,52 @@ impl HashValueLookupTable {
         )?;
         Ok(())
     }
+}
+
+fn assign_row(
+    region: &mut Region<'_, Fr>,
+    offset: usize,
+    q_enable: Column<Fixed>,
+    input_rlc_cell: &AssignedCell<Fr, Fr>,
+    input_rlc_column: Column<Advice>,
+    output_rlc_cell: &AssignedCell<Fr, Fr>,
+    output_rlc_column: Column<Advice>,
+) -> Result<(), Error> {
+    // enable selector for the current row
+    {
+        let _ = region.assign_fixed(
+            || format!("lookup table q_enable row {offset}"),
+            q_enable,
+            offset,
+            || Value::known(Fr::one()),
+        )?;
+    }
+    // copy inputs to the current row
+    {
+        let mut input = Fr::zero();
+        input_rlc_cell.value().map(|f| input = *f);
+
+        let input_rlc_cell_local = region.assign_advice(
+            || format!("lookup table input rlc row {offset}"),
+            input_rlc_column,
+            offset,
+            || Value::known(input),
+        )?;
+        region.constrain_equal(input_rlc_cell.cell(), input_rlc_cell_local.cell())?;
+    }
+    //  copy outputs to the current row
+    {
+        let mut output = Fr::zero();
+        output_rlc_cell.value().map(|f| output = *f);
+
+        let output_rlc_cell_local = region.assign_advice(
+            || format!("lookup table input rlc row {offset}"),
+            output_rlc_column,
+            offset,
+            || Value::known(output),
+        )?;
+        region.constrain_equal(output_rlc_cell.cell(), output_rlc_cell_local.cell())?;
+    }
+
+    Ok(())
 }

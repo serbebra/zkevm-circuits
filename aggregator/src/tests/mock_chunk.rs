@@ -9,7 +9,7 @@ use halo2_proofs::{
 };
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::SKIP_FIRST_PASS;
 use snark_verifier_sdk::CircuitExt;
-use zkevm_circuits::util::Challenges;
+use zkevm_circuits::{table::KeccakTable, util::Challenges};
 
 use crate::{
     constants::{ACC_LEN, DIGEST_LEN},
@@ -18,7 +18,7 @@ use crate::{
 
 /// This config is used to compute RLCs for bytes.
 /// It requires a phase 2 column
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MockConfig {
     pub(crate) plonk_config: VanillaPlonkConfig,
     /// Instance for public input; stores
@@ -83,7 +83,8 @@ impl Circuit<Fr> for MockChunkCircuit {
         meta.set_minimum_degree(4);
 
         let challenges = Challenges::construct(meta);
-        let plonk_config = VanillaPlonkConfig::configure(meta, challenges);
+        let keccak_table = KeccakTable::construct(meta);
+        let plonk_config = VanillaPlonkConfig::configure(meta, keccak_table, challenges);
         let instance = meta.instance_column();
         meta.enable_equality(instance);
 

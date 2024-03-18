@@ -6,13 +6,13 @@ use halo2_proofs::{
 
 #[cfg(test)]
 use halo2_proofs::plonk::FirstPhase;
-use zkevm_circuits::util::Challenges;
+use zkevm_circuits::{table::KeccakTable, util::Challenges};
 
-use super::lookup::HashValueLookupTable;
+// use super::lookup::HashValueLookupTable;
 
 /// This config is used to compute RLCs for bytes.
 /// It requires a phase 2 column
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct VanillaPlonkConfig {
     #[cfg(test)]
     // Test requires a phase 1 column before proceed to phase 2.
@@ -22,11 +22,16 @@ pub struct VanillaPlonkConfig {
     pub(crate) plonk_gate_selector: Selector,
     pub(crate) lookup_gate_selector: Selector,
     pub(crate) enable_challenge: Selector,
-    pub(crate) lookup_table: HashValueLookupTable,
+    // this muist be same keccak table that is used by AggregationConfig::keccak_circuit_config
+    pub(crate) keccak_table: KeccakTable,
 }
 
 impl VanillaPlonkConfig {
-    pub(crate) fn configure(meta: &mut ConstraintSystem<Fr>, challenge: Challenges) -> Self {
+    pub(crate) fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        keccak_table: KeccakTable,
+        challenge: Challenges,
+    ) -> Self {
         let plonk_gate_selector = meta.complex_selector();
         let lookup_gate_selector = meta.complex_selector();
         let enable_challenge = meta.complex_selector();
@@ -72,15 +77,30 @@ impl VanillaPlonkConfig {
             vec![cs1, cs2]
         });
 
-        let lookup_table = HashValueLookupTable::construct(meta);
+        meta.lookup_any("keccak lookup", |meta| {
+            //        vanilla plonk config
+            //
+            // phase_2_column | lookup_gate_selector
+            // ---------------|---------------------
+            // a              | q
+            // b              | 0
 
-        meta.lookup_any("hash values lookup", |meta| {
+            //        keccak table config
+            //
+            // q_enable      | input_rlc            | output_rlc
+            // --------------|----------------------|------------
+            // table_enabled | table_input_value    |table_output_value
+
+            // constraint:
+            //
+            // (a*q, b*q) \in (input_rlc * table_enabled, output_rlc * table_enabled)
+
             let q = meta.query_selector(lookup_gate_selector);
             let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
             let output_rlc = meta.query_advice(phase_2_column, Rotation::next());
-            let table_enabled = meta.query_any(lookup_table.q_enable, Rotation::cur());
-            let table_input_value = meta.query_any(lookup_table.input_rlcs, Rotation::cur());
-            let table_output_value = meta.query_any(lookup_table.output_rlcs, Rotation::cur());
+            let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
+            let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
+            let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
 
             vec![
                 (
@@ -99,7 +119,7 @@ impl VanillaPlonkConfig {
             plonk_gate_selector,
             lookup_gate_selector,
             enable_challenge,
-            lookup_table,
+            keccak_table,
         }
     }
 }

@@ -238,7 +238,7 @@ pub(crate) fn parse_pi_hash_rlc_cells(
         .collect()
 }
 
-// #[cfg(test)]
+#[cfg(test)]
 pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
     assert!(!inputs.is_empty());
     let mut acc = inputs[0];

@@ -550,7 +550,31 @@ impl VanillaPlonkConfig {
         let diff = self.sub(region, a, b, offset)?;
         self.is_zero(region, &diff, offset)
     }
+
+    // lookup the input and output rlcs from the lookup table
+    pub(crate) fn lookup_keccak_rlcs(
+        &self,
+        region: &mut Region<Fr>,
+        input_rlcs: &AssignedCell<Fr, Fr>,
+        output_rlcs: &AssignedCell<Fr, Fr>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.lookup_gate_selector.enable(region, *offset)?;
+        let _input_rlcs_copied =
+            input_rlcs.copy_advice(|| "lookup input rlc", region, self.phase_2_column, *offset)?;
+        let _output_rlcs_copied = output_rlcs.copy_advice(
+            || "lookup output rlc",
+            region,
+            self.phase_2_column,
+            *offset + 1,
+        )?;
+
+        *offset += 2;
+
+        Ok(())
+    }
 }
+
 #[inline]
 fn byte_to_bits_le(byte: &u8) -> Vec<u8> {
     let mut res = vec![];

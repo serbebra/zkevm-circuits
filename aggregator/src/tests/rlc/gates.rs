@@ -8,7 +8,7 @@ use halo2_proofs::{
     plonk::{Circuit, ConstraintSystem, Error},
 };
 use rand::RngCore;
-use zkevm_circuits::util::Challenges;
+use zkevm_circuits::{table::KeccakTable, util::Challenges};
 
 use crate::{aggregation::VanillaPlonkConfig, util::rlc};
 
@@ -33,7 +33,8 @@ impl Circuit<Fr> for ArithTestCircuit {
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         let challenges = Challenges::construct(meta);
-        VanillaPlonkConfig::configure(meta, challenges)
+        let keccak_table = KeccakTable::construct(meta);
+        VanillaPlonkConfig::configure(meta, keccak_table, challenges)
     }
 
     fn synthesize(

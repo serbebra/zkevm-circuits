@@ -375,6 +375,7 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // step 5: load hashes into the table
         // ==============================================
+
         // // order of the hashes
         // // - batch_public_input_hash
         // // - chunk\[i\].piHash for i in \[0, MAX_AGG_SNARKS)
