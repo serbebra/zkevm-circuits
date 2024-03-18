@@ -91,6 +91,7 @@ impl Default for BlobAssignments {
 mod tests {
     use super::*;
     use crate::barycentric::ROOTS_OF_UNITY;
+    use eth_types::ToBigEndian;
     use reth_primitives::{
         constants::eip4844::MAINNET_KZG_TRUSTED_SETUP,
         kzg::{Blob as RethBlob, KzgProof},
