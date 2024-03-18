@@ -135,15 +135,6 @@ impl<F: Field, const MAX_TXS: usize, const MAX_CALLDATA: usize, const MAX_INNER_
             vec![&data_bytes, &chunk_txbytes, &pi_bytes],
             &challenges,
         )?;
-        let lens = self
-            .0
-            .public_data
-            .transactions
-            .iter()
-            .filter(|&tx| tx.is_chunk_l2_tx())
-            .map(|tx| tx.rlp_signed.len())
-            .collect::<Vec<usize>>();
-        log::trace!("=> lens: {:?}", lens);
 
         let tx_max_challenge_pow = self
             .0
