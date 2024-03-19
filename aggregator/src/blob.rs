@@ -91,7 +91,6 @@ impl Default for BlobAssignments {
 mod tests {
     use super::*;
     use crate::barycentric::ROOTS_OF_UNITY;
-    use eth_types::ToBigEndian;
     use reth_primitives::{
         constants::eip4844::MAINNET_KZG_TRUSTED_SETUP,
         kzg::{Blob as RethBlob, KzgProof},
@@ -100,7 +99,10 @@ mod tests {
     #[test]
     fn empty_chunks_random_point() {
         let empty_blob = Blob::default();
-        assert_eq!(empty_blob.challenge_point(), U256::from(keccak256([0u8])),)
+        assert_eq!(
+            empty_blob.challenge_point(),
+            U256::from(keccak256(keccak256([0u8; 2])))
+        )
     }
 
     #[test]
@@ -115,7 +117,7 @@ mod tests {
 
         assert_eq!(
             z,
-            from_str("4848d14b5080aacc030c6a2178eda978125553b177d80992ff96a9e164bcc989")
+            from_str("5873b6a7dba2cdd5b65ea27b1b6c38558a800375fbb233b7046040818a289743")
         );
         assert_eq!(y, Scalar::zero());
     }
@@ -124,9 +126,9 @@ mod tests {
     fn generic_blob() {
         let blob = Blob(vec![
             vec![30; 56],
-            vec![200; 100],
+            (0..128).collect(),
             vec![0; 340],
-            vec![10; 23],
+            vec![10, 32, 123, 13, 123, 123, 123],
             vec![14; 23],
             vec![255; 23],
         ]);
@@ -139,11 +141,11 @@ mod tests {
 
         assert_eq!(
             z,
-            from_str("17feb47df94b20c6da69f871c980459a7a834adad6a564304a0e8cd8a09bcb27")
+            from_str("624a9e56fc016794941343c48d00b77fc2088e17cb8cff5eedb437304c5faa01")
         );
         assert_eq!(
             y,
-            from_str("061f4f5d9005302ca556a0847d27f456cad82c6883a588fde6d48088fb4ec6a7")
+            from_str("04d2236ec4f34d2275f041273c6a0490d8f5c60100fa65e97fb7afc35efde3e7")
         );
     }
 
