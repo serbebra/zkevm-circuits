@@ -563,6 +563,58 @@ impl VanillaPlonkConfig {
     }
 
     // lookup the input and output rlcs from the lookup table
+    pub(crate) fn lookup_keccak_preimage(
+        &self,
+        region: &mut Region<Fr>,
+        input_rlcs: &AssignedCell<Fr, Fr>,
+        // output_rlcs: &AssignedCell<Fr, Fr>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.preimage_lookup_selector.enable(region, *offset)?;
+
+        let _input_rlcs_copied =
+            input_rlcs.copy_advice(|| "lookup input rlc", region, self.phase_2_column, *offset)?;
+
+        // let _output_rlcs_copied = region.assign_advice(
+        //     || "dummy padding",
+        //     self.phase_2_column,
+        //     *offset + 1,
+        //     || Value::known(Fr::zero()),
+        // );
+        *offset += 1;
+
+        Ok(())
+    }
+
+    // lookup the input and output rlcs from the lookup table
+    pub(crate) fn lookup_keccak_digest(
+        &self,
+        region: &mut Region<Fr>,
+        // input_rlcs: &AssignedCell<Fr, Fr>,
+        output_rlcs: &AssignedCell<Fr, Fr>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.digest_lookup_selector.enable(region, *offset)?;
+
+        // let _input_rlcs_copied = region.assign_advice(
+        //     || "dummy padding",
+        //     self.phase_2_column,
+        //     *offset,
+        //     || Value::known(Fr::zero()),
+        // );
+
+        let _output_rlcs_copied = output_rlcs.copy_advice(
+            || "lookup output rlc",
+            region,
+            self.phase_2_column,
+            *offset,
+        )?;
+
+        *offset += 1;
+
+        Ok(())
+    }
+    // lookup the input and output rlcs from the lookup table
     pub(crate) fn lookup_keccak_rlcs(
         &self,
         region: &mut Region<Fr>,
@@ -570,7 +622,8 @@ impl VanillaPlonkConfig {
         output_rlcs: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        self.lookup_gate_selector.enable(region, *offset)?;
+        self.preimage_lookup_selector.enable(region, *offset)?;
+        self.digest_lookup_selector.enable(region, *offset)?;
         let _input_rlcs_copied =
             input_rlcs.copy_advice(|| "lookup input rlc", region, self.phase_2_column, *offset)?;
         let _output_rlcs_copied = output_rlcs.copy_advice(

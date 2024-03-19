@@ -4,7 +4,7 @@ use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     dev::MockProver,
     halo2curves::bn256::Fr,
-    plonk::{Circuit, ConstraintSystem, Error},
+    plonk::{self, Circuit, ConstraintSystem, Error},
 };
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::utils::fs::gen_srs;
 use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
@@ -180,9 +180,30 @@ impl Circuit<Fr> for DynamicHashCircuit {
                     )?
                 };
 
+                // ==============================
+                // lookup part
+                // ==============================
+                // dummy cell; used for testing
+                let _dummy =
+                    config
+                        .plonk_config
+                        .load_private(&mut region, &Fr::one(), &mut offset)?;
+                // lookup both cells
                 config.plonk_config.lookup_keccak_rlcs(
                     &mut region,
                     &rlc_input_cell,
+                    &rlc_output_cell,
+                    &mut offset,
+                )?;
+                // lookup preimage
+                config.plonk_config.lookup_keccak_preimage(
+                    &mut region,
+                    &rlc_input_cell,
+                    &mut offset,
+                )?;
+                // lookup digest
+                config.plonk_config.lookup_keccak_digest(
+                    &mut region,
                     &rlc_output_cell,
                     &mut offset,
                 )?;

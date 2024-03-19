@@ -621,6 +621,9 @@ pub(crate) fn conditional_constraints(
                 plonk_config.init(&mut region)?;
                 let mut offset = 0;
 
+                // todo! merge this
+                let [keccak_input_challenge, evm_word_challenge] =
+                    plonk_config.read_challenges(&mut region, challenges, &mut offset)?;
                 // ====================================================
                 // extract the RLCs for the input and output of the hash
                 // this validates the hash inputs and outputs as they are looked up from the table
@@ -651,6 +654,12 @@ pub(crate) fn conditional_constraints(
                     potential_batch_data_hash_preimage,
                 ) = parse_hash_preimage_cells(hash_input_cells);
 
+                // digests
+                let (
+                    _batch_pi_hash_digest,
+                    _chunk_pi_hash_digests,
+                    potential_batch_data_hash_digest,
+                ) = parse_hash_digest_cells(hash_output_cells);
                 // ====================================================
                 // 1. batch_data_hash digest is reused for public input hash
                 // ====================================================
@@ -665,6 +674,24 @@ pub(crate) fn conditional_constraints(
                 //      batch_data_hash )
                 //
                 // batchDataHash = keccak(chunk[0].dataHash || ... || chunk[k-1].dataHash)
+
+                //     let
+
+                // evm_word_challenge = potential_batch_data_hash_preimage[]
+                // potential_batch_data_hash_preimage
+
+                for (i, e) in batch_pi_hash_preimage.iter().enumerate() {
+                    println!("{i}-th batch pi preimage: {:?}", e.value());
+                }
+                let batch_data_hash_rlc = plonk_config.rlc(
+                    &mut region,
+                    batch_pi_hash_preimage[CHUNK_DATA_HASH_INDEX..CHUNK_DATA_HASH_INDEX + 32]
+                        .as_ref(),
+                    &evm_word_challenge,
+                    &mut offset,
+                )?;
+
+                println!("rlc batch data hash: {:?}", batch_data_hash_rlc.value());
 
                 // 3 batch_data_hash and chunk[i].pi_hash use a same chunk[i].data_hash when
                 // chunk[i] is not padded
@@ -682,22 +709,22 @@ pub(crate) fn conditional_constraints(
                 // the strategy here is to generate the RLCs of the chunk[0].dataHash and compare it
                 // with batchDataHash's input RLC
 
-                // todo! merge this
-                let [keccak_input_challenge, evm_word_challenge] =
-                    plonk_config.read_challenges(&mut region, challenges, &mut offset)?;
+                // for (i, e) in potential_batch_data_hash_preimage.iter().enumerate() {
+                //     println!("{i}-th potential {:?}", e.value());
+                // }
 
-                for (i, e) in potential_batch_data_hash_preimage.iter().enumerate() {
-                    println!("{i}-th potential {:?}", e.value());
-                }
+                // let chunk_data = potential_batch_data_hash_preimage
+                //     .chunks(32)
+                //     .flat_map(|digest| map_hash_outputs_to_inputs(digest))
+                //     .collect::<Vec<_>>();
 
-                let chunk_data = potential_batch_data_hash_preimage
-                    .chunks(32)
-                    .flat_map(|digest| map_hash_outputs_to_inputs(digest))
-                    .collect::<Vec<_>>();
+                // for (i, e) in potential_batch_data_hash_preimage.iter().enumerate() {
+                //     println!("{i}-th potential {:?}", e.value());
+                // }
 
                 let chunk_data_hash_rlc = plonk_config.rlc(
                     &mut region,
-                    chunk_data[..64].as_ref(),
+                    potential_batch_data_hash_preimage[..64].as_ref(),
                     &keccak_input_challenge,
                     &mut offset,
                 )?;

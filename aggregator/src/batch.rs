@@ -3,8 +3,9 @@
 
 use eth_types::{Field, H256};
 use ethers_core::utils::keccak256;
+use halo2_proofs::halo2curves::bn256::Fr;
 
-use crate::constants::MAX_AGG_SNARKS;
+use crate::{constants::MAX_AGG_SNARKS, util::rlc};
 
 use super::chunk::ChunkHash;
 
@@ -189,7 +190,10 @@ impl BatchHash {
             .cloned()
             .collect();
 
-        println!("batch_data_hash_preimage: {:?}", batch_data_hash_preimage);
+        println!(
+            "batch_data_hash_preimage: {:02x?}",
+            batch_data_hash_preimage
+        );
         res.push(batch_data_hash_preimage);
 
         res
@@ -204,5 +208,24 @@ impl BatchHash {
             .iter()
             .map(|&x| F::from(x as u64))
             .collect()]
+    }
+
+    pub(crate) fn display_input_and_output_rlcs(&self, keccak_challenge: &Fr) {
+        let preimages = self.extract_hash_preimages();
+
+        // - batch_public_input_hash
+        // - chunk\[i\].piHash for i in \[0, MAX_AGG_SNARKS)
+        // - batch_data_hash_preimage
+        println!(
+            "batch public input hash: {:?}",
+            rlc(
+                preimages[0]
+                    .iter()
+                    .map(|x| Fr::from(*x as u64))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                keccak_challenge
+            )
+        );
     }
 }

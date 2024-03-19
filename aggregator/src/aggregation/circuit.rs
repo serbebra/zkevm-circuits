@@ -238,6 +238,10 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // extract all the hashes and load them to the hash table
         let challenges = challenge.values(&layouter);
+        let mut keccak_challenge = Fr::default();
+        challenges.keccak_input().map(|v| keccak_challenge = v);
+        self.batch_hash
+            .display_input_and_output_rlcs(&keccak_challenge);
 
         let timer = start_timer!(|| "load aux table");
 
@@ -417,7 +421,8 @@ impl CircuitExt<Fr> for AggregationCircuit {
             .chain(
                 [
                     config.0.plonk_config.plonk_gate_selector,
-                    config.0.plonk_config.lookup_gate_selector,
+                    config.0.plonk_config.preimage_lookup_selector,
+                    config.0.plonk_config.digest_lookup_selector,
                     config.0.plonk_config.enable_challenge,
                 ]
                 .iter()
