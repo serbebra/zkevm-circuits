@@ -49,6 +49,7 @@ pub(crate) struct TxEip1559Gadget<F> {
 }
 
 impl<F: Field> TxEip1559Gadget<F> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn construct(
         cb: &mut EVMConstraintBuilder<F>,
         tx_id: Expression<F>,
