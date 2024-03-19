@@ -10,7 +10,6 @@ use crate::{
         util::{
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             math_gadget::{AddWordsGadget, IsEqualGadget, LtWordGadget, MulWordByU64Gadget},
-            memory_gadget::address_low,
             sum, Expr, Word,
         },
         witness::Transaction,
