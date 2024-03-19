@@ -170,7 +170,7 @@ impl<F: Field> TxEip1559Gadget<F> {
             Some(tx.max_priority_fee_per_gas.to_le_bytes()),
         )?;
 
-        let diff_gas_base_fee = tx.max_priority_fee_per_gas - base_fee;
+        let diff_gas_base_fee = tx.max_fee_per_gas - base_fee;
         self.gas_sub_base_fee.assign(
             region,
             offset,
@@ -222,7 +222,7 @@ mod test {
 
     #[test]
     fn test_eip1559_tx_for_equal_balance() {
-        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(2)).unwrap();
+        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(2), Some(gwei(2))).unwrap();
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
 
@@ -231,7 +231,7 @@ mod test {
     #[cfg(not(feature = "scroll"))]
     #[test]
     fn test_eip1559_tx_for_less_balance() {
-        let res = build_ctx(gwei(79_999), gwei(2), gwei(2));
+        let res = build_ctx(gwei(79_999), gwei(2), gwei(2), None);
 
         // Return a tracing error if insufficient sender balance.
         if let Error::TracingError(err) = res.unwrap_err() {
@@ -243,14 +243,14 @@ mod test {
 
     #[test]
     fn test_eip1559_tx_for_more_balance() {
-        let ctx = build_ctx(gwei(80_001), gwei(2), gwei(2)).unwrap();
+        let ctx = build_ctx(gwei(80_001), gwei(2), gwei(2), Some(gwei(2))).unwrap();
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
 
     #[test]
     fn test_eip1559_tx_for_gas_fee_cap_gt_gas_tip_cap() {
         // Should be successful if `max_fee_per_gas > max_priority_fee_per_gas`.
-        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(1)).unwrap();
+        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(1), Some(gwei(1))).unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
@@ -260,7 +260,7 @@ mod test {
     #[cfg(not(feature = "scroll"))]
     #[test]
     fn test_eip1559_tx_for_gas_fee_cap_lt_gas_tip_cap() {
-        let res = build_ctx(gwei(80_000), gwei(1), gwei(2));
+        let res = build_ctx(gwei(80_000), gwei(1), gwei(2), None);
 
         // Return a tracing error if `max_fee_per_gas < max_priority_fee_per_gas`.
         if let Error::TracingError(err) = res.unwrap_err() {
@@ -274,6 +274,7 @@ mod test {
         sender_balance: Word,
         max_fee_per_gas: Word,
         max_priority_fee_per_gas: Word,
+        gas_price: Option<Word>,
     ) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
             None,
@@ -289,7 +290,8 @@ mod test {
                     .value(gwei(20_000))
                     .max_fee_per_gas(max_fee_per_gas)
                     .max_priority_fee_per_gas(max_priority_fee_per_gas)
-                    .transaction_type(2); // Set tx type to EIP-1559.
+                    .transaction_type(2) // Set tx type to EIP-1559.
+                    .gas_price(gas_price.unwrap_or_default());
             },
             |block, _tx| block.number(0xcafeu64),
         )
