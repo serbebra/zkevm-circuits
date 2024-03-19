@@ -10,6 +10,7 @@ use crate::{
         util::{
             constraint_builder::{ConstrainBuilderCommon, EVMConstraintBuilder},
             math_gadget::{AddWordsGadget, IsEqualGadget, LtWordGadget, MulWordByU64Gadget},
+            memory_gadget::address_low,
             sum, Expr, Word,
         },
         witness::Transaction,
@@ -17,6 +18,7 @@ use crate::{
     table::{BlockContextFieldTag, TxFieldTag},
 };
 use eth_types::{geth_types::TxType, Field, ToLittleEndian, U256};
+use gadgets::util::select;
 use halo2_proofs::plonk::{Error, Expression};
 
 /// Transaction EIP-1559 gadget to check sender balance before transfer
@@ -27,9 +29,11 @@ pub(crate) struct TxEip1559Gadget<F> {
     gas_fee_cap: Word<F>,
     // MaxPriorityFeePerGas
     gas_tip_cap: Word<F>,
-    // std::cmp::min(
+    // selct condition for  min(
     // gas_tip_cap, gas_fee_cap.unwrap() - base_fee_per_gas)
     lt_gas_tip_gas_fee_sub_base_fee: LtWordGadget<F>,
+    // gas_fee_cap - base_fee_per_gas
+    gas_sub_base_fee: AddWordsGadget<F, 2, true>,
     mul_gas_fee_cap_by_gas: MulWordByU64Gadget<F>,
     balance_check: AddWordsGadget<F, 3, true>,
     // Error condition
@@ -51,7 +55,7 @@ impl<F: Field> TxEip1559Gadget<F> {
         tx_id: Expression<F>,
         tx_type: Expression<F>,
         tx_gas: Expression<F>,
-        tx_gas_price: Expression<F>,
+        tx_gas_price: &Word<F>,
         tx_l1_fee: &Word<F>,
         value: &Word<F>,
         sender_balance: &Word<F>,
@@ -69,16 +73,11 @@ impl<F: Field> TxEip1559Gadget<F> {
             gas_fee_cap_lt_gas_tip_cap,
             base_fee,
             gas_fee_cap_lt_base_fee,
+            lt_gas_tip_gas_fee_sub_base_fee,
+            gas_sub_base_fee,
         ) = cb.condition(is_eip1559_tx.expr(), |cb| {
             let mul_gas_fee_cap_by_gas =
                 MulWordByU64Gadget::construct(cb, gas_fee_cap.clone(), tx_gas);
-
-            // let priority_fee_per_gas = std::cmp::min(
-            //     self.gas_tip_cap.unwrap(),
-            //     self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap(),
-            // );
-            // let effective_gas_price = priority_fee_per_gas + base_fee_per_gas.unwrap();
-            // effective_gas_price
 
             let min_balance = cb.query_word_rlc();
             let balance_check = AddWordsGadget::construct(
@@ -101,6 +100,17 @@ impl<F: Field> TxEip1559Gadget<F> {
             let gas_fee_cap_lt_base_fee =
                 LtWordGadget::construct(cb, &gas_fee_cap, &base_fee);
 
+            // let priority_fee_per_gas = std::cmp::min(
+            //     self.gas_tip_cap.unwrap(),
+            //     self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap(),
+            // );
+            // let effective_gas_price = priority_fee_per_gas + base_fee_per_gas.unwrap();
+            let diff_gas_base_fee = cb.query_word_rlc();
+            let gas_sub_base_fee = AddWordsGadget::construct(cb, [base_fee.clone(), diff_gas_base_fee.clone()], gas_fee_cap.clone());
+            let lt_gas_tip_gas_fee_sub_base_fee = LtWordGadget::construct(cb, &gas_tip_cap, &diff_gas_base_fee);
+            // constrain tx gas price = effective gas price
+            cb.require_equal("constrain tx gas price = effective gas price for 1559", tx_gas_price.expr(), select::expr(lt_gas_tip_gas_fee_sub_base_fee.expr(), gas_tip_cap.expr(), diff_gas_base_fee.expr()));
+
             cb.require_zero(
                 "Sender balance must be sufficient, and gas_fee_cap >= gas_tip_cap, and gas_fee_cap >= base_fee",
                 sum::expr([
@@ -117,6 +127,8 @@ impl<F: Field> TxEip1559Gadget<F> {
                 gas_fee_cap_lt_gas_tip_cap,
                 base_fee,
                 gas_fee_cap_lt_base_fee,
+                lt_gas_tip_gas_fee_sub_base_fee,
+                gas_sub_base_fee,
             )
         });
 
@@ -124,6 +136,8 @@ impl<F: Field> TxEip1559Gadget<F> {
             is_eip1559_tx,
             gas_fee_cap,
             gas_tip_cap,
+            lt_gas_tip_gas_fee_sub_base_fee,
+            gas_sub_base_fee,
             mul_gas_fee_cap_by_gas,
             balance_check,
             is_insufficient_balance,
@@ -155,6 +169,21 @@ impl<F: Field> TxEip1559Gadget<F> {
             offset,
             Some(tx.max_priority_fee_per_gas.to_le_bytes()),
         )?;
+
+        let diff_gas_base_fee = tx.max_priority_fee_per_gas - base_fee;
+        self.gas_sub_base_fee.assign(
+            region,
+            offset,
+            [base_fee, diff_gas_base_fee],
+            tx.max_fee_per_gas,
+        )?;
+        self.lt_gas_tip_gas_fee_sub_base_fee.assign(
+            region,
+            offset,
+            tx.max_priority_fee_per_gas,
+            diff_gas_base_fee,
+        )?;
+
         let mul_gas_fee_cap_by_gas = tx.max_fee_per_gas * tx.gas;
         self.mul_gas_fee_cap_by_gas.assign(
             region,
