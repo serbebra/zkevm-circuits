@@ -1,20 +1,19 @@
 use eth_types::{ToLittleEndian, U256};
 use halo2_base::{
-    gates::{range::RangeConfig, GateInstructions},
-    utils::{fe_to_biguint, modulus},
-    AssignedValue, QuantumCell,
+    gates::{range::RangeConfig, GateInstructions, RangeInstructions},
+    utils::{decompose_bigint_option, fe_to_biguint, modulus},
+    AssignedValue, QuantumCell, Context,
 };
 use halo2_ecc::{
     bigint::{CRTInteger, OverflowInteger},
     fields::{fp::FpConfig, FieldChip},
-    halo2_base::{utils::decompose_bigint_option, Context},
 };
 use halo2_proofs::{
     circuit::Value,
     halo2curves::{bls12_381::Scalar, bn256::Fr, ff::PrimeField},
 };
 use itertools::Itertools;
-use num_bigint::{BigInt, Sign};
+use num_bigint::{BigInt, BigUint, Sign};
 use std::{iter::successors, sync::LazyLock};
 
 use crate::{
@@ -112,7 +111,6 @@ impl BarycentricEvaluationConfig {
         .expect("BLS_MODULUS from decimal string");
         let (_, challenge) = challenge_digest.div_mod(bls_modulus);
         let challenge_scalar = Scalar::from_raw(challenge.0);
-
         let challenge_digest_crt = self.load_u256(ctx, challenge_digest);
         let challenge_le = self.scalar.range().gate.assign_witnesses(
             ctx,
@@ -306,6 +304,7 @@ impl BarycentricEvaluationConfig {
             barycentric_assignments: blob_crts
                 .into_iter()
                 .chain(std::iter::once(challenge_digest_crt))
+                .chain(std::iter::once(challenge_crt))
                 .collect(),
             z_le: challenge_le,
             y_le: evaluation_le,
@@ -362,6 +361,29 @@ pub fn interpolate(z: Scalar, coefficients: [Scalar; BLOB_WIDTH]) -> Scalar {
             .map(|(root, f)| f * root * (z - root).invert().unwrap())
             .sum::<Scalar>()
         * Scalar::from(blob_width).invert().unwrap()
+}
+
+fn load_private_unchecked(
+    scalar: &FpConfig<Fr, Scalar>,
+    ctx: &mut Context<Fr>,
+    x: BigInt,
+) -> CRTInteger<Fr> {
+    let value = Value::known(x);
+    let limbs = decompose_bigint_option::<Fr>(value.as_ref(), scalar.num_limbs, scalar.limb_bits);
+    let assigned_limbs = scalar.range.gate.assign_witnesses(ctx, limbs);
+
+    let native = OverflowInteger::<Fr>::evaluate(
+        scalar.range.gate(),
+        ctx,
+        &assigned_limbs,
+        scalar.limb_bases.iter().cloned(),
+    );
+
+    CRTInteger::construct(
+        OverflowInteger::construct(assigned_limbs, scalar.limb_bits),
+        native,
+        value,
+    )
 }
 
 #[cfg(test)]
