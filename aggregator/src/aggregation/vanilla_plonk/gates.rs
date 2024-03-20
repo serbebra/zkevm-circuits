@@ -571,8 +571,7 @@ impl VanillaPlonkConfig {
         data_len: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        self.preimage_lookup_selector.enable(region, *offset)?;
-        self.digest_lookup_selector.enable(region, *offset)?;
+        self.lookup_gate_selector.enable(region, *offset)?;
         let _input_rlcs_copied =
             input_rlcs.copy_advice(|| "lookup input rlc", region, self.phase_2_column, *offset)?;
         let _output_rlcs_copied = output_rlcs.copy_advice(

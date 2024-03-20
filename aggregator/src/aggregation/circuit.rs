@@ -401,8 +401,7 @@ impl CircuitExt<Fr> for AggregationCircuit {
             .chain(
                 [
                     config.0.plonk_config.plonk_gate_selector,
-                    config.0.plonk_config.preimage_lookup_selector,
-                    config.0.plonk_config.digest_lookup_selector,
+                    config.0.plonk_config.lookup_gate_selector,
                     config.0.plonk_config.enable_challenge,
                 ]
                 .iter()

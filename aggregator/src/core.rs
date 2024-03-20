@@ -25,23 +25,13 @@ use snark_verifier_sdk::{
     Snark,
 };
 use zkevm_circuits::{
-    keccak_circuit::{
-        keccak_packed_multi::{self, multi_keccak},
-        KeccakCircuit, KeccakCircuitConfig,
-    },
-    table::{KeccakTable, LookupTable},
+    keccak_circuit::{keccak_packed_multi::multi_keccak, KeccakCircuit},
     util::Challenges,
 };
 
 use crate::{
-    constants::{CHAIN_ID_LEN, DIGEST_LEN, INPUT_LEN_PER_ROUND, LOG_DEGREE, MAX_AGG_SNARKS},
-    util::{
-        assert_conditional_equal,
-        assert_equal,
-        get_indices,
-        get_max_keccak_updates,
-        parse_hash_preimage_cells, // parse_pi_hash_rlc_cells,
-    },
+    constants::{CHAIN_ID_LEN, DIGEST_LEN, LOG_DEGREE, MAX_AGG_SNARKS},
+    util::{assert_conditional_equal, assert_equal, parse_hash_preimage_cells},
     AggregationConfig, VanillaPlonkConfig, BITS, CHUNK_DATA_HASH_INDEX, LIMBS,
     POST_STATE_ROOT_INDEX, PREV_STATE_ROOT_INDEX, WITHDRAW_ROOT_INDEX,
 };
@@ -159,7 +149,7 @@ pub(crate) struct ExtractedHashCells {
     data_lens: Vec<AssignedCell<Fr, Fr>>,
 }
 impl ExtractedHashCells {
-    pub(crate) fn assign_hash_rlc_cells(
+    pub(crate) fn assign_hash_cells(
         plonk_config: &VanillaPlonkConfig,
         region: &mut Region<Fr>,
         offset: &mut usize,
@@ -333,111 +323,19 @@ pub(crate) fn assign_keccak_table(
         .assign_region(
             || "assign keccak rows",
             |mut region| {
-                // if is_first_time {
-                //     is_first_time = false;
-                //     let offset = witness.len() - 1;
-                //     config.keccak_circuit_config.set_row(&mut region, offset, &witness[offset])?;
-                //     return Ok((ExtractedHashCells::default(), 0));
-                // }
-
-                // let mut preimage_indices_iter = preimage_indices.iter();
-                // let mut digest_indices_iter = digest_indices.iter();
-
-                // let mut cur_preimage_index = preimage_indices_iter.next();
-                // let mut cur_digest_index = digest_indices_iter.next();
-
-                // // ====================================================
-                // // Step 1. Extract the hash cells
-                // // ====================================================
-                // let mut hash_input_cells = vec![];
-                // let mut hash_output_cells = vec![];
-                // let mut data_rlc_cells = vec![];
-                // let mut hash_input_len_cells = vec![];
-                // let mut is_final_cells = vec![];
-                // let mut hash_rlc_cells = vec![];
-
                 let timer = start_timer!(|| "assign row");
                 log::trace!("witness length: {}", witness.len());
-                // let input_bytes_col_idx =
-                //     keccak_packed_multi::get_input_bytes_col_idx_in_cell_manager()
-                //         + <KeccakTable as LookupTable<Fr>>::columns(
-                //             &config.keccak_circuit_config.keccak_table,
-                //         )
-                //         .len()
-                //         - 1;
                 for (offset, keccak_row) in witness.iter().enumerate() {
-                    let row =
+                    let _row =
                         config
                             .keccak_circuit_config
                             .set_row(&mut region, offset, keccak_row)?;
-
-                    //     if cur_preimage_index.is_some() && *cur_preimage_index.unwrap() == offset
-                    // {         hash_input_cells.push(row[input_bytes_col_idx].
-                    // clone());         cur_preimage_index =
-                    // preimage_indices_iter.next();     }
-                    //     if cur_digest_index.is_some() && *cur_digest_index.unwrap() == offset {
-                    //         // last column is Keccak output in Keccak circuit
-                    //         hash_output_cells.push(row.last().unwrap().clone()); // sage unwrap
-                    //         cur_digest_index = digest_indices_iter.next();
-                    //     }
-                    //     if offset % keccak_f_rows == 0 && offset / keccak_f_rows <=
-                    // max_keccak_updates {         // first column is is_final
-                    //         is_final_cells.push(row[0].clone());
-                    //         // second column is data rlc (i.e, input rlc)
-                    //         data_rlc_cells.push(row[1].clone());
-                    //         // third column is hash len
-                    //         hash_input_len_cells.push(row[2].clone());
-                    //         // fourth column is hash rlc (i.e, output rlc)
-                    //         hash_rlc_cells.push(row[3].clone());
-                    //     }
                 }
                 end_timer!(timer);
-
-                // for (i, e) in is_final_cells.iter().enumerate() {
-                //     log::trace!("{}-th round is final {:?}", i, e.value());
-                // }
-
-                // // sanity
-                // assert_eq!(
-                //     hash_input_cells.len(),
-                //     max_keccak_updates * INPUT_LEN_PER_ROUND
-                // );
-                // assert_eq!(hash_output_cells.len(), (MAX_AGG_SNARKS + 5) * DIGEST_LEN);
-
-                // keccak_config
-                //     .keccak_table
-                //     .annotate_columns_in_region(&mut region);
-                // keccak_config.annotate_circuit(&mut region);
-
-                // println!("{}", data_rlc_cells.len());
-                // println!("{}", hash_rlc_cells.len());
-
-                // for i in 0..data_rlc_cells.len() {
-                //     println!(
-                //         "rlcs: {} {:?} {:?}",
-                //         i,
-                //         data_rlc_cells[i].value(),
-                //         hash_rlc_cells[i].value(),
-                //     )
-                // }
-
                 Ok(())
-                // Ok(ExtractedHashCells {
-                //     hash_input_cells,
-                //     hash_output_cells,
-                //     data_rlc_cells,
-                //     // hash_input_len_cells,
-                //     // is_final_cells,
-                //     // hash_rlc_cells,
-                // })
             },
         )
         .map_err(|e| Error::AssertionFailure(format!("assign keccak rows: {e}")))?;
-
-    // for (i, e) in extracted_hash_cells.hash_input_len_cells.iter().enumerate() {
-    //     log::trace!("{}'s round hash input len {:?}", i, e.value())
-    // }
-
     Ok(())
 }
 
@@ -610,13 +508,14 @@ pub(crate) fn conditional_constraints(
                     return Ok(ExtractedHashCells::default());
                 }
 
+                // initilization
                 let mut offset = 0;
-
                 plonk_config.init(&mut region)?;
                 let [keccak_input_challenge, evm_word_challenge] =
                     plonk_config.read_challenges(&mut region, challenges, &mut offset)?;
 
-                let assigned_hash_cells = ExtractedHashCells::assign_hash_rlc_cells(
+                // extract the hash cells from the witnesses and check against the lookup table
+                let assigned_hash_cells = ExtractedHashCells::assign_hash_cells(
                     &plonk_config,
                     &mut region,
                     &mut offset,
@@ -649,32 +548,12 @@ pub(crate) fn conditional_constraints(
                     .cloned()
                     .collect::<Vec<_>>();
 
-                let num_valid_snarks = constrain_flags(
+                let _num_valid_snarks = constrain_flags(
                     plonk_config,
                     &mut region,
                     &chunk_is_valid_cells,
                     &mut offset,
                 )?;
-
-                // // ====================================================
-                // // extract the RLCs for the input and output of the hash
-                // // this validates the hash inputs and outputs as they are looked up from the
-                // table // ====================================================
-                // let rlcs = ExtractedHashCells::assign_hash_rlc_cells(
-                //     plonk_config,
-                //     &mut region,
-                //     &mut offset,
-                //     challenges,
-                //     preimages,
-                // )?;
-                // for (i, e) in rlcs.input_rlcs.iter().enumerate() {
-                //     println!("{}-th input rlcs: {:?}", i, e.value());
-                // }
-
-                // for (i, e) in rlcs.output_rlcs.iter().enumerate() {
-                //     println!("{}-th output rlcs: {:?}", i, e.value());
-                // }
-                // rlcs.check_rlc_cells(plonk_config, &mut region, &mut offset)?;
 
                 // ====================================================
                 // parse the hashes
@@ -683,12 +562,6 @@ pub(crate) fn conditional_constraints(
                 let (batch_pi_hash_preimage, chunk_pi_hash_preimages, batch_data_hash_preimage) =
                     parse_hash_preimage_cells(&assigned_hash_cells.inputs);
 
-                // digests
-                // let (
-                //     _batch_pi_hash_digest,
-                //     _chunk_pi_hash_digests,
-                //     potential_batch_data_hash_digest,
-                // ) = parse_hash_digest_cells(hash_output_cells);
                 // ====================================================
                 // 1. batch_data_hash digest is reused for public input hash
                 // ====================================================
@@ -704,6 +577,8 @@ pub(crate) fn conditional_constraints(
                 //
                 // batchDataHash = keccak(chunk[0].dataHash || ... || chunk[k-1].dataHash)
 
+                // the strategy here is to generate the RLCs of the batch_pi_hash_preimage and
+                // compare it with batchDataHash's input RLC
                 let batch_data_hash_rlc = plonk_config.rlc(
                     &mut region,
                     batch_pi_hash_preimage
@@ -714,11 +589,14 @@ pub(crate) fn conditional_constraints(
                 )?;
 
                 println!("batch_data_hash_rlc: {:?}", batch_data_hash_rlc.value());
-                println!("batch_data_hash_rlc: {:?}", assigned_hash_cells.output_rlcs[MAX_AGG_SNARKS+1].value());
+                println!(
+                    "batch_data_hash_rlc: {:?}",
+                    assigned_hash_cells.output_rlcs[MAX_AGG_SNARKS + 1].value()
+                );
 
                 region.constrain_equal(
                     batch_data_hash_rlc.cell(),
-                    assigned_hash_cells.output_rlcs[MAX_AGG_SNARKS+1].cell(),
+                    assigned_hash_cells.output_rlcs[MAX_AGG_SNARKS + 1].cell(),
                 )?;
 
                 // ====================================================
@@ -866,17 +744,11 @@ pub(crate) fn conditional_constraints(
                     &chunk_is_valid_cell32s,
                     &mut offset,
                 )?;
-                // println!("rlc_cell: {:?}", rlc_cell.value());
-                // println!("rlc_cell: {:?}",
-                // assigned_hash_cells.input_rlcs[MAX_AGG_SNARKS+1].value());
 
                 region.constrain_equal(
                     rlc_cell.cell(),
                     assigned_hash_cells.input_rlcs[MAX_AGG_SNARKS + 1].cell(),
                 )?;
-
-                // plonk_config.lookup_keccak_preimage(&mut region, &rlc_cell, &mut offset)?;
-                // println!("padded_batch_data_hash_preimage: {:?}", rlc_cell);
 
                 log::trace!("rlc chip uses {} rows", offset);
                 Ok(assigned_hash_cells)
