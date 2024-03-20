@@ -103,18 +103,17 @@ impl<F: Field> TxEip1559Gadget<F> {
             let gas_fee_cap_lt_base_fee =
                 LtWordGadget::construct(cb, &gas_fee_cap, &base_fee);
 
-            // let priority_fee_per_gas = std::cmp::min(
-            //     self.gas_tip_cap.unwrap(),
-            //     self.gas_fee_cap.unwrap() - base_fee_per_gas.unwrap(),
+            // calculating min(
+            //     gas_tip_cap
+            //     gas_fee_cap - base_fee_per_gas,
             // );
-            // let effective_gas_price = priority_fee_per_gas + base_fee_per_gas.unwrap();
             let diff_gas_base_fee = cb.query_word_rlc();
             let gas_sub_base_fee = AddWordsGadget::construct(cb, [base_fee.clone(), diff_gas_base_fee.clone()], gas_fee_cap.clone());
             let lt_gas_tip_gas_fee_sub_base_fee = LtWordGadget::construct(cb, &gas_tip_cap, &diff_gas_base_fee);
+            // let effective_gas_price = priority_fee_per_gas + base_fee_per_gas;
             let priority_fee_per_gas = cb.query_word_rlc();
             // constrain tx_gas_price = effective_gas_price within below `AddWordsGadget`.
             let effective_gas_price_check = AddWordsGadget::construct(cb, [base_fee.clone(), priority_fee_per_gas], tx_gas_price.clone());
-            // cb.require_equal("constrain tx gas price = effective gas price for 1559", tx_gas_price.expr(), );
 
             cb.require_zero(
                 "Sender balance must be sufficient, and gas_fee_cap >= gas_tip_cap, and gas_fee_cap >= base_fee",
