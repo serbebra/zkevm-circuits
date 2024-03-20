@@ -155,47 +155,44 @@ fn is_ascending(a: &[usize]) -> bool {
 #[inline]
 #[allow(clippy::type_complexity)]
 pub(crate) fn parse_hash_preimage_cells(
-    hash_input_cells: &[AssignedCell<Fr, Fr>],
+    hash_input_cells: &[Vec<AssignedCell<Fr, Fr>>],
 ) -> (
     &[AssignedCell<Fr, Fr>],
-    Vec<&[AssignedCell<Fr, Fr>]>,
+    Vec<&Vec<AssignedCell<Fr, Fr>>>,
     &[AssignedCell<Fr, Fr>],
 ) {
     // each pi hash has INPUT_LEN_PER_ROUND bytes as input
     // keccak will pad the input with another INPUT_LEN_PER_ROUND bytes
     // we extract all those bytes
-    let batch_pi_hash_preimage = &hash_input_cells[0..INPUT_LEN_PER_ROUND * 2];
+    let batch_pi_hash_preimage = &hash_input_cells[0];
     let mut chunk_pi_hash_preimages = vec![];
     for i in 0..MAX_AGG_SNARKS {
-        chunk_pi_hash_preimages.push(
-            &hash_input_cells[INPUT_LEN_PER_ROUND * 2 * (i + 1)..INPUT_LEN_PER_ROUND * 2 * (i + 2)],
-        );
+        chunk_pi_hash_preimages.push(&hash_input_cells[i + 1]);
     }
-    let potential_batch_data_hash_preimage =
-        &hash_input_cells[INPUT_LEN_PER_ROUND * 2 * (MAX_AGG_SNARKS + 1)..];
+    let batch_data_hash_preimage = hash_input_cells.last().unwrap();
 
     (
         batch_pi_hash_preimage,
         chunk_pi_hash_preimages,
-        potential_batch_data_hash_preimage,
+        batch_data_hash_preimage,
     )
 }
 
 #[inline]
 #[allow(clippy::type_complexity)]
 pub(crate) fn parse_hash_digest_cells(
-    hash_output_cells: &[AssignedCell<Fr, Fr>],
+    hash_output_cells: &[Vec<AssignedCell<Fr, Fr>>],
 ) -> (
     &[AssignedCell<Fr, Fr>],
-    Vec<&[AssignedCell<Fr, Fr>]>,
+    Vec<&Vec<AssignedCell<Fr, Fr>>>,
     &[AssignedCell<Fr, Fr>],
 ) {
-    let batch_pi_hash_digest = &hash_output_cells[0..DIGEST_LEN];
+    let batch_pi_hash_digest = &hash_output_cells[0];
     let mut chunk_pi_hash_digests = vec![];
     for i in 0..MAX_AGG_SNARKS {
-        chunk_pi_hash_digests.push(&hash_output_cells[DIGEST_LEN * (i + 1)..DIGEST_LEN * (i + 2)]);
+        chunk_pi_hash_digests.push(&hash_output_cells[i + 1]);
     }
-    let potential_batch_data_hash_digest = &hash_output_cells[DIGEST_LEN * (MAX_AGG_SNARKS + 1)..];
+    let potential_batch_data_hash_digest = &hash_output_cells[MAX_AGG_SNARKS + 1];
     (
         batch_pi_hash_digest,
         chunk_pi_hash_digests,
@@ -203,19 +200,19 @@ pub(crate) fn parse_hash_digest_cells(
     )
 }
 
-#[inline]
-pub(crate) fn parse_pi_hash_rlc_cells(
-    data_rlc_cells: &[AssignedCell<Fr, Fr>],
-) -> Vec<&AssignedCell<Fr, Fr>> {
-    data_rlc_cells
-        .iter()
-        .skip(3) // the first 3 rlc cells are pad (1) + batch pi hash (2)
-        .take(MAX_AGG_SNARKS * 2) // each chunk hash takes 2 rounds
-        .chunks(2)
-        .into_iter()
-        .map(|t| t.last().unwrap())
-        .collect()
-}
+// #[inline]
+// pub(crate) fn parse_pi_hash_rlc_cells(
+//     data_rlc_cells: &[AssignedCell<Fr, Fr>],
+// ) -> Vec<&AssignedCell<Fr, Fr>> {
+//     data_rlc_cells
+//         .iter()
+//         .skip(3) // the first 3 rlc cells are pad (1) + batch pi hash (2)
+//         .take(MAX_AGG_SNARKS * 2) // each chunk hash takes 2 rounds
+//         .chunks(2)
+//         .into_iter()
+//         .map(|t| t.last().unwrap())
+//         .collect()
+// }
 
 pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
     assert!(!inputs.is_empty());

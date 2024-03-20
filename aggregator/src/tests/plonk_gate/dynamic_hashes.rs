@@ -28,7 +28,7 @@ struct DynamicHashCircuit {
 struct DynamicHashCircuitConfig {
     /// Keccak circuit configurations
     pub keccak_circuit_config: KeccakCircuitConfig<Fr>,
-    /// RLC config
+    /// plonk config
     pub plonk_config: VanillaPlonkConfig,
 }
 
@@ -202,18 +202,18 @@ impl Circuit<Fr> for DynamicHashCircuit {
                     &data_len,
                     &mut offset,
                 )?;
-                // lookup preimage
-                config.plonk_config.lookup_keccak_preimage(
-                    &mut region,
-                    &rlc_input_cell,
-                    &mut offset,
-                )?;
-                // lookup digest
-                config.plonk_config.lookup_keccak_digest(
-                    &mut region,
-                    &rlc_output_cell,
-                    &mut offset,
-                )?;
+                // // lookup preimage
+                // config.plonk_config.lookup_keccak_preimage(
+                //     &mut region,
+                //     &rlc_input_cell,
+                //     &mut offset,
+                // )?;
+                // // lookup digest
+                // config.plonk_config.lookup_keccak_digest(
+                //     &mut region,
+                //     &rlc_output_cell,
+                //     &mut offset,
+                // )?;
 
                 Ok(())
             },

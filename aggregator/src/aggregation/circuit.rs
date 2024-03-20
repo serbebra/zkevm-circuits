@@ -29,7 +29,7 @@ use crate::{
     batch::BatchHash,
     constants::{ACC_LEN, DIGEST_LEN, MAX_AGG_SNARKS},
     core::{assign_batch_hashes, extract_proof_and_instances_with_pairing_check},
-    util::{parse_hash_digest_cells, rlc},
+    util::parse_hash_digest_cells,
     ConfigParams,
 };
 
@@ -292,27 +292,9 @@ impl Circuit<Fr> for AggregationCircuit {
 
         for (i, chunk) in chunk_pi_hash_digests.iter().enumerate() {
             let hash = self.batch_hash.chunks_with_padding[i].public_input_hash();
-            for j in 0..4 {
-                for k in 0..8 {
-                    log::trace!(
-                        "pi {:02x} {:?}",
-                        hash[j * 8 + k],
-                        chunk[8 * (3 - j) + k].value()
-                    );
-                }
+            for j in 0..DIGEST_LEN {
+                log::trace!("pi {:02x} {:?}", hash[j], chunk[j].value());
             }
-            let random = challenges.evm_word();
-            let mut randomness = Fr::default();
-            random.map(|x| randomness = x);
-            let rlc = rlc(
-                hash.0
-                    .iter()
-                    .map(|x| Fr::from(*x as u64))
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-                &randomness,
-            );
-            println!("rlc in the clear: {:?}", rlc);
         }
 
         #[cfg(not(feature = "disable_proof_aggregation"))]
@@ -372,20 +354,18 @@ impl Circuit<Fr> for AggregationCircuit {
         }
 
         // public input hash
-        for i in 0..4 {
-            for j in 0..8 {
-                log::trace!(
-                    "pi (circuit vs real): {:?} {:?}",
-                    batch_pi_hash_digest[i * 8 + j].value(),
-                    self.instances()[0][(3 - i) * 8 + j + ACC_LEN]
-                );
+        for i in 0..DIGEST_LEN {
+            log::trace!(
+                "pi (circuit vs real): {:?} {:?}",
+                batch_pi_hash_digest[i].value(),
+                self.instances()[0][i + ACC_LEN]
+            );
 
-                layouter.constrain_instance(
-                    batch_pi_hash_digest[i * 8 + j].cell(),
-                    config.instance,
-                    (3 - i) * 8 + j + ACC_LEN,
-                )?;
-            }
+            layouter.constrain_instance(
+                batch_pi_hash_digest[i].cell(),
+                config.instance,
+                i + ACC_LEN,
+            )?;
         }
 
         end_timer!(witness_time);

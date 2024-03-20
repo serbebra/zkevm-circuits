@@ -97,8 +97,6 @@ impl AggregationConfig {
         meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().input_len);
         // enable equality for the is_final column
         meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().is_final);
-        // // enable equality for the hash RLC column
-        // meta.enable_equality(keccak_circuit_config.keccak_table.output_rlc);
 
         // Instance column stores public input column
         // - the accumulator
