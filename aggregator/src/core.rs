@@ -253,7 +253,7 @@ impl ExtractedHashCells {
 // 5. batch and all its chunks use a same chain id
 // 6. chunk[i]'s chunk_pi_hash_rlc_cells == chunk[i-1].chunk_pi_hash_rlc_cells when chunk[i] is
 // padded
-// 8. batch data hash is correct w.r.t. its RLCs
+// 7. batch data hash is correct w.r.t. its RLCs
 pub(crate) fn assign_batch_hashes(
     config: &AggregationConfig,
     layouter: &mut impl Layouter<Fr>,
@@ -272,7 +272,7 @@ pub(crate) fn assign_batch_hashes(
     // 4. chunks are continuous: they are linked via the state roots
     // 6. chunk[i]'s chunk_pi_hash_rlc_cells == chunk[i-1].chunk_pi_hash_rlc_cells when chunk[i] is
     // padded
-    // 8. batch data hash is correct w.r.t. its RLCs
+    // 7. batch data hash is correct w.r.t. its RLCs
     let extracted_hash_cells = conditional_constraints(
         &config.plonk_config,
         layouter,
@@ -488,7 +488,7 @@ fn copy_constraints(
 // 7. the hash input length are correct
 // - first MAX_AGG_SNARKS + 1 hashes all have 136 bytes input
 // - batch's data_hash length is 32 * number_of_valid_snarks
-// 8. batch data hash is correct w.r.t. its RLCs
+// 7. batch data hash is correct w.r.t. its RLCs
 // 9. is_final_cells are set correctly
 pub(crate) fn conditional_constraints(
     plonk_config: &VanillaPlonkConfig,
@@ -722,7 +722,7 @@ pub(crate) fn conditional_constraints(
                 }
 
                 // ====================================================
-                // 8. batch data hash is correct w.r.t. its RLCs
+                // 7. batch data hash is correct w.r.t. its RLCs
                 // ====================================================
                 // batchDataHash = keccak(chunk[0].dataHash || ... || chunk[k-1].dataHash)
                 let zero = {
