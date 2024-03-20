@@ -54,7 +54,7 @@ impl VanillaPlonkConfig {
     }
 
     #[inline]
-    pub(crate) fn two_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn _two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 2,
@@ -63,7 +63,7 @@ impl VanillaPlonkConfig {
     }
 
     #[inline]
-    pub(crate) fn five_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn _five_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 3,
@@ -72,7 +72,7 @@ impl VanillaPlonkConfig {
     }
 
     #[inline]
-    pub(crate) fn nine_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn _nine_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 4,
@@ -81,7 +81,7 @@ impl VanillaPlonkConfig {
     }
 
     #[inline]
-    pub(crate) fn thirteen_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn _thirteen_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 5,
@@ -107,7 +107,7 @@ impl VanillaPlonkConfig {
     }
 
     #[inline]
-    pub(crate) fn two_to_thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
+    pub(crate) fn _two_to_thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
             row_offset: 8,
@@ -381,7 +381,7 @@ impl VanillaPlonkConfig {
     }
 
     // padded the columns
-    pub(crate) fn pad(&self, region: &mut Region<Fr>, offset: &usize) -> Result<(), Error> {
+    pub(crate) fn _pad(&self, region: &mut Region<Fr>, offset: &usize) -> Result<(), Error> {
         for index in *offset..(1 << LOG_DEGREE) - 1 {
             region.assign_advice(
                 || "pad",
@@ -396,7 +396,7 @@ impl VanillaPlonkConfig {
     // decompose a field element into log_size bits of boolean cells
     // require the input to be less than 2^log_size
     // require log_size < 254
-    pub(crate) fn decomposition(
+    pub(crate) fn _decomposition(
         &self,
         region: &mut Region<Fr>,
         input: &AssignedCell<Fr, Fr>,
@@ -409,7 +409,7 @@ impl VanillaPlonkConfig {
         let bits = input_element
             .to_bytes()
             .iter()
-            .flat_map(byte_to_bits_le)
+            .flat_map(_byte_to_bits_le)
             .take(log_size)
             .collect::<Vec<_>>();
         // sanity check
@@ -440,7 +440,7 @@ impl VanillaPlonkConfig {
 
         let two = {
             let two = self.load_private(region, &Fr::from(2), offset)?;
-            let two_cell = self.two_cell(two.cell().region_index);
+            let two_cell = self._two_cell(two.cell().region_index);
             region.constrain_equal(two_cell, two.cell())?;
             two
         };
@@ -468,7 +468,7 @@ impl VanillaPlonkConfig {
 
     // return a boolean if a is smaller than b
     // requires that both a and b are less than 32 bits
-    pub(crate) fn is_smaller_than(
+    pub(crate) fn _is_smaller_than(
         &self,
         region: &mut Region<Fr>,
         a: &AssignedCell<Fr, Fr>,
@@ -480,12 +480,12 @@ impl VanillaPlonkConfig {
         // we bit decompose c and check the 33-th bit
         let two_to_thirty_two = self.load_private(region, &Fr::from(1 << 32), offset)?;
         let two_to_thirty_two_cell =
-            self.two_to_thirty_two_cell(two_to_thirty_two.cell().region_index);
+            self._two_to_thirty_two_cell(two_to_thirty_two.cell().region_index);
         region.constrain_equal(two_to_thirty_two_cell, two_to_thirty_two.cell())?;
 
         let ca = self.add(region, &two_to_thirty_two, a, offset)?;
         let c = self.sub(region, &ca, b, offset)?;
-        let bits = self.decomposition(region, &c, 33, offset)?;
+        let bits = self._decomposition(region, &c, 33, offset)?;
         let res = self.not(region, &bits[32], offset)?;
         Ok(res)
     }
@@ -647,7 +647,7 @@ impl VanillaPlonkConfig {
 }
 
 #[inline]
-fn byte_to_bits_le(byte: &u8) -> Vec<u8> {
+fn _byte_to_bits_le(byte: &u8) -> Vec<u8> {
     let mut res = vec![];
     let mut t = *byte;
     for _ in 0..8 {

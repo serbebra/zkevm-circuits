@@ -152,9 +152,6 @@ pub(crate) struct ExtractedHashCells {
     hash_input_cells: Vec<AssignedCell<Fr, Fr>>,
     hash_output_cells: Vec<AssignedCell<Fr, Fr>>,
     data_rlc_cells: Vec<AssignedCell<Fr, Fr>>,
-    hash_rlc_cells: Vec<AssignedCell<Fr, Fr>>,
-    hash_input_len_cells: Vec<AssignedCell<Fr, Fr>>,
-    is_final_cells: Vec<AssignedCell<Fr, Fr>>,
 }
 
 #[derive(Default)]
@@ -314,6 +311,7 @@ pub(crate) fn assign_batch_hashes(
 }
 
 pub(crate) fn extract_hash_cells(
+    // plonk_config: &VanillaPlonkConfig,
     keccak_config: &KeccakCircuitConfig<Fr>,
     layouter: &mut impl Layouter<Fr>,
     challenges: Challenges<Value<Fr>>,
@@ -436,17 +434,17 @@ pub(crate) fn extract_hash_cells(
                     hash_input_cells,
                     hash_output_cells,
                     data_rlc_cells,
-                    hash_input_len_cells,
-                    is_final_cells,
-                    hash_rlc_cells,
+                    // hash_input_len_cells,
+                    // is_final_cells,
+                    // hash_rlc_cells,
                 })
             },
         )
         .map_err(|e| Error::AssertionFailure(format!("assign keccak rows: {e}")))?;
 
-    for (i, e) in extracted_hash_cells.hash_input_len_cells.iter().enumerate() {
-        log::trace!("{}'s round hash input len {:?}", i, e.value())
-    }
+    // for (i, e) in extracted_hash_cells.hash_input_len_cells.iter().enumerate() {
+    //     log::trace!("{}'s round hash input len {:?}", i, e.value())
+    // }
 
     Ok(extracted_hash_cells)
 }
@@ -613,11 +611,8 @@ pub(crate) fn conditional_constraints(
     let mut first_pass = halo2_base::SKIP_FIRST_PASS;
     let ExtractedHashCells {
         hash_input_cells,
-        hash_output_cells,
-        hash_input_len_cells,
+        hash_output_cells: _hash_output_cells,
         data_rlc_cells,
-        is_final_cells,
-        hash_rlc_cells,
     } = extracted_hash_cells;
 
     layouter

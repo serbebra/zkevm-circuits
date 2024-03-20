@@ -145,7 +145,7 @@ impl Circuit<Fr> for ArithTestCircuit {
                     for _ in 0..10 {
                         let tmp = Fr::from(rng.next_u64());
                         let tmp = config.load_private(&mut region, &tmp, &mut offset)?;
-                        config.decomposition(&mut region, &tmp, 64, &mut offset)?;
+                        config._decomposition(&mut region, &tmp, 64, &mut offset)?;
                     }
                 }
                 // unit test: is smaller than
@@ -157,7 +157,7 @@ impl Circuit<Fr> for ArithTestCircuit {
                         let a = config.load_private(&mut region, &a, &mut offset)?;
                         let b = config.load_private(&mut region, &b, &mut offset)?;
                         let c = config.load_private(&mut region, &c, &mut offset)?;
-                        let c_rec = config.is_smaller_than(&mut region, &a, &b, &mut offset)?;
+                        let c_rec = config._is_smaller_than(&mut region, &a, &b, &mut offset)?;
                         region.constrain_equal(c.cell(), c_rec.cell())?;
                     }
 
@@ -168,7 +168,7 @@ impl Circuit<Fr> for ArithTestCircuit {
                     let a = config.load_private(&mut region, &a, &mut offset)?;
                     let b = config.load_private(&mut region, &b, &mut offset)?;
                     let c = config.load_private(&mut region, &c, &mut offset)?;
-                    let c_rec = config.is_smaller_than(&mut region, &a, &b, &mut offset)?;
+                    let c_rec = config._is_smaller_than(&mut region, &a, &b, &mut offset)?;
                     region.constrain_equal(c.cell(), c_rec.cell())?;
                 }
                 // unit test: is zero

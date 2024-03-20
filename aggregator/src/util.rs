@@ -226,4 +226,3 @@ pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
 
     acc
 }
-
