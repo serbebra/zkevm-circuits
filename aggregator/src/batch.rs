@@ -210,7 +210,7 @@ impl BatchHash {
             .collect()]
     }
 
-    pub(crate) fn display_input_and_output_rlcs(&self, keccak_challenge: &Fr) {
+    pub(crate) fn _display_input_and_output_rlcs(&self, keccak_challenge: &Fr) {
         let preimages = self.extract_hash_preimages();
 
         // - batch_public_input_hash

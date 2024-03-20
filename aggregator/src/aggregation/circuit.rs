@@ -237,13 +237,9 @@ impl Circuit<Fr> for AggregationCircuit {
         // step 2: public input aggregation circuit
         // ==============================================
         // extract all the hashes and load them to the hash table
-        let challenges = challenge.values(&layouter);
-        let mut keccak_challenge = Fr::default();
-        challenges.keccak_input().map(|v| keccak_challenge = v);
-        self.batch_hash
-            .display_input_and_output_rlcs(&keccak_challenge);
-
         let timer = start_timer!(|| "load aux table");
+        
+        let challenges = challenge.values(&layouter);
 
         let hash_digest_cells = {
             config

@@ -216,7 +216,7 @@ impl ExtractedHashCells {
         for (input_rlcs, (output_rlcs, data_len)) in self
             .input_rlcs
             .iter()
-            .zip_eq(self.output_rlcs.iter().zip(self.data_lens.iter()))
+            .zip_eq(self.output_rlcs.iter().zip_eq(self.data_lens.iter()))
         {
             plonk_config.lookup_keccak_rlcs(region, input_rlcs, output_rlcs, data_len, offset)?;
         }
