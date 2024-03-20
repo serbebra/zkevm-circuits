@@ -190,8 +190,8 @@ impl BatchHash {
             .cloned()
             .collect();
 
-        println!(
-            "batch_data_hash_preimage: {:02x?}",
+        log::info!(
+            "batch data hash's preimage: {:02x?}",
             batch_data_hash_preimage
         );
         res.push(batch_data_hash_preimage);
@@ -216,7 +216,7 @@ impl BatchHash {
         // - batch_public_input_hash
         // - chunk\[i\].piHash for i in \[0, MAX_AGG_SNARKS)
         // - batch_data_hash_preimage
-        println!(
+        log::info!(
             "batch public input hash: {:?}",
             rlc(
                 preimages[0]

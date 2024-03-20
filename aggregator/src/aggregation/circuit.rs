@@ -312,28 +312,24 @@ impl Circuit<Fr> for AggregationCircuit {
                 }
 
                 for i in 0..MAX_AGG_SNARKS {
-                    for j in 0..4 {
-                        for k in 0..8 {
-                            let mut t1 = Fr::default();
-                            let mut t2 = Fr::default();
-                            chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
-                            snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k]
-                                .value()
-                                .map(|x| t2 = *x);
-                            log::trace!(
-                                "{}-th snark: {:?} {:?}",
-                                i,
-                                chunk_pi_hash_digests[i][j * 8 + k].value(),
-                                snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k].value()
-                            );
+                    for j in 0..DIGEST_LEN {
+                        let mut t1 = Fr::default();
+                        let mut t2 = Fr::default();
+                        chunk_pi_hash_digests[i][j].value().map(|x| t1 = *x);
+                        snark_inputs[i * DIGEST_LEN + j].value().map(|x| t2 = *x);
+                        log::trace!(
+                            "{}-th snark: {:?} {:?}",
+                            i,
+                            chunk_pi_hash_digests[i][j].value(),
+                            snark_inputs[i * DIGEST_LEN + j].value()
+                        );
 
-                            region.constrain_equal(
-                                // in the keccak table, the input and output data have different
-                                // endianess
-                                chunk_pi_hash_digests[i][j * 8 + k].cell(),
-                                snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k].cell(),
-                            )?;
-                        }
+                        region.constrain_equal(
+                            // in the keccak table, the input and output data have different
+                            // endianess
+                            chunk_pi_hash_digests[i][j].cell(),
+                            snark_inputs[i * DIGEST_LEN + j].cell(),
+                        )?;
                     }
                 }
 

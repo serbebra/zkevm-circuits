@@ -8,10 +8,8 @@ use halo2_proofs::{
 use halo2_proofs::plonk::FirstPhase;
 use zkevm_circuits::{table::KeccakTable, util::Challenges};
 
-// use super::lookup::HashValueLookupTable;
-
-/// This config is used to compute RLCs for bytes.
-/// It requires a phase 2 column
+/// This config is a vanilla plonk configuration, with additional constraints for challenges and
+/// lookup tables. It will be used to compute RLCs for bytes. It requires a phase 2 column
 #[derive(Debug, Clone)]
 pub struct VanillaPlonkConfig {
     #[cfg(test)]

@@ -225,7 +225,7 @@ impl ExtractedHashCells {
             .zip_eq(self.output_rlcs.iter())
             .enumerate()
         {
-            println!(
+            log::info!(
                 "{}-th rlc {:?} {:?}",
                 i,
                 input_rlcs.value(),
@@ -588,9 +588,12 @@ pub(crate) fn conditional_constraints(
                     &mut offset,
                 )?;
 
-                println!("batch_data_hash_rlc: {:?}", batch_data_hash_rlc.value());
-                println!(
-                    "batch_data_hash_rlc: {:?}",
+                log::info!(
+                    "batch data hash rlc recomputed: {:?}",
+                    batch_data_hash_rlc.value()
+                );
+                log::info!(
+                    "batch data hash rlc from table: {:?}",
                     assigned_hash_cells.output_rlcs[MAX_AGG_SNARKS + 1].value()
                 );
 
@@ -642,12 +645,12 @@ pub(crate) fn conditional_constraints(
                     assigned_hash_cells.input_rlcs[MAX_AGG_SNARKS + 1].cell(),
                 )?;
 
-                println!(
-                    "batch_data_hash_reconstructed_rlc: {:?}",
+                log::info!(
+                    "batch data hash rlc reconstructed: {:?}",
                     batch_data_hash_reconstructed_rlc.value()
                 );
-                println!(
-                    "batch_data_hash_reconstructed_rlc: {:?}",
+                log::info!(
+                    "batch data hash rlc from table: {:?}",
                     assigned_hash_cells.input_rlcs[MAX_AGG_SNARKS + 1].value()
                 );
 
