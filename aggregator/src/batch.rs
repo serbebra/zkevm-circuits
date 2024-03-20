@@ -139,8 +139,8 @@ impl BatchHash {
                 .withdraw_root
                 .as_bytes(),
             batch_data_hash.as_slice(),
-            // TODO: add z
-            // TODO: add y
+            blob.z.to_be_bytes().as_ref(),
+            blob.evaluation.to_be_bytes().as_ref(),
         ]
         .concat();
         let public_input_hash = keccak256(preimage);

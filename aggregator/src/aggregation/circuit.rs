@@ -156,16 +156,16 @@ impl Circuit<Fr> for AggregationCircuit {
 
         let timer = start_timer!(|| "aggregation");
 
+        // load lookup table in range config
+        config
+            .range()
+            .load_lookup_table(&mut layouter)
+            .expect("load range lookup table");
         // ==============================================
         // Step 1: snark aggregation circuit
         // ==============================================
         #[cfg(not(feature = "disable_proof_aggregation"))]
         let (accumulator_instances, snark_inputs) = {
-            config
-                .range()
-                .load_lookup_table(&mut layouter)
-                .expect("load range lookup table");
-
             let mut first_pass = halo2_base::SKIP_FIRST_PASS;
 
             let (accumulator_instances, snark_inputs) = layouter.assign_region(

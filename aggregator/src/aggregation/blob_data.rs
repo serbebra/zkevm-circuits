@@ -500,7 +500,7 @@ impl BlobDataConfig {
 
                 // rows have chunk_idx set from 0 (metadata) -> MAX_AGG_SNARKS.
                 rlc_config.enforce_zero(&mut region, &rows[0].chunk_idx)?;
-                let mut zero = {
+                let zero = {
                     let zero = rlc_config.load_private(
                         &mut region,
                         &Fr::zero(),
