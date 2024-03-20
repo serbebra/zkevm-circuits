@@ -620,6 +620,7 @@ impl VanillaPlonkConfig {
         region: &mut Region<Fr>,
         input_rlcs: &AssignedCell<Fr, Fr>,
         output_rlcs: &AssignedCell<Fr, Fr>,
+        data_len: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.preimage_lookup_selector.enable(region, *offset)?;
@@ -632,8 +633,14 @@ impl VanillaPlonkConfig {
             self.phase_2_column,
             *offset + 1,
         )?;
+        let _data_len = data_len.copy_advice(
+            || "lookup data len",
+            region,
+            self.phase_2_column,
+            *offset + 2,
+        )?;
 
-        *offset += 2;
+        *offset += 3;
 
         Ok(())
     }

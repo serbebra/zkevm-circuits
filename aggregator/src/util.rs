@@ -147,27 +147,6 @@ pub(crate) fn assert_conditional_equal<F: Field>(
 }
 
 #[inline]
-// assert a \in [b1, b2, b3...] if both a and bi are known
-// (NOT constraining equality in circuit)
-pub(crate) fn assert_exist<F: Field>(
-    a: &AssignedCell<F, F>,
-    bi_s: &[AssignedCell<F, F>],
-) -> Result<(), Error> {
-    let mut res = false;
-
-    let a_value = a.value();
-    let bi_values = bi_s.iter().map(|x| x.value()).collect::<Vec<_>>();
-
-    for &bi_value in bi_values.iter() {
-        a_value.zip(bi_value).assert_if_known(|(a, bi)| {
-            res = res || (a == bi);
-            true
-        })
-    }
-    a_value.zip(bi_values[0]).error_if_known_and(|_| !res)
-}
-
-#[inline]
 // assert that the slice is ascending
 fn is_ascending(a: &[usize]) -> bool {
     a.windows(2).all(|w| w[0] <= w[1])
@@ -248,16 +227,3 @@ pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
     acc
 }
 
-// the hash table uses different endianess for inputs and outputs....
-pub(crate) fn map_hash_outputs_to_inputs(
-    digest: &[AssignedCell<Fr, Fr>],
-) -> Vec<AssignedCell<Fr, Fr>> {
-    assert_eq!(digest.len(), 32);
-
-    let mut res = vec![];
-    for i in 0..4 {
-        res.extend_from_slice(digest[(3 - i) * 8..(4 - i) * 8].as_ref());
-    }
-    res.reverse();
-    res
-}

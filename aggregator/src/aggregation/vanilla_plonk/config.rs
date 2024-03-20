@@ -84,6 +84,7 @@ impl VanillaPlonkConfig {
         // ---------------|-----------------|---------------|
         // a              | q1              | q2
         // b              | 0               | 0
+        // c              | 0               | 0
 
         //        keccak table config
         //
@@ -92,101 +93,58 @@ impl VanillaPlonkConfig {
         // table_enabled | table_input_value    | table_output_value | q_final
 
         // constraint:
-        // - if (q1, q2) == (1, 0) a*q1 \in input_rlc * table_enabled
-        // - if (q1, q2) == (0, 1) b*q2 \in output_rlc * table_enabled
-        // - if (q1, q2) == (1, 1) (a*q, b*q) \in (input_rlc * table_enabled, output_rlc *
-        //   table_enabled)
+        // - if (q1, q2) == (1, 0) -> a*q1 \in input_rlc * table_enabled
+        // - if (q1, q2) == (0, 1) -> b*q2 \in output_rlc * table_enabled
+        // - if (q1, q2) == (1, 1) -> (a*q, b*q, c*q) \in (input_rlc * table_enabled, output_rlc *
+        //   table_enabled, data_len*table_enabled)
 
-        meta.lookup_any("keccak lookup", |meta| {
-            //        vanilla plonk config
-            //
-            // phase_2_column | lookup_preimage | lookup_digest |
-            // ---------------|-----------------|---------------|
-            // a              | q1              | q2
-            // b              | 0               | 0
-
-            //        keccak table config
-            //
-            // q_enable      | input_rlc            | output_rlc         | is_final
-            // --------------|----------------------|--------------------|----------
-            // table_enabled | table_input_value    | table_output_value | q_final
-
+        meta.lookup_any("preimage lookup", |meta| {
             // constraint:
             // - if (q1, q2) == (1, 0) a*q1 \in input_rlc * table_enabled
-            // - if (q1, q2) == (0, 1) b*q2 \in output_rlc * table_enabled
-            // - if (q1, q2) == (1, 1) (a*q, b*q) \in (input_rlc * table_enabled, output_rlc *
-            //   table_enabled)
 
             let q1 = meta.query_selector(preimage_lookup_selector);
             let q2 = meta.query_selector(digest_lookup_selector);
             let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
-            // let output_rlc = meta.query_advice(phase_2_column, Rotation::next());
             let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
             let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
-            // let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
             let table_final = meta.query_any(keccak_table.is_final, Rotation::cur());
 
-            vec![
-                (
-                    q1 * (Expression::Constant(Fr::one()) - q2) * input_rlc,
-                    table_enabled.clone() * table_final.clone() * table_input_value,
-                ),
-                // (
-                //     q2 * output_rlc,
-                //     table_enabled * table_final * table_output_value,
-                // ),
-            ]
+            vec![(
+                q1 * (Expression::Constant(Fr::one()) - q2) * input_rlc,
+                table_enabled.clone() * table_final.clone() * table_input_value,
+            )]
         });
 
-        meta.lookup_any("keccak lookup", |meta| {
-            //        vanilla plonk config
-            //
-            // phase_2_column | lookup_preimage | lookup_digest |
-            // ---------------|-----------------|---------------|
-            // a              | q1              | q2
-            // b              | 0               | 0
-
-            //        keccak table config
-            //
-            // q_enable      | input_rlc            | output_rlc         | is_final
-            // --------------|----------------------|--------------------|----------
-            // table_enabled | table_input_value    | table_output_value | q_final
-
+        meta.lookup_any("digest lookup", |meta| {
             // constraint:
-            // - if (q1, q2) == (1, 0) a*q1 \in input_rlc * table_enabled
             // - if (q1, q2) == (0, 1) b*q2 \in output_rlc * table_enabled
-            // - if (q1, q2) == (1, 1) (a*q, b*q) \in (input_rlc * table_enabled, output_rlc *
-            //   table_enabled)
 
             let q1 = meta.query_selector(preimage_lookup_selector);
             let q2 = meta.query_selector(digest_lookup_selector);
-            // let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
             let output_rlc = meta.query_advice(phase_2_column, Rotation::cur());
             let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
-            // let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
             let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
             let table_final = meta.query_any(keccak_table.is_final, Rotation::cur());
 
-            vec![
-                // (
-                //     q1 * input_rlc,
-                //     table_enabled.clone() * table_final.clone() * table_input_value,
-                // ),
-                (
-                    (Expression::Constant(Fr::one()) - q1) * q2 * output_rlc,
-                    table_enabled * table_final * table_output_value,
-                ),
-            ]
+            vec![(
+                (Expression::Constant(Fr::one()) - q1) * q2 * output_rlc,
+                table_enabled * table_final * table_output_value,
+            )]
         });
 
         meta.lookup_any("keccak lookup", |meta| {
+            // constraint:
+            // - if (q1, q2) == (1, 1) -> (a*q, b*q, c*q) \in (input_rlc * table_enabled, output_rlc
+            //   * table_enabled, data_len*table_enabled)
             let q1 = meta.query_selector(preimage_lookup_selector);
             let q2 = meta.query_selector(digest_lookup_selector);
             let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
             let output_rlc = meta.query_advice(phase_2_column, Rotation::next());
+            let data_len = meta.query_advice(phase_2_column, Rotation(2));
             let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
             let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
             let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
+            let table_data_len = meta.query_any(keccak_table.input_len, Rotation::cur());
             let table_final = meta.query_any(keccak_table.is_final, Rotation::cur());
 
             vec![
@@ -195,8 +153,12 @@ impl VanillaPlonkConfig {
                     table_enabled.clone() * table_final.clone() * table_input_value,
                 ),
                 (
-                    q1 * q2 * output_rlc,
-                    table_enabled * table_final * table_output_value,
+                    q1.clone() * q2.clone() * output_rlc,
+                    table_enabled.clone() * table_final.clone() * table_output_value,
+                ),
+                (
+                    q1 * q2 * data_len,
+                    table_enabled * table_final * table_data_len,
                 ),
             ]
         });
