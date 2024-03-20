@@ -41,8 +41,8 @@ use crate::{
         assert_conditional_equal, assert_equal, assert_exist, get_indices, get_max_keccak_updates,
         parse_hash_digest_cells, parse_hash_preimage_cells, parse_pi_hash_rlc_cells,
     },
-    AggregationConfig, RlcConfig, BITS, CHUNK_DATA_HASH_INDEX, LIMBS, POST_STATE_ROOT_INDEX,
-    PREV_STATE_ROOT_INDEX, WITHDRAW_ROOT_INDEX,
+    AggregationConfig, RlcConfig, BITS, CHUNK_DATA_HASH_INDEX, CHUNK_TX_DATA_HASH_INDEX, LIMBS,
+    POST_STATE_ROOT_INDEX, PREV_STATE_ROOT_INDEX, WITHDRAW_ROOT_INDEX,
 };
 
 /// Subroutine for the witness generations.
@@ -239,9 +239,9 @@ pub(crate) fn assign_batch_hashes(
         y: batch_pi_input[BATCH_Y_OFFSET..BATCH_Y_OFFSET + 32].to_vec(),
         chunk_tx_data_hashes: (0..MAX_AGG_SNARKS)
             .map(|i| {
-                extracted_hash_cells.hash_input_cells
-                    [INPUT_LEN_PER_ROUND * (2 + 2 * i)..INPUT_LEN_PER_ROUND * (2 + 2 * (i + 1))]
-                    .to_vec()
+                let chunk_pi_input = &extracted_hash_cells.hash_input_cells
+                    [INPUT_LEN_PER_ROUND * (2 + 2 * i)..INPUT_LEN_PER_ROUND * (2 + 2 * (i + 1))];
+                chunk_pi_input[CHUNK_TX_DATA_HASH_INDEX..CHUNK_TX_DATA_HASH_INDEX + 32].to_vec()
             })
             .collect(),
     };

@@ -332,6 +332,8 @@ impl BlobDataRow<Fr> {
     fn padding_row() -> Self {
         Self {
             is_padding: true,
+            preimage_rlc: Value::known(Fr::zero()),
+            digest_rlc: Value::known(Fr::zero()),
             ..Default::default()
         }
     }
@@ -399,7 +401,7 @@ impl BlobData {
                     accumulator,
                     preimage_rlc,
                     digest_rlc,
-                    is_boundary: i == 61,
+                    is_boundary: i == bytes.len() - 1,
                     ..Default::default()
                 },
             )
@@ -485,10 +487,12 @@ impl BlobData {
         std::iter::empty()
             .chain(std::iter::once(BlobDataRow {
                 digest_rlc: metadata_digest_rlc,
+                preimage_rlc: Value::known(Fr::zero()),
                 ..Default::default()
             }))
             .chain(chunk_digest_rlcs.iter().map(|&digest_rlc| BlobDataRow {
                 digest_rlc,
+                preimage_rlc: Value::known(Fr::zero()),
                 ..Default::default()
             }))
             .chain(std::iter::once(BlobDataRow {
@@ -500,16 +504,22 @@ impl BlobData {
             }))
             .chain(metadata_digest.iter().map(|&byte| BlobDataRow {
                 byte,
+                preimage_rlc: Value::known(Fr::zero()),
+                digest_rlc: Value::known(Fr::zero()),
                 ..Default::default()
             }))
             .chain(chunk_digests.iter().flat_map(|digest| {
                 digest.iter().map(|&byte| BlobDataRow {
                     byte,
+                    preimage_rlc: Value::known(Fr::zero()),
+                    digest_rlc: Value::known(Fr::zero()),
                     ..Default::default()
                 })
             }))
             .chain(blob_digest.iter().map(|&byte| BlobDataRow {
                 byte,
+                preimage_rlc: Value::known(Fr::zero()),
+                digest_rlc: Value::known(Fr::zero()),
                 ..Default::default()
             }))
             .collect()

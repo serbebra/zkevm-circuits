@@ -85,6 +85,14 @@ impl BlobDataConfig {
             hash_selector: meta.complex_selector(),
         };
 
+        // TODO: reduce the number of permutation columns
+        meta.enable_equality(config.byte);
+        meta.enable_equality(config.accumulator);
+        meta.enable_equality(config.is_boundary);
+        meta.enable_equality(config.chunk_idx);
+        meta.enable_equality(config.preimage_rlc);
+        meta.enable_equality(config.digest_rlc);
+
         let r = challenge.keccak_input();
 
         meta.lookup("BlobDataConfig (0 < byte < 256)", |meta| {
@@ -187,6 +195,8 @@ impl BlobDataConfig {
             .collect()
         });
 
+        // TODO: lookup to keccak table for metadata bytes
+
         // lookup for digest RLC to the hash section.
         meta.lookup_any("BlobDataConfig (hash section)", |meta| {
             let is_data = meta.query_selector(config.data_selector);
@@ -234,13 +244,12 @@ impl BlobDataConfig {
         &self,
         layouter: &mut impl Layouter<Fr>,
         challenge_value: Challenges<Value<Fr>>,
-        mut rlc_config_offset: usize,
         rlc_config: &RlcConfig,
         batch: &BatchHash,
         barycentric_assignments: &[CRTInteger<Fr>],
     ) -> Result<AssignedBlobDataExport, Error> {
-        layouter.assign_region(
-            || "BlobDataConfig",
+        let assigned_rows = layouter.assign_region(
+            || "BlobData rows",
             |mut region| {
                 let rows = batch.to_blob_data().to_rows(challenge_value.keccak_input());
                 assert_eq!(rows.len(), N_ROWS_BLOB_DATA_CONFIG);
@@ -258,39 +267,47 @@ impl BlobDataConfig {
                 let mut assigned_rows = Vec::with_capacity(N_ROWS_BLOB_DATA_CONFIG);
                 for (i, row) in rows.iter().enumerate() {
                     let byte = region.assign_advice(
-                        || "",
+                        || "byte",
                         self.byte,
                         i,
                         || Value::known(Fr::from(row.byte as u64)),
                     )?;
                     let accumulator = region.assign_advice(
-                        || "",
+                        || "accumulator",
                         self.accumulator,
                         i,
                         || Value::known(Fr::from(row.accumulator)),
                     )?;
                     let chunk_idx = region.assign_advice(
-                        || "",
+                        || "chunk_idx",
                         self.chunk_idx,
                         i,
                         || Value::known(Fr::from(row.chunk_idx)),
                     )?;
                     let is_boundary = region.assign_advice(
-                        || "",
+                        || "is_boundary",
                         self.is_boundary,
                         i,
                         || Value::known(Fr::from(row.is_boundary as u64)),
                     )?;
                     let _is_padding = region.assign_advice(
-                        || "",
+                        || "is_padding",
                         self.is_padding,
                         i,
                         || Value::known(Fr::from(row.is_padding as u64)),
                     )?;
-                    let preimage_rlc =
-                        region.assign_advice(|| "", self.preimage_rlc, i, || row.preimage_rlc)?;
-                    let digest_rlc =
-                        region.assign_advice(|| "", self.digest_rlc, i, || row.digest_rlc)?;
+                    let preimage_rlc = region.assign_advice(
+                        || "preimage_rlc",
+                        self.preimage_rlc,
+                        i,
+                        || row.preimage_rlc,
+                    )?;
+                    let digest_rlc = region.assign_advice(
+                        || "digest_rlc",
+                        self.digest_rlc,
+                        i,
+                        || row.digest_rlc,
+                    )?;
                     assigned_rows.push(AssignedBlobDataConfig {
                         byte,
                         accumulator,
@@ -301,10 +318,17 @@ impl BlobDataConfig {
                     });
                 }
 
+                Ok(assigned_rows)
+            },
+        )?;
+
+        layouter.assign_region(
+            || "BlobData internal checks",
+            |mut region| {
+                let mut rlc_config_offset = 0;
                 ////////////////////////////////////////////////////////////////////////////////
                 ////////////////////////////////// NUM_CHUNKS //////////////////////////////////
                 ////////////////////////////////////////////////////////////////////////////////
-
                 let two_fifty_six = {
                     let two_fifty_six = rlc_config.load_private(
                         &mut region,
@@ -449,6 +473,7 @@ impl BlobDataConfig {
                     region.constrain_equal(zero.cell(), zero_cell)?;
                     zero
                 };
+                // TODO: optimize this loop as each add takes 4 rows
                 for row in rows.iter() {
                     num_lookups = rlc_config.add(
                         &mut region,
@@ -457,6 +482,10 @@ impl BlobDataConfig {
                         &mut rlc_config_offset,
                     )?;
                 }
+                log::debug!(
+                    "rlc_config_offset after getting num_lookups: {}",
+                    rlc_config_offset
+                );
                 region.constrain_equal(num_lookups.cell(), num_chunks.cell())?;
 
                 ////////////////////////////////////////////////////////////////////////////////
@@ -471,7 +500,7 @@ impl BlobDataConfig {
 
                 // rows have chunk_idx set from 0 (metadata) -> MAX_AGG_SNARKS.
                 rlc_config.enforce_zero(&mut region, &rows[0].chunk_idx)?;
-                let mut i_val = {
+                let mut zero = {
                     let zero = rlc_config.load_private(
                         &mut region,
                         &Fr::zero(),
@@ -481,6 +510,7 @@ impl BlobDataConfig {
                     region.constrain_equal(one.cell(), zero_cell)?;
                     zero
                 };
+                let mut i_val = zero.clone();
                 for row in rows.iter().skip(1).take(MAX_AGG_SNARKS) {
                     i_val = rlc_config.add(&mut region, &i_val, &one, &mut rlc_config_offset)?;
                     let diff = rlc_config.sub(
@@ -515,18 +545,23 @@ impl BlobDataConfig {
                     region.constrain_equal(cell.cell(), fixed_cell)?;
                     empty_digest_cells.push(cell);
                 }
+                // RLC of digest of empty bytes = RLC(keccak([]), r)
                 let empty_digest_rlc =
                     rlc_config.rlc(&mut region, &empty_digest_cells, &r, &mut rlc_config_offset)?;
 
                 let blob_preimage_rlc_specified = &rows.last().unwrap().preimage_rlc;
                 let blob_digest_rlc_specified = &rows.last().unwrap().digest_rlc;
+
+                // assert that metadata_digest which we get through lookup into keccak table is
+                // equal to the one we assigned in hash section
                 let metadata_digest_rlc_computed =
-                    &assigned_rows.get(N_ROWS_METADATA).unwrap().preimage_rlc;
-                let metadata_digest_rlc_specified = &rows.first().unwrap().preimage_rlc;
+                    &assigned_rows.get(N_ROWS_METADATA).unwrap().digest_rlc;
+                let metadata_digest_rlc_specified = &rows.first().unwrap().digest_rlc;
                 region.constrain_equal(
                     metadata_digest_rlc_computed.cell(),
                     metadata_digest_rlc_specified.cell(),
                 )?;
+
                 let mut chunk_digest_rlcs = Vec::with_capacity(MAX_AGG_SNARKS);
                 let mut blob_preimage_rlc_computed = metadata_digest_rlc_specified.clone();
                 for ((row, chunk_size_decoded), is_empty) in rows
@@ -536,33 +571,37 @@ impl BlobDataConfig {
                     .zip_eq(chunk_sizes)
                     .zip_eq(is_empty_chunks)
                 {
+                    let chunk_digest_rlc = rlc_config.select(
+                        &mut region,
+                        &empty_digest_rlc,
+                        &row.digest_rlc,
+                        &is_empty,
+                        &mut rlc_config_offset,
+                    )?;
                     // compute running RLC of digest RLCs.
                     blob_preimage_rlc_computed = rlc_config.mul_add(
                         &mut region,
                         &blob_preimage_rlc_computed,
                         &r32,
-                        &row.digest_rlc,
+                        &chunk_digest_rlc,
                         &mut rlc_config_offset,
                     )?;
 
                     // constrain chunk size specified here against decoded in metadata.
-                    let chunk_size_specified = &row.accumulator;
+                    let chunk_size_specified = rlc_config.select(
+                        &mut region,
+                        &zero,
+                        &row.accumulator,
+                        &is_empty,
+                        &mut rlc_config_offset,
+                    )?;
                     let diff = rlc_config.sub(
                         &mut region,
-                        chunk_size_specified,
+                        &chunk_size_specified,
                         &chunk_size_decoded,
                         &mut rlc_config_offset,
                     )?;
                     rlc_config.enforce_zero(&mut region, &diff)?;
-
-                    // constrain digest_rlcs of chunks that are empty.
-                    rlc_config.conditional_enforce_equal(
-                        &mut region,
-                        &row.digest_rlc,
-                        &empty_digest_rlc,
-                        &is_empty,
-                        &mut rlc_config_offset,
-                    )?;
 
                     chunk_digest_rlcs.push(&row.digest_rlc);
                 }
@@ -692,6 +731,11 @@ impl BlobDataConfig {
                     challenge_digest_limb3.cell(),
                     challenge_digest_crt.truncation.limbs[2].cell(),
                 )?;
+                log::debug!(
+                    "blob crts: {}, export.blob_fields: {}",
+                    blob_crts.len(),
+                    export.blob_fields.len()
+                );
                 for (blob_crt, blob_field) in blob_crts.iter().zip_eq(export.blob_fields.iter()) {
                     let limb1 = rlc_config.inner_product(
                         &mut region,
