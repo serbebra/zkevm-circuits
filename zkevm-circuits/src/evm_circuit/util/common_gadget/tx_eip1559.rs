@@ -17,6 +17,7 @@ use crate::{
     table::{BlockContextFieldTag, TxFieldTag},
 };
 use eth_types::{geth_types::TxType, Field, ToLittleEndian, U256};
+use gadgets::util::select;
 use halo2_proofs::plonk::{Error, Expression};
 
 /// Transaction EIP-1559 gadget to check sender balance before transfer
@@ -27,8 +28,8 @@ pub(crate) struct TxEip1559Gadget<F> {
     gas_fee_cap: Word<F>,
     // MaxPriorityFeePerGas
     gas_tip_cap: Word<F>,
-    // selct condition for  min(
-    // gas_tip_cap, gas_fee_cap.unwrap() - base_fee_per_gas)
+    // condition for min(
+    // gas_tip_cap, gas_fee_cap - base_fee_per_gas)
     lt_gas_tip_gas_fee_sub_base_fee: LtWordGadget<F>,
     // gas_fee_cap - base_fee_per_gas
     gas_sub_base_fee: AddWordsGadget<F, 2, true>,
@@ -112,6 +113,10 @@ impl<F: Field> TxEip1559Gadget<F> {
             let lt_gas_tip_gas_fee_sub_base_fee = LtWordGadget::construct(cb, &gas_tip_cap, &diff_gas_base_fee);
             // let effective_gas_price = priority_fee_per_gas + base_fee_per_gas;
             let priority_fee_per_gas = cb.query_word_rlc();
+            cb.require_equal("constrain priority_fee_per_gas = min(gas_tip_cap, gas_fee_cap - base_fee_per_gas)", priority_fee_per_gas.expr(), select::expr(
+                lt_gas_tip_gas_fee_sub_base_fee.expr(),
+                gas_tip_cap.expr(),
+                diff_gas_base_fee.expr()));
             // constrain tx_gas_price = effective_gas_price within below `AddWordsGadget`.
             let effective_gas_price_check = AddWordsGadget::construct(cb, [base_fee.clone(), priority_fee_per_gas], tx_gas_price.clone());
 
