@@ -62,7 +62,7 @@ tokio = { version = "1.13", features = ["macros", "rt-multi-thread"] }
 url = "2.2"
 
 reth-primitives = { git = "https://github.com/paradigmxyz/reth" }
-revm-precompile = { git = "https://github.com/bluealloy/revm" }
+revm-precompile = "^5.0.0"
 c-kzg = "0.4.2"
 
 [patch.crates-io]
