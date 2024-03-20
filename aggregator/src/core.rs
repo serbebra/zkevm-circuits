@@ -149,16 +149,17 @@ pub(crate) struct ExtractedHashCells {
     data_lens: Vec<AssignedCell<Fr, Fr>>,
 }
 impl ExtractedHashCells {
+    /// Assign the cells for hash input/outputs and their RLCs.
+    /// DOES NOT CONSTRAIN THE CORRECTNESS.
+    /// Call `check_against_lookup_table` function to constrain the hash is correct.
     pub(crate) fn assign_hash_cells(
         plonk_config: &VanillaPlonkConfig,
         region: &mut Region<Fr>,
         offset: &mut usize,
-        challenges: Challenges<Value<Fr>>,
+        keccak_input_challenge: &AssignedCell<Fr, Fr>,
+        evm_word_challenge: &AssignedCell<Fr, Fr>,
         preimages: &[Vec<u8>],
     ) -> Result<Self, halo2_proofs::plonk::Error> {
-        let [keccak_input_challenge, evm_word_challenge] =
-            plonk_config.read_challenges(region, challenges, offset)?;
-
         let mut inputs = vec![];
         let mut input_rlcs = vec![];
         let mut outputs = vec![];
@@ -519,7 +520,8 @@ pub(crate) fn conditional_constraints(
                     &plonk_config,
                     &mut region,
                     &mut offset,
-                    challenges,
+                    &keccak_input_challenge,
+                    &evm_word_challenge,
                     preimages,
                 )?;
                 assigned_hash_cells.check_against_lookup_table(

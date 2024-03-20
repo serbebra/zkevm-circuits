@@ -87,17 +87,6 @@ impl AggregationConfig {
         let columns = keccak_circuit_config.cell_manager.columns();
         log::info!("keccak uses {} columns", columns.len(),);
 
-        // enabling equality for preimage column
-        meta.enable_equality(columns[keccak_circuit_config.preimage_column_index].advice);
-        // enable equality for the digest column
-        meta.enable_equality(columns.last().unwrap().advice);
-        // enable equality for the data RLC column
-        meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().input_rlc);
-        // enable equality for the input data len column
-        meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().input_len);
-        // enable equality for the is_final column
-        meta.enable_equality(keccak_circuit_config.clone().keccak_table.clone().is_final);
-
         // Instance column stores public input column
         // - the accumulator
         // - the batch public input hash

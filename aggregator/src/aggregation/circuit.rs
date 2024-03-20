@@ -325,8 +325,6 @@ impl Circuit<Fr> for AggregationCircuit {
                         );
 
                         region.constrain_equal(
-                            // in the keccak table, the input and output data have different
-                            // endianess
                             chunk_pi_hash_digests[i][j].cell(),
                             snark_inputs[i * DIGEST_LEN + j].cell(),
                         )?;
