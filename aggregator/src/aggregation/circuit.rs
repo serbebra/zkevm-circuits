@@ -243,6 +243,7 @@ impl Circuit<Fr> for AggregationCircuit {
         let timer = start_timer!(|| "load aux table");
 
         let (hash_digest_cells, expected_blob_cells, rlc_config_offset) = {
+            // i think this is where the keccak input/outputs get assigned?
             config
                 .keccak_circuit_config
                 .load_aux_tables(&mut layouter)?;
