@@ -475,7 +475,7 @@ impl BlobData {
 
         // blob
         let blob_preimage = std::iter::empty()
-            .chain(metadata_bytes.iter())
+            .chain(metadata_digest.iter())
             .chain(chunk_digests.iter().flatten())
             .cloned()
             .collect::<Vec<u8>>();
