@@ -48,6 +48,8 @@ pub struct BlobDataConfig {
     data_selector: Selector,
     /// Boolean to let us know we are in the hash section.
     hash_selector: Selector,
+    u8_table: U8Table,
+    chunk_idx_range_table: RangeTable<MAX_AGG_SNARKS>,
 }
 
 pub struct AssignedBlobDataExport {
@@ -74,6 +76,8 @@ impl BlobDataConfig {
         keccak_table: &KeccakTable,
     ) -> Self {
         let config = Self {
+            u8_table,
+            chunk_idx_range_table: range_table,
             byte: meta.advice_column(),
             accumulator: meta.advice_column(),
             is_boundary: meta.advice_column(),
@@ -248,6 +252,10 @@ impl BlobDataConfig {
         batch: &BatchHash,
         barycentric_assignments: &[CRTInteger<Fr>],
     ) -> Result<AssignedBlobDataExport, Error> {
+        // load tables
+        self.u8_table.load(layouter)?;
+        self.chunk_idx_range_table.load(layouter)?;
+
         let assigned_rows = layouter.assign_region(
             || "BlobData rows",
             |mut region| {
