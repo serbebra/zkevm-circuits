@@ -701,7 +701,7 @@ pub struct GethExecTrace {
         deserialize_with = "parse_account_after"
     )]
     /// List of accounts' (coinbase etc) status AFTER execution
-    /// Only viable for scroll mode
+    /// Only viable for scroll modeUST_Log
     pub account_after: Vec<crate::l2_types::AccountProofWrapper>,
     /// prestate trace
     pub prestate: HashMap<Address, GethPrestateTrace>,

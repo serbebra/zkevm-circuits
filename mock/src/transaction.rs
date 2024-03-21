@@ -191,6 +191,10 @@ impl Default for MockTransaction {
 
 impl From<MockTransaction> for Transaction {
     fn from(mock: MockTransaction) -> Self {
+        println!(
+            "MockTransaction from gas price {}",
+            mock.gas_price.unwrap_or_default()
+        );
         Transaction {
             hash: mock.hash.unwrap_or_default(),
             nonce: mock.nonce,

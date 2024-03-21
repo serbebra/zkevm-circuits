@@ -344,13 +344,25 @@ impl<'a> CircuitInputBuilder {
                 self.block_ctx.rwc,
                 self.block_ctx.cumulative_gas_used
             );
+
             for account_post_state in &geth_trace.account_after {
                 let account_post_state: eth_types::l2_types::AccountProofWrapper =
                     account_post_state.clone();
+                if account_post_state.address.is_some() {
+                    println!("get address {:?}", account_post_state.address);
+                } else {
+                    println!("get address is none not log");
+                }
+
                 if let Some(address) = account_post_state.address {
                     let local_acc = self.sdb.get_account(&address).1;
                     log::trace!("local acc {local_acc:?}, trace acc {account_post_state:?}");
                     if local_acc.balance != account_post_state.balance.unwrap() {
+                        println!(
+                            "geth_trace.account_after len {}, tx_hash {:?}",
+                            geth_trace.account_after.len(),
+                            tx.hash
+                        );
                         log::error!("incorrect balance")
                     }
                     if local_acc.nonce != account_post_state.nonce.unwrap().into() {

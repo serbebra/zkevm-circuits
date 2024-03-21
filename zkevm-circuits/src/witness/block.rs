@@ -539,6 +539,7 @@ pub fn block_convert<F: Field>(
                 } else {
                     last_block_num + 1
                 };
+                println!("tx_convert gas price {}", tx.gas_price);
                 tx_convert(tx, idx + 1, chain_id, next_block_num)
             })
             .collect(),

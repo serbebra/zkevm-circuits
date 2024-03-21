@@ -162,6 +162,7 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
         let transactions: Vec<MockTransaction> =
             transactions.iter_mut().map(|tx| tx.build()).collect();
 
+        println!("done done done !!!");
         // Build Block modifiers
         let mut block = MockBlock::default();
         let parent_hash = history_hashes
@@ -169,6 +170,8 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
             .and_then(|hashes| hashes.last().copied())
             .unwrap_or_default();
         block.parent_hash(H256::from_uint(&parent_hash));
+        log::debug!("block.transactions len {}", block.transactions.len());
+
         block.transactions.extend_from_slice(&transactions);
         func_block(&mut block, transactions).build();
 

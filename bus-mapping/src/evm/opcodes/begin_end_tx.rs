@@ -587,6 +587,8 @@ pub fn gen_end_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
     let caller_balance_prev = caller_account.balance;
     let effective_refund_balance = state.tx.gas_price * (exec_step.gas_left.0 + effective_refund);
     let caller_balance = caller_balance_prev + effective_refund_balance;
+    println!("begin_end_tx: caller_balance_prev {}, gas price {}, caller_balance {} effective_refund_balance {}",
+        caller_balance_prev, state.tx.gas_price, caller_balance, effective_refund_balance);
 
     if !state.tx.tx_type.is_l1_msg() {
         log::trace!(
@@ -616,7 +618,13 @@ pub fn gen_end_tx_steps(state: &mut CircuitInputStateRef) -> Result<ExecStep, Er
     } else {
         state.tx.gas_price - block_info.base_fee
     };
+
     let gas_cost = state.tx.gas - exec_step.gas_left.0 - effective_refund;
+    println!(
+        "end tx effective_tip value {} tx gas price {}, gas cost {} base_fee {}",
+        effective_tip, state.tx.gas_price, gas_cost, block_info.base_fee
+    );
+
     let coinbase_reward = if state.tx.tx_type.is_l1_msg() {
         Word::zero()
     } else {
