@@ -1,6 +1,7 @@
 use crate::{
     aggregation::{BlobDataConfig, RlcConfig},
-    barycentric::BarycentricEvaluationConfig,
+    barycentric::{BarycentricEvaluationCells, BarycentricEvaluationConfig},
+    batch::BlobData,
     blob::{Blob, BlobAssignments, BLOB_WIDTH},
     param::ConfigParams,
     BatchHash, MAX_AGG_SNARKS,
@@ -23,7 +24,7 @@ use zkevm_circuits::{
 };
 
 struct BlobCircuit {
-    blob: Blob,
+    data: BlobData,
 }
 
 #[derive(Clone, Debug)]
@@ -94,33 +95,23 @@ impl Circuit<Fr> for BlobCircuit {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        dbg!(0);
         let challenge_values = config.challenges.values(&layouter);
+        dbg!(1);
 
         config.u8_table.load(&mut layouter)?;
+        dbg!(2);
         config.range_table.load(&mut layouter)?;
+        dbg!(3);
         // config.keccak_table.dev_load(&mut layouter, &config.challenges)?;
-
-        let mut batch_hash = BatchHash::default();
-        batch_hash.blob = BlobAssignments {
-            challenge_digest: U256::zero(),
-            evaluation: U256::one(),
-            coefficients: [U256::one(); BLOB_WIDTH],
-        };
 
         let mut first_pass = halo2_base::SKIP_FIRST_PASS;
         let barycentric_assignments = layouter.assign_region(
             || "aggregation",
-            |region| -> Result<
-                (
-                    Vec<CRTInteger<Fr>>,
-                    Vec<AssignedValue<Fr>>,
-                    Vec<AssignedValue<Fr>>,
-                ),
-                Error,
-            > {
+            |region| -> Result<BarycentricEvaluationCells, Error> {
                 if first_pass {
                     first_pass = false;
-                    return Ok((vec![], vec![], vec![]));
+                    return Ok(BarycentricEvaluationCells::default());
                 }
 
                 let gate = &config.barycentric.scalar.range.gate;
@@ -141,15 +132,16 @@ impl Circuit<Fr> for BlobCircuit {
                 ))
             },
         )?;
+        dbg!(4);
 
         config.blob_data.assign(
             &mut layouter,
             challenge_values,
-            20, // mut rlc_config_offset: usize,
             &config.rlc,
-            &batch_hash,
-            &barycentric_assignments.0,
+            &self.data,
+            &barycentric_assignments.barycentric_assignments,
         )?;
+        dbg!(5);
         Ok(())
     }
 }
@@ -160,7 +152,11 @@ fn empty_blob() {
     let mock_prover = MockProver::<Fr>::run(
         k,
         &BlobCircuit {
-            blob: Blob::default(),
+            data: BlobData {
+                number_non_empty_chunks: 0,
+                chunk_sizes: [0; MAX_AGG_SNARKS],
+                chunk_bytes: vec![vec![]; MAX_AGG_SNARKS].try_into().unwrap(),
+            },
         },
         vec![],
     )

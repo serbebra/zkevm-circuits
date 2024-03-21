@@ -14,10 +14,10 @@ use zkevm_circuits::{
 
 use crate::{
     batch::{
-        BLOB_WIDTH, N_BYTES_31, N_BYTES_32, N_ROWS_BLOB_DATA_CONFIG, N_ROWS_DATA,
+        BlobData, BLOB_WIDTH, N_BYTES_31, N_BYTES_32, N_ROWS_BLOB_DATA_CONFIG, N_ROWS_DATA,
         N_ROWS_DIGEST_BYTES, N_ROWS_DIGEST_RLC, N_ROWS_METADATA,
     },
-    BatchHash, RlcConfig, MAX_AGG_SNARKS,
+    RlcConfig, MAX_AGG_SNARKS,
 };
 
 #[derive(Clone, Debug)]
@@ -245,13 +245,13 @@ impl BlobDataConfig {
         layouter: &mut impl Layouter<Fr>,
         challenge_value: Challenges<Value<Fr>>,
         rlc_config: &RlcConfig,
-        batch: &BatchHash,
+        blob: &BlobData,
         barycentric_assignments: &[CRTInteger<Fr>],
     ) -> Result<AssignedBlobDataExport, Error> {
         let assigned_rows = layouter.assign_region(
             || "BlobData rows",
             |mut region| {
-                let rows = batch.to_blob_data().to_rows(challenge_value.keccak_input());
+                let rows = blob.to_rows(challenge_value.keccak_input());
                 assert_eq!(rows.len(), N_ROWS_BLOB_DATA_CONFIG);
 
                 // enable data selector

@@ -2,7 +2,7 @@ use eth_types::{ToLittleEndian, U256};
 use halo2_base::{
     gates::{range::RangeConfig, GateInstructions, RangeInstructions},
     utils::{decompose_bigint_option, fe_to_biguint, modulus},
-    AssignedValue, QuantumCell, Context,
+    AssignedValue, Context, QuantumCell,
 };
 use halo2_ecc::{
     bigint::{CRTInteger, OverflowInteger},
@@ -304,7 +304,6 @@ impl BarycentricEvaluationConfig {
             barycentric_assignments: blob_crts
                 .into_iter()
                 .chain(std::iter::once(challenge_digest_crt))
-                .chain(std::iter::once(challenge_crt))
                 .collect(),
             z_le: challenge_le,
             y_le: evaluation_le,
