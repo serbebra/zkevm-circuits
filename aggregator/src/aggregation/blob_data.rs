@@ -188,13 +188,14 @@ impl BlobDataConfig {
             let is_boundary = meta.query_advice(config.is_boundary, Rotation::cur());
             let cond = is_data * is_boundary;
             [
+                1.expr(),                                                // q_enable
                 1.expr(),                                                // is final
-                meta.query_advice(config.accumulator, Rotation::cur()),  // input len
                 meta.query_advice(config.preimage_rlc, Rotation::cur()), // input RLC
+                meta.query_advice(config.accumulator, Rotation::cur()),  // input len
                 meta.query_advice(config.digest_rlc, Rotation::cur()),   // output RLC
             ]
             .into_iter()
-            .zip(keccak_table.table_exprs(meta))
+            .zip_eq(keccak_table.table_exprs(meta))
             .map(|(value, table)| (cond.expr() * value, table))
             .collect()
         });
@@ -230,13 +231,14 @@ impl BlobDataConfig {
             let is_boundary = meta.query_advice(config.is_boundary, Rotation::cur());
             let cond = is_hash * is_boundary;
             [
+                1.expr(),                                                // q_enable
                 1.expr(),                                                // is final
-                32.expr() * (MAX_AGG_SNARKS + 1).expr(),                 // input len
                 meta.query_advice(config.preimage_rlc, Rotation::cur()), // input rlc
+                32.expr() * (MAX_AGG_SNARKS + 1).expr(),                 // input len
                 meta.query_advice(config.digest_rlc, Rotation::cur()),   // output rlc
             ]
             .into_iter()
-            .zip(keccak_table.table_exprs(meta))
+            .zip_eq(keccak_table.table_exprs(meta))
             .map(|(value, table)| (cond.expr() * value, table))
             .collect()
         });
@@ -259,7 +261,7 @@ impl BlobDataConfig {
         let assigned_rows = layouter.assign_region(
             || "BlobData rows",
             |mut region| {
-                let rows = batch.to_blob_data().to_rows(challenge_value.keccak_input());
+                let rows = batch.to_blob_data().to_rows(challenge_value);
                 assert_eq!(rows.len(), N_ROWS_BLOB_DATA_CONFIG);
 
                 // enable data selector
