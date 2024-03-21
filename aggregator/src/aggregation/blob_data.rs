@@ -216,7 +216,6 @@ impl BlobDataConfig {
             .collect()
         });
 
-
         // lookup for digest RLC to the hash section.
         meta.lookup_any("BlobDataConfig (hash section)", |meta| {
             let is_data = meta.query_selector(config.data_selector);

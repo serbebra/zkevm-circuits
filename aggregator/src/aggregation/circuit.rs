@@ -164,6 +164,7 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // Step 1: snark aggregation circuit
         // ==============================================
+
         #[cfg(not(feature = "disable_proof_aggregation"))]
         let (accumulator_instances, snark_inputs) = {
             let mut first_pass = halo2_base::SKIP_FIRST_PASS;
