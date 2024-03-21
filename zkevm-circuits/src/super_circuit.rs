@@ -474,9 +474,13 @@ impl<
         let warning_limit = 1_000_000;
         log::debug!("start min_num_rows_block_subcircuits");
         let mut rows = Vec::new();
-        let mut push = |name, usage| {
-            log::debug!("{name} circuit row: {usage:?}");
-            rows.push((name, usage));
+        let mut push = |name, (usage, full_usage)| {
+            if usage > warning_limit {
+                log::error!("{name} circuit row: {usage:?}, overflow!");
+            } else {
+                log::debug!("{name} circuit row: {usage:?}");
+            }
+            rows.push((name, (usage, full_usage)));
         };
         let evm = EvmCircuit::min_num_rows_block(block);
         push("evm", evm);
