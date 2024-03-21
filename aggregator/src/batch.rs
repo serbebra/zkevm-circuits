@@ -454,7 +454,7 @@ impl BlobData {
 
         // metadata
         let metadata_bytes = self.to_metadata_bytes();
-        let metadata_digest = keccak256(&metadata_bytes);
+        let metadata_digest = keccak256(metadata_bytes);
         let metadata_digest_rlc = metadata_digest.iter().fold(zero, |acc, &byte| {
             acc * challenge.evm_word() + Value::known(Fr::from(byte as u64))
         });
@@ -463,8 +463,7 @@ impl BlobData {
         let (chunk_digests, chunk_digest_rlcs): (Vec<[u8; 32]>, Vec<Value<Fr>>) = self
             .chunk_bytes
             .iter()
-            .enumerate()
-            .map(|(i, chunk)| {
+            .map(|chunk| {
                 let digest = keccak256(chunk);
                 let digest_rlc = digest.iter().fold(zero, |acc, &byte| {
                     acc * challenge.evm_word() + Value::known(Fr::from(byte as u64))
@@ -491,6 +490,10 @@ impl BlobData {
             .chain(std::iter::once(BlobDataRow {
                 digest_rlc: metadata_digest_rlc,
                 preimage_rlc: Value::known(Fr::zero()),
+                // this is_padding assignment does not matter as we have already crossed the "chunk
+                // data" section. This assignment to 1 is simply to allow the custom gate to check:
+                // - padding transitions from 0 -> 1 only once.
+                is_padding: true,
                 ..Default::default()
             }))
             .chain(
