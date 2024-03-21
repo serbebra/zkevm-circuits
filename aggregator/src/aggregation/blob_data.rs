@@ -547,14 +547,12 @@ impl BlobDataConfig {
                         &mut rlc_config_offset,
                     )?;
                     let zero_cell = rlc_config.zero_cell(zero.cell().region_index);
-                    region.constrain_equal(one.cell(), zero_cell)?;
+                    region.constrain_equal(zero.cell(), zero_cell)?;
                     zero
                 };
                 let mut i_val = zero.clone();
                 for row in rows.iter().skip(1).take(MAX_AGG_SNARKS) {
-                    ///////// problem debug ///////////
                     i_val = rlc_config.add(&mut region, &i_val, &one, &mut rlc_config_offset)?;
-                    ///////// problem debug ///////////
                     region.constrain_equal(i_val.cell(), row.chunk_idx.cell())?;
                 }
 
@@ -570,14 +568,12 @@ impl BlobDataConfig {
                 )?;
                 // keccak_input ^ 32
                 let r32 = {
-                    //////// problem debug ////////
                     let r2 = rlc_config.mul(
                         &mut region,
                         &r_keccak,
                         &r_keccak,
                         &mut rlc_config_offset,
                     )?;
-                    //////// problem debug ////////
                     let r4 = rlc_config.mul(&mut region, &r2, &r2, &mut rlc_config_offset)?;
                     let r8 = rlc_config.mul(&mut region, &r4, &r4, &mut rlc_config_offset)?;
                     let r16 = rlc_config.mul(&mut region, &r8, &r8, &mut rlc_config_offset)?;
