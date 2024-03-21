@@ -15,7 +15,6 @@ impl Blob {
         Self(
             chunk_hashes
                 .iter()
-                .filter(|chunk_hash| !chunk_hash.is_padding)
                 .map(|chunk_hash| chunk_hash.tx_bytes.clone())
                 .collect(),
         )
@@ -37,7 +36,7 @@ impl Blob {
             .chain(chunk_tx_bytes_hashes)
             .collect();
 
-        keccak256(input).into()
+        U256::from_big_endian(&keccak256(input))
     }
 
     fn metadata_bytes(&self) -> impl Iterator<Item = u8> + '_ {
