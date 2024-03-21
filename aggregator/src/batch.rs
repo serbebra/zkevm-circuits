@@ -509,7 +509,7 @@ impl BlobData {
             .chain(std::iter::once(BlobDataRow {
                 preimage_rlc: blob_preimage_rlc,
                 digest_rlc: blob_digest_rlc,
-                accumulator: 32 + (MAX_AGG_SNARKS + 1) as u64,
+                accumulator: 32 * (MAX_AGG_SNARKS + 1) as u64,
                 is_boundary: true,
                 ..Default::default()
             }))

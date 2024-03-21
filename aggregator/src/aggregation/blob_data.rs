@@ -243,6 +243,7 @@ impl BlobDataConfig {
             .collect()
         });
 
+        assert!(meta.degree() <= 5);
         config
     }
 
@@ -741,11 +742,6 @@ impl BlobDataConfig {
                     challenge_digest_limb3.cell(),
                     challenge_digest_crt.truncation.limbs[2].cell(),
                 )?;
-                log::debug!(
-                    "blob crts: {}, export.blob_fields: {}",
-                    blob_crts.len(),
-                    export.blob_fields.len()
-                );
                 for (blob_crt, blob_field) in blob_crts.iter().zip_eq(export.blob_fields.iter()) {
                     let limb1 = rlc_config.inner_product(
                         &mut region,
