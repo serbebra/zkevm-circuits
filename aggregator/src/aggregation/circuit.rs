@@ -9,7 +9,7 @@ use halo2_proofs::{
 };
 use itertools::Itertools;
 use rand::Rng;
-use std::{env, fs::File};
+use std::{env, fs::File, rc::Rc};
 
 #[cfg(not(feature = "disable_proof_aggregation"))]
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base;
@@ -164,17 +164,48 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // Step 1: snark aggregation circuit
         // ==============================================
+        #[cfg(feature = "disable_proof_generation")]
+        let barycentric = layouter.assign_region(
+            || "barycentric evaluation",
+            |region| {
+                if is_first_pass {
+                    is_first_pass = false;
+                    return Ok(BarycentricEvaluationCells::default());
+                }
+
+                let mut ctx = Context::new(
+                    region,
+                    ContextParams {
+                        max_rows: config.flex_gate().max_rows,
+                        num_context_ids: 1,
+                        fixed_columns: config.flex_gate().constants.clone(),
+                    },
+                );
+
+                let barycentric = config.barycentric.assign2(
+                    &mut ctx,
+                    self.batch_hash.blob.coefficients,
+                    self.batch_hash.blob.challenge_digest,
+                    self.batch_hash.blob.evaluation,
+                );
+
+                config.barycentric.scalar.range.finalize(&mut ctx);
+                ctx.print_stats(&["barycentric evaluation"]);
+
+                Ok(barycentric)
+            },
+        )?;
 
         #[cfg(not(feature = "disable_proof_aggregation"))]
-        let (accumulator_instances, snark_inputs) = {
+        let (accumulator_instances, snark_inputs, barycentric) = {
             let mut first_pass = halo2_base::SKIP_FIRST_PASS;
 
-            let (accumulator_instances, snark_inputs) = layouter.assign_region(
+            let (accumulator_instances, snark_inputs, barycentric) = layouter.assign_region(
                 || "aggregation",
-                |region| -> Result<(Vec<AssignedValue<Fr>>, Vec<AssignedValue<Fr>>), Error> {
+                |region| {
                     if first_pass {
                         first_pass = false;
-                        return Ok((vec![], vec![]));
+                        return Ok((vec![], vec![], BarycentricEvaluationCells::default()));
                     }
 
                     // stores accumulators for all snarks, including the padded ones
@@ -223,16 +254,26 @@ impl Circuit<Fr> for AggregationCircuit {
                             .flat_map(|instance_column| instance_column.iter().skip(ACC_LEN)),
                     );
 
-                    config.range().finalize(&mut loader.ctx_mut());
+                    loader.ctx_mut().print_stats(&["snark aggregation"]);
 
-                    loader.ctx_mut().print_stats(&["Range"]);
+                    let mut ctx = Rc::into_inner(loader).unwrap().into_ctx();
+                    let barycentric = config.barycentric.assign2(
+                        &mut ctx,
+                        self.batch_hash.blob.coefficients,
+                        self.batch_hash.blob.challenge_digest,
+                        self.batch_hash.blob.evaluation,
+                    );
 
-                    Ok((accumulator_instances, snark_inputs))
+                    ctx.print_stats(&["barycentric"]);
+
+                    config.range().finalize(&mut ctx);
+
+                    Ok((accumulator_instances, snark_inputs, barycentric))
                 },
             )?;
 
             assert_eq!(snark_inputs.len(), MAX_AGG_SNARKS * DIGEST_LEN);
-            (accumulator_instances, snark_inputs)
+            (accumulator_instances, snark_inputs, barycentric)
         };
         end_timer!(timer);
         // ==============================================
@@ -383,41 +424,9 @@ impl Circuit<Fr> for AggregationCircuit {
 
         // blob data config
         {
-            let mut is_first_pass = true;
-            let be = layouter.assign_region(
-                || "blob data and barycentric evaluation",
-                |region| {
-                    if is_first_pass {
-                        is_first_pass = false;
-                        return Ok(BarycentricEvaluationCells::default());
-                    }
-
-                    let mut ctx = Context::new(
-                        region,
-                        ContextParams {
-                            max_rows: config.flex_gate().max_rows,
-                            num_context_ids: 1,
-                            fixed_columns: config.flex_gate().constants.clone(),
-                        },
-                    );
-
-                    let barycentric = config.barycentric.assign2(
-                        &mut ctx,
-                        self.batch_hash.blob.coefficients,
-                        self.batch_hash.blob.challenge_digest,
-                        self.batch_hash.blob.evaluation,
-                    );
-
-                    config.barycentric.scalar.range.finalize(&mut ctx);
-                    ctx.print_stats(&["barycentric evaluation"]);
-
-                    Ok(barycentric)
-                },
-            )?;
-
-            let barycentric_assignments = &be.barycentric_assignments;
-            let challenge_le = &be.z_le;
-            let evaluation_le = &be.y_le;
+            let barycentric_assignments = &barycentric.barycentric_assignments;
+            let challenge_le = &barycentric.z_le;
+            let evaluation_le = &barycentric.y_le;
 
             let blob_data_exports = config.blob_data_config.assign(
                 &mut layouter,
