@@ -14,7 +14,7 @@ use halo2_ecc::bigint::CRTInteger;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     dev::MockProver,
-    halo2curves::bn256::{Fq, Fr},
+    halo2curves::bn256::{Fr},
     plonk::{Circuit, ConstraintSystem, Error},
 };
 use zkevm_circuits::{

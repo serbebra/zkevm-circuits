@@ -1,5 +1,5 @@
 mod aggregation;
-mod blob_data;
+mod blob;
 mod compression;
 mod mock_chunk;
 mod rlc;
