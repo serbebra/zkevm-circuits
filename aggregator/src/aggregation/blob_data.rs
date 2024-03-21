@@ -169,7 +169,7 @@ impl BlobDataConfig {
             ]
         });
 
-        meta.create_gate("BlobDataConfig (boundary/padding/accumulator)", |meta| {
+        meta.create_gate("BlobDataConfig (boundary/padding)", |meta| {
             let is_data = meta.query_selector(config.data_selector);
             let is_boundary = meta.query_advice(config.is_boundary, Rotation::cur());
             let is_padding_curr = meta.query_advice(config.is_padding, Rotation::cur());
@@ -178,14 +178,11 @@ impl BlobDataConfig {
 
             vec![
                 // is_boundary is boolean.
-                is_boundary.expr() * (1.expr() - is_boundary.expr()),
+                is_data.expr() * is_boundary.expr() * (1.expr() - is_boundary.expr()),
                 // is_padding is boolean.
-                is_padding_curr.expr() * (1.expr() - is_padding_curr.expr()),
-                // is_padding is meaningful only for "chunk data" section, i.e.
-                // is_padding is 0 for other sections.
-                (1.expr() - is_data.expr()) * is_padding_curr.expr(),
-                // is_padding transitions from 0 -> 1 only once
-                is_data * diff.expr() * (1.expr() - diff.expr()),
+                is_data.expr() * is_padding_curr.expr() * (1.expr() - is_padding_curr.expr()),
+                // is_padding transitions from 0 -> 1 only once.
+                is_data.expr() * diff.expr() * (1.expr() - diff.expr()),
             ]
         });
 
@@ -242,7 +239,7 @@ impl BlobDataConfig {
             .collect()
         });
 
-        // lookup for bytes32_z := keccak(preimage_z)
+        // lookup for challenge_digest := keccak(preimage_challenge_digest)
         meta.lookup_any("BlobDataConfig (z := keccak(preimage_z))", |meta| {
             let is_hash = meta.query_selector(config.hash_selector);
             let is_boundary = meta.query_advice(config.is_boundary, Rotation::cur());
@@ -550,7 +547,7 @@ impl BlobDataConfig {
                         &mut rlc_config_offset,
                     )?;
                     let zero_cell = rlc_config.zero_cell(zero.cell().region_index);
-                    region.constrain_equal(one.cell(), zero_cell)?;
+                    region.constrain_equal(zero.cell(), zero_cell)?;
                     zero
                 };
                 let mut i_val = zero.clone();
@@ -582,6 +579,8 @@ impl BlobDataConfig {
                     let r16 = rlc_config.mul(&mut region, &r8, &r8, &mut rlc_config_offset)?;
                     rlc_config.mul(&mut region, &r16, &r16, &mut rlc_config_offset)?
                 };
+
+                // RLC of digest of empty bytes = RLC(keccak([]), r)
                 let mut empty_digest_cells = Vec::with_capacity(N_BYTES_32);
                 for (i, &byte) in keccak256([]).iter().enumerate() {
                     let cell = rlc_config.load_private(
@@ -593,8 +592,6 @@ impl BlobDataConfig {
                     region.constrain_equal(cell.cell(), fixed_cell)?;
                     empty_digest_cells.push(cell);
                 }
-
-                // RLC of digest of empty bytes = RLC(keccak([]), r)
                 let empty_digest_evm_rlc = rlc_config.rlc(
                     &mut region,
                     &empty_digest_cells,
@@ -735,7 +732,6 @@ impl BlobDataConfig {
                         .rev()
                         .take(N_BYTES_32)
                         .map(|row| row.byte.clone())
-                        .rev()
                         .collect(),
                     chunk_data_digests,
                 };
@@ -760,8 +756,9 @@ impl BlobDataConfig {
                         &mut rlc_config_offset,
                     ))
                 })
-                .take(32)
+                .take(11)
                 .collect::<Result<Vec<_>, Error>>()?;
+
                 let challenge_digest_limb1 = rlc_config.inner_product(
                     &mut region,
                     &export.challenge_digest[0..11],
@@ -771,13 +768,13 @@ impl BlobDataConfig {
                 let challenge_digest_limb2 = rlc_config.inner_product(
                     &mut region,
                     &export.challenge_digest[11..22],
-                    &powers_of_256[11..22],
+                    &powers_of_256[0..11],
                     &mut rlc_config_offset,
                 )?;
                 let challenge_digest_limb3 = rlc_config.inner_product(
                     &mut region,
                     &export.challenge_digest[22..32],
-                    &powers_of_256[22..32],
+                    &powers_of_256[0..10],
                     &mut rlc_config_offset,
                 )?;
                 region.constrain_equal(
@@ -802,13 +799,13 @@ impl BlobDataConfig {
                     let limb2 = rlc_config.inner_product(
                         &mut region,
                         &blob_field[11..22],
-                        &powers_of_256[11..22],
+                        &powers_of_256[0..11],
                         &mut rlc_config_offset,
                     )?;
                     let limb3 = rlc_config.inner_product(
                         &mut region,
                         &blob_field[22..31],
-                        &powers_of_256[22..31],
+                        &powers_of_256[0..9],
                         &mut rlc_config_offset,
                     )?;
                     region.constrain_equal(limb1.cell(), blob_crt.truncation.limbs[0].cell())?;

@@ -9,7 +9,9 @@ use halo2_proofs::{
 };
 use itertools::Itertools;
 use rand::Rng;
-use std::{env, fs::File, rc::Rc};
+#[cfg(not(feature = "disable_proof_aggregation"))]
+use std::rc::Rc;
+use std::{env, fs::File};
 
 #[cfg(not(feature = "disable_proof_aggregation"))]
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base;
@@ -164,37 +166,40 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // Step 1: snark aggregation circuit
         // ==============================================
-        #[cfg(feature = "disable_proof_generation")]
-        let barycentric = layouter.assign_region(
-            || "barycentric evaluation",
-            |region| {
-                if is_first_pass {
-                    is_first_pass = false;
-                    return Ok(BarycentricEvaluationCells::default());
-                }
+        #[cfg(feature = "disable_proof_aggregation")]
+        let barycentric = {
+            let mut first_pass = halo2_base::SKIP_FIRST_PASS;
+            layouter.assign_region(
+                || "barycentric evaluation",
+                |region| {
+                    if first_pass {
+                        first_pass = false;
+                        return Ok(BarycentricEvaluationCells::default());
+                    }
 
-                let mut ctx = Context::new(
-                    region,
-                    ContextParams {
-                        max_rows: config.flex_gate().max_rows,
-                        num_context_ids: 1,
-                        fixed_columns: config.flex_gate().constants.clone(),
-                    },
-                );
+                    let mut ctx = Context::new(
+                        region,
+                        ContextParams {
+                            max_rows: config.flex_gate().max_rows,
+                            num_context_ids: 1,
+                            fixed_columns: config.flex_gate().constants.clone(),
+                        },
+                    );
 
-                let barycentric = config.barycentric.assign2(
-                    &mut ctx,
-                    self.batch_hash.blob.coefficients,
-                    self.batch_hash.blob.challenge_digest,
-                    self.batch_hash.blob.evaluation,
-                );
+                    let barycentric = config.barycentric.assign2(
+                        &mut ctx,
+                        self.batch_hash.blob.coefficients,
+                        self.batch_hash.blob.challenge_digest,
+                        self.batch_hash.blob.evaluation,
+                    );
 
-                config.barycentric.scalar.range.finalize(&mut ctx);
-                ctx.print_stats(&["barycentric evaluation"]);
+                    config.barycentric.scalar.range.finalize(&mut ctx);
+                    ctx.print_stats(&["barycentric evaluation"]);
 
-                Ok(barycentric)
-            },
-        )?;
+                    Ok(barycentric)
+                },
+            )?
+        };
 
         #[cfg(not(feature = "disable_proof_aggregation"))]
         let (accumulator_instances, snark_inputs, barycentric) = {
@@ -284,7 +289,7 @@ impl Circuit<Fr> for AggregationCircuit {
 
         let timer = start_timer!(|| "load aux table");
 
-        let (hash_digest_cells, expected_blob_cells, rlc_config_offset) = {
+        let (hash_digest_cells, expected_blob_cells) = {
             config
                 .keccak_circuit_config
                 .load_aux_tables(&mut layouter)?;
@@ -323,11 +328,7 @@ impl Circuit<Fr> for AggregationCircuit {
             .map_err(|_e| Error::ConstraintSystemFailure)?;
 
             end_timer!(timer);
-            (
-                assigned_batch_hash.hash_output,
-                assigned_batch_hash.blob,
-                assigned_batch_hash.rlc_config_offset,
-            )
+            (assigned_batch_hash.hash_output, assigned_batch_hash.blob)
         };
         // digests
         let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =

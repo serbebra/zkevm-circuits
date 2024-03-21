@@ -10,7 +10,7 @@ use halo2_proofs::{
 use itertools::Itertools;
 use rand::Rng;
 use snark_verifier::{
-    loader::{halo2::halo2_ecc::halo2_base, native::NativeLoader},
+    loader::native::NativeLoader,
     pcs::{
         kzg::{Bdfg21, Kzg, KzgAccumulator, KzgAs},
         AccumulationSchemeProver,
@@ -168,7 +168,6 @@ pub(crate) struct ExpectedBlobCells {
 pub(crate) struct AssignedBatchHash {
     pub(crate) hash_output: Vec<AssignedCell<Fr, Fr>>,
     pub(crate) blob: ExpectedBlobCells,
-    pub(crate) rlc_config_offset: usize,
 }
 
 /// Input the hash input bytes,
@@ -225,7 +224,7 @@ pub(crate) fn assign_batch_hashes(
     // - batch's data_hash length is 32 * number_of_valid_snarks
     // 8. batch data hash is correct w.r.t. its RLCs
     // 9. is_final_cells are set correctly
-    let rlc_config_offset = conditional_constraints(
+    conditional_constraints(
         &config.rlc_config,
         layouter,
         challenges,
@@ -248,7 +247,6 @@ pub(crate) fn assign_batch_hashes(
     Ok(AssignedBatchHash {
         hash_output: extracted_hash_cells.hash_output_cells,
         blob: expected_blob_cells,
-        rlc_config_offset,
     })
 }
 
@@ -544,8 +542,8 @@ pub(crate) fn conditional_constraints(
     challenges: Challenges<Value<Fr>>,
     chunks_are_valid: &[bool],
     extracted_hash_cells: &ExtractedHashCells,
-) -> Result<usize, Error> {
-    let mut first_pass = halo2_base::SKIP_FIRST_PASS;
+) -> Result<(), Error> {
+    // let mut first_pass = halo2_base::SKIP_FIRST_PASS;
     let ExtractedHashCells {
         hash_input_cells,
         hash_output_cells,
@@ -557,7 +555,7 @@ pub(crate) fn conditional_constraints(
     layouter
         .assign_region(
             || "rlc conditional constraints",
-            |mut region| -> Result<usize, halo2_proofs::plonk::Error> {
+            |mut region| -> Result<(), halo2_proofs::plonk::Error> {
                 // if first_pass {
                 //     first_pass = false;
                 //     return Ok(0);
@@ -1098,7 +1096,7 @@ pub(crate) fn conditional_constraints(
                     .constrain_equal(left.cell(), rlc_config.one_cell(left.cell().region_index))?;
 
                 log::trace!("rlc chip uses {} rows", offset);
-                Ok(offset)
+                Ok(())
             },
         )
         .map_err(|e| Error::AssertionFailure(format!("aggregation: {e}")))

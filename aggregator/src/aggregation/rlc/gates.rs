@@ -268,7 +268,7 @@ impl RlcConfig {
 
         a.copy_advice(|| "a", region, self.phase_2_column, *offset)?;
         let one = region.assign_advice(
-            || "c",
+            || "b",
             self.phase_2_column,
             *offset + 1,
             || Value::known(Fr::one()),
