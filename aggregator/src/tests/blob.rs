@@ -14,11 +14,11 @@ use halo2_ecc::bigint::CRTInteger;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     dev::MockProver,
-    halo2curves::bn256::{Fr},
+    halo2curves::bn256::Fr,
     plonk::{Circuit, ConstraintSystem, Error},
 };
 use zkevm_circuits::{
-    table::{KeccakTable, LookupTable, RangeTable, U8Table},
+    table::{KeccakTable, RangeTable, U8Table},
     util::Challenges,
 };
 
