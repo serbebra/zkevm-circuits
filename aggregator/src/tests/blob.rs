@@ -14,7 +14,7 @@ use halo2_base::{
 use halo2_ecc::bigint::CRTInteger;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
-    dev::MockProver,
+    dev::{MockProver, VerifyFailure},
     halo2curves::bn256::Fr,
     plonk::{Circuit, ConstraintSystem, Error},
 };
@@ -95,15 +95,13 @@ impl Circuit<Fr> for BlobCircuit {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        dbg!(0);
         let challenge_values = config.challenges.values(&layouter);
-        dbg!(1);
 
-        config.u8_table.load(&mut layouter)?;
-        dbg!(2);
-        config.range_table.load(&mut layouter)?;
-        dbg!(3);
-        // config.keccak_table.dev_load(&mut layouter, &config.challenges)?;
+        // config.keccak_table.dev_load(
+        //     &mut layouter,
+        //     vec![&data_bytes, &chunk_txbytes, &pi_bytes],
+        //     &challenge_values,
+        // )?;
 
         let mut first_pass = halo2_base::SKIP_FIRST_PASS;
         let barycentric_assignments = layouter.assign_region(
@@ -124,11 +122,12 @@ impl Circuit<Fr> for BlobCircuit {
                     },
                 );
 
+                let blob = BlobAssignments::from(self.data.clone());
                 Ok(config.barycentric.assign2(
                     &mut ctx,
-                    [U256::one(); 4096],
-                    U256::zero(),
-                    U256::zero(),
+                    blob.coefficients,
+                    blob.challenge_digest,
+                    blob.evaluation,
                 ))
             },
         )?;
@@ -146,21 +145,58 @@ impl Circuit<Fr> for BlobCircuit {
     }
 }
 
-#[test]
-fn empty_blob() {
+fn check_circuit(data: BlobData) -> Result<(), Vec<VerifyFailure>> {
     let k = 20;
-    let mock_prover = MockProver::<Fr>::run(
-        k,
-        &BlobCircuit {
-            data: BlobData {
-                number_non_empty_chunks: 0,
-                chunk_sizes: [0; MAX_AGG_SNARKS],
-                chunk_bytes: vec![vec![]; MAX_AGG_SNARKS].try_into().unwrap(),
-            },
-        },
-        vec![],
-    )
-    .expect("failed to run mock prover");
-    mock_prover.assert_satisfied_par();
-    panic!();
+    let mock_prover =
+        MockProver::<Fr>::run(k, &BlobCircuit { data }, vec![]).expect("failed to run mock prover");
+    mock_prover.verify_par()
 }
+
+#[test]
+fn blob_circuit_completeness() {
+    let no_chunks = Blob::default();
+    let one_chunk = Blob(vec![vec![2, 3, 4, 100, 1]]);
+    let two_chunks = Blob(vec![vec![100; 1000], vec![2, 3, 4, 100, 1]]);
+    let max_chunks = Blob(
+        (0..MAX_AGG_SNARKS)
+            .map(|i| (10u8..10 + u8::try_from(i).unwrap()).collect())
+            .collect(),
+    );
+    let all_empty_chunks = Blob(vec![vec![]; MAX_AGG_SNARKS]);
+    let empty_chunk_followed_by_nonempty_chunk = Blob(vec![vec![], vec![3, 100, 24, 30]]);
+    let nonempty_chunk_followed_by_empty_chunk = Blob(vec![vec![3, 100, 24, 30], vec![]]);
+    let empty_and_nonempty_chunks = Blob(vec![
+        vec![3, 100, 24, 30],
+        vec![],
+        vec![],
+        vec![100, 23, 34, 24, 10],
+        vec![],
+    ]);
+
+    for blob in [
+        no_chunks,
+        one_chunk,
+        two_chunks,
+        max_chunks,
+        all_empty_chunks,
+        empty_chunk_followed_by_nonempty_chunk,
+        nonempty_chunk_followed_by_empty_chunk,
+        empty_and_nonempty_chunks,
+    ] {
+        assert_eq!(
+            check_circuit(BlobData::from(blob.clone())),
+            Ok(()),
+            "{:?}",
+            blob
+        );
+    }
+}
+
+// #[test]
+// fn blob_circuit_soundness() {
+//     let mut padding_chunk_with_bytes = BlobData::default();
+//     padding_chunk_with_bytes.chunk_sizes[0] = 1;
+//     padding_chunk_with_bytes.chunk_sizes[0][0] = 255;
+
+//     assert_eq!(check_circuit(padding_chunk_with_bytes), Ok());
+// }

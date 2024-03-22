@@ -1,4 +1,4 @@
-use crate::{barycentric::interpolate, ChunkHash};
+use crate::{barycentric::interpolate, batch::BlobData, ChunkHash};
 use eth_types::U256;
 use ethers_core::utils::keccak256;
 use halo2_proofs::halo2curves::bls12_381::Scalar;
@@ -8,13 +8,14 @@ pub const BYTES_PER_BLOB_ELEMENT: usize = 32;
 pub const LOG_BLOG_WIDTH: usize = 12;
 
 #[derive(Clone, Debug, Default)]
-pub struct Blob(Vec<Vec<u8>>);
+pub struct Blob(pub Vec<Vec<u8>>);
 
 impl Blob {
     pub fn new(chunk_hashes: &[ChunkHash]) -> Self {
         Self(
             chunk_hashes
                 .iter()
+                // todo: filter for is_padding here....
                 .map(|chunk_hash| chunk_hash.tx_bytes.clone())
                 .collect(),
         )
@@ -81,6 +82,12 @@ impl From<&Blob> for BlobAssignments {
             ),
             coefficients,
         }
+    }
+}
+
+impl From<BlobData> for BlobAssignments {
+    fn from(blob_data: BlobData) -> Self {
+        BlobAssignments::from(&Blob(blob_data.chunk_bytes.to_vec()))
     }
 }
 

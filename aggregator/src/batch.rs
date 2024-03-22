@@ -301,6 +301,7 @@ impl BatchHash {
 }
 
 /// Helper struct to generate witness for the Blob Data Config.
+#[derive(Clone)]
 pub struct BlobData {
     /// The number of chunks that have non-empty L2 tx data.
     pub number_non_empty_chunks: u16,
@@ -308,6 +309,31 @@ pub struct BlobData {
     pub chunk_sizes: [u32; MAX_AGG_SNARKS],
     /// The L2 signed transaction bytes, flattened RLP-encoded, for each chunk.
     pub chunk_bytes: [Vec<u8>; MAX_AGG_SNARKS],
+}
+
+impl From<Blob> for BlobData {
+    fn from(blob: Blob) -> Self {
+        Self {
+            number_non_empty_chunks: (MAX_AGG_SNARKS - blob.0.len()).try_into().unwrap(),
+            chunk_sizes: blob
+                .0
+                .iter()
+                .map(|x| u32::try_from(x.len()).unwrap())
+                .chain(std::iter::repeat(0))
+                .take(MAX_AGG_SNARKS)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            chunk_bytes: blob
+                .0
+                .into_iter()
+                .chain(std::iter::repeat(vec![]))
+                .take(MAX_AGG_SNARKS)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        }
+    }
 }
 
 /// Witness row to the Blob Data Config.
