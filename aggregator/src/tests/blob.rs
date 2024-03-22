@@ -2,16 +2,14 @@ use crate::{
     aggregation::{BlobDataConfig, RlcConfig},
     barycentric::{BarycentricEvaluationCells, BarycentricEvaluationConfig},
     batch::BlobData,
-    blob::{Blob, BlobAssignments, BLOB_WIDTH},
+    blob::{Blob, BlobAssignments},
     param::ConfigParams,
-    BatchHash, MAX_AGG_SNARKS,
+    MAX_AGG_SNARKS,
 };
-use eth_types::U256;
 use halo2_base::{
     gates::range::{RangeConfig, RangeStrategy},
-    AssignedValue, Context, ContextParams,
+    Context, ContextParams,
 };
-use halo2_ecc::bigint::CRTInteger;
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     dev::{MockProver, VerifyFailure},

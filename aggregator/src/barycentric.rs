@@ -13,7 +13,7 @@ use halo2_proofs::{
     halo2curves::{bls12_381::Scalar, bn256::Fr, ff::PrimeField},
 };
 use itertools::Itertools;
-use num_bigint::{BigInt, BigUint, Sign};
+use num_bigint::{BigInt, Sign};
 use std::{iter::successors, sync::LazyLock};
 
 use crate::{
