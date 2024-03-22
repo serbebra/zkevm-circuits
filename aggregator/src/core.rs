@@ -556,11 +556,6 @@ pub(crate) fn conditional_constraints(
         .assign_region(
             || "rlc conditional constraints",
             |mut region| -> Result<(), halo2_proofs::plonk::Error> {
-                // if first_pass {
-                //     first_pass = false;
-                //     return Ok(0);
-                // }
-
                 rlc_config.init(&mut region)?;
                 let mut offset = 0;
                 // ====================================================
