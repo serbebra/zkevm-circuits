@@ -358,17 +358,25 @@ impl MockTransaction {
             (None, None, None) => {
                 // Compute sig params and set them in case we have a wallet as `from` attr.
                 if self.from.is_wallet() && self.hash.is_none() {
-                    let sig = self
+                    let mut sig = self
                         .from
                         .as_wallet()
                         .with_chain_id(self.chain_id)
                         .sign_transaction_sync(&tx.into())
                         .expect("sign mock tx");
                     // Set sig parameters
+                    sig.v = Self::normalize_v(sig.v, self.chain_id);
+
+                  
                     self.sig_data((sig.v, sig.r, sig.s));
+                }else {
+                    println!("go else, from {:?} is_wallet {} hash {:?}", self.from, self.from.is_wallet(),
+                    self.hash);
                 }
             }
-            (Some(_), Some(_), Some(_)) => (),
+            (Some(r), Some(s), Some(v)) =>  {   
+                println!("go to Some(r {},s {}, v{})", r, s, v);
+        },
             _ => panic!("Either all or none of the SigData params have to be set"),
         }
 
@@ -377,9 +385,20 @@ impl MockTransaction {
             let tmp_tx = Transaction::from(self.to_owned());
             // FIXME: Note that tmp_tx does not have sigs if self.from.is_wallet() = false.
             //  This means tmp_tx.hash() is not correct.
+
             self.hash(tmp_tx.hash());
+            println!("go to tx hash {:?} ", tmp_tx.hash());
         }
 
         self.to_owned()
+    }
+
+    // 
+    pub(crate) fn normalize_v(v: u64, chain_id: u64) -> u64 {
+        if v > 1 {
+            v - chain_id * 2 - 35
+        } else {
+            v
+        }
     }
 }

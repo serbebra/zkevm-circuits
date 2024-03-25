@@ -162,7 +162,6 @@ impl<const NACC: usize, const NTX: usize> TestContext<NACC, NTX> {
         let transactions: Vec<MockTransaction> =
             transactions.iter_mut().map(|tx| tx.build()).collect();
 
-        println!("done done done !!!");
         // Build Block modifiers
         let mut block = MockBlock::default();
         let parent_hash = history_hashes

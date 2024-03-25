@@ -102,6 +102,7 @@ impl TxType {
 
     /// Return the recovery id of signature for recovering the signing pk
     pub fn get_recovery_id(&self, v: u64) -> u8 {
+        println!("get_recovery_id  {:?}", self);
         let recovery_id = match *self {
             TxType::Eip155 => (v + 1) % 2,
             TxType::PreEip155 => {
@@ -109,6 +110,7 @@ impl TxType {
                 v - 27
             }
             TxType::Eip1559 => {
+                println!("TxType::Eip1559 {}", v);
                 assert!(v <= 1);
                 v
             }
@@ -130,6 +132,7 @@ pub fn get_rlp_unsigned(tx: &crate::Transaction) -> Vec<u8> {
     let sig_v = tx.v;
     match TxType::get_tx_type(tx) {
         TxType::Eip155 => {
+            println!("get_rlp_unsigned TxType::Eip155");
             let mut tx: TransactionRequest = tx.into();
             tx.chain_id = Some(tx.chain_id.unwrap_or_else(|| {
                 let recv_v = TxType::Eip155.get_recovery_id(sig_v.as_u64()) as u64;
@@ -138,10 +141,12 @@ pub fn get_rlp_unsigned(tx: &crate::Transaction) -> Vec<u8> {
             tx.rlp().to_vec()
         }
         TxType::PreEip155 => {
+            println!("get_rlp_unsigned TxType::PreEip155");
             let tx: TransactionRequest = tx.into();
             tx.rlp_unsigned().to_vec()
         }
         TxType::Eip1559 => {
+            println!("get_rlp_unsigned TxType::Eip1559");
             let tx: Eip1559TransactionRequest = tx.into();
             let typed_tx: TypedTransaction = tx.into();
             typed_tx.rlp().to_vec()
@@ -152,6 +157,7 @@ pub fn get_rlp_unsigned(tx: &crate::Transaction) -> Vec<u8> {
             typed_tx.rlp().to_vec()
         }
         TxType::L1Msg => {
+            println!("get_rlp_unsigned TxType::L1Msg");
             // L1 msg does not have signature
             vec![]
         }
