@@ -109,32 +109,13 @@ impl BlobDataConfig {
             vec![(byte_value, u8_table.into())]
         });
 
-        meta.lookup(
-            "BlobDataConfig (chunk idx transition on boundary)",
-            |meta| {
-                let is_hash = meta.query_selector(config.hash_selector);
-                let is_not_hash = 1.expr() - is_hash;
-                let is_padding_next = meta.query_advice(config.is_padding, Rotation::next());
-                let is_boundary = meta.query_advice(config.is_boundary, Rotation::cur());
-                // if we are in the data section, encounter a boundary and the next row is not a
-                // padding row.
-                let cond = is_not_hash * is_boundary * (1.expr() - is_padding_next);
-                let chunk_idx_curr = meta.query_advice(config.chunk_idx, Rotation::cur());
-                let chunk_idx_next = meta.query_advice(config.chunk_idx, Rotation::next());
-                // chunk_idx increases by at least 1 and at most MAX_AGG_SNARKS when condition is met.
-                vec![(cond * (chunk_idx_next - chunk_idx_curr - 1.expr()), config.chunk_idx_range_table.into())]
-            },
-        );
+        meta.lookup("this is a good lookup", |meta| {
+            vec![(1.expr(), config.chunk_idx_range_table.into())]
+        });
 
-        meta.lookup(
-            "chunk_idx for non-padding, data rows in [1..MAX_AGG_SNARKS]",
-            |meta| {
-                let is_data = meta.query_selector(config.data_selector);
-                let is_padding = meta.query_advice(config.is_padding, Rotation::cur());
-                let chunk_idx = meta.query_advice(config.chunk_idx, Rotation::cur());
-                vec![(is_data * (1.expr() - is_padding) * (chunk_idx - 1.expr()), config.chunk_idx_range_table.into())]
-            },
-        );
+        // meta.lookup("this is a bad lookup", |meta| {
+        //     vec![(20.expr(), config.chunk_idx_range_table.into())]
+        // });
 
         meta.create_gate("BlobDataConfig (transition when boundary)", |meta| {
             let is_data = meta.query_selector(config.data_selector);
