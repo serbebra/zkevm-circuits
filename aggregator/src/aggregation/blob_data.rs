@@ -126,6 +126,16 @@ impl BlobDataConfig {
             },
         );
 
+        meta.lookup(
+            "chunk_idx for non-padding, data rows in [1..MAX_AGG_SNARKS]",
+            |meta| {
+                let is_data = meta.query_selector(config.data_selector);
+                let is_padding = meta.query_advice(config.is_padding, Rotation::cur());
+                let chunk_idx = meta.query_advice(config.chunk_idx, Rotation::cur());
+                vec![(is_data * (1.expr() - is_padding) * (chunk_idx - 1.expr()), config.chunk_idx_range_table.into())]
+            },
+        );
+
         meta.create_gate("BlobDataConfig (transition when boundary)", |meta| {
             let is_data = meta.query_selector(config.data_selector);
             let is_boundary = meta.query_advice(config.is_boundary, Rotation::cur());
