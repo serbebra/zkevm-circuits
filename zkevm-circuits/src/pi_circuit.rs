@@ -592,6 +592,17 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
                     ),
                 );
 
+                cb.condition(
+                    is_rpi_padding,
+                    |cb| {
+                        cb.require_equal(
+                            "rpi_length_cc' = rpi_length_acc for padding rows",
+                            meta.query_advice(rpi_length_acc, Rotation::prev()),
+                            meta.query_advice(rpi_length_acc, Rotation::cur()),
+                        );
+                    }
+                );
+                
                 cb.gate(meta.query_fixed(q_chunk_txbytes, Rotation::cur()))
             },
         );
