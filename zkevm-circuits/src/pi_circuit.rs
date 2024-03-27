@@ -1214,7 +1214,7 @@ impl<F: Field> PiCircuitConfig<F> {
     /// TxCircuit, which is an RLC summary of rlp_signed (including tx_type byte) of a L2 tx.
     /// This is to ensure the fixed length of an otherwise variable length section.
     ///
-    /// The rip_length_acc field, subsequently, accumulates the length of the rlp_signed data for
+    /// The rpi_length_acc field, subsequently, accumulates the length of the rlp_signed data for
     /// each tx and the RLC multiplier at each row is the power of rand corresponding to the
     /// differential length.
     ///
