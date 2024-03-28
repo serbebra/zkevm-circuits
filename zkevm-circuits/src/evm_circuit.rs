@@ -332,17 +332,14 @@ impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
     ) -> Result<(), Error> {
         let block = self.block.as_ref().unwrap();
 
-        let tx_max_challenge_pow: Option<usize> = if block.txs.len() > 0 {
-            Some(block.txs.iter().map(|tx| tx.rlp_signed.len()).max().unwrap())
-        } else {
-            None
-        };
+        let max_blob_bytes = 4096 * 31 - 62;
+        let max_pow_limit = Some(max_blob_bytes);
 
         config.load_fixed_table(layouter, self.fixed_table_tags.clone())?;
         config.load_byte_table(layouter)?;
         config
             .pow_of_rand_table
-            .assign(layouter, challenges, tx_max_challenge_pow)?;
+            .assign(layouter, challenges, max_pow_limit)?;
         let export = config.execution.assign_block(layouter, block, challenges)?;
         self.exports.borrow_mut().replace(export);
         Ok(())

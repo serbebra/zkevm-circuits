@@ -602,7 +602,7 @@ impl<F: Field> SubCircuitConfig<F> for PiCircuitConfig<F> {
                         );
                     }
                 );
-                
+
                 cb.gate(meta.query_fixed(q_chunk_txbytes, Rotation::cur()))
             },
         );
