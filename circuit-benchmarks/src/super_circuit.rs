@@ -21,6 +21,7 @@ mod tests {
             Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer,
         },
     };
+    use itertools::Itertools;
     use mock::{TestContext, MOCK_CHAIN_ID};
     use rand::SeedableRng;
     use rand_chacha::ChaChaRng;
@@ -31,6 +32,7 @@ mod tests {
     #[cfg_attr(not(feature = "print-trace"), allow(unused_variables))] // FIXME: remove this after ark-std upgrade
     #[test]
     fn bench_super_circuit_prover() {
+        env_logger::try_init();
         let setup_prfx = crate::constants::SETUP_PREFIX;
         let proof_gen_prfx = crate::constants::PROOFGEN_PREFIX;
         let proof_ver_prfx = crate::constants::PROOFVER_PREFIX;
@@ -49,9 +51,11 @@ mod tests {
         };
 
         let wallet_a = LocalWallet::new(&mut rng).with_chain_id(MOCK_CHAIN_ID);
+        let wallet_c = LocalWallet::new(&mut rng).with_chain_id(MOCK_CHAIN_ID);
 
         let addr_a = wallet_a.address();
         let addr_b = address!("0x000000000000000000000000000000000000BBBB");
+        let addr_c = wallet_c.address();
 
         let block: GethData = TestContext::<2, 1>::new(
             None,
@@ -68,6 +72,19 @@ mod tests {
                     .to(accs[0].address)
                     .gas(Word::from(1_000_000u64));
             },
+            |block, _tx| block.number(0xcafeu64),
+        )
+        .unwrap()
+        .into();
+
+        let empty_block = TestContext::<3, 0>::new(
+            None,
+            |accs| {
+                accs[0].address(addr_b).balance(Word::from(1u64 << 20));
+                accs[1].address(addr_a).balance(Word::from(1u64 << 20));
+                accs[2].address(addr_c).balance(Word::from(1u64 << 22));
+            },
+            |_, _| {},
             |block, _tx| block.number(0xcafeu64),
         )
         .unwrap()
@@ -90,6 +107,12 @@ mod tests {
             max_rlp_rows: 256,
             ..Default::default()
         };
+        let (_, empty_circuit, _, _) =
+            SuperCircuit::<_, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>::build(
+                empty_block,
+                circuits_params,
+            )
+            .unwrap();
         let (_, circuit, instance, _) =
             SuperCircuit::<_, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>::build(
                 block,
@@ -107,6 +130,23 @@ mod tests {
 
         // Initialize the proving key
         let vk = keygen_vk(&general_params, &circuit).expect("keygen_vk should not fail");
+        let vk2 = keygen_vk(&general_params, &empty_circuit)
+            .expect("keygen_vk for empty circuit should not fail");
+
+        for (i, (c1, c2)) in vk
+            .fixed_commitments()
+            .iter()
+            .zip_eq(vk2.fixed_commitments().iter())
+            .enumerate()
+        {
+            if c1 != c2 {
+                log::error!("fixed_{} {:?} != {:?}", i, c1, c2);
+            }
+        }
+        if vk.fixed_commitments() != vk2.fixed_commitments() {
+            panic!("vk is not fixed");
+        }
+
         let pk = keygen_pk(&general_params, vk, &circuit).expect("keygen_pk should not fail");
         // Create a proof
         let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
