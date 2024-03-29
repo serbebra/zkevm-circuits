@@ -8,7 +8,7 @@ use crate::{
     },
     exp_circuit::param::{OFFSET_INCREMENT, ROWS_PER_STEP},
     impl_expr,
-    util::{build_tx_log_address, Challenges},
+    util::{build_tx_log_address, rlc_be_bytes, Challenges},
     witness::{
         Block, BlockContexts, Bytecode, MptUpdateRow, MptUpdates, RlpFsmWitnessGen, Rw, RwMap,
         RwRow, Transaction,
@@ -22,7 +22,8 @@ use bus_mapping::{
     precompile::PrecompileCalls,
 };
 use core::iter::once;
-use eth_types::{sign_types::SignData, Field, ToLittleEndian, ToScalar, ToWord, Word, U256};
+use eth_types::{sign_types::SignData, Field, ToLittleEndian, ToScalar, ToWord, Word, H256, U256};
+use ethers_core::utils::keccak256;
 use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
     util::{and, not, split_u256, split_u256_limb64, Expr},
@@ -215,6 +216,8 @@ pub struct TxTable {
     pub value: Column<Advice>,
     /// Access list address
     pub access_list_address: Column<Advice>,
+    /// Chunk Txbytes Hash RLC
+    pub chunk_txbytes_hash_rlc: Column<Advice>,
 }
 
 impl TxTable {
@@ -229,6 +232,7 @@ impl TxTable {
             index: meta.advice_column(),
             value: meta.advice_column_in(SecondPhase),
             access_list_address: meta.advice_column(),
+            chunk_txbytes_hash_rlc: meta.advice_column_in(SecondPhase),
         }
     }
 
@@ -346,6 +350,27 @@ impl TxTable {
                     }
                 }
 
+                // Assign chunk txbytes hash for the last row in the fixed section
+                let chunk_txbytes = txs
+                    .iter()
+                    .flat_map(|tx| {
+                        if tx.is_chunk_l2_tx() {
+                            tx.rlp_signed.clone()
+                        } else {
+                            vec![]
+                        }
+                    })
+                    .collect::<Vec<u8>>();
+                let chunk_txbytes_hash = H256(keccak256(chunk_txbytes));
+                let chunk_txbytes_hash_rlc =
+                    rlc_be_bytes(&chunk_txbytes_hash.to_fixed_bytes(), challenges.evm_word());
+                tx_value_cells.push(region.assign_advice(
+                    || "tx table chunk txbytes hash rlc",
+                    self.chunk_txbytes_hash_rlc,
+                    offset - 1,
+                    || chunk_txbytes_hash_rlc,
+                )?);
+
                 // Assign dynamic calldata and access list section
                 for tx in txs.iter().chain(padding_txs.iter()) {
                     for row in tx.table_assignments_dyn(*challenges).into_iter() {
@@ -388,14 +413,6 @@ impl TxTable {
             meta.query_fixed(self.q_enable, Rotation::cur()),
             meta.query_advice(self.value, Rotation::cur()), // offset 21: TxHash
             meta.query_advice(self.value, Rotation::next()), // offset 22: TxType
-        ]
-    }
-    /// Return l2 PICircuit exprs
-    pub fn l2_pi_exprs<F: Field>(&self, meta: &mut VirtualCells<F>) -> Vec<Expression<F>> {
-        vec![
-            meta.query_fixed(self.q_enable, Rotation::cur()),
-            meta.query_advice(self.value, Rotation::cur()), // offset 20: TxHashRLC
-            meta.query_advice(self.value, Rotation::prev()), // offset 19: TxHashLength
         ]
     }
 }

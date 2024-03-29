@@ -91,7 +91,6 @@ impl<F: Field, const MAX_TXS: usize, const MAX_CALLDATA: usize, const MAX_INNER_
         let keccak_table = KeccakTable::construct(meta);
         let challenges = Challenges::construct(meta);
         let challenge_exprs = challenges.exprs(meta);
-        let pow_of_rand_table = PowOfRandTable::construct(meta, &challenge_exprs);
         (
             PiCircuitConfig::new(
                 meta,
@@ -99,7 +98,6 @@ impl<F: Field, const MAX_TXS: usize, const MAX_CALLDATA: usize, const MAX_INNER_
                     block_table,
                     keccak_table,
                     tx_table,
-                    pow_of_rand_table,
                     challenges: challenge_exprs,
                 },
             ),
@@ -135,10 +133,6 @@ impl<F: Field, const MAX_TXS: usize, const MAX_CALLDATA: usize, const MAX_INNER_
             vec![&data_bytes, &chunk_txbytes, &pi_bytes],
             &challenges,
         )?;
-
-        config
-            .pow_of_rand_table
-            .assign(&mut layouter, &challenges)?;
 
         self.0.import_tx_values(tx_value_cells);
         self.0.synthesize_sub(&config, &challenges, &mut layouter)?;

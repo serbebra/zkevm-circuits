@@ -88,6 +88,8 @@ use itertools::Itertools;
 pub const TX_LEN: usize = 28;
 /// Offset of TxHash tag in the tx table
 pub const TX_HASH_OFFSET: usize = 21;
+/// Offset of CallerAddress in the tx table
+pub const CALLER_ADDRESS_OFFSET: usize = 4;
 /// Offset of TxHashRLC tag in the tx table. TxHashRLC = RLC(tx.rlp_signed)
 pub const TX_HASH_RLC_OFFSET: usize = 20;
 /// Offset of ChainID tag in the tx table
@@ -236,7 +238,6 @@ pub struct TxCircuitConfig<F: Field> {
     // used for calculating hash of all chunk bytes
     chunk_txbytes_rlc: Column<Advice>,
     chunk_txbytes_len_acc: Column<Advice>,
-    chunk_txbytes_hash: Column<Advice>,
     pow_of_rand: Column<Advice>,
 
     _marker: PhantomData<F>,
@@ -364,15 +365,14 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         let is_chunk_bytes = meta.advice_column();
         let chunk_bytes_len = meta.advice_column();
         let chunk_txbytes_rlc = meta.advice_column_in(SecondPhase);
-        let chunk_txbytes_hash = meta.advice_column_in(SecondPhase);
         let chunk_txbytes_len_acc = meta.advice_column();
         let pow_of_rand = meta.advice_column_in(SecondPhase);
 
         meta.enable_equality(chunk_bytes_len);
         meta.enable_equality(chunk_txbytes_rlc);
-        meta.enable_equality(chunk_txbytes_hash);
         meta.enable_equality(chunk_txbytes_len_acc);
         meta.enable_equality(pow_of_rand);
+        meta.enable_equality(tx_table.chunk_txbytes_hash_rlc);
 
         // TODO: add lookup to SignVerify table for sv_address
         let sv_address = meta.advice_column();
@@ -998,7 +998,6 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             sks_acc,
             chunk_txbytes_rlc,
             chunk_txbytes_len_acc,
-            chunk_txbytes_hash,
         );
 
         meta.create_gate("tx_gas_cost == 0 for L1 msg", |meta| {
@@ -1845,8 +1844,13 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         meta.lookup_any("Correct pow_of_rand for HashLen", |meta| {
             let enable = and::expr(vec![
                 meta.query_fixed(q_enable, Rotation::cur()),
+                // A valid chunk txbytes tx is determined by: (tx.tx_type != TxType::L1Msg) &&
+                // !tx.caller_address.is_zero()
                 not::expr(meta.query_advice(is_l1_msg, Rotation::cur())),
-                is_hash_length(meta),
+                not::expr(value_is_zero.expr(Rotation(
+                    -((HASH_RLC_OFFSET - CALLER_ADDRESS_OFFSET) as i32),
+                ))(meta)),
+                is_hash_rlc(meta),
             ]);
 
             vec![
@@ -1947,7 +1951,6 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             chunk_bytes_len,
             chunk_txbytes_rlc,
             chunk_txbytes_len_acc,
-            chunk_txbytes_hash,
             pow_of_rand,
             _marker: PhantomData,
             num_txs,
@@ -1991,7 +1994,6 @@ impl<F: Field> TxCircuitConfig<F> {
         sks_acc: Column<Advice>,
         chunk_txbytes_rlc: Column<Advice>,
         chunk_txbytes_len_acc: Column<Advice>,
-        chunk_txbytes_hash: Column<Advice>,
     ) {
         macro_rules! is_tx_type {
             ($var:ident, $type_variant:ident) => {
@@ -2536,11 +2538,11 @@ impl<F: Field> TxCircuitConfig<F> {
             ]);
 
             vec![
-                1.expr(),                                                   // q_enable
-                1.expr(),                                                   // is_final
-                meta.query_advice(chunk_txbytes_rlc, Rotation::prev()),     // input_rlc
-                meta.query_advice(chunk_txbytes_len_acc, Rotation::prev()), // input_len
-                meta.query_advice(chunk_txbytes_hash, Rotation::prev()),    // output_rlc
+                1.expr(),                                                             // q_enable
+                1.expr(),                                                             // is_final
+                meta.query_advice(chunk_txbytes_rlc, Rotation::prev()),               // input_rlc
+                meta.query_advice(chunk_txbytes_len_acc, Rotation::prev()),           // input_len
+                meta.query_advice(tx_table.chunk_txbytes_hash_rlc, Rotation::prev()), // output_rlc
             ]
             .into_iter()
             .zip(keccak_table.table_exprs(meta))
@@ -2608,7 +2610,7 @@ impl<F: Field> TxCircuitConfig<F> {
             access_list_size(&tx.access_list);
 
         // Only bytes from L2 txs are accumulated for chunk bytes hash
-        let is_chunk_bytes = (tx.tx_type != TxType::L1Msg) && !tx.caller_address.is_zero();
+        let is_chunk_bytes = tx.is_chunk_l2_tx();
 
         let hash_len = if is_chunk_bytes {
             tx.rlp_signed.len()
@@ -2973,8 +2975,8 @@ impl<F: Field> TxCircuitConfig<F> {
                 || chunk_txbytes_len,
             )?;
             txbytes_hash_assignment = Some(region.assign_advice(
-                || "chunk_txbytes_hash",
-                self.chunk_txbytes_hash,
+                || "tx_table.chunk_txbytes_hash_rlc",
+                self.tx_table.chunk_txbytes_hash_rlc,
                 *offset,
                 || chunk_txbytes_hash,
             )?);
@@ -3607,7 +3609,7 @@ impl<F: Field> TxCircuit<F> {
         let chunk_hash_bytes = self
             .txs
             .iter()
-            .filter(|&tx| (tx.tx_type != TxType::L1Msg) && !tx.caller_address.is_zero())
+            .filter(|&tx| tx.is_chunk_l2_tx())
             .flat_map(|tx| tx.rlp_signed.clone())
             .collect::<Vec<u8>>();
         inputs.extend_from_slice(&[chunk_hash_bytes]);
@@ -3750,7 +3752,7 @@ impl<F: Field> TxCircuit<F> {
                 let mut chunk_bytes: Vec<u8> = vec![];
                 for i in 0..sigs.len() {
                     let tx = get_tx(i);
-                    if (tx.tx_type != TxType::L1Msg) && !tx.caller_address.is_zero() {
+                    if tx.is_chunk_l2_tx() {
                         chunk_bytes.extend_from_slice(&tx.rlp_signed);
                     }
                 }
@@ -3903,7 +3905,7 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
     type Config = TxCircuitConfig<F>;
 
     fn unusable_rows() -> usize {
-        9
+        10
     }
 
     fn new_from_block(block: &witness::Block<F>) -> Self {
