@@ -142,14 +142,15 @@ impl BatchHash {
             blob_assignments.evaluation.to_be_bytes().as_ref(),
         ]
         .concat();
-        let public_input_hash = keccak256(preimage);
+        let public_input_hash: H256 = keccak256(preimage).into();
+        log::info!("batch pi hash {}", public_input_hash);
 
         Self {
             chain_id: chunks_with_padding[0].chain_id,
             chunks_with_padding: chunks_with_padding.to_vec(),
             data_hash: batch_data_hash.into(),
             blob: blob_assignments,
-            public_input_hash: public_input_hash.into(),
+            public_input_hash,
             number_of_valid_chunks,
         }
     }
