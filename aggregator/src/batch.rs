@@ -143,7 +143,13 @@ impl BatchHash {
         ]
         .concat();
         let public_input_hash: H256 = keccak256(preimage).into();
-        log::info!("batch pi hash {}", public_input_hash);
+        log::info!(
+            "batch pihash {:?}, datahash {}, z {} y {}",
+            public_input_hash,
+            hex::encode(batch_data_hash),
+            hex::encode(blob_assignments.challenge.to_be_bytes()),
+            hex::encode(blob_assignments.evaluation.to_be_bytes())
+        );
 
         Self {
             chain_id: chunks_with_padding[0].chain_id,
