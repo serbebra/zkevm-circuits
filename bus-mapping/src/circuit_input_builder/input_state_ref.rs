@@ -1704,6 +1704,7 @@ impl<'a> CircuitInputStateRef<'a> {
                     match precompile_call {
                         PrecompileCalls::Sha256
                         | PrecompileCalls::Ripemd160
+                        | PrecompileCalls::Modexp
                         | PrecompileCalls::Blake2F => {
                             // Log the precompile address and gas left. Since this failure is mainly
                             // caused by out of gas.
