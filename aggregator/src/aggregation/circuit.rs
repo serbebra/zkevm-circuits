@@ -145,6 +145,7 @@ impl Circuit<Fr> for AggregationCircuit {
         (config, challenges)
     }
 
+    #[allow(clippy::type_complexity)]
     fn synthesize(
         &self,
         config: Self::Config,
@@ -238,7 +239,7 @@ impl Circuit<Fr> for AggregationCircuit {
         // ==============================================
         // extract all the hashes and load them to the hash table
         let timer = start_timer!(|| "load aux table");
-        
+
         let challenges = challenge.values(&layouter);
 
         let hash_digest_cells = {
@@ -344,17 +345,17 @@ impl Circuit<Fr> for AggregationCircuit {
         }
 
         // public input hash
-        for i in 0..DIGEST_LEN {
+        for (index, batch_pi_hash_digest_cell) in batch_pi_hash_digest.iter().enumerate() {
             log::trace!(
                 "pi (circuit vs real): {:?} {:?}",
-                batch_pi_hash_digest[i].value(),
-                self.instances()[0][i + ACC_LEN]
+                batch_pi_hash_digest_cell.value(),
+                self.instances()[0][index + ACC_LEN]
             );
 
             layouter.constrain_instance(
-                batch_pi_hash_digest[i].cell(),
+                batch_pi_hash_digest_cell.cell(),
                 config.instance,
-                i + ACC_LEN,
+                index + ACC_LEN,
             )?;
         }
 

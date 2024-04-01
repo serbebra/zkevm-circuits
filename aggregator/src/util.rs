@@ -85,7 +85,7 @@ pub(crate) fn parse_hash_digest_cells(
     )
 }
 
-pub(crate) fn rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
+pub(crate) fn _rlc(inputs: &[Fr], randomness: &Fr) -> Fr {
     assert!(!inputs.is_empty());
     let mut acc = inputs[0];
     for input in inputs.iter().skip(1) {

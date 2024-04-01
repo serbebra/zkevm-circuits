@@ -5,11 +5,11 @@ use eth_types::{Field, H256};
 use ethers_core::utils::keccak256;
 use halo2_proofs::halo2curves::bn256::Fr;
 
-use crate::{constants::MAX_AGG_SNARKS, util::rlc};
+use crate::{constants::MAX_AGG_SNARKS, util::_rlc};
 
 use super::chunk::ChunkHash;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 /// A batch is a set of MAX_AGG_SNARKS num of continuous chunks
 /// - the first k chunks are from real traces
 /// - the last (#MAX_AGG_SNARKS-k) chunks are from empty traces
@@ -218,7 +218,7 @@ impl BatchHash {
         // - batch_data_hash_preimage
         log::info!(
             "batch public input hash: {:?}",
-            rlc(
+            _rlc(
                 preimages[0]
                     .iter()
                     .map(|x| Fr::from(*x as u64))

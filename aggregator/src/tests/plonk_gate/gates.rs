@@ -10,7 +10,7 @@ use halo2_proofs::{
 use rand::RngCore;
 use zkevm_circuits::{table::KeccakTable, util::Challenges};
 
-use crate::{aggregation::VanillaPlonkConfig, util::rlc};
+use crate::{aggregation::VanillaPlonkConfig, util::_rlc};
 
 #[derive(Default, Debug, Clone, Copy)]
 struct ArithTestCircuit {
@@ -134,7 +134,7 @@ impl Circuit<Fr> for ArithTestCircuit {
                     region.constrain_equal(f6.cell(), f6_rec.cell())?;
 
                     let flag = [one.clone(), one.clone(), one, zero];
-                    let res = rlc(&[self.f1, self.f2, self.f3], &self.f5);
+                    let res = _rlc(&[self.f1, self.f2, self.f3], &self.f5);
                     let res = config.load_private(&mut region, &res, &mut offset)?;
                     let res_rec =
                         config.rlc_with_flag(&mut region, &inputs, &f5, &flag, &mut offset)?;
@@ -207,7 +207,7 @@ fn test_field_ops() {
     let f3 = f1 + f2; // 7
     let f4 = f1 * f2; // 12
     let f5 = f1 * f2 + f3; // 19
-    let f6 = rlc(&[f1, f2, f3, f4], &f5);
+    let f6 = _rlc(&[f1, f2, f3, f4], &f5);
     let f7 = Fr::zero();
     let f8 = f1;
 

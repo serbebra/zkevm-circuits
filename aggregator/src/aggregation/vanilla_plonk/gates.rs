@@ -353,7 +353,7 @@ impl VanillaPlonkConfig {
         challenge: &AssignedCell<Fr, Fr>,
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        assert!(inputs.len() != 0);
+        assert!(!inputs.is_empty());
         let mut acc = inputs[0].clone();
         for input in inputs.iter().skip(1) {
             acc = self.mul_add(region, &acc, challenge, input, offset)?;
@@ -371,7 +371,12 @@ impl VanillaPlonkConfig {
         flags: &[AssignedCell<Fr, Fr>],
         offset: &mut usize,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        assert!(flags.len() == inputs.len());
+        assert!(
+            flags.len() == inputs.len(),
+            "flag len: {}, input len: {}",
+            flags.len(),
+            inputs.len()
+        );
         let mut acc = self.mul(region, &inputs[0], &flags[0], offset)?;
         for (input, flag) in inputs.iter().zip(flags.iter()).skip(1) {
             let tmp = self.mul_add(region, &acc, challenge, input, offset)?;
