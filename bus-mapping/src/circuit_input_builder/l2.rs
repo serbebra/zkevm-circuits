@@ -8,11 +8,13 @@ use crate::{
 use eth_types::{
     self,
     evm_types::OpcodeId,
+    geth_types::GethData,
     l2_types::{BlockTrace, EthBlock, ExecStep, StorageTrace},
-    Address, ToWord, Word, H256,
+    Address, ToWord, Word, H256, U256,
 };
 use ethers_core::types::Bytes;
 use mpt_zktrie::state::{AccountData, ZktrieState};
+use revm::{BlockEnv, Env, TxEnv};
 use std::collections::hash_map::{Entry, HashMap};
 
 impl From<&AccountData> for state_db::Account {
@@ -252,6 +254,81 @@ fn dump_code_db(cdb: &CodeDB) {
 }
 
 impl CircuitInputBuilder {
+    /// Using revm handle block trace
+    pub fn handle_block_revm(&mut self, block: &BlockTrace) -> Result<(), Error> {
+        let mut env = Env::default();
+        env.cfg.chain_id = U256::from(self.block.chain_id);
+        env.block = BlockEnv::from(block);
+        for (tx, exec) in block
+            .transactions
+            .iter()
+            .zip(block.execution_results.iter())
+        {
+            let mut env = env.clone();
+            env.tx = TxEnv::from(tx);
+            env.tx.l1_fee = exec.l1_fee;
+            let mut revm = revm::new();
+            revm.env = env;
+            revm.database(&mut *self);
+            let result = revm.transact_commit();
+            for account_post_state in exec.account_after.iter() {
+                if let Some(address) = account_post_state.address {
+                    let local_acc = self.sdb.get_account(&address).1;
+                    log::trace!("local acc {local_acc:?}, trace acc {account_post_state:?}");
+                    if local_acc.balance != account_post_state.balance.unwrap() {
+                        let local = local_acc.balance;
+                        let post = account_post_state.balance.unwrap();
+                        log::error!(
+                            "incorrect balance, local {:#x} {} post {:#x} (diff {}{:#x})",
+                            local,
+                            if local < post { "<" } else { ">" },
+                            post,
+                            if local < post { "-" } else { "+" },
+                            if local < post {
+                                post - local
+                            } else {
+                                local - post
+                            }
+                        )
+                    }
+                    if local_acc.nonce != account_post_state.nonce.unwrap().into() {
+                        log::error!("incorrect nonce")
+                    }
+                    let p_hash = account_post_state.poseidon_code_hash.unwrap();
+                    if p_hash.is_zero() {
+                        if !local_acc.is_empty() {
+                            log::error!("incorrect poseidon_code_hash")
+                        }
+                    } else {
+                        if local_acc.code_hash != p_hash {
+                            log::error!("incorrect poseidon_code_hash")
+                        }
+                    }
+                    let k_hash = account_post_state.keccak_code_hash.unwrap();
+                    if k_hash.is_zero() {
+                        if !local_acc.is_empty() {
+                            log::error!("incorrect keccak_code_hash")
+                        }
+                    } else {
+                        if local_acc.keccak_code_hash != k_hash {
+                            log::error!("incorrect keccak_code_hash")
+                        }
+                    }
+                    if let Some(storage) = account_post_state.storage.clone() {
+                        let k = storage.key.unwrap();
+                        let local_v = self.sdb.get_storage(&address, &k).1;
+                        if *local_v != storage.value.unwrap() {
+                            log::error!("incorrect storage for k = {k}");
+                        }
+                    }
+                }
+            }
+            log::trace!("revm result: {:?}", result);
+        }
+        self.set_end_block()?;
+        Ok(())
+    }
+
     fn apply_l2_trace(&mut self, block_trace: BlockTrace, is_last: bool) -> Result<(), Error> {
         log::trace!(
             "apply_l2_trace start, block num {:?}, is_last {is_last}",

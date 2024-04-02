@@ -80,6 +80,7 @@ impl From<&BlockTrace> for EthBlock {
             txs.push(tx)
         }
         EthBlock {
+            author: b.coinbase.address,
             transactions: txs,
             difficulty: 0.into(),
             ..b.header.clone()

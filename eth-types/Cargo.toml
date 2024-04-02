@@ -24,6 +24,9 @@ strum_macros.workspace = true
 strum.workspace = true
 hash-circuit.workspace = true
 
+# revm
+revm = { path = "../../revm/crates/revm" }
+
 [features]
 default = ["warn-unimplemented"]
 warn-unimplemented = []

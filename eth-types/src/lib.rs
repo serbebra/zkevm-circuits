@@ -27,6 +27,7 @@ pub mod bytecode;
 pub mod evm_types;
 pub mod geth_types;
 pub mod l2_types;
+mod revm;
 pub mod sign_types;
 
 use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};

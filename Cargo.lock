@@ -545,6 +545,7 @@ dependencies = [
  "pretty_assertions",
  "rand",
  "rayon",
+ "revm 2.3.1",
  "revm-precompile",
  "serde",
  "serde_json",
@@ -1588,6 +1589,7 @@ dependencies = [
  "num-bigint",
  "poseidon-circuit",
  "regex",
+ "revm 2.3.1",
  "serde",
  "serde_json",
  "serde_with",
@@ -3022,9 +3024,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.20"
+version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
+checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
 name = "log-mdc"
@@ -4075,6 +4077,24 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "2.3.1"
+dependencies = [
+ "arrayref",
+ "auto_impl",
+ "bytes",
+ "halo2_proofs",
+ "hashbrown 0.13.2",
+ "log",
+ "num_enum 0.5.11",
+ "poseidon-circuit",
+ "primitive-types",
+ "revm_precompiles 1.1.2",
+ "rlp",
+ "sha3 0.10.8",
+]
+
+[[package]]
+name = "revm"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73d84c8f9836efb0f5f5f8de4700a953c4e1f3119e5cfcb0aad8e5be73daf991"
 dependencies = [
@@ -4084,7 +4104,7 @@ dependencies = [
  "hashbrown 0.13.2",
  "num_enum 0.5.11",
  "primitive-types",
- "revm_precompiles",
+ "revm_precompiles 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rlp",
  "sha3 0.10.8",
 ]
@@ -4121,6 +4141,22 @@ dependencies = [
  "rlp",
  "ruint",
  "sha3 0.10.8",
+]
+
+[[package]]
+name = "revm_precompiles"
+version = "1.1.2"
+dependencies = [
+ "bytes",
+ "hashbrown 0.13.2",
+ "num",
+ "once_cell",
+ "primitive-types",
+ "ripemd",
+ "secp256k1 0.24.3",
+ "sha2",
+ "sha3 0.10.8",
+ "substrate-bn",
 ]
 
 [[package]]
@@ -4710,7 +4746,7 @@ dependencies = [
  "num-traits",
  "poseidon",
  "rand",
- "revm",
+ "revm 2.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rlp",
  "rustc-hash",
  "serde",

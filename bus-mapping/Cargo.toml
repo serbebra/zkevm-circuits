@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 eth-types = { path = "../eth-types" }
 gadgets = { path = "../gadgets" }
-mpt-zktrie = {path = "../zktrie"}
+mpt-zktrie = { path = "../zktrie" }
 mock = { path = "../mock", optional = true }
 
 ethers-core.workspace = true
@@ -27,6 +27,9 @@ strum_macros.workspace = true
 
 # precompile related crates
 revm-precompile = { git = "https://github.com/scroll-tech/revm", branch = "scroll-fix" }
+
+# revm
+revm = { path = "../../revm/crates/revm" }
 
 [dev-dependencies]
 hex.workspace = true

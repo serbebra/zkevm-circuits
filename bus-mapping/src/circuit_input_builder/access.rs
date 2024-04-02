@@ -52,8 +52,9 @@ pub struct AccessSet {
 }
 
 impl AccessSet {
+    /// Add an account to AccessSet
     #[inline(always)]
-    pub(crate) fn add_account(&mut self, address: Address) {
+    pub fn add_account(&mut self, address: Address) {
         self.state.entry(address).or_default();
     }
 
@@ -87,7 +88,8 @@ impl AccessSet {
         }
     }
 
-    pub(crate) fn extend_from_traces(&mut self, traces: &HashMap<Address, GethPrestateTrace>) {
+    /// Extend the AccessSet from a
+    pub fn extend_from_traces(&mut self, traces: &HashMap<Address, GethPrestateTrace>) {
         for (address, trace) in traces.iter() {
             self.add_account(*address);
             self.add_code(*address);

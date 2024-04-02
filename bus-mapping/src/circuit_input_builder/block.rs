@@ -13,7 +13,7 @@ use eth_types::{Address, Hash, ToWord, Word};
 use std::collections::{BTreeMap, HashMap};
 
 /// Context of a [`Block`] which can mutate in a [`Transaction`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockContext {
     /// Used to track the global counter in every operation in the block.
     /// Contains the next available value.

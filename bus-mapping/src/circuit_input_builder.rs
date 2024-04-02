@@ -29,8 +29,9 @@ use eth_types::{
     self,
     evm_types::GasCost,
     geth_types,
+    geth_types::GethData,
     sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
-    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256,
+    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256, U256,
 };
 use ethers_providers::JsonRpcClient;
 pub use execution::{
@@ -39,6 +40,7 @@ pub use execution::{
     NumberOrHash, PrecompileEvent, PrecompileEvents, N_BYTES_PER_PAIR, N_PAIRING_PER_OP, SHA256,
 };
 use hex::decode_to_slice;
+use revm::{BlockEnv, CreateScheme, Env, TransactTo, TxEnv};
 
 use eth_types::sign_types::get_dummy_tx;
 use ethers_core::utils::keccak256;
@@ -169,7 +171,7 @@ impl Default for CircuitsParams {
 /// [`OpcodeId`](crate::evm::OpcodeId)s used in each `ExecTrace` step so that
 /// the State Proof witnesses are already generated on a structured manner and
 /// ready to be added into the State circuit.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CircuitInputBuilder {
     /// StateDB key-value DB
     pub sdb: StateDB,
@@ -351,7 +353,20 @@ impl<'a> CircuitInputBuilder {
                     let local_acc = self.sdb.get_account(&address).1;
                     log::trace!("local acc {local_acc:?}, trace acc {account_post_state:?}");
                     if local_acc.balance != account_post_state.balance.unwrap() {
-                        log::error!("incorrect balance")
+                        let local = local_acc.balance;
+                        let post = account_post_state.balance.unwrap();
+                        log::error!(
+                            "incorrect balance, local {} {} post {} (diff {}{})",
+                            local,
+                            if local < post { "<" } else { ">" },
+                            post,
+                            if local < post { "-" } else { "+" },
+                            if local < post {
+                                post - local
+                            } else {
+                                local - post
+                            }
+                        )
                     }
                     if local_acc.nonce != account_post_state.nonce.unwrap().into() {
                         log::error!("incorrect nonce")
