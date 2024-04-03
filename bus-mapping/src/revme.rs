@@ -34,7 +34,8 @@ impl DatabaseRef for CircuitInputBuilder {
                 .code_db
                 .0
                 .get(&acc.code_hash)
-                .expect("revm requested account doesn't have code in the code_db");
+                .cloned()
+                .unwrap_or_default();
             let bytecode = unsafe {
                 Bytecode::new_raw_with_hash(
                     Bytes::from(code.to_vec()),

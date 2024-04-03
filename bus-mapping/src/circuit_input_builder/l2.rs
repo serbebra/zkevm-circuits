@@ -121,7 +121,8 @@ fn trace_code(
     });
 }
 
-fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) -> Result<(), Error> {
+/// update codedb
+pub fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) -> Result<(), Error> {
     log::debug!("build_codedb for block {:?}", block.header.number);
     for (er_idx, execution_result) in block.execution_results.iter().enumerate() {
         if let Some(bytecode) = &execution_result.byte_code {
@@ -173,16 +174,20 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) -> Result<
                     // - a call to an empty account
                     // - a call that !is_precheck_ok
                     if next_step.depth != step.depth + 1 {
-                        log::trace!("skip call step due to no inner step, curr: {step:?}, next: {next_step:?}");
+                        log::trace!(
+                            "skip call step due to no inner step, curr: {}, next: {}",
+                            step.op,
+                            next_step.op
+                        );
                         continue;
                     }
                 } else {
                     // this is the final step, no inner steps
-                    log::trace!("skip call step due this is the final step: {step:?}");
+                    log::trace!("skip call step due this is the final step: {}", step.op);
                     continue;
                 }
                 let call = call_trace.pop();
-                log::trace!("call_trace pop: {call:?}, current step: {step:?}");
+                log::trace!("call_trace pop: {call:?}, current step: {}", step.op);
                 call
             } else {
                 None

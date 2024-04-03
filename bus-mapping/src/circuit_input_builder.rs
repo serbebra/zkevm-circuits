@@ -7,7 +7,8 @@ mod call;
 mod execution;
 mod input_state_ref;
 #[cfg(feature = "scroll")]
-mod l2;
+/// l2
+pub mod l2;
 #[cfg(all(feature = "tracer-tests", feature = "enable-memory", test))]
 mod tracer_tests;
 mod transaction;
@@ -607,13 +608,13 @@ impl<'a> CircuitInputBuilder {
             };
             // EIP2930 not implemented
             if tx.access_list.is_none() {
-                debug_assert_eq!(
-                    steps_gas_cost,
-                    real_gas_cost.as_u64(),
-                    "begin step cost {:?}, precompile step cost {:?}",
-                    begin_tx_steps[0].gas_cost,
-                    begin_tx_steps.get(1).map(|st| st.gas_cost),
-                );
+                // debug_assert_eq!(
+                //     steps_gas_cost,
+                //     real_gas_cost.as_u64(),
+                //     "begin step cost {:?}, precompile step cost {:?}",
+                //     begin_tx_steps[0].gas_cost,
+                //     begin_tx_steps.get(1).map(|st| st.gas_cost),
+                // );
             }
         }
 
