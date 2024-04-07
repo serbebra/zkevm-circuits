@@ -174,7 +174,7 @@ pub fn recover_pk2(
     let mut v = v;
     if let Some(sig_normalized) = recoverable_sig.normalize_s() {
         recoverable_sig = sig_normalized;
-        v = v ^ 1;
+        v ^= 1;
     };
     let recovery_id = RecoveryId::from_byte(v).expect("normalized recovery id always valid");
     let verify_key =
