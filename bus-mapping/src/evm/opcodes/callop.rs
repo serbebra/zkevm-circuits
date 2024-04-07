@@ -263,6 +263,9 @@ impl<const N_ARGS: usize> Opcode for CallOpcode<N_ARGS> {
             (false, true, _) => {
                 let code_address = code_address.unwrap();
                 let precompile_call: PrecompileCalls = code_address.0[19].into();
+                if cfg!(feature = "strict-ccc") && precompile_call == PrecompileCalls::Sha256 {
+                    panic!("skip sha256 tx {:?}", state.tx.hash);
+                }
 
                 // get the result of the precompile call.
                 // For failed call, it will cost all gas provided.
