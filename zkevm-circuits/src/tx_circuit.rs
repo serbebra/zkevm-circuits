@@ -85,6 +85,11 @@ pub const TX_HASH_OFFSET: usize = 21;
 /// Offset of ChainID tag in the tx table
 pub const CHAIN_ID_OFFSET: usize = 12;
 
+// CHUNK_TXBYTES_BLOB_LIMIT =
+//      (BLOB_WIDTH * N_BYTES_31) - (N_ROWS_NUM_CHUNKS + N_ROWS_CHUNK_SIZES)
+// N_ROWS_CHUNK_SIZES = MAX_AGG_SNARKS * 4
+const CHUNK_TXBYTES_BLOB_LIMIT: usize = (4096 * 31) - (2 + 15 * 4);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum LookupCondition {
     // lookup into tx table
@@ -2726,11 +2731,27 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
         // Since each call data byte at least takes one row in RLP circuit.
         // For L2 tx, each call data byte takes two row in RLP circuit.
         assert!(block.circuits_params.max_calldata < block.circuits_params.max_rlp_rows);
+
+        // Calculate blob capacity usage
+        let chunk_txbytes_len = block
+            .txs
+            .iter()
+            .map(|tx| {
+                if tx.is_chunk_l2_tx() {
+                    tx.rlp_signed.len()
+                } else {
+                    0
+                }
+            })
+            .sum::<usize>();
+        let blob_usage: f32 = chunk_txbytes_len as f32 / CHUNK_TXBYTES_BLOB_LIMIT as f32;
+
         let tx_usage = (block.txs.iter().map(|tx| tx.call_data.len()).sum::<usize>()) as f32
             / block.circuits_params.max_calldata as f32;
 
         (
-            (tx_usage * block.circuits_params.max_vertical_circuit_rows as f32).ceil() as usize,
+            (tx_usage.max(blob_usage) * block.circuits_params.max_vertical_circuit_rows as f32)
+                .ceil() as usize,
             Self::min_num_rows(
                 block.circuits_params.max_txs,
                 block.circuits_params.max_calldata,
