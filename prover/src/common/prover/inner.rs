@@ -34,7 +34,9 @@ impl Prover {
             "gen_inner_snark vk transcript_repr {:?}",
             pk.get_vk().transcript_repr()
         );
+        let t = std::time::Instant::now();
         let snark = gen_snark_shplonk(params, pk, circuit, &mut rng, None::<String>);
+        log::info!("inner snark generation took {:?}", t.elapsed());
 
         Ok(snark)
     }
