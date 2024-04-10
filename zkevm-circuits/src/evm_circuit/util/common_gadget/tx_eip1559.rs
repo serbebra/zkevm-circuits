@@ -242,13 +242,13 @@ mod test {
 
     #[test]
     fn test_eip1559_tx_for_equal_balance() {
-        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(2), Some(gwei(2))).unwrap();
+        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(2)).unwrap();
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
 
     #[test]
     fn test_eip1559_tx_for_less_balance() {
-        let res = build_ctx(gwei(79_999), gwei(2), gwei(2), None);
+        let res = build_ctx(gwei(79_999), gwei(2), gwei(2));
 
         #[cfg(not(feature = "scroll"))]
         let expected_err = "Failed to run Trace, err: Failed to apply config.Transactions[0]: insufficient funds for gas * price + value: address 0xEeFca179F40D3B8b3D941E6A13e48835a3aF8241 have 79999000000000 want 80000000000000";
@@ -267,21 +267,21 @@ mod test {
 
     #[test]
     fn test_eip1559_tx_for_more_balance() {
-        let ctx = build_ctx(gwei(80_001), gwei(2), gwei(2), Some(gwei(2))).unwrap();
+        let ctx = build_ctx(gwei(80_001), gwei(2), gwei(2)).unwrap();
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
 
     #[test]
     fn test_eip1559_tx_for_gas_fee_cap_gt_gas_tip_cap() {
         // Should be successful if `max_fee_per_gas > max_priority_fee_per_gas`.
-        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(1), Some(gwei(1))).unwrap();
+        let ctx = build_ctx(gwei(80_000), gwei(2), gwei(1)).unwrap();
 
         CircuitTestBuilder::new_from_test_ctx(ctx).run();
     }
 
     #[test]
     fn test_eip1559_tx_for_gas_fee_cap_lt_gas_tip_cap() {
-        let res = build_ctx(gwei(80_000), gwei(1), gwei(2), None);
+        let res = build_ctx(gwei(80_000), gwei(1), gwei(2));
 
         #[cfg(not(feature = "scroll"))]
         let expected_err = "Failed to run Trace, err: Failed to apply config.Transactions[0]: max priority fee per gas higher than max fee per gas: address 0xEeFca179F40D3B8b3D941E6A13e48835a3aF8241, maxPriorityFeePerGas: 2000000000, maxFeePerGas: 1000000000";
@@ -302,7 +302,6 @@ mod test {
         sender_balance: Word,
         max_fee_per_gas: Word,
         max_priority_fee_per_gas: Word,
-        gas_price: Option<Word>,
     ) -> Result<TestContext<2, 1>, Error> {
         TestContext::new(
             None,
@@ -320,8 +319,7 @@ mod test {
                     .value(gwei(20_000))
                     .max_fee_per_gas(max_fee_per_gas)
                     .max_priority_fee_per_gas(max_priority_fee_per_gas)
-                    .transaction_type(2) // Set tx type to EIP-1559.
-                    .gas_price(gas_price.unwrap_or_default());
+                    .transaction_type(2); // Set tx type to EIP-1559.
             },
             |block, _tx| block.number(0xcafeu64),
         )
