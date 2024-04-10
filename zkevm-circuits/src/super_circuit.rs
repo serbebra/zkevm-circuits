@@ -120,7 +120,7 @@ pub struct SuperCircuitConfig<F: Field> {
     tx_circuit: TxCircuitConfig<F>,
     sig_circuit: SigCircuitConfig<F>,
     modexp_circuit: ModExpCircuitConfig,
-    ecc_circuit: EccCircuitConfig<F>,
+    ecc_circuit: Option<EccCircuitConfig<F>>,
     sha256_circuit: SHA256CircuitConfig,
     #[cfg(not(feature = "poseidon-codehash"))]
     bytecode_circuit: BytecodeCircuitConfig<F>,
@@ -373,14 +373,20 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         );
         log_circuit_info(meta, "sig circuit");
 
-        let ecc_circuit = EccCircuitConfig::new(
-            meta,
-            EccCircuitConfigArgs {
-                ecc_table,
-                challenges: challenges_expr,
-            },
-        );
-        log_circuit_info(meta, "ecc circuit");
+        #[cfg(feature = "disable_ecc")]
+        let ecc_circuit = None;
+        #[cfg(not(feature = "disable_ecc"))]
+        let ecc_circuit = {
+            let ecc_circuit = EccCircuitConfig::new(
+                meta,
+                EccCircuitConfigArgs {
+                    ecc_table,
+                    challenges: challenges_expr,
+                },
+            );
+            log_circuit_info(meta, "ecc circuit");
+            Some(ecc_circuit)
+        };
 
         #[cfg(feature = "onephase")]
         if meta.max_phase() != 0 {
@@ -461,7 +467,7 @@ pub struct SuperCircuit<
     /// Modexp Circuit
     pub modexp_circuit: ModExpCircuit<F>,
     /// Ecc Circuit
-    pub ecc_circuit: EccCircuit<F, 9>,
+    pub ecc_circuit: Option<EccCircuit<F, 9>>,
     /// Rlp Circuit
     pub rlp_circuit: RlpCircuit<F, Transaction>,
     /// Mpt Circuit
@@ -605,7 +611,11 @@ impl<
         let poseidon_circuit = PoseidonCircuit::new_from_block(block);
         let rlp_circuit = RlpCircuit::new_from_block(block);
         let sig_circuit = SigCircuit::new_from_block(block);
-        let ecc_circuit = EccCircuit::new_from_block(block);
+        #[cfg(feature = "disable_ecc")]
+        let ecc_circuit = None;
+        #[cfg(not(feature = "disable_ecc"))]
+        let ecc_circuit = Some(EccCircuit::new_from_block(block));
+
         #[cfg(feature = "zktrie")]
         let mpt_circuit = MptCircuit::new_from_block(block);
         SuperCircuit::<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS> {
@@ -696,8 +706,13 @@ impl<
         self.sig_circuit
             .synthesize_sub(&config.sig_circuit, challenges, layouter)?;
         log::debug!("assigning ecc_circuit");
-        self.ecc_circuit
-            .synthesize_sub(&config.ecc_circuit, challenges, layouter)?;
+        if self.ecc_circuit.is_some() {
+            self.ecc_circuit.clone().unwrap().synthesize_sub(
+                config.ecc_circuit.as_ref().unwrap(),
+                challenges,
+                layouter,
+            )?;
+        }
         log::debug!("assigning modexp_circuit");
         self.modexp_circuit
             .synthesize_sub(&config.modexp_circuit, challenges, layouter)?;
