@@ -282,7 +282,7 @@ impl CircuitInputBuilder {
                     if local_acc.balance != account_post_state.balance.unwrap() {
                         let local = local_acc.balance;
                         let post = account_post_state.balance.unwrap();
-                        log::error!(
+                        panic!(
                             "incorrect balance, local {:#x} {} post {:#x} (diff {}{:#x})",
                             local,
                             if local < post { "<" } else { ">" },
@@ -296,33 +296,33 @@ impl CircuitInputBuilder {
                         )
                     }
                     if local_acc.nonce != account_post_state.nonce.unwrap().into() {
-                        log::error!("incorrect nonce")
+                        panic!("incorrect nonce")
                     }
                     let p_hash = account_post_state.poseidon_code_hash.unwrap();
                     if p_hash.is_zero() {
                         if !local_acc.is_empty() {
-                            log::error!("incorrect poseidon_code_hash")
+                            panic!("incorrect poseidon_code_hash")
                         }
                     } else {
                         if local_acc.code_hash != p_hash {
-                            log::error!("incorrect poseidon_code_hash")
+                            panic!("incorrect poseidon_code_hash")
                         }
                     }
                     let k_hash = account_post_state.keccak_code_hash.unwrap();
                     if k_hash.is_zero() {
                         if !local_acc.is_empty() {
-                            log::error!("incorrect keccak_code_hash")
+                            panic!("incorrect keccak_code_hash")
                         }
                     } else {
                         if local_acc.keccak_code_hash != k_hash {
-                            log::error!("incorrect keccak_code_hash")
+                            panic!("incorrect keccak_code_hash")
                         }
                     }
                     if let Some(storage) = account_post_state.storage.clone() {
                         let k = storage.key.unwrap();
                         let local_v = self.sdb.get_storage(&address, &k).1;
                         if *local_v != storage.value.unwrap() {
-                            log::error!("incorrect storage for k = {k}");
+                            panic!("incorrect storage for k = {k}");
                         }
                     }
                 }
