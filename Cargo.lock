@@ -599,7 +599,7 @@ dependencies = [
  "mock",
  "mpt-zktrie",
  "num",
- "poseidon-circuit",
+ "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=main)",
  "pretty_assertions",
  "rand",
  "rayon",
@@ -1658,7 +1658,7 @@ dependencies = [
  "itertools 0.11.0",
  "num",
  "num-bigint",
- "poseidon-circuit",
+ "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=main)",
  "regex",
  "revm 2.3.1",
  "serde",
@@ -2488,7 +2488,7 @@ dependencies = [
  "log",
  "num-bigint",
  "num-traits",
- "poseidon-circuit",
+ "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=main)",
  "rand",
  "rand_chacha",
  "serde",
@@ -3244,7 +3244,7 @@ dependencies = [
  "hex",
  "log",
  "num-bigint",
- "poseidon-circuit",
+ "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=main)",
  "serde",
  "serde_json",
  "zktrie",
@@ -3834,6 +3834,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "poseidon-circuit"
+version = "0.1.0"
+source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=scroll-dev-1201#c6f058bcf3bb0c7933d1979563c414f5cc480f25"
+dependencies = [
+ "bitvec",
+ "ff 0.13.0",
+ "halo2_proofs",
+ "lazy_static",
+ "log",
+ "rand",
+ "rand_xorshift",
+ "thiserror",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4176,7 +4191,7 @@ dependencies = [
  "hashbrown 0.13.2",
  "log",
  "num_enum 0.5.11",
- "poseidon-circuit",
+ "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=scroll-dev-1201)",
  "primitive-types",
  "revm_precompiles 1.1.2",
  "rlp",
@@ -6143,7 +6158,7 @@ dependencies = [
  "num",
  "num-bigint",
  "paste",
- "poseidon-circuit",
+ "poseidon-circuit 0.1.0 (git+https://github.com/scroll-tech/poseidon-circuit.git?branch=main)",
  "pretty_assertions",
  "rand",
  "rand_chacha",

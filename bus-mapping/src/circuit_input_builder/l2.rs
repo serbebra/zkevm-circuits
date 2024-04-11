@@ -8,7 +8,6 @@ use crate::{
 use eth_types::{
     self,
     evm_types::OpcodeId,
-    geth_types::GethData,
     l2_types::{BlockTrace, EthBlock, ExecStep, StorageTrace},
     Address, ToWord, Word, H256, U256,
 };

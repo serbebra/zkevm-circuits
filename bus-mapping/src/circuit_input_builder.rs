@@ -30,9 +30,9 @@ use eth_types::{
     self,
     evm_types::GasCost,
     geth_types,
-    geth_types::{TxType, GethData},
+    geth_types::TxType,
     sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
-    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256, U256,
+    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256,
 };
 use ethers_providers::JsonRpcClient;
 pub use execution::{
@@ -41,7 +41,6 @@ pub use execution::{
     NumberOrHash, PrecompileEvent, PrecompileEvents, N_BYTES_PER_PAIR, N_PAIRING_PER_OP, SHA256,
 };
 use hex::decode_to_slice;
-use revm::{BlockEnv, CreateScheme, Env, TransactTo, TxEnv};
 
 use eth_types::sign_types::get_dummy_tx;
 use ethers_core::utils::keccak256;
@@ -608,13 +607,13 @@ impl<'a> CircuitInputBuilder {
             };
             // EIP2930 not implemented
             if tx.access_list.is_none() {
-                // debug_assert_eq!(
-                //     steps_gas_cost,
-                //     real_gas_cost.as_u64(),
-                //     "begin step cost {:?}, precompile step cost {:?}",
-                //     begin_tx_steps[0].gas_cost,
-                //     begin_tx_steps.get(1).map(|st| st.gas_cost),
-                // );
+                debug_assert_eq!(
+                    steps_gas_cost,
+                    real_gas_cost.as_u64(),
+                    "begin step cost {:?}, precompile step cost {:?}",
+                    begin_tx_steps[0].gas_cost,
+                    begin_tx_steps.get(1).map(|st| st.gas_cost),
+                );
             }
         }
 

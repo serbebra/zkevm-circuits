@@ -1,10 +1,7 @@
-use crate::{
-    circuit_input_builder::CircuitInputBuilder,
-    state_db::{Account, EMPTY_CODE_HASH_LE},
-};
-use eth_types::{l2_types::BlockTrace, H160, H256, U256};
+use crate::{circuit_input_builder::CircuitInputBuilder, state_db::Account};
+use eth_types::{H160, H256, U256};
 use log::Level;
-use revm::{db::DatabaseRef, AccountInfo, BlockEnv, Bytecode, Database, DatabaseCommit, Env};
+use revm::{db::DatabaseRef, AccountInfo, Bytecode, Database, DatabaseCommit};
 use revm_precompile::{Bytes, HashMap};
 use std::convert::Infallible;
 

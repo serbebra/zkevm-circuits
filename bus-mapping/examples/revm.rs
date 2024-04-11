@@ -1,23 +1,17 @@
 use bus_mapping::{
-    circuit_input_builder,
     circuit_input_builder::{
-        l2::update_codedb, AccessSet, Block, BlockContext, BlockHead, CircuitInputBuilder,
-        CircuitsParams,
+        l2::update_codedb, Block, BlockContext, BlockHead, CircuitInputBuilder, CircuitsParams,
     },
     state_db,
     state_db::{CodeDB, StateDB},
-    Error,
 };
 use eth_types::{
-    evm_types::OpcodeId,
     l2_types::{BlockTrace, EthBlock, StorageTrace},
-    Address, GethExecTrace, ToWord, Word, H256, U256,
+    Address, ToWord, Word,
 };
-use ethers_core::{types::Bytes, utils::keccak256};
+use ethers_core::types::Bytes;
 use log::trace;
 use mpt_zktrie::state::ZktrieState;
-use serde::Deserialize;
-use std::collections::HashMap;
 
 fn main() {
     env_logger::init();
@@ -34,27 +28,7 @@ fn main() {
         let path = format!("/Users/hhq/workspace/scroll-prover/integration/tests/extra_traces/batch_24/chunk_115/block_{i}.json");
         let trace = std::fs::read_to_string(path).unwrap();
 
-        let mut l2_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
-        for trace in l2_trace.execution_results.iter_mut() {
-            for step in trace.exec_steps.iter_mut() {
-                if matches!(step.op, OpcodeId::SLOAD | OpcodeId::SSTORE) {
-                    let proofs = step
-                        .extra_data
-                        .as_ref()
-                        .unwrap()
-                        .proof_list
-                        .as_ref()
-                        .unwrap();
-                    let mut storage = HashMap::new();
-                    for proof in proofs.iter() {
-                        if let Some(ref s) = proof.storage {
-                            storage.insert(s.key.unwrap(), s.value.unwrap());
-                        }
-                    }
-                    step.storage = Some(storage);
-                }
-            }
-        }
+        let l2_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
 
         let chain_id = l2_trace.chain_id;
         let old_root = l2_trace.storage_trace.root_before;
@@ -102,7 +76,7 @@ fn main() {
         builder_block.chain_id = chain_id;
         builder_block.prev_state_root = old_root.to_word();
         builder_block.start_l1_queue_index = l2_trace.start_l1_queue_index;
-        let mut builder = CircuitInputBuilder {
+        let builder = CircuitInputBuilder {
             sdb,
             code_db,
             block: builder_block,
