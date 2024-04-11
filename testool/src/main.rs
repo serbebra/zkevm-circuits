@@ -135,7 +135,7 @@ fn run_single_test(test: StateTest, circuits_config: CircuitsConfig) -> Result<(
     log::info!("run single test {}", &test);
     let circuits_config = CircuitsConfig {
         verbose: true,
-        super_circuit: circuits_config.super_circuit,
+        ..circuits_config
     };
     //let trace = geth_trace(test.clone())?;
     //crate::utils::print_trace(trace)?;
@@ -155,8 +155,10 @@ fn go() -> Result<()> {
     let args = Args::parse();
 
     let mut circuits_config = CircuitsConfig::default();
-    if args.circuits == Some(Circuits::sc) {
-        circuits_config.super_circuit = true;
+    match args.circuits {
+        Some(Circuits::sc) => circuits_config.super_circuit = true,
+        None => circuits_config.skip = true,
+        _ => (),
     }
 
     if let Some(oneliner) = &args.oneliner {

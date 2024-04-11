@@ -59,6 +59,8 @@ pub enum StateTestError {
     Exception { expected: bool, found: String },
     #[error("CircuitOverflow(circuit:{circuit:?}, needed:{needed:?})")]
     CircuitOverflow { circuit: String, needed: usize },
+    #[error("EndStateRootMismatch(revm:{revm:?}, bus:{bus:?}, trace:{trace:?})")]
+    EndStateRootMismatch { revm: U256, bus: U256, trace: U256 },
 }
 
 impl StateTestError {
@@ -81,6 +83,7 @@ impl StateTestError {
 
 #[derive(Default, Debug, Clone)]
 pub struct CircuitsConfig {
+    pub skip: bool,
     pub super_circuit: bool,
     pub verbose: bool,
 }
@@ -285,6 +288,15 @@ fn trace_config_to_witness_block_l2(
         }
     };
 
+    let root_after = block_trace.storage_trace.root_after.to_word();
+
+    let mut revm_builder = CircuitInputBuilder::new_revm(&block_trace, circuits_params);
+    revm_builder.handle_block_revm(&block_trace).unwrap();
+    log::trace!(
+        "revm: end_state_root={:#x}",
+        revm_builder.block.end_state_root()
+    );
+
     let geth_traces = block_trace
         .execution_results
         .clone()
@@ -309,12 +321,25 @@ fn trace_config_to_witness_block_l2(
     builder
         .finalize_building()
         .expect("could not finalize building block");
+    log::trace!("bus: end_state_root={:#x}", builder.block.end_state_root());
+
+    if builder.block.end_state_root() != revm_builder.block.end_state_root()
+        || builder.block.end_state_root() != root_after
+    {
+        return Err(StateTestError::EndStateRootMismatch {
+            revm: revm_builder.block.end_state_root(),
+            bus: builder.block.end_state_root(),
+            trace: root_after,
+        });
+    }
+
     let mut block =
         zkevm_circuits::witness::block_convert(&builder.block, &builder.code_db).unwrap();
     zkevm_circuits::witness::block_apply_mpt_state(
         &mut block,
         builder.mpt_init_state.as_ref().unwrap(),
     );
+
     // as mentioned above, we cannot fit the trace into circuit
     // stop here
     if exceed_max_steps != 0 {
@@ -606,6 +631,12 @@ pub fn run_test(
         circuits_params,
         circuits_config.verbose,
     )?;
+
+    // skip circuit test if needed
+    if circuits_config.skip {
+        log::info!("{test_id}: run-test END (skip circuit test)");
+        return Ok(());
+    }
 
     let (witness_block, mut builder) = match result {
         Some((witness_block, builder)) => (witness_block, builder),

@@ -7,7 +7,7 @@ use bus_mapping::{
 };
 use eth_types::{
     l2_types::{BlockTrace, EthBlock, StorageTrace},
-    Address, ToWord, Word,
+    Address, GethExecTrace, ToWord, Word,
 };
 use ethers_core::types::Bytes;
 use log::trace;
@@ -29,6 +29,7 @@ fn main() {
         let trace = std::fs::read_to_string(path).unwrap();
 
         let l2_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
+        let root_after = l2_trace.storage_trace.root_after.to_word();
 
         let chain_id = l2_trace.chain_id;
         let old_root = l2_trace.storage_trace.root_before;
@@ -76,43 +77,33 @@ fn main() {
         builder_block.chain_id = chain_id;
         builder_block.prev_state_root = old_root.to_word();
         builder_block.start_l1_queue_index = l2_trace.start_l1_queue_index;
-        let builder = CircuitInputBuilder {
+        let mut revm_builder = CircuitInputBuilder {
             sdb,
             code_db,
             block: builder_block,
             block_ctx: BlockContext::new(),
             mpt_init_state: Some(mpt_init_state),
         };
-        let mut revm_builder = builder.clone();
         revm_builder.handle_block_revm(&l2_trace).unwrap();
         log::trace!(
-            "revm: end_state_root={:#x} withdraw_root={:#x}",
-            revm_builder.block.end_state_root(),
-            revm_builder.block.withdraw_root
+            "revm: end_state_root={:#x}",
+            revm_builder.block.end_state_root()
         );
 
-        // let geth_traces = block_trace
-        //     .execution_results
-        //     .clone()
-        //     .into_iter()
-        //     .map(GethExecTrace::from)
-        //     .collect::<Vec<_>>();
-        // let block = builder.block.clone();
-        // builder.handle_block(&block, &geth_traces).unwrap();
-        // log::trace!(
-        //     "bus: end_state_root={:#x} withdraw_root={:#x}",
-        //     builder.block.end_state_root(),
-        //     builder.block.withdraw_root
-        // );
-        //
-        // assert_eq!(
-        //     revm_builder.block.end_state_root(),
-        //     builder.block.end_state_root()
-        // );
-        // assert_eq!(
-        //     builder.block.end_state_root(),
-        //     block_trace.storage_trace.root_after.to_word()
-        // );
+        let mut builder =
+            CircuitInputBuilder::new_from_l2_trace(circuits_params, l2_trace, false, false)
+                .expect("could not handle block tx");
+        builder
+            .finalize_building()
+            .expect("could not finalize building block");
+
+        log::trace!("bus: end_state_root={:#x}", builder.block.end_state_root());
+
+        assert_eq!(
+            revm_builder.block.end_state_root(),
+            builder.block.end_state_root()
+        );
+        assert_eq!(builder.block.end_state_root(), root_after);
     }
 }
 

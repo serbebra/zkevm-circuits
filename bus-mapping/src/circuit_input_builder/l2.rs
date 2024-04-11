@@ -329,7 +329,6 @@ impl CircuitInputBuilder {
             }
             log::trace!("revm result: {:?}", result);
         }
-        self.set_end_block()?;
         Ok(())
     }
 
