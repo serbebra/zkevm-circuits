@@ -30,7 +30,7 @@ use eth_types::{
     self,
     evm_types::GasCost,
     geth_types,
-    geth_types::GethData,
+    geth_types::{TxType, GethData},
     sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
     Address, GethExecTrace, ToBigEndian, ToWord, Word, H256, U256,
 };
@@ -834,6 +834,10 @@ fn keccak_inputs_pi_circuit(
         "start_l1_queue_index in keccak_inputs: {}",
         start_l1_queue_index
     );
+    let l1transactions = transactions
+        .iter()
+        .filter(|&tx| tx.tx_type == TxType::L1Msg)
+        .collect::<Vec<&Transaction>>();
     let data_bytes = iter::empty()
         .chain(block_headers.iter().flat_map(|(&block_num, block)| {
             let num_l2_txs = transactions
@@ -868,13 +872,25 @@ fn keccak_inputs_pi_circuit(
                 .chain(num_txs.to_be_bytes())
         }))
         // Tx Hashes
-        .chain(transactions.iter().flat_map(|tx| tx.hash.to_fixed_bytes()))
+        .chain(
+            l1transactions
+                .iter()
+                .flat_map(|&tx| tx.hash.to_fixed_bytes()),
+        )
         .collect::<Vec<u8>>();
     let data_hash = H256(keccak256(&data_bytes));
     log::debug!(
         "chunk data hash: {}",
         hex::encode(data_hash.to_fixed_bytes())
     );
+
+    let chunk_txbytes = transactions
+        .iter()
+        .filter(|&tx| tx.tx_type != TxType::L1Msg)
+        .flat_map(|tx| tx.rlp_bytes.clone())
+        .collect::<Vec<u8>>();
+    let chunk_txbytes_hash = H256(keccak256(chunk_txbytes));
+
     let after_state_root = block_headers
         .last_key_value()
         .map(|(_, blk)| blk.eth_block.state_root)
@@ -885,6 +901,7 @@ fn keccak_inputs_pi_circuit(
         .chain(after_state_root.to_fixed_bytes())
         .chain(withdraw_trie_root.to_be_bytes())
         .chain(data_hash.to_fixed_bytes())
+        .chain(chunk_txbytes_hash.to_fixed_bytes())
         .collect::<Vec<u8>>();
 
     vec![data_bytes, pi_bytes]
@@ -896,6 +913,7 @@ pub fn keccak_inputs_tx_circuit(txs: &[geth_types::Transaction]) -> Result<Vec<V
 
     let hash_datas = txs
         .iter()
+        .filter(|&tx| tx.tx_type == TxType::L1Msg)
         .map(|tx| tx.rlp_bytes.clone())
         .collect::<Vec<Vec<u8>>>();
     let dummy_hash_data = {
@@ -905,6 +923,13 @@ pub fn keccak_inputs_tx_circuit(txs: &[geth_types::Transaction]) -> Result<Vec<V
     };
     inputs.extend_from_slice(&hash_datas);
     inputs.push(dummy_hash_data);
+
+    let chunk_txbytes = txs
+        .iter()
+        .filter(|&tx| tx.tx_type != TxType::L1Msg)
+        .flat_map(|tx| tx.rlp_bytes.clone())
+        .collect::<Vec<u8>>();
+    inputs.push(chunk_txbytes);
 
     let sign_datas: Vec<SignData> = txs
         .iter()
