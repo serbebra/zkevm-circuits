@@ -6,6 +6,8 @@ mod blob_data;
 mod circuit;
 /// Config for aggregation circuit
 mod config;
+/// Config for decoding zstd-encoded data.
+mod decompression;
 /// config for RLC circuit
 mod rlc;
 
