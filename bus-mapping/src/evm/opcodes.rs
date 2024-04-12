@@ -42,6 +42,7 @@ mod extcodesize;
 mod gasprice;
 mod jumpi;
 mod logs;
+mod mcopy;
 mod mload;
 mod mstore;
 mod number;
