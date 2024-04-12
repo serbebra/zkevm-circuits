@@ -9,7 +9,7 @@ use eth_types::{Bytecode, GethExecStep, Word};
 use super::Opcode;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Codecopy;
+pub(crate) struct MCopy;
 
 impl Opcode for MCopy {
     fn gen_associated_ops(
@@ -51,29 +51,29 @@ fn gen_copy_event(
 ) -> Result<CopyEvent, Error> {
     let rw_counter_start = state.block_ctx.rwc;
 
-    let code_hash = state.call()?.code_hash;
+    let call_id = state.call()?.call_id;
 
     // Get low Uint64 of offset.
     let dst_addr = dest_offset.low_u64();
-    let src_addr_end = code_size;
+    let src_addr_end = src_offset.as_u64() + length;
 
     // Reset offset to Uint64 maximum value if overflow, and set source start to the
     // minimum value of offset and code size.
-    let src_addr = u64::try_from(code_offset)
+    let src_addr = u64::try_from(src_offset)
         .unwrap_or(u64::MAX)
         .min(src_addr_end);
 
     let (copy_steps, prev_bytes) =
-        state.gen_copy_steps_for_bytecode(exec_step, &bytecode, src_addr, dst_addr, length)?;
+        state.gen_copy_steps_for_memory_to_memory(exec_step, src_addr, dst_addr, length)?;
 
     Ok(CopyEvent {
         src_type: CopyDataType::Memory,
         // change src id to match memory type, call_id ?
-        src_id: NumberOrHash::Hash(code_hash),
+        src_id: NumberOrHash::Number(call_id),
         src_addr,
         src_addr_end,
         dst_type: CopyDataType::Memory,
-        dst_id: NumberOrHash::Number(state.call()?.call_id),
+        dst_id: NumberOrHash::Number(call_id),
         dst_addr,
         log_id: None,
         rw_counter_start,

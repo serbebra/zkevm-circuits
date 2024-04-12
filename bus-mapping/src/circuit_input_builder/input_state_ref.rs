@@ -2218,6 +2218,70 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok((read_steps, write_steps, prev_bytes))
     }
 
+    // generates copy steps for memory to memory case.
+    pub(crate) fn gen_copy_steps_for_memory_to_memory(
+        &mut self,
+        exec_step: &mut ExecStep,
+        src_addr: impl Into<MemoryAddress>,
+        dst_addr: impl Into<MemoryAddress>,
+        copy_length: impl Into<MemoryAddress>,
+    ) -> Result<(CopyEventSteps, CopyEventSteps, Vec<u8>), Error> {
+        let copy_length = copy_length.into().0;
+        if copy_length == 0 {
+            return Ok((vec![], vec![], vec![]));
+        }
+
+        // current call's memory
+        let memory = self.call_ctx()?.memory.clone();
+        let call_ctx = self.call_ctx_mut()?;
+        let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
+            src_addr.into().0,
+            dst_addr.into().0,
+            copy_length,
+            &memory.0,
+            &mut call_ctx.memory,
+        );
+        let read_slot_bytes = memory.read_chunk(src_range);
+
+        let read_steps = CopyEventStepsBuilder::memory_range(src_range)
+            .source(read_slot_bytes.as_slice())
+            .build();
+        let write_steps = CopyEventStepsBuilder::memory_range(dst_range)
+            .source(write_slot_bytes.as_slice())
+            .build();
+
+        let mut src_chunk_index = src_range.start_slot().0;
+        let mut dst_chunk_index = dst_range.start_slot().0;
+        let mut prev_bytes: Vec<u8> = vec![];
+        // memory word reads from source and writes to destination word
+        let call_id = self.call()?.call_id;
+        for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32))
+        {
+            self.push_op(
+                exec_step,
+                RW::READ,
+                MemoryOp::new(
+                    call_id,
+                    src_chunk_index.into(),
+                    Word::from_big_endian(read_chunk),
+                ),
+            )?;
+            trace!("read chunk: {call_id} {src_chunk_index} {read_chunk:?}");
+            src_chunk_index += 32;
+
+            self.write_chunk_for_copy_step(
+                exec_step,
+                write_chunk,
+                dst_chunk_index,
+                &mut prev_bytes,
+            )?;
+
+            dst_chunk_index += 32;
+        }
+
+        Ok((read_steps, write_steps, prev_bytes))
+    }
+
     pub(crate) fn gen_copy_steps_for_log(
         &mut self,
         exec_step: &mut ExecStep,
