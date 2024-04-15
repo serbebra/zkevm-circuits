@@ -13,12 +13,10 @@ pub use types::{ZstdTag::*, *};
 pub mod util;
 use util::{le_bits_to_value, value_bits_le};
 
-const TAG_MAX_LEN: [(ZstdTag, u64); 9] = [
+const TAG_MAX_LEN: [(ZstdTag, u64); 7] = [
     (FrameHeaderDescriptor, 1),
     (FrameContentSize, 8),
     (BlockHeader, 3),
-    (RawBlockBytes, 8388607), // (1 << 23) - 1
-    (RleBlockBytes, 8388607),
     (ZstdBlockLiteralsHeader, 5),
     (ZstdBlockLiteralsRawBytes, 1048575), // (1 << 20) - 1
     (ZstdBlockFseCode, 128),
@@ -545,7 +543,7 @@ fn process_block_zstd<F: Field>(
             rows.last().expect("last row expected to exist"),
             randomness,
             regen_size,
-            ZstdTag::RawBlockBytes,
+            ZstdTag::ZstdBlockLiteralsRawBytes,
             ZstdTag::ZstdBlockSequenceHeader,
         );
 

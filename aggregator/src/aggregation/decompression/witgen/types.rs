@@ -36,25 +36,21 @@ pub struct TagRomTableRow {
 impl TagRomTableRow {
     pub(crate) fn rows() -> Vec<Self> {
         use ZstdTag::{
-            BlockHeader, FrameContentSize, FrameHeaderDescriptor, Null, RawBlockBytes,
-            RleBlockBytes, ZstdBlockFseCode, ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes,
-            ZstdBlockLstream, ZstdBlockSequenceHeader,
+            BlockHeader, FrameContentSize, FrameHeaderDescriptor, Null,
+            ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes, ZstdBlockLstream,
+            ZstdBlockSequenceHeader, ZstdBlockFseCode, ZstdBlockSequenceData,
         };
 
         [
             (FrameHeaderDescriptor, FrameContentSize, 1),
             (FrameContentSize, BlockHeader, 8),
-            (BlockHeader, RawBlockBytes, 3),
-            (BlockHeader, RleBlockBytes, 3),
             (BlockHeader, ZstdBlockLiteralsHeader, 3),
-            (RawBlockBytes, BlockHeader, 8388607), // (1 << 23) - 1
-            (RawBlockBytes, Null, 8388607),
-            (RleBlockBytes, BlockHeader, 8388607),
-            (RleBlockBytes, Null, 8388607),
             (ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes, 5),
             (ZstdBlockLiteralsRawBytes, ZstdBlockSequenceHeader, 1048575), // (1 << 20) - 1
             (ZstdBlockLstream, ZstdBlockSequenceHeader, 1000),
             (ZstdBlockSequenceHeader, ZstdBlockFseCode, 2),
+            (ZstdBlockFseCode, ZstdBlockFseCode, 1000),
+            (ZstdBlockFseCode, ZstdBlockSequenceData, 1000),
         ]
         .map(|(tag, tag_next, max_len)| Self {
             tag,
@@ -193,10 +189,6 @@ pub enum ZstdTag {
     FrameContentSize,
     /// The block's header.
     BlockHeader,
-    /// Raw bytes.
-    RawBlockBytes,
-    /// Run-length encoded bytes.
-    RleBlockBytes,
     /// Zstd block's literals header.
     ZstdBlockLiteralsHeader,
     /// Zstd blocks might contain raw bytes.
@@ -219,8 +211,6 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => false,
             Self::BlockHeader => false,
-            Self::RawBlockBytes => true,
-            Self::RleBlockBytes => true,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
             Self::ZstdBlockFseCode => false,
@@ -237,8 +227,6 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => false,
             Self::BlockHeader => false,
-            Self::RawBlockBytes => true,
-            Self::RleBlockBytes => true,
             Self::ZstdBlockLiteralsHeader => true,
             Self::ZstdBlockLiteralsRawBytes => true,
             Self::ZstdBlockLstream => true,
@@ -255,8 +243,6 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => true,
             Self::BlockHeader => true,
-            Self::RawBlockBytes => false,
-            Self::RleBlockBytes => false,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
             Self::ZstdBlockLstream => true,
@@ -282,8 +268,6 @@ impl ToString for ZstdTag {
             Self::FrameHeaderDescriptor => "FrameHeaderDescriptor",
             Self::FrameContentSize => "FrameContentSize",
             Self::BlockHeader => "BlockHeader",
-            Self::RawBlockBytes => "RawBlockBytes",
-            Self::RleBlockBytes => "RleBlockBytes",
             Self::ZstdBlockLiteralsHeader => "ZstdBlockLiteralsHeader",
             Self::ZstdBlockLiteralsRawBytes => "ZstdBlockLiteralsRawBytes",
             Self::ZstdBlockLstream => "ZstdBlockLstream",
