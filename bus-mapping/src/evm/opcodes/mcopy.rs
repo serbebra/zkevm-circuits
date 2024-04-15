@@ -63,22 +63,23 @@ fn gen_copy_event(
         .unwrap_or(u64::MAX)
         .min(src_addr_end);
 
-    let (copy_steps, prev_bytes) =
+    let (read_steps, write_steps, prev_bytes) =
         state.gen_copy_steps_for_memory_to_memory(exec_step, src_addr, dst_addr, length)?;
 
     Ok(CopyEvent {
         src_type: CopyDataType::Memory,
-        // change src id to match memory type, call_id ?
+        // use call_id as src id for match memory type. 
         src_id: NumberOrHash::Number(call_id),
         src_addr,
         src_addr_end,
         dst_type: CopyDataType::Memory,
+        // dst_id is also call_id
         dst_id: NumberOrHash::Number(call_id),
         dst_addr,
         log_id: None,
         rw_counter_start,
-        //fetch pre write bytes of CopyBytes
-        copy_bytes: CopyBytes::new(copy_steps, None, Some(prev_bytes)),
+        // needs both read/write and prev bytes in CopyBytes
+        copy_bytes: CopyBytes::new(read_steps, Some(write_steps), Some(prev_bytes)),
         access_list: vec![],
     })
 }
@@ -107,15 +108,15 @@ mod codecopy_tests {
     };
 
     #[test]
-    fn codecopy_opcode_impl() {
+    fn mcopy_opcode_impl() {
         test_ok(0x00, 0x00, 0x40);
         test_ok(0x20, 0x40, 0xA0);
     }
 
-    fn test_ok(memory_offset: usize, code_offset: usize, copy_size: usize) {
+    fn test_ok(memory_offset: usize, dest_offset: usize, copy_size: usize) {
         let code = bytecode! {
             PUSH32(copy_size)
-            PUSH32(code_offset)
+            PUSH32(dest_offset)
             PUSH32(memory_offset)
             CODECOPY
             STOP
@@ -155,7 +156,7 @@ mod codecopy_tests {
                 ),
                 (
                     RW::READ,
-                    &StackOp::new(1, StackAddress::from(1022), Word::from(code_offset)),
+                    &StackOp::new(1, StackAddress::from(1022), Word::from(dest_offset)),
                 ),
                 (
                     RW::READ,
@@ -209,7 +210,7 @@ mod codecopy_tests {
             copy_events[0].src_id,
             NumberOrHash::Hash(CodeDB::hash(&code.to_vec()))
         );
-        assert_eq!(copy_events[0].src_addr as usize, code_offset);
+        assert_eq!(copy_events[0].src_addr as usize, dest_offset);
         assert_eq!(copy_events[0].src_addr_end as usize, code.to_vec().len());
         assert_eq!(copy_events[0].src_type, CopyDataType::Bytecode);
         assert_eq!(
@@ -221,7 +222,7 @@ mod codecopy_tests {
         assert!(copy_events[0].log_id.is_none());
 
         for (idx, (value, is_code, is_mask)) in copy_events[0].copy_bytes.bytes.iter().enumerate() {
-            let bytecode_element = code.get(code_offset + idx).unwrap_or_default();
+            let bytecode_element = code.get(dest_offset + idx).unwrap_or_default();
             if !is_mask {
                 assert_eq!(*value, bytecode_element.value);
                 assert_eq!(*is_code, bytecode_element.is_code);

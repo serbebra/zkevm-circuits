@@ -94,6 +94,8 @@ pub enum OpcodeId {
     MSIZE,
     /// `JUMPDEST`
     JUMPDEST,
+    /// `MCOPY`
+    MCOPY,
 
     // PUSHn
     /// `PUSH0`
@@ -425,7 +427,8 @@ impl OpcodeId {
             OpcodeId::JUMPI => 0x57u8,
             OpcodeId::PC => 0x58u8,
             OpcodeId::MSIZE => 0x59u8,
-            OpcodeId::JUMPDEST => 0x5bu8,
+            OpcodeId::JUMPDEST => 0x5eu8,
+            OpcodeId::MCOPY => 0x5bu8,
             OpcodeId::PUSH0 => 0x5fu8,
             OpcodeId::PUSH1 => 0x60u8,
             OpcodeId::PUSH2 => 0x61u8,
