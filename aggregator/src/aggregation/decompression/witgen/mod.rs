@@ -390,23 +390,87 @@ fn process_block_zstd<F: Field>(
 
     // Depending on the literals block type, decode literals section accordingly
     let literals_block_result: LiteralsBlockResult<F> = {
-        // let (byte_offset, rows) = process_raw_bytes(
-        //     src,
-        //     byte_offset,
-        //     rows.last().expect("last row expected to exist"),
-        //     randomness,
-        //     regen_size,
-        //     ZstdTag::ZstdBlockLiteralsRawBytes,
-        //     ZstdTag::ZstdBlockSequenceHeader,
-        // );
+        let tag = ZstdTag::ZstdBlockLiteralsRawBytes;
+        let tag_next = ZstdTag::ZstdBlockSequenceHeader;
+        let literals = src[byte_offset..(byte_offset + regen_size)].to_vec();
+        let value_rlc_iter = literals.iter().scan(
+            last_row.encoded_data.value_rlc,
+            |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            },
+        );
+        let decoded_value_rlc_iter = literals.iter().scan(
+            last_row.decoded_data.decoded_value_rlc,
+            |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            },
+        );
+        let tag_value_iter = literals.iter().scan(
+            Value::known(F::zero()),
+            |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            },
+        );
+        let tag_value = tag_value_iter.clone().last().expect("Literals must exist.");
+        let tag_rlc_iter = literals.iter().scan(
+            Value::known(F::zero()),
+            |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            },
+        );
+        let tag_rlc = tag_value_iter.clone().last().expect("Literals must exist.");
 
         (
             byte_offset + regen_size,
-            // witgen_debug, Fill rows
-            vec![],
-            // witgen_debug. Fill literal
-            vec![],
-            vec![rows.len() as u64, 0, 0, 0],
+            literals.iter()
+                .zip(tag_value_iter)
+                .zip(value_rlc_iter)
+                .zip(decoded_value_rlc_iter)
+                .zip(tag_rlc_iter)
+                .enumerate()
+                .map(
+                    |(i, ((((&value_byte, tag_value_acc), value_rlc), decoded_value_rlc), tag_rlc_acc))| {
+                        ZstdWitnessRow {
+                            state: ZstdState {
+                                tag,
+                                tag_next,
+                                max_tag_len: lookup_max_tag_len(tag),
+                                tag_len: regen_size as u64,
+                                tag_idx: (i + 1) as u64,
+                                tag_value,
+                                tag_value_acc,
+                                is_tag_change: i == 0,
+                                tag_rlc,
+                                tag_rlc_acc,
+                            },
+                            encoded_data: EncodedData {
+                                byte_idx: (byte_offset + i + 1) as u64,
+                                encoded_len: last_row.encoded_data.encoded_len,
+                                value_byte,
+                                value_rlc,
+                                reverse: false,
+                                ..Default::default()
+                            },
+                            decoded_data: DecodedData {
+                                decoded_len: last_row.decoded_data.decoded_len,
+                                decoded_len_acc: last_row.decoded_data.decoded_len + (i as u64) + 1,
+                                total_decoded_len: last_row.decoded_data.total_decoded_len,
+                                decoded_byte: value_byte,
+                                decoded_value_rlc,
+                            },
+                            bitstream_read_data: BitstreamReadRow::default(),
+                            huffman_data: HuffmanData::default(),
+                            fse_data: FseTableRow::default(),
+                        }
+                    },
+                )
+                .collect::<Vec<_>>(),
+            literals.iter().map(|b| *b as u64).collect::<Vec<u64>>(),
+            vec![regen_size as u64, 0, 0, 0],
             vec![0, 0, 0, 0],
         )
     };
