@@ -146,7 +146,6 @@ fn process_frame_header<F: Field>(
                 decoded_value_rlc: Value::known(F::zero()),
             },
             bitstream_read_data: BitstreamReadRow::default(),
-            huffman_data: HuffmanData::default(),
             fse_data: FseTableRow::default(),
         })
         .chain(
@@ -190,7 +189,6 @@ fn process_frame_header<F: Field>(
                                 decoded_value_rlc: Value::known(F::zero()),
                             },
                             bitstream_read_data: BitstreamReadRow::default(),
-                            huffman_data: HuffmanData::default(),
                             fse_data: FseTableRow::default(),
                         }
                     },
@@ -340,7 +338,6 @@ fn process_block_header<F: Field>(
                     },
                     bitstream_read_data: BitstreamReadRow::default(),
                     decoded_data: last_row.decoded_data.clone(),
-                    huffman_data: HuffmanData::default(),
                     fse_data: FseTableRow::default(),
                 },
             )
@@ -388,7 +385,6 @@ fn process_block_zstd<F: Field>(
 
     witness_rows.extend_from_slice(&rows);
 
-    // Depending on the literals block type, decode literals section accordingly
     let literals_block_result: LiteralsBlockResult<F> = {
         let tag = ZstdTag::ZstdBlockLiteralsRawBytes;
         let tag_next = ZstdTag::ZstdBlockSequenceHeader;
@@ -463,7 +459,6 @@ fn process_block_zstd<F: Field>(
                                 decoded_value_rlc,
                             },
                             bitstream_read_data: BitstreamReadRow::default(),
-                            huffman_data: HuffmanData::default(),
                             fse_data: FseTableRow::default(),
                         }
                     },
@@ -625,7 +620,6 @@ fn process_block_zstd_literals_header<F: Field>(
                     },
                     bitstream_read_data: BitstreamReadRow::default(),
                     decoded_data: last_row.decoded_data.clone(),
-                    huffman_data: HuffmanData::default(),
                     fse_data: FseTableRow::default(),
                 },
             )

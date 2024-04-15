@@ -689,8 +689,6 @@ pub struct ZstdWitnessRow<F> {
     pub encoded_data: EncodedData<F>,
     /// Data on decompressed data
     pub decoded_data: DecodedData<F>,
-    /// Huffman code bitstring marker that devides bitstream into symbol segments
-    pub huffman_data: HuffmanData,
     /// Fse decoding state transition data
     pub fse_data: FseTableRow,
     /// Bitstream reader
@@ -707,7 +705,6 @@ impl<F: Field> ZstdWitnessRow<F> {
                 ..Default::default()
             },
             decoded_data: DecodedData::default(),
-            huffman_data: HuffmanData::default(),
             fse_data: FseTableRow::default(),
             bitstream_read_data: BitstreamReadRow::default(),
         }
