@@ -608,6 +608,7 @@ impl OpcodeId {
             OpcodeId::MSIZE => GasCost::QUICK,
             OpcodeId::GAS => GasCost::QUICK,
             OpcodeId::JUMPDEST => GasCost::ONE,
+            OpcodeId::MCOPY => GasCost::FAST,
             OpcodeId::PUSH0 => GasCost::QUICK,
             OpcodeId::PUSH1 => GasCost::FASTEST,
             OpcodeId::PUSH2 => GasCost::FASTEST,
@@ -772,6 +773,7 @@ impl OpcodeId {
             OpcodeId::MSIZE => (1, 1024),
             OpcodeId::GAS => (1, 1024),
             OpcodeId::JUMPDEST => (0, 1024),
+            OpcodeId::MCOPY => (0, 1021),
             OpcodeId::PUSH0 => (1, 1024),
             OpcodeId::PUSH1 => (1, 1024),
             OpcodeId::PUSH2 => (1, 1024),
@@ -870,6 +872,7 @@ impl OpcodeId {
                 | OpcodeId::RETURNDATACOPY
                 | OpcodeId::CODECOPY
                 | OpcodeId::EXTCODECOPY
+                | OpcodeId::MCOPY
         )
     }
 
@@ -973,6 +976,8 @@ impl From<u8> for OpcodeId {
             0x58u8 => OpcodeId::PC,
             0x59u8 => OpcodeId::MSIZE,
             0x5bu8 => OpcodeId::JUMPDEST,
+            // config feature cancun ?
+            0x5eu8 => OpcodeId::MCOPY,
             #[cfg(feature = "shanghai")]
             0x5fu8 => OpcodeId::PUSH0,
             0x60u8 => OpcodeId::PUSH1,
@@ -1130,6 +1135,8 @@ impl FromStr for OpcodeId {
             "PC" => OpcodeId::PC,
             "MSIZE" => OpcodeId::MSIZE,
             "JUMPDEST" => OpcodeId::JUMPDEST,
+            // need to configure feature cancun ?
+            "MCOPY" => OpcodeId::MCOPY,
             #[cfg(feature = "shanghai")]
             "PUSH0" => OpcodeId::PUSH0,
             #[cfg(not(feature = "shanghai"))]
@@ -1283,6 +1290,7 @@ impl fmt::Display for OpcodeId {
 mod opcode_ids_tests {
     use super::*;
 
+    // TODO: add MCOPY test here ?
     #[test]
     fn push_n() {
         #[cfg(feature = "shanghai")]
