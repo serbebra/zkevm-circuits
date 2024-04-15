@@ -4,6 +4,7 @@ use eth_types::Field;
 use halo2_proofs::circuit::Value;
 
 mod params;
+use itertools::assert_equal;
 pub use params::*;
 
 mod types;
@@ -224,22 +225,6 @@ fn process_block<F: Field>(
     let last_row = rows.last().expect("last row expected to exist");
     let (_byte_offset, rows, literals, lstream_len, aux_data, fse_aux_table) =
         match block_type {
-            BlockType::RawBlock => process_block_raw(
-                src,
-                byte_offset,
-                last_row,
-                randomness,
-                block_size,
-                last_block,
-            ),
-            BlockType::RleBlock => process_block_rle(
-                src,
-                byte_offset,
-                last_row,
-                randomness,
-                block_size,
-                last_block,
-            ),
             BlockType::ZstdCompressedBlock => process_block_zstd(
                 src,
                 byte_offset,
@@ -248,7 +233,7 @@ fn process_block<F: Field>(
                 block_size,
                 last_block,
             ),
-            BlockType::Reserved => unreachable!("Reserved block type not expected"),
+            _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
         };
     witness_rows.extend_from_slice(&rows);
 
@@ -281,10 +266,8 @@ fn process_block_header<F: Field>(
         (bh_bytes[2] as usize * 256 * 256 + bh_bytes[1] as usize * 256 + bh_bytes[0] as usize) >> 3;
 
     let tag_next = match block_type {
-        BlockType::RawBlock => ZstdTag::RawBlockBytes,
-        BlockType::RleBlock => ZstdTag::RleBlockBytes,
         BlockType::ZstdCompressedBlock => ZstdTag::ZstdBlockLiteralsHeader,
-        _ => unreachable!("BlockType::Reserved unexpected"),
+        _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
     };
 
     let tag_value_iter = bh_bytes
@@ -525,86 +508,6 @@ type BlockProcessingResult<F> = (
     Vec<u64>,
     FseAuxiliaryTableData,
 );
-
-fn process_block_raw<F: Field>(
-    src: &[u8],
-    byte_offset: usize,
-    last_row: &ZstdWitnessRow<F>,
-    randomness: Value<F>,
-    block_size: usize,
-    last_block: bool,
-) -> BlockProcessingResult<F> {
-    let tag_next = if last_block {
-        ZstdTag::Null
-    } else {
-        ZstdTag::BlockHeader
-    };
-
-    let (byte_offset, rows) = process_raw_bytes(
-        src,
-        byte_offset,
-        last_row,
-        randomness,
-        block_size,
-        ZstdTag::RawBlockBytes,
-        tag_next,
-    );
-
-    let fse_aux_table = FseAuxiliaryTableData {
-        byte_offset: 0,
-        table_size: 0,
-        sym_to_states: BTreeMap::default(),
-    };
-
-    (
-        byte_offset,
-        rows.clone(),
-        vec![],
-        vec![rows.len() as u64, 0, 0, 0],
-        vec![0, 0, 0, 0, 0, 0],
-        fse_aux_table,
-    )
-}
-
-fn process_block_rle<F: Field>(
-    src: &[u8],
-    byte_offset: usize,
-    last_row: &ZstdWitnessRow<F>,
-    randomness: Value<F>,
-    block_size: usize,
-    last_block: bool,
-) -> BlockProcessingResult<F> {
-    let tag_next = if last_block {
-        ZstdTag::Null
-    } else {
-        ZstdTag::BlockHeader
-    };
-
-    let (byte_offset, rows) = process_rle_bytes(
-        src,
-        byte_offset,
-        last_row,
-        randomness,
-        block_size,
-        ZstdTag::RleBlockBytes,
-        tag_next,
-    );
-
-    let fse_aux_table = FseAuxiliaryTableData {
-        byte_offset: 0,
-        table_size: 0,
-        sym_to_states: BTreeMap::default(),
-    };
-
-    (
-        byte_offset,
-        rows.clone(),
-        vec![],
-        vec![rows.len() as u64, 0, 0, 0],
-        vec![0, 0, 0, 0, 0, 0],
-        fse_aux_table,
-    )
-}
 
 type LiteralsBlockResult<F> = (usize, Vec<ZstdWitnessRow<F>>, Vec<u64>, Vec<u64>, Vec<u64>);
 
