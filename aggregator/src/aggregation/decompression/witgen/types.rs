@@ -37,7 +37,7 @@ impl TagRomTableRow {
     pub(crate) fn rows() -> Vec<Self> {
         use ZstdTag::{
             BlockHeader, FrameContentSize, FrameHeaderDescriptor, Null,
-            ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes, ZstdBlockLstream,
+            ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes,
             ZstdBlockSequenceHeader, ZstdBlockFseCode, ZstdBlockSequenceData,
         };
 
@@ -47,10 +47,9 @@ impl TagRomTableRow {
             (BlockHeader, ZstdBlockLiteralsHeader, 3),
             (ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes, 5),
             (ZstdBlockLiteralsRawBytes, ZstdBlockSequenceHeader, 1048575), // (1 << 20) - 1
-            (ZstdBlockLstream, ZstdBlockSequenceHeader, 1000),
             (ZstdBlockSequenceHeader, ZstdBlockFseCode, 2),
-            (ZstdBlockFseCode, ZstdBlockFseCode, 1000),
-            (ZstdBlockFseCode, ZstdBlockSequenceData, 1000),
+            (ZstdBlockFseCode, ZstdBlockFseCode, 128),
+            (ZstdBlockFseCode, ZstdBlockSequenceData, 128),
         ]
         .map(|(tag, tag_next, max_len)| Self {
             tag,
@@ -195,8 +194,6 @@ pub enum ZstdTag {
     ZstdBlockLiteralsRawBytes,
     /// Zstd block's huffman header and FSE code.
     ZstdBlockFseCode,
-    /// Literal stream.
-    ZstdBlockLstream,
     /// Beginning of sequence section.
     ZstdBlockSequenceHeader,
     /// Sequence data to the end of a zstd-compressed block
@@ -214,7 +211,6 @@ impl ZstdTag {
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
             Self::ZstdBlockFseCode => false,
-            Self::ZstdBlockLstream => false,
             Self::ZstdBlockSequenceHeader => false,
             Self::ZstdBlockSequenceData => true,
         }
@@ -229,7 +225,6 @@ impl ZstdTag {
             Self::BlockHeader => false,
             Self::ZstdBlockLiteralsHeader => true,
             Self::ZstdBlockLiteralsRawBytes => true,
-            Self::ZstdBlockLstream => true,
             Self::ZstdBlockSequenceHeader => true,
             Self::ZstdBlockFseCode => true,
             Self::ZstdBlockSequenceData => true,
@@ -245,7 +240,6 @@ impl ZstdTag {
             Self::BlockHeader => true,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
-            Self::ZstdBlockLstream => true,
             Self::ZstdBlockSequenceHeader => false,
             Self::ZstdBlockFseCode => false,
             Self::ZstdBlockSequenceData => true,
@@ -270,7 +264,6 @@ impl ToString for ZstdTag {
             Self::BlockHeader => "BlockHeader",
             Self::ZstdBlockLiteralsHeader => "ZstdBlockLiteralsHeader",
             Self::ZstdBlockLiteralsRawBytes => "ZstdBlockLiteralsRawBytes",
-            Self::ZstdBlockLstream => "ZstdBlockLstream",
             Self::ZstdBlockSequenceHeader => "ZstdBlockSequenceHeader",
             Self::ZstdBlockFseCode => "ZstdBlockFseCode",
             Self::ZstdBlockSequenceData => "ZstdBlockSequenceData",

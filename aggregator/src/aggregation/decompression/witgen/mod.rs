@@ -13,14 +13,15 @@ pub use types::{ZstdTag::*, *};
 pub mod util;
 use util::{le_bits_to_value, value_bits_le};
 
-const TAG_MAX_LEN: [(ZstdTag, u64); 7] = [
+const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
     (FrameHeaderDescriptor, 1),
     (FrameContentSize, 8),
     (BlockHeader, 3),
     (ZstdBlockLiteralsHeader, 5),
     (ZstdBlockLiteralsRawBytes, 1048575), // (1 << 20) - 1
+    (ZstdBlockSequenceHeader, 2),
     (ZstdBlockFseCode, 128),
-    (ZstdBlockLstream, 1000), // 1kB hard-limit
+    (ZstdBlockSequenceData, 1048575), // (1 << 20) - 1
 ];
 
 fn lookup_max_tag_len(tag: ZstdTag) -> u64 {
