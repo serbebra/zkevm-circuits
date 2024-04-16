@@ -68,7 +68,7 @@ fn gen_copy_event(
 
     Ok(CopyEvent {
         src_type: CopyDataType::Memory,
-        // use call_id as src id for match memory type. 
+        // use call_id as src id for memory --> memory type.
         src_id: NumberOrHash::Number(call_id),
         src_addr,
         src_addr_end,
@@ -85,7 +85,7 @@ fn gen_copy_event(
 }
 
 #[cfg(test)]
-mod codecopy_tests {
+mod mcopy_tests {
     use eth_types::{
         bytecode,
         evm_types::{MemoryAddress, OpcodeId, StackAddress},
@@ -115,6 +115,9 @@ mod codecopy_tests {
 
     fn test_ok(src_offset: usize, dest_offset: usize, copy_size: usize) {
         let code = bytecode! {
+            PUSH2(0x1234)
+            PUSH2(0x10)
+            MSTORE
             PUSH32(copy_size)
             PUSH32(src_offset)
             PUSH32(dest_offset)
@@ -182,7 +185,7 @@ mod codecopy_tests {
             .clone()
             .unwrap();
 
-        // read and write ops. 
+        // read and write ops.
         assert_eq!(builder.block.container.memory.len(), word_ops * 2);
         assert_eq!(
             (0..word_ops)
@@ -209,11 +212,12 @@ mod codecopy_tests {
         assert_eq!(copy_events.len(), 1);
         assert_eq!(
             copy_events[0].src_id,
-            NumberOrHash::Hash(CodeDB::hash(&code.to_vec()))
+            NumberOrHash::Number(expected_call_id),
         );
-        assert_eq!(copy_events[0].src_addr as usize, dest_offset);
-        assert_eq!(copy_events[0].src_addr_end as usize, code.to_vec().len());
+        assert_eq!(copy_events[0].src_addr as usize, src_offset);
+        assert_eq!(copy_events[0].src_addr_end as usize, src_offset + copy_size);
         assert_eq!(copy_events[0].src_type, CopyDataType::Memory);
+
         assert_eq!(
             copy_events[0].dst_id,
             NumberOrHash::Number(expected_call_id)
@@ -222,10 +226,10 @@ mod codecopy_tests {
         assert_eq!(copy_events[0].dst_type, CopyDataType::Memory);
         assert!(copy_events[0].log_id.is_none());
 
-        // TODO: below for loops should be adapted as now it is no longer related to bytecode 
-        // for (idx, (value, is_code, is_mask)) in copy_events[0].copy_bytes.bytes.iter().enumerate() {
-        //     let bytecode_element = code.get(dest_offset + idx).unwrap_or_default();
-        //     if !is_mask {
+        // TODO: below for loops should be adapted as now it is no longer related to bytecode
+        // for (idx, (value, is_code, is_mask)) in
+        // copy_events[0].copy_bytes.bytes.iter().enumerate() {     let bytecode_element =
+        // code.get(dest_offset + idx).unwrap_or_default();     if !is_mask {
         //         assert_eq!(*value, bytecode_element.value);
         //         assert_eq!(*is_code, bytecode_element.is_code);
         //     }
