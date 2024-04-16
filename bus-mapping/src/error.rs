@@ -39,8 +39,6 @@ pub enum Error {
     ExecutionError(ExecError),
     /// Internal Code error
     InternalError(&'static str),
-    /// Post check failed
-    PostCheckFailed(String),
 }
 
 impl From<eth_types::Error> for Error {
