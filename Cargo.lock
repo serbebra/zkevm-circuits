@@ -603,7 +603,6 @@ dependencies = [
  "pretty_assertions",
  "rand",
  "rayon",
- "revm 2.3.1",
  "revm-precompile",
  "serde",
  "serde_json",
@@ -4216,6 +4215,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "revm-executor"
+version = "0.1.0"
+dependencies = [
+ "bus-mapping",
+ "env_logger",
+ "eth-types",
+ "ethers-core",
+ "halo2_proofs",
+ "hex",
+ "log",
+ "mpt-zktrie",
+ "revm 2.3.1",
+ "revm-precompile",
+ "serde_json",
+ "zkevm-circuits",
+]
+
+[[package]]
 name = "revm-precompile"
 version = "2.0.0"
 source = "git+https://github.com/scroll-tech/revm?branch=scroll-fix#aebf2e591e622e6bcce2c5d4bf3336935a68cf11"
@@ -5242,6 +5259,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "regex",
+ "revm-executor",
  "serde",
  "serde_json",
  "strum 0.25.0",

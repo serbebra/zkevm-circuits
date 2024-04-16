@@ -15,7 +15,7 @@ mod call;
 pub use call::Call;
 
 mod mpt;
-pub use mpt::{MptUpdate, MptUpdateRow, MptUpdates, WithdrawProof};
+pub use mpt::{Key as MptKey, MptUpdate, MptUpdateRow, MptUpdates, WithdrawProof};
 
 mod receipt;
 pub use receipt::Receipt;

@@ -233,7 +233,6 @@ pub mod l2_predeployed;
 pub mod mock;
 pub mod operation;
 pub mod precompile;
-mod revme;
 pub mod rpc;
 pub mod state_db;
 pub mod util;

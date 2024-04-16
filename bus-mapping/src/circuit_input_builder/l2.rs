@@ -9,11 +9,10 @@ use eth_types::{
     self,
     evm_types::OpcodeId,
     l2_types::{BlockTrace, EthBlock, ExecStep, StorageTrace},
-    Address, ToWord, Word, H256, U256,
+    Address, ToWord, Word, H256,
 };
 use ethers_core::types::Bytes;
 use mpt_zktrie::state::{AccountData, ZktrieState};
-use revm::{BlockEnv, Env, TxEnv};
 use std::collections::hash_map::{Entry, HashMap};
 
 impl From<&AccountData> for state_db::Account {
@@ -258,79 +257,89 @@ fn dump_code_db(cdb: &CodeDB) {
 }
 
 impl CircuitInputBuilder {
-    /// Using revm handle block trace
-    pub fn handle_block_revm(&mut self, block: &BlockTrace) -> Result<(), Error> {
-        let mut env = Env::default();
-        env.cfg.chain_id = U256::from(self.block.chain_id);
-        env.block = BlockEnv::from(block);
-        for (tx, exec) in block
-            .transactions
-            .iter()
-            .zip(block.execution_results.iter())
-        {
-            let mut env = env.clone();
-            env.tx = TxEnv::from(tx);
-            env.tx.l1_fee = exec.l1_fee;
-            let mut revm = revm::new();
-            revm.env = env;
-            revm.database(&mut *self);
-            let result = revm.transact_commit();
-            for account_post_state in exec.account_after.iter() {
-                if let Some(address) = account_post_state.address {
-                    let local_acc = self.sdb.get_account(&address).1;
-                    log::trace!("local acc {local_acc:?}, trace acc {account_post_state:?}");
-                    if local_acc.balance != account_post_state.balance.unwrap() {
-                        let local = local_acc.balance;
-                        let post = account_post_state.balance.unwrap();
-                        panic!(
-                            "incorrect balance, local {:#x} {} post {:#x} (diff {}{:#x})",
-                            local,
-                            if local < post { "<" } else { ">" },
-                            post,
-                            if local < post { "-" } else { "+" },
-                            if local < post {
-                                post - local
-                            } else {
-                                local - post
-                            }
-                        )
-                    }
-                    if local_acc.nonce != account_post_state.nonce.unwrap().into() {
-                        panic!("incorrect nonce")
-                    }
-                    let p_hash = account_post_state.poseidon_code_hash.unwrap();
-                    if p_hash.is_zero() {
-                        if !local_acc.is_empty() {
-                            panic!("incorrect poseidon_code_hash")
-                        }
-                    } else {
-                        if local_acc.code_hash != p_hash {
-                            panic!("incorrect poseidon_code_hash")
-                        }
-                    }
-                    let k_hash = account_post_state.keccak_code_hash.unwrap();
-                    if k_hash.is_zero() {
-                        if !local_acc.is_empty() {
-                            panic!("incorrect keccak_code_hash")
-                        }
-                    } else {
-                        if local_acc.keccak_code_hash != k_hash {
-                            panic!("incorrect keccak_code_hash")
-                        }
-                    }
-                    if let Some(storage) = account_post_state.storage.clone() {
-                        let k = storage.key.unwrap();
-                        let local_v = self.sdb.get_storage(&address, &k).1;
-                        if *local_v != storage.value.unwrap() {
-                            panic!("incorrect storage for k = {k}");
-                        }
-                    }
-                }
-            }
-            log::trace!("revm result: {:?}", result);
-        }
-        Ok(())
-    }
+    // /// Using revm handle block trace
+    // pub fn handle_block_revm(&mut self, block: &BlockTrace) -> Result<(), Error> {
+    //     let mut env = Env::default();
+    //     env.cfg.chain_id = U256::from(self.block.chain_id);
+    //     env.block = BlockEnv::from(block);
+    //     for (tx, exec) in block
+    //         .transactions
+    //         .iter()
+    //         .zip(block.execution_results.iter())
+    //     {
+    //         let mut env = env.clone();
+    //         env.tx = TxEnv::from(tx);
+    //         env.tx.l1_fee = exec.l1_fee;
+    //         let mut revm = revm::new();
+    //         revm.env = env;
+    //         revm.database(&mut *self);
+    //         let result = revm.transact_commit();
+    //         for account_post_state in exec.account_after.iter() {
+    //             if let Some(address) = account_post_state.address {
+    //                 let local_acc = self.sdb.get_account(&address).1;
+    //                 log::trace!("local acc {local_acc:?}, trace acc {account_post_state:?}");
+    //                 if local_acc.balance != account_post_state.balance.unwrap() {
+    //                     let local = local_acc.balance;
+    //                     let post = account_post_state.balance.unwrap();
+    //                     return Err(Error::PostCheckFailed(format!(
+    //                         "incorrect balance, local {:#x} {} post {:#x} (diff {}{:#x})",
+    //                         local,
+    //                         if local < post { "<" } else { ">" },
+    //                         post,
+    //                         if local < post { "-" } else { "+" },
+    //                         if local < post {
+    //                             post - local
+    //                         } else {
+    //                             local - post
+    //                         }
+    //                     )));
+    //                 }
+    //                 if local_acc.nonce != account_post_state.nonce.unwrap().into() {
+    //                     return Err(Error::PostCheckFailed("incorrect nonce".to_string()));
+    //                 }
+    //                 let p_hash = account_post_state.poseidon_code_hash.unwrap();
+    //                 if p_hash.is_zero() {
+    //                     if !local_acc.is_empty() {
+    //                         return Err(Error::PostCheckFailed(
+    //                             "incorrect poseidon_code_hash".to_string(),
+    //                         ));
+    //                     }
+    //                 } else {
+    //                     if local_acc.code_hash != p_hash {
+    //                         return Err(Error::PostCheckFailed(
+    //                             "incorrect poseidon_code_hash".to_string(),
+    //                         ));
+    //                     }
+    //                 }
+    //                 let k_hash = account_post_state.keccak_code_hash.unwrap();
+    //                 if k_hash.is_zero() {
+    //                     if !local_acc.is_empty() {
+    //                         return Err(Error::PostCheckFailed(
+    //                             "incorrect keccak_code_hash".to_string(),
+    //                         ));
+    //                     }
+    //                 } else {
+    //                     if local_acc.keccak_code_hash != k_hash {
+    //                         return Err(Error::PostCheckFailed(
+    //                             "incorrect keccak_code_hash".to_string(),
+    //                         ));
+    //                     }
+    //                 }
+    //                 if let Some(storage) = account_post_state.storage.clone() {
+    //                     let k = storage.key.unwrap();
+    //                     let local_v = self.sdb.get_storage(&address, &k).1;
+    //                     if *local_v != storage.value.unwrap() {
+    //                         return Err(Error::PostCheckFailed(
+    //                             "incorrect storage for k = {k}".to_string(),
+    //                         ));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         log::trace!("revm result: {:?}", result);
+    //     }
+    //     Ok(())
+    // }
 
     fn apply_l2_trace(&mut self, block_trace: BlockTrace, is_last: bool) -> Result<(), Error> {
         log::trace!(

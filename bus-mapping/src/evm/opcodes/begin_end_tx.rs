@@ -54,6 +54,7 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<Vec<ExecSt
     gen_tx_access_list_ops(state, &mut exec_step)?;
 
     let caller_address = call.caller_address;
+    log::info!("tx_type: {:?}", state.tx.tx_type);
     if state.tx.tx_type.is_l1_msg() {
         // for l1 message, no need to add rw op, but we must check
         // caller for its existent status

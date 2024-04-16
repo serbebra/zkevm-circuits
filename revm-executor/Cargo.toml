@@ -1,0 +1,21 @@
+[package]
+name = "revm-executor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bus-mapping = { path = "../bus-mapping", features = ["scroll"] }
+env_logger.workspace = true
+ethers-core.workspace = true
+eth-types = { path = "../eth-types" }
+halo2_proofs.workspace = true
+hex.workspace = true
+log.workspace = true
+mpt-zktrie = { path = "../zktrie" }
+revm-precompile.workspace = true
+revm = { path = "../../revm/crates/revm" }
+zkevm-circuits = { path = "../zkevm-circuits", features = ["scroll"] }
+
+[dev-dependencies]
+serde_json.workspace = true

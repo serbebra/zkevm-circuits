@@ -29,16 +29,25 @@ pub struct WithdrawProof {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MptUpdate {
     key: Key,
-    old_value: Word,
-    new_value: Word,
-    old_root: Word,
-    new_root: Word,
+    pub old_value: Word,
+    pub new_value: Word,
+    pub old_root: Word,
+    pub new_root: Word,
     // for debugging
     #[cfg(debug_assertions)]
-    original_rws: Vec<Rw>,
+    pub original_rws: Vec<Rw>,
 }
 
 impl MptUpdate {
+    pub fn new(key: Key, old: Word, new: Word) -> Self {
+        Self {
+            key,
+            old_value: old,
+            new_value: new,
+            ..Default::default()
+        }
+    }
+
     fn from_rows(
         key: Key,
         rows: Vec<Rw>,
@@ -91,15 +100,15 @@ impl Default for MptUpdate {
 /// All the MPT updates in the MptCircuit, accessible by their key
 #[derive(Default, Clone, Debug)]
 pub struct MptUpdates {
-    old_root: Word,
-    new_root: Word,
-    updates: BTreeMap<Key, MptUpdate>,
+    pub old_root: Word,
+    pub new_root: Word,
+    pub updates: BTreeMap<Key, MptUpdate>,
     /// TODO: is here the best place for this?
     /// Withdraw proof after this block
     pub withdraw_proof: WithdrawProof,
     /// The detailed mpt witness
     pub smt_traces: Vec<SMTTrace>,
-    pub(crate) proof_types: Vec<MPTProofType>,
+    pub proof_types: Vec<MPTProofType>,
 }
 
 /// The field element encoding of an MPT update, which is used by the MptTable
@@ -166,7 +175,7 @@ impl MptUpdates {
         self.pretty_print();
     }
 
-    pub(crate) fn fill_state_roots(&mut self, init_trie: &ZktrieState) {
+    pub fn fill_state_roots(&mut self, init_trie: &ZktrieState) {
         let root_pair = (self.old_root, self.new_root);
         self.old_root = U256::from_big_endian(init_trie.root());
         log::trace!("fill_state_roots init {:?}", init_trie.root());
@@ -175,7 +184,7 @@ impl MptUpdates {
         let wit_gen = self.fill_state_roots_from_generator(wit_gen);
 
         let root_pair2 = (self.old_root, self.new_root);
-        if root_pair2 != root_pair {
+        if !root_pair.1.is_zero() && root_pair2 != root_pair {
             log::error!(
                 "roots non consistent ({:#x},{:#x}) vs ({:#x},{:#x})",
                 root_pair.0,
@@ -426,7 +435,7 @@ impl MptUpdate {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
-enum Key {
+pub enum Key {
     Account {
         address: Address,
         field_tag: AccountFieldTag,
@@ -440,6 +449,50 @@ enum Key {
 }
 
 impl Key {
+    pub fn new_balance(address: Address) -> Self {
+        Self::Account {
+            address,
+            field_tag: AccountFieldTag::Balance,
+        }
+    }
+
+    pub fn new_nonce(address: Address) -> Self {
+        Self::Account {
+            address,
+            field_tag: AccountFieldTag::Nonce,
+        }
+    }
+
+    pub fn new_code_hash(address: Address) -> Self {
+        Self::Account {
+            address,
+            field_tag: AccountFieldTag::CodeHash,
+        }
+    }
+
+    pub fn new_keccak_code_hash(address: Address) -> Self {
+        Self::Account {
+            address,
+            field_tag: AccountFieldTag::KeccakCodeHash,
+        }
+    }
+
+    pub fn new_code_size(address: Address) -> Self {
+        Self::Account {
+            address,
+            field_tag: AccountFieldTag::CodeSize,
+        }
+    }
+
+    pub fn new_storage(tx_id: usize, address: Address, storage_key: Word, exists: bool) -> Self {
+        Self::AccountStorage {
+            tx_id,
+            address,
+            storage_key,
+            exists,
+        }
+    }
+
     // If the transition is Storage 0 -> 0, set the key as non-existing storage.
     // If the transition is CodeHash 0 -> 0, set the key as non-existing account.
     // Otherwise return the key unmodified.

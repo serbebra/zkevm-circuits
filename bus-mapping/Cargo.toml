@@ -28,9 +28,6 @@ strum_macros.workspace = true
 # precompile related crates
 revm-precompile.workspace = true
 
-# revm
-revm = { path = "../../revm/crates/revm" }
-
 [dev-dependencies]
 hex.workspace = true
 pretty_assertions.workspace = true
