@@ -56,37 +56,26 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
         let mut reversion_info = cb.reversion_info_read(None);
 
-        let memory_address = MemoryAddressGadget::construct(cb, memory_offset, memory_length);
+        let memory_address = MemoryAddressGadget::construct(cb, src_offset, memory_length);
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
             memory_address.length(),
             memory_expansion.gas_cost(),
         );
-        let gas_cost = memory_copier_gas.gas_cost()
-            + select::expr(
-                is_warm.expr(),
-                GasCost::WARM_ACCESS.expr(),
-                GasCost::COLD_ACCOUNT_ACCESS.expr(),
-            );
+        let gas_cost = memory_copier_gas.gas_cost();
 
         let copy_rwc_inc = cb.query_cell();
         cb.condition(memory_address.has_length(), |cb| {
-            // Set source start to the minimun value of code offset and code size.
-            let src_addr = select::expr(
-                code_offset.lt_cap(),
-                code_offset.valid_value(),
-                code_size.expr(),
-            );
-
             cb.copy_table_lookup(
-                code_hash.expr(),
+                cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
                 cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
-                src_addr,
-                code_size.expr(),
                 memory_address.offset(),
+                memory_address.end_offset(),
+                // memory_address.offset(),
+                dest_offset.expr(),
                 memory_address.length(),
                 0.expr(),
                 copy_rwc_inc.expr(),
@@ -115,8 +104,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             same_context,
             memory_address,
             tx_id,
-            reversion_info,
-            code_size,
             copy_rwc_inc,
             memory_expansion,
             memory_copier_gas,
