@@ -47,7 +47,7 @@ impl TagRomTableRow {
             (BlockHeader, ZstdBlockLiteralsHeader, 3),
             (ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes, 5),
             (ZstdBlockLiteralsRawBytes, ZstdBlockSequenceHeader, 1048575), // (1 << 20) - 1
-            (ZstdBlockSequenceHeader, ZstdBlockFseCode, 2),
+            (ZstdBlockSequenceHeader, ZstdBlockFseCode, 4),
             (ZstdBlockFseCode, ZstdBlockFseCode, 128),
             (ZstdBlockFseCode, ZstdBlockSequenceData, 128),
         ]

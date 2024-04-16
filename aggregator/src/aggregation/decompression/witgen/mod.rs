@@ -19,7 +19,7 @@ const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
     (BlockHeader, 3),
     (ZstdBlockLiteralsHeader, 5),
     (ZstdBlockLiteralsRawBytes, 1048575), // (1 << 20) - 1
-    (ZstdBlockSequenceHeader, 2),
+    (ZstdBlockSequenceHeader, 4),
     (ZstdBlockFseCode, 128),
     (ZstdBlockSequenceData, 1048575), // (1 << 20) - 1
 ];
@@ -473,11 +473,9 @@ fn process_block_zstd<F: Field>(
     let (bytes_offset, rows, literals, lstream_len, aux_data) = literals_block_result;
     witness_rows.extend_from_slice(&rows);
 
-    let mut fse_aux_table = FseAuxiliaryTableData {
-        byte_offset: 0,
-        table_size: 0,
-        sym_to_states: BTreeMap::default(),
-    };
+    let last_row = witness_rows.last().expect("last row expected to exist");
+    let (bytes_offset, rows, fse_aux_table) = process_sequences::<F>(src, byte_offset, last_row, randomness);
+    witness_rows.extend_from_slice(&rows);
 
     (
         bytes_offset,
@@ -494,6 +492,71 @@ fn process_block_zstd<F: Field>(
             branch,
             sf_max as u64,
         ],
+        fse_aux_table,
+    )
+}
+
+type SequencesProcessingResult<F> = (
+    usize,
+    Vec<ZstdWitnessRow<F>>,
+    FseAuxiliaryTableData,
+);
+
+fn process_sequences<F: Field>(
+    src: &[u8],
+    byte_offset: usize,
+    last_row: &ZstdWitnessRow<F>,
+    randomness: Value<F>,
+) -> SequencesProcessingResult<F> {
+    // First, process the sequence header
+    let byte0 = src.get(byte_offset).expect("First byte of sequence header must exist.").clone();
+    assert!(byte0 > 0u8, "Sequences can't be of 0 length");
+
+    let (num_of_sequences, num_sequence_header_bytes) = if byte0 < 128 {
+        (byte0 as u64, 2usize)
+    } else {
+        let byte1 = src.get(byte_offset + 1).expect("Next byte of sequence header must exist.").clone();
+        if byte0 < 255 {
+            ((((byte0 - 128) << 8) + byte1) as u64, 3)
+        } else {
+            let byte2 = src.get(byte_offset + 2).expect("Third byte of sequence header must exist.").clone();
+            ((byte1 + (byte2 << 8)) as u64 + 0x7F00, 4)
+        }
+    };
+
+    let compression_mode_byte = src.get(byte_offset + num_sequence_header_bytes - 1).expect("Compression mode byte must exist.").clone();
+    let mode_bits = value_bits_le(compression_mode_byte);
+
+    let literal_lengths_mode = mode_bits[6] + mode_bits[7] * 2;
+    let offsets_mode = mode_bits[4]+ mode_bits[5] * 2;
+    let match_lengths_mode = mode_bits[2] + mode_bits[3] * 2;
+    let reserved = mode_bits[0] + mode_bits[1] * 2;
+
+    assert!(reserved == 0, "Reserved bits must be 0");
+
+    // TODO: Ask about encoding alternatives
+    assert!(literal_lengths_mode == 2, "Only FSE_Compressed_Mode is allowed");
+    assert!(offsets_mode == 2, "Only FSE_Compressed_Mode is allowed");
+    assert!(match_lengths_mode == 2, "Only FSE_Compressed_Mode is allowed");
+
+    // witgen_debug. TODO: Add rows for the header
+
+    // Second, process the sequence tables (encoded using FSE)
+    let byte_offset = byte_offset + num_sequence_header_bytes;
+
+
+    let mut fse_aux_table = FseAuxiliaryTableData {
+        byte_offset: 0,
+        table_size: 0,
+        sym_to_states: BTreeMap::default(),
+    };
+
+    // Third, process the sequence data
+
+    // witgen_debug
+    (
+        0,
+        vec![],
         fse_aux_table,
     )
 }
