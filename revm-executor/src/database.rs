@@ -7,7 +7,7 @@ use bus_mapping::{
 use eth_types::{l2_types::BlockTrace, ToWord, H160, H256, U256};
 use log::{trace, Level};
 use mpt_zktrie::state::ZktrieState;
-use revm::{db::DatabaseRef, AccountInfo, Bytecode, DatabaseCommit, KECCAK_EMPTY, POSEIDON_EMPTY};
+use revm::{db::DatabaseRef, AccountInfo, Bytecode, DatabaseCommit};
 use revm_precompile::{Bytes, HashMap};
 use std::{collections::BTreeMap, convert::Infallible};
 use zkevm_circuits::witness::{MptKey, MptUpdate};
@@ -130,6 +130,7 @@ impl DatabaseCommit for EvmDatabase {
                 trace!("commit: addr: {:?}, acc: {:?}", addr, acc);
             }
             let (_, acc) = self.sdb.get_account_mut(&addr);
+            let acc_is_empty = acc.is_empty();
 
             if acc.balance != incoming.info.balance {
                 let key = MptKey::new_balance(addr);
@@ -147,13 +148,7 @@ impl DatabaseCommit for EvmDatabase {
                     .new_value = incoming.info.nonce.into();
                 acc.nonce = U256::from(incoming.info.nonce);
             }
-            if acc.code_hash != incoming.info.code_hash {
-                debug_assert_ne!(acc.keccak_code_hash, incoming.info.keccak_code_hash);
-
-                debug_assert_eq!(acc.code_size, U256::zero());
-                debug_assert_eq!(acc.code_hash, POSEIDON_EMPTY);
-                debug_assert_eq!(acc.keccak_code_hash, KECCAK_EMPTY);
-
+            if acc_is_empty && !incoming.is_empty() {
                 let key = MptKey::new_code_hash(addr);
                 debug_assert!(!self.updates.contains_key(&key));
                 self.updates.insert(

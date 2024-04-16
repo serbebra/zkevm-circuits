@@ -328,6 +328,8 @@ fn trace_config_to_witness_block_l2(
     );
 
     if revm_root_after != root_after {
+        block.mpt_updates.diff(revm.db.updates);
+
         return Err(StateTestError::EndStateRootMismatch {
             revm: revm_root_after,
             trace: root_after,

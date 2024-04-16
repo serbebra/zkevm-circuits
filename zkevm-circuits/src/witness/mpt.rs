@@ -12,7 +12,7 @@ use mpt_zktrie::{
 };
 use serde::{Deserialize, Serialize};
 pub use state::ZktrieState;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Used to store withdraw proof
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -352,6 +352,47 @@ impl MptUpdates {
     pub(crate) fn pretty_print(&self) {
         for (idx, update) in self.updates.values().enumerate() {
             log::trace!("mpt_update {idx} {update:?}");
+        }
+    }
+
+    pub fn get_cleanup(&self) -> BTreeMap<Key, MptUpdate> {
+        let mut updates = self.updates.clone();
+        updates.retain(|_, v| v.old_value != v.new_value);
+        for v in updates.values_mut() {
+            v.new_root = U256::zero();
+            v.old_root = U256::zero();
+            v.original_rws.clear();
+        }
+        updates
+    }
+
+    pub fn diff(&self, mut other: BTreeMap<Key, MptUpdate>) {
+        other.retain(|_, v| v.old_value != v.new_value);
+        for v in other.values_mut() {
+            v.new_root = U256::zero();
+            v.old_root = U256::zero();
+            v.original_rws.clear();
+        }
+
+        let this = self.get_cleanup();
+
+        let this_keys: BTreeSet<_> = this.keys().collect();
+        let other_keys: BTreeSet<_> = other.keys().collect();
+        let less = this_keys.difference(&other_keys);
+        let more = other_keys.difference(&this_keys);
+        let changes = this_keys
+            .intersection(&other_keys)
+            .filter(|k| this[k] != other[k]);
+
+        for key in less {
+            log::error!("- {:?}", this[key]);
+        }
+        for key in more {
+            log::error!("+ {:?}", other[key]);
+        }
+        for key in changes {
+            log::error!("- {:?}", this[key]);
+            log::error!("+ {:?}", other[key]);
         }
     }
 }

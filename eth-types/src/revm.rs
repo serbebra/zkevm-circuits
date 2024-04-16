@@ -12,7 +12,7 @@ impl From<&BlockTrace> for BlockEnv {
             timestamp: block.header.timestamp,
             difficulty: block.header.difficulty,
             prevrandao: block.header.mix_hash, // FIXME: is this correct?
-            basefee: block.header.base_fee_per_gas.unwrap_or_default(),
+            basefee: U256::zero(),
             gas_limit: block.header.gas_limit,
         }
     }
