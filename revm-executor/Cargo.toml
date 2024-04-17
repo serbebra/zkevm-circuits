@@ -13,7 +13,6 @@ halo2_proofs.workspace = true
 hex.workspace = true
 log.workspace = true
 mpt-zktrie = { path = "../zktrie" }
-revm-precompile.workspace = true
 revm = { path = "../../revm/crates/revm", features = ["scroll-default-handler"] }
 zkevm-circuits = { path = "../zkevm-circuits", features = ["scroll"] }
 

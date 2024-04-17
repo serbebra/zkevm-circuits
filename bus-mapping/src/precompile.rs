@@ -9,7 +9,7 @@ use crate::circuit_input_builder::{EcMulOp, EcPairingOp, N_BYTES_PER_PAIR, N_PAI
 /// Check if address is a precompiled or not.
 pub fn is_precompiled(address: &Address) -> bool {
     Precompiles::berlin()
-        .get(address.as_fixed_bytes())
+        .get(address.as_fixed_bytes().into())
         .is_some()
 }
 
@@ -19,7 +19,7 @@ pub(crate) fn execute_precompiled(
     gas: u64,
 ) -> (Vec<u8>, u64, bool) {
     let Some(Precompile::Standard(precompile_fn)) =
-        Precompiles::berlin().get(address.as_fixed_bytes())
+        Precompiles::berlin().get(address.as_fixed_bytes().into())
     else {
         panic!("calling non-exist precompiled contract address")
     };
@@ -28,46 +28,48 @@ pub(crate) fn execute_precompiled(
         input.len(),
         hex::encode(input)
     );
-    let (return_data, gas_cost, is_oog, is_ok) = match precompile_fn(input, gas) {
-        Ok((gas_cost, return_value)) => {
-            if cfg!(feature = "scroll") {
-                // Revm behavior is different from scroll evm,
-                // so we need to override the behavior of invalid input
-                match PrecompileCalls::from(address.0[19]) {
-                    PrecompileCalls::Blake2F | PrecompileCalls::Ripemd160 => {
-                        (vec![], gas, false, false)
-                    }
-                    PrecompileCalls::Bn128Pairing => {
-                        if input.len() > N_PAIRING_PER_OP * N_BYTES_PER_PAIR {
-                            (vec![], gas, false, false)
-                        } else {
-                            (return_value, gas_cost, false, true)
-                        }
-                    }
-                    PrecompileCalls::Modexp => {
-                        let (input_valid, [_, _, modulus_len]) = ModExpAuxData::check_input(input);
-                        if input_valid {
-                            // detect some edge cases like modulus = 0
-                            assert_eq!(modulus_len.as_usize(), return_value.len());
-                            (return_value, gas_cost, false, true) // no oog error
-                        } else {
+    let (return_data, gas_cost, is_oog, is_ok) =
+        match precompile_fn(&revm_precompile::Bytes::copy_from_slice(input), gas) {
+            Ok((gas_cost, return_value)) => {
+                if cfg!(feature = "scroll") {
+                    // Revm behavior is different from scroll evm,
+                    // so we need to override the behavior of invalid input
+                    match PrecompileCalls::from(address.0[19]) {
+                        PrecompileCalls::Blake2F | PrecompileCalls::Ripemd160 => {
                             (vec![], gas, false, false)
                         }
+                        PrecompileCalls::Bn128Pairing => {
+                            if input.len() > N_PAIRING_PER_OP * N_BYTES_PER_PAIR {
+                                (vec![], gas, false, false)
+                            } else {
+                                (return_value.to_vec(), gas_cost, false, true)
+                            }
+                        }
+                        PrecompileCalls::Modexp => {
+                            let (input_valid, [_, _, modulus_len]) =
+                                ModExpAuxData::check_input(input);
+                            if input_valid {
+                                // detect some edge cases like modulus = 0
+                                assert_eq!(modulus_len.as_usize(), return_value.len());
+                                (return_value.to_vec(), gas_cost, false, true) // no oog error
+                            } else {
+                                (vec![], gas, false, false)
+                            }
+                        }
+                        _ => (return_value.to_vec(), gas_cost, false, true),
                     }
-                    _ => (return_value, gas_cost, false, true),
+                } else {
+                    (return_value.to_vec(), gas_cost, false, true)
                 }
-            } else {
-                (return_value, gas_cost, false, true)
             }
-        }
-        Err(err) => match err {
-            PrecompileError::OutOfGas => (vec![], gas, true, false),
-            _ => {
-                log::warn!("unknown precompile err {err:?}");
-                (vec![], gas, false, false)
-            }
-        },
-    };
+            Err(err) => match err {
+                PrecompileError::OutOfGas => (vec![], gas, true, false),
+                _ => {
+                    log::warn!("unknown precompile err {err:?}");
+                    (vec![], gas, false, false)
+                }
+            },
+        };
     log::trace!("called precompile with is_ok {is_ok} is_oog {is_oog}, gas_cost {gas_cost}, return_data len {}, return_data {}", return_data.len(), hex::encode(&return_data));
     (return_data, gas_cost, is_oog)
 }
