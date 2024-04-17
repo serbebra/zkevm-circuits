@@ -7,7 +7,7 @@ use eth_types::{
     ToBigEndian, ToWord, H256, U256,
 };
 use mpt_zktrie::state::ZktrieState;
-use revm::primitives::{BlockEnv, Env, HandlerCfg, SpecId, TxEnv};
+use revm::primitives::{BlockEnv, Env, SpecId, TxEnv};
 use zkevm_circuits::witness::MptUpdates;
 
 #[derive(Debug)]
@@ -62,10 +62,11 @@ impl EvmExecutor {
             {
                 let mut revm = revm::Evm::builder()
                     .with_db(&mut self.db)
-                    .with_handler_cfg(HandlerCfg::new_with_scroll(SpecId::SHANGHAI, true))
+                    .with_spec_id(SpecId::SHANGHAI)
                     .with_env(env)
                     .build();
-                revm.transact_commit().unwrap();
+                let result = revm.transact_commit().unwrap();
+                log::trace!("{result:#?}");
             }
 
             self.post_check(exec);
