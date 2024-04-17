@@ -14,7 +14,7 @@ hex.workspace = true
 log.workspace = true
 mpt-zktrie = { path = "../zktrie" }
 revm-precompile.workspace = true
-revm = { path = "../../revm/crates/revm" }
+revm = { path = "../../revm/crates/revm", features = ["scroll"] }
 zkevm-circuits = { path = "../zkevm-circuits", features = ["scroll"] }
 
 [dev-dependencies]

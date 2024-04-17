@@ -4,19 +4,15 @@ use bus_mapping::{
     state_db,
     state_db::{CodeDB, StateDB},
 };
-use eth_types::{l2_types::BlockTrace, ToBigEndian, ToWord, H160, H256};
+use eth_types::{l2_types::BlockTrace, ToBigEndian, H160, H256};
 use log::{trace, Level};
 use mpt_zktrie::state::ZktrieState;
 use revm::{
     db::DatabaseRef,
-    primitives::{AccountInfo, Bytecode, B160, B256, U256},
+    primitives::{AccountInfo, Address, Bytecode, B256, U256},
     DatabaseCommit,
 };
-use revm_precompile::Bytes;
-use std::{
-    collections::{BTreeMap, HashMap},
-    convert::Infallible,
-};
+use std::{collections::BTreeMap, convert::Infallible};
 use zkevm_circuits::witness::{MptKey, MptUpdate};
 
 #[derive(Debug)]
@@ -61,8 +57,8 @@ impl EvmDatabase {
 impl DatabaseRef for EvmDatabase {
     type Error = Infallible;
 
-    fn basic(&self, addr: B160) -> Result<Option<AccountInfo>, Self::Error> {
-        let (exist, acc) = self.sdb.get_account(&H160::from(addr.to_fixed_bytes()));
+    fn basic(&self, addr: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        let (exist, acc) = self.sdb.get_account(&H160::from(**addr));
         log::trace!("loaded account: {addr:?}, exist: {exist}, acc: {acc:?}");
         if exist {
             let mut acc = AccountInfo {
@@ -77,10 +73,10 @@ impl DatabaseRef for EvmDatabase {
             let code = self
                 .code_db
                 .0
-                .get(&H256(acc.code_hash.to_fixed_bytes()))
+                .get(&H256(*acc.code_hash))
                 .cloned()
                 .unwrap_or_default();
-            let bytecode = Bytecode::new_raw(Bytes::from(code.to_vec()));
+            let bytecode = Bytecode::new_raw(revm::primitives::Bytes::from(code.to_vec()));
             acc.code = Some(bytecode);
             Ok(Some(acc))
         } else {
@@ -92,9 +88,9 @@ impl DatabaseRef for EvmDatabase {
         panic!("Should not be called. Code is already loaded");
     }
 
-    fn storage(&self, address: B160, index: U256) -> Result<U256, Self::Error> {
+    fn storage(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         let (_, val) = self.sdb.get_storage(
-            &H160::from(address.to_fixed_bytes()),
+            &H160::from(**address),
             &eth_types::U256::from_little_endian(index.as_le_slice()),
         );
         Ok(U256::from_be_bytes(val.to_be_bytes()))
@@ -108,7 +104,7 @@ impl DatabaseRef for EvmDatabase {
 impl revm::Database for EvmDatabase {
     type Error = Infallible;
 
-    fn basic(&mut self, address: B160) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         DatabaseRef::basic(self, address)
     }
 
@@ -116,7 +112,7 @@ impl revm::Database for EvmDatabase {
         panic!("Should not be called. Code is already loaded");
     }
 
-    fn storage(&mut self, address: B160, index: U256) -> Result<U256, Self::Error> {
+    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
         DatabaseRef::storage(self, address, index)
     }
 
@@ -126,9 +122,9 @@ impl revm::Database for EvmDatabase {
 }
 
 impl DatabaseCommit for EvmDatabase {
-    fn commit(&mut self, changes: revm::precompile::HashMap<B160, revm::primitives::Account>) {
+    fn commit(&mut self, changes: revm::precompile::HashMap<Address, revm::primitives::Account>) {
         for (addr, incoming) in changes {
-            let addr = H160::from(addr.to_fixed_bytes());
+            let addr = H160::from(**addr);
             if log::log_enabled!(Level::Trace) {
                 let mut acc = incoming.clone();
                 acc.info.code = None;
@@ -166,7 +162,7 @@ impl DatabaseCommit for EvmDatabase {
                         eth_types::U256::from_big_endian(incoming.info.code_hash.as_ref()),
                     ),
                 );
-                acc.code_hash = H256::from(incoming.info.code_hash.to_fixed_bytes());
+                acc.code_hash = H256::from(*incoming.info.code_hash);
 
                 let key = MptKey::new_keccak_code_hash(addr);
                 debug_assert!(!self.updates.contains_key(&key));
@@ -178,7 +174,7 @@ impl DatabaseCommit for EvmDatabase {
                         eth_types::U256::from_big_endian(incoming.info.keccak_code_hash.as_ref()),
                     ),
                 );
-                acc.keccak_code_hash = H256::from(incoming.info.keccak_code_hash.to_fixed_bytes());
+                acc.keccak_code_hash = H256::from(*incoming.info.keccak_code_hash);
 
                 let key = MptKey::new_code_size(addr);
                 debug_assert!(!self.updates.contains_key(&key));

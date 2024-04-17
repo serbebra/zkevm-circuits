@@ -2,13 +2,13 @@ use crate::{
     l2_types::{BlockTrace, TransactionTrace},
     ToBigEndian,
 };
-use revm::primitives::{BlockEnv, CreateScheme, TransactTo, TxEnv, B160, B256, U256};
+use revm::primitives::{Address, BlockEnv, CreateScheme, TransactTo, TxEnv, B256, U256};
 
 impl From<&BlockTrace> for BlockEnv {
     fn from(block: &BlockTrace) -> Self {
         BlockEnv {
             number: U256::from(block.header.number.unwrap().as_u64()),
-            coinbase: B160::from(block.coinbase.address.unwrap().to_fixed_bytes()),
+            coinbase: Address::from(block.coinbase.address.unwrap().to_fixed_bytes()),
             timestamp: U256::from_be_bytes(block.header.timestamp.to_be_bytes()),
             gas_limit: U256::from_be_bytes(block.header.gas_limit.to_be_bytes()),
             basefee: U256::from_be_bytes(
@@ -31,11 +31,11 @@ impl From<&BlockTrace> for BlockEnv {
 impl From<&TransactionTrace> for TxEnv {
     fn from(tx: &TransactionTrace) -> Self {
         TxEnv {
-            caller: B160::from(tx.from.to_fixed_bytes()),
+            caller: Address::from(tx.from.to_fixed_bytes()),
             gas_limit: tx.gas,
             gas_price: U256::from_be_bytes(tx.gas_price.to_be_bytes()),
             transact_to: match tx.to {
-                Some(to) => TransactTo::Call(B160::from(to.to_fixed_bytes())),
+                Some(to) => TransactTo::Call(Address::from(to.to_fixed_bytes())),
                 None => TransactTo::Create(CreateScheme::Create), /* FIXME: is this correct?
                                                                    * CREATE2? */
             },
@@ -50,7 +50,7 @@ impl From<&TransactionTrace> for TxEnv {
                     v.iter()
                         .map(|e| {
                             (
-                                B160::from(e.address.to_fixed_bytes()),
+                                Address::from(e.address.to_fixed_bytes()),
                                 e.storage_keys
                                     .iter()
                                     .map(|s| U256::from_be_bytes(s.to_fixed_bytes()))

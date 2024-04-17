@@ -60,8 +60,7 @@ impl EvmExecutor {
             env.tx = TxEnv::from(tx);
             env.tx.l1_fee = revm::primitives::U256::from_be_bytes(exec.l1_fee.to_be_bytes());
             log::debug!("{env:#?}");
-            let mut revm = revm::new();
-            revm.env = env;
+            let mut revm = revm::EVM::with_env(env);
             revm.database(&mut self.db);
             revm.transact_commit().unwrap();
 
