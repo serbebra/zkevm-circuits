@@ -57,9 +57,10 @@ impl EvmDatabase {
 impl DatabaseRef for EvmDatabase {
     type Error = Infallible;
 
-    fn basic(&self, addr: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        let (exist, acc) = self.sdb.get_account(&H160::from(**addr));
-        log::trace!("loaded account: {addr:?}, exist: {exist}, acc: {acc:?}");
+    /// Get basic account information.
+    fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        let (exist, acc) = self.sdb.get_account(&H160::from(**address));
+        log::trace!("loaded account: {address:?}, exist: {exist}, acc: {acc:?}");
         if exist {
             let mut acc = AccountInfo {
                 balance: U256::from_be_bytes(acc.balance.to_be_bytes()),
@@ -84,11 +85,13 @@ impl DatabaseRef for EvmDatabase {
         }
     }
 
-    fn code_by_hash(&self, _code_hash: B256) -> Result<Bytecode, Self::Error> {
+    /// Get account code by its hash.
+    fn code_by_hash_ref(&self, _: B256) -> Result<Bytecode, Self::Error> {
         panic!("Should not be called. Code is already loaded");
     }
 
-    fn storage(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
+    /// Get storage value of address at index.
+    fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error> {
         let (_, val) = self.sdb.get_storage(
             &H160::from(**address),
             &eth_types::U256::from_little_endian(index.as_le_slice()),
@@ -96,7 +99,8 @@ impl DatabaseRef for EvmDatabase {
         Ok(U256::from_be_bytes(val.to_be_bytes()))
     }
 
-    fn block_hash(&self, _: U256) -> Result<B256, Self::Error> {
+    /// Get block hash by block number.
+    fn block_hash_ref(&self, _: U256) -> Result<B256, Self::Error> {
         unimplemented!("BLOCKHASH is disabled")
     }
 }
@@ -105,7 +109,7 @@ impl revm::Database for EvmDatabase {
     type Error = Infallible;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        DatabaseRef::basic(self, address)
+        DatabaseRef::basic_ref(self, address)
     }
 
     fn code_by_hash(&mut self, _code_hash: B256) -> Result<Bytecode, Self::Error> {
@@ -113,7 +117,7 @@ impl revm::Database for EvmDatabase {
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage(self, address, index)
+        DatabaseRef::storage_ref(self, address, index)
     }
 
     fn block_hash(&mut self, _: U256) -> Result<B256, Self::Error> {

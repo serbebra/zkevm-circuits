@@ -7,7 +7,7 @@ use eth_types::{
     ToBigEndian, ToWord, H256, U256,
 };
 use mpt_zktrie::state::ZktrieState;
-use revm::primitives::{BlockEnv, Env, SpecId, TxEnv};
+use revm::primitives::{BlockEnv, Env, HandlerCfg, SpecId, TxEnv};
 use zkevm_circuits::witness::MptUpdates;
 
 #[derive(Debug)]
@@ -46,8 +46,7 @@ impl EvmExecutor {
     }
 
     pub fn handle_block(&mut self, l2_trace: &BlockTrace) -> U256 {
-        let mut env = Env::default();
-        env.cfg.spec_id = SpecId::SHANGHAI;
+        let mut env = Box::new(Env::default());
         env.cfg.chain_id = l2_trace.chain_id;
         env.block = BlockEnv::from(l2_trace);
 
@@ -60,9 +59,14 @@ impl EvmExecutor {
             env.tx = TxEnv::from(tx);
             env.tx.l1_fee = revm::primitives::U256::from_be_bytes(exec.l1_fee.to_be_bytes());
             log::debug!("{env:#?}");
-            let mut revm = revm::EVM::with_env(env);
-            revm.database(&mut self.db);
-            revm.transact_commit().unwrap();
+            {
+                let mut revm = revm::Evm::builder()
+                    .with_db(&mut self.db)
+                    .with_handler_cfg(HandlerCfg::new_with_scroll(SpecId::SHANGHAI, true))
+                    .with_env(env)
+                    .build();
+                revm.transact_commit().unwrap();
+            }
 
             self.post_check(exec);
         }
