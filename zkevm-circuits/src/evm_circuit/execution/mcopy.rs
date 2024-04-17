@@ -216,13 +216,13 @@ mod test {
     }
 
     #[test]
-    fn extcodecopy_empty_account() {
+    fn mcopy_empty() {
         test_ok(Word::from("0x20"), Word::zero(), 0x05); // single slot
         test_ok(Word::from("0x10"), Word::zero(), 0x22); // multi slots
     }
 
     #[test]
-    fn extcodecopy_nonempty_account() {
+    fn extcodecopy_nonempty() {
         test_ok(
             Some(Account {
                 address: *EXTERNAL_ADDRESS,
@@ -234,121 +234,7 @@ mod test {
             0x36,
             true,
         ); // warm account
-
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from([10, 40]),
-                ..Default::default()
-            }),
-            Word::zero(),
-            Word::zero(),
-            0x36,
-            false,
-        ); // cold account
     }
 
-    #[test]
-    fn extcodecopy_largerthan256() {
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<256>()),
-                ..Default::default()
-            }),
-            Word::zero(),
-            Word::zero(),
-            0x36,
-            true,
-        );
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<256>()),
-                ..Default::default()
-            }),
-            Word::zero(),
-            Word::zero(),
-            0x36,
-            false,
-        );
-    }
-
-    #[test]
-    fn extcodecopy_outofbound() {
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<64>()),
-                ..Default::default()
-            }),
-            0x20.into(),
-            Word::zero(),
-            0x104,
-            true,
-        );
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<64>()),
-                ..Default::default()
-            }),
-            0x20.into(),
-            Word::zero(),
-            0x104,
-            false,
-        );
-    }
-
-    #[test]
-    fn extcodecopy_code_offset_overflow() {
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<256>()),
-                ..Default::default()
-            }),
-            Word::MAX,
-            Word::zero(),
-            0x36,
-            true,
-        );
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<256>()),
-                ..Default::default()
-            }),
-            Word::MAX,
-            Word::zero(),
-            0x36,
-            false,
-        );
-    }
-
-    #[test]
-    fn extcodecopy_overflow_memory_offset_and_zero_length() {
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<256>()),
-                ..Default::default()
-            }),
-            0x20.into(),
-            Word::MAX,
-            0,
-            true,
-        );
-        test_ok(
-            Some(Account {
-                address: *EXTERNAL_ADDRESS,
-                code: Bytes::from(rand_bytes_array::<256>()),
-                ..Default::default()
-            }),
-            0x20.into(),
-            Word::MAX,
-            0,
-            true,
-        );
-    }
+    // TODO: add mcopy OOG cases
 }
