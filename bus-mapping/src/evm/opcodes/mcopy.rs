@@ -115,6 +115,7 @@ mod mcopy_tests {
 
     fn test_ok(src_offset: usize, dest_offset: usize, copy_size: usize) {
         let code = bytecode! {
+            .setup_state()
             PUSH2(0x1234)
             PUSH2(0x10)
             MSTORE

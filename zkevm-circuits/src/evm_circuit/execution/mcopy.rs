@@ -54,7 +54,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         cb.stack_pop(memory_length.expr());
 
         let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
-        let mut reversion_info = cb.reversion_info_read(None);
 
         let memory_address = MemoryAddressGadget::construct(cb, src_offset, memory_length);
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
@@ -172,33 +171,19 @@ mod test {
         LazyLock::new(|| address!("0xaabbccddee000000000000000000000000000000"));
 
     fn test_ok(
-        external_account: Option<Account>,
-        code_offset: Word,
+        dest_offset: Word,
         memory_offset: Word,
         length: usize,
-        is_warm: bool,
     ) {
-        let external_address = external_account
-            .as_ref()
-            .map(|a| a.address)
-            .unwrap_or(*EXTERNAL_ADDRESS);
-
+      
         let mut code = Bytecode::default();
-
-        if is_warm {
-            code.append(&bytecode! {
-                PUSH20(external_address.to_word())
-                EXTCODEHASH
-                POP
-            });
-        }
         code.append(&bytecode! {
+            // TODO: prepare memory values by mstore
             PUSH32(length)
-            PUSH32(code_offset)
+            PUSH32(dest_offset)
             PUSH32(memory_offset)
-            PUSH20(external_address.to_word())
             #[start]
-            EXTCODECOPY
+            MCOPY
             STOP
         });
 
@@ -211,13 +196,6 @@ mod test {
                 accs[1]
                     .address(address!("0x0000000000000000000000000000000000000010"))
                     .balance(Word::from(1u64 << 20));
-                accs[2].address(external_address);
-                if let Some(external_account) = external_account {
-                    accs[2]
-                        .balance(external_account.balance)
-                        .nonce(external_account.nonce)
-                        .code(external_account.code);
-                }
             },
             |mut txs, accs| {
                 txs[0]
@@ -239,8 +217,8 @@ mod test {
 
     #[test]
     fn extcodecopy_empty_account() {
-        test_ok(None, Word::zero(), Word::zero(), 0x36, true); // warm account
-        test_ok(None, Word::zero(), Word::zero(), 0x36, false); // cold account
+        test_ok(Word::from("0x20"), Word::zero(), 0x05); // single slot
+        test_ok(Word::from("0x10"), Word::zero(), 0x22); // multi slots
     }
 
     #[test]
