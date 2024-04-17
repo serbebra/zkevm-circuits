@@ -63,7 +63,6 @@ impl From<&TransactionTrace> for TxEnv {
             gas_priority_fee: tx.gas_tip_cap.map(|g| U256::from_be_bytes(g.to_be_bytes())),
             blob_hashes: vec![],
             max_fee_per_blob_gas: None,
-            l1_fee: Default::default(),
         }
     }
 }

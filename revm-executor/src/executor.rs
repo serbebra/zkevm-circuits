@@ -4,7 +4,7 @@ use crate::{
 };
 use eth_types::{
     l2_types::{BlockTrace, ExecutionResult},
-    ToBigEndian, ToWord, H256, U256,
+    ToWord, H256, U256,
 };
 use mpt_zktrie::state::ZktrieState;
 use revm::primitives::{BlockEnv, Env, SpecId, TxEnv};
@@ -57,7 +57,6 @@ impl EvmExecutor {
         {
             let mut env = env.clone();
             env.tx = TxEnv::from(tx);
-            env.tx.l1_fee = revm::primitives::U256::from_be_bytes(exec.l1_fee.to_be_bytes());
             log::debug!("{env:#?}");
             {
                 let mut revm = revm::Evm::builder()
