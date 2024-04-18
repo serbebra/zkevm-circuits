@@ -7,7 +7,7 @@ use eth_types::{
     ToWord, H256, U256,
 };
 use mpt_zktrie::state::ZktrieState;
-use revm::primitives::{BlockEnv, Env, SpecId, TxEnv};
+use revm::primitives::{BlockEnv, Env, TxEnv};
 use zkevm_circuits::witness::MptUpdates;
 
 #[derive(Debug)]
@@ -61,7 +61,6 @@ impl EvmExecutor {
             {
                 let mut revm = revm::Evm::builder()
                     .with_db(&mut self.db)
-                    .with_spec_id(SpecId::SHANGHAI)
                     .with_env(env)
                     .build();
                 let result = revm.transact_commit().unwrap();
