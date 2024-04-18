@@ -1,4 +1,4 @@
-/// proof aggregation
+/// proof aggregation, with additional conditions on public inputs
 mod aggregation;
 /// This module implements `Batch` related data types.
 /// A batch is a list of chunk.
@@ -14,6 +14,8 @@ mod constants;
 mod core;
 /// Parameters for compression circuit
 mod param;
+/// Simple aggregation; re-exporting public inputs
+mod simple_aggregation;
 /// utilities
 mod util;
 

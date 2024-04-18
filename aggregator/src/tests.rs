@@ -2,6 +2,7 @@ mod aggregation;
 mod compression;
 mod mock_chunk;
 mod plonk_gate;
+mod simple_aggregation;
 
 #[macro_export]
 macro_rules! layer_0 {
