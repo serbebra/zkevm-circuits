@@ -12,7 +12,7 @@ use snark_verifier::{
 };
 use zkevm_circuits::{
     keccak_circuit::{KeccakCircuitConfig, KeccakCircuitConfigArgs},
-    table::{KeccakTable, RangeTable, U8Table},
+    table::{KeccakTable, PowOfRandTable, RangeTable, U8Table},
     util::{Challenges, SubCircuitConfig},
 };
 
@@ -116,11 +116,26 @@ impl AggregationConfig {
         let range_table = RangeTable::construct(meta);
         let challenges_expr = challenges.exprs(meta);
         let blob_data_config = BlobDataConfig::configure(meta, u8_table);
-        let batch_data_config =
-            BatchDataConfig::configure(meta, challenges_expr, u8_table, range_table, &keccak_table);
+        let batch_data_config = BatchDataConfig::configure(
+            meta,
+            &challenges_expr,
+            u8_table,
+            range_table,
+            &keccak_table,
+        );
 
         // Zstd decoder.
-        let decoder_config = DecoderConfig::configure(meta);
+        let pow_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
+        let range8 = RangeTable::construct(meta);
+        let range16 = RangeTable::construct(meta);
+        let decoder_config = DecoderConfig::configure(
+            meta,
+            &challenges_expr,
+            pow_rand_table,
+            u8_table,
+            range8,
+            range16,
+        );
 
         // Instance column stores public input column
         // - the accumulator
@@ -128,6 +143,8 @@ impl AggregationConfig {
         // - the number of valid SNARKs
         let instance = meta.instance_column();
         meta.enable_equality(instance);
+
+        println!("meta degree = {:?}", meta.degree());
 
         Self {
             base_field_config,
