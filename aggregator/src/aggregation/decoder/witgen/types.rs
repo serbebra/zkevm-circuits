@@ -18,7 +18,7 @@ use super::{
 /// A read-only memory table (fixed table) for decompression circuit to verify that the next tag
 /// fields are assigned correctly.
 #[derive(Clone, Debug)]
-pub struct TagRomTableRow {
+pub struct RomTagTableRow {
     /// The current tag.
     tag: ZstdTag,
     /// The tag that will be processed after the current tag is finished processing.
@@ -27,18 +27,17 @@ pub struct TagRomTableRow {
     max_len: u64,
     /// Whether this tag outputs a decoded byte or not.
     is_output: bool,
-    /// Whether this tag belongs to a ``block`` in zstd or not.
-    is_block: bool,
     /// Whether this tag is processed from back-to-front or not.
     is_reverse: bool,
+    /// Whether this tag belongs to a ``block`` in zstd or not.
+    is_block: bool,
 }
 
-impl TagRomTableRow {
+impl RomTagTableRow {
     pub(crate) fn rows() -> Vec<Self> {
         use ZstdTag::{
-            BlockHeader, FrameContentSize, FrameHeaderDescriptor, Null,
-            ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes,
-            ZstdBlockSequenceHeader, ZstdBlockFseCode, ZstdBlockSequenceData,
+            BlockHeader, FrameContentSize, FrameHeaderDescriptor, ZstdBlockLiteralsHeader,
+            ZstdBlockLiteralsRawBytes, ZstdBlockSequenceHeader,
         };
 
         [
@@ -47,17 +46,14 @@ impl TagRomTableRow {
             (BlockHeader, ZstdBlockLiteralsHeader, 3),
             (ZstdBlockLiteralsHeader, ZstdBlockLiteralsRawBytes, 5),
             (ZstdBlockLiteralsRawBytes, ZstdBlockSequenceHeader, 1048575), // (1 << 20) - 1
-            (ZstdBlockSequenceHeader, ZstdBlockFseCode, 4),
-            (ZstdBlockFseCode, ZstdBlockFseCode, 128),
-            (ZstdBlockFseCode, ZstdBlockSequenceData, 128),
         ]
         .map(|(tag, tag_next, max_len)| Self {
             tag,
             tag_next,
             max_len,
             is_output: tag.is_output(),
-            is_block: tag.is_block(),
             is_reverse: tag.is_reverse(),
+            is_block: tag.is_block(),
         })
         .to_vec()
     }
@@ -68,8 +64,8 @@ impl TagRomTableRow {
             Value::known(F::from(usize::from(self.tag_next) as u64)),
             Value::known(F::from(self.max_len)),
             Value::known(F::from(self.is_output as u64)),
-            Value::known(F::from(self.is_block as u64)),
             Value::known(F::from(self.is_reverse as u64)),
+            Value::known(F::from(self.is_block as u64)),
         ]
     }
 }
@@ -188,16 +184,26 @@ pub enum ZstdTag {
     FrameContentSize,
     /// The block's header.
     BlockHeader,
+    /// Raw bytes.
+    RawBlockBytes,
+    /// Run-length encoded bytes.
+    RleBlockBytes,
     /// Zstd block's literals header.
     ZstdBlockLiteralsHeader,
     /// Zstd blocks might contain raw bytes.
     ZstdBlockLiteralsRawBytes,
+    /// Zstd blocks might contain rle bytes.
+    ZstdBlockLiteralsRleBytes,
     /// Zstd block's huffman header and FSE code.
     ZstdBlockFseCode,
+    /// Zstd block's huffman code.
+    ZstdBlockHuffmanCode,
+    /// Zstd block's jump table.
+    ZstdBlockJumpTable,
+    /// Literal stream.
+    ZstdBlockLstream,
     /// Beginning of sequence section.
     ZstdBlockSequenceHeader,
-    /// Sequence data to the end of a zstd-compressed block
-    ZstdBlockSequenceData,
 }
 
 impl ZstdTag {
@@ -208,11 +214,17 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => false,
             Self::BlockHeader => false,
+            Self::RawBlockBytes => true,
+            Self::RleBlockBytes => true,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
+            Self::ZstdBlockLiteralsRleBytes => false,
             Self::ZstdBlockFseCode => false,
+            Self::ZstdBlockHuffmanCode => false,
+            Self::ZstdBlockJumpTable => false,
+            Self::ZstdBlockLstream => false,
             Self::ZstdBlockSequenceHeader => false,
-            Self::ZstdBlockSequenceData => true,
+            // TODO: more tags
         }
     }
 
@@ -223,11 +235,17 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => false,
             Self::BlockHeader => false,
+            Self::RawBlockBytes => true,
+            Self::RleBlockBytes => true,
             Self::ZstdBlockLiteralsHeader => true,
             Self::ZstdBlockLiteralsRawBytes => true,
-            Self::ZstdBlockSequenceHeader => true,
+            Self::ZstdBlockLiteralsRleBytes => true,
             Self::ZstdBlockFseCode => true,
-            Self::ZstdBlockSequenceData => true,
+            Self::ZstdBlockHuffmanCode => true,
+            Self::ZstdBlockJumpTable => true,
+            Self::ZstdBlockLstream => true,
+            Self::ZstdBlockSequenceHeader => true,
+            // TODO: more tags
         }
     }
 
@@ -238,11 +256,17 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => true,
             Self::BlockHeader => true,
+            Self::RawBlockBytes => false,
+            Self::RleBlockBytes => false,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
-            Self::ZstdBlockSequenceHeader => false,
+            Self::ZstdBlockLiteralsRleBytes => false,
             Self::ZstdBlockFseCode => false,
-            Self::ZstdBlockSequenceData => true,
+            Self::ZstdBlockHuffmanCode => true,
+            Self::ZstdBlockJumpTable => false,
+            Self::ZstdBlockLstream => true,
+            Self::ZstdBlockSequenceHeader => false,
+            // TODO: more tags
         }
     }
 }
@@ -262,11 +286,16 @@ impl ToString for ZstdTag {
             Self::FrameHeaderDescriptor => "FrameHeaderDescriptor",
             Self::FrameContentSize => "FrameContentSize",
             Self::BlockHeader => "BlockHeader",
+            Self::RawBlockBytes => "RawBlockBytes",
+            Self::RleBlockBytes => "RleBlockBytes",
             Self::ZstdBlockLiteralsHeader => "ZstdBlockLiteralsHeader",
             Self::ZstdBlockLiteralsRawBytes => "ZstdBlockLiteralsRawBytes",
-            Self::ZstdBlockSequenceHeader => "ZstdBlockSequenceHeader",
+            Self::ZstdBlockLiteralsRleBytes => "ZstdBlockLiteralsRleBytes",
             Self::ZstdBlockFseCode => "ZstdBlockFseCode",
-            Self::ZstdBlockSequenceData => "ZstdBlockSequenceData",
+            Self::ZstdBlockHuffmanCode => "ZstdBlockHuffmanCode",
+            Self::ZstdBlockJumpTable => "ZstdBlockJumpTable",
+            Self::ZstdBlockLstream => "ZstdBlockLstream",
+            Self::ZstdBlockSequenceHeader => "ZstdBlockSequenceHeader",
         })
     }
 }
@@ -664,7 +693,7 @@ impl FseAuxiliaryTableData {
 
     /// Convert an FseAuxiliaryTableData into a state-mapped representation.
     /// This makes it easier to lookup state-chaining during decoding.
-    pub fn _parse_state_table(&self) -> FseStateMapping {
+    pub fn parse_state_table(&self) -> FseStateMapping {
         let rows: Vec<FseTableRow> = self
             .sym_to_states
             .values()
@@ -689,6 +718,8 @@ pub struct ZstdWitnessRow<F> {
     pub encoded_data: EncodedData<F>,
     /// Data on decompressed data
     pub decoded_data: DecodedData<F>,
+    /// Huffman code bitstring marker that devides bitstream into symbol segments
+    pub huffman_data: HuffmanData,
     /// Fse decoding state transition data
     pub fse_data: FseTableRow,
     /// Bitstream reader
@@ -705,6 +736,7 @@ impl<F: Field> ZstdWitnessRow<F> {
                 ..Default::default()
             },
             decoded_data: DecodedData::default(),
+            huffman_data: HuffmanData::default(),
             fse_data: FseTableRow::default(),
             bitstream_read_data: BitstreamReadRow::default(),
         }
