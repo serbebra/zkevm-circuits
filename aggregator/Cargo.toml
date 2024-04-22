@@ -33,7 +33,8 @@ num-bigint.workspace = true
 revm-primitives = "3.1.0"
 
 [features]
-default = [ ]
+default = []
+# default = [ "disable_proof_aggregation" ]
 print-trace = [ "ark-std/print-trace" ]
 # This feature is useful for unit tests where we check the SAT of pi aggregation circuit
 disable_proof_aggregation = []

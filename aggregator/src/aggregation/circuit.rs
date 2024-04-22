@@ -293,7 +293,7 @@ impl Circuit<Fr> for AggregationCircuit {
 
         let timer = start_timer!(|| "load aux table");
 
-        let assigned_batch_hash = {
+        let assigned_blobs = {
             config
                 .keccak_circuit_config
                 .load_aux_tables(&mut layouter)?;
@@ -322,7 +322,7 @@ impl Circuit<Fr> for AggregationCircuit {
                 .iter()
                 .map(|chunk| !chunk.is_padding)
                 .collect::<Vec<_>>();
-            let assigned_batch_hash = assign_batch_hashes(
+            let assigned_blobs = assign_batch_hashes(
                 &config,
                 &mut layouter,
                 challenges,
@@ -334,25 +334,19 @@ impl Circuit<Fr> for AggregationCircuit {
 
             end_timer!(timer);
 
-            assigned_batch_hash
+            assigned_blobs
         };
         // digests
         let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
-            parse_hash_digest_cells(&assigned_batch_hash.hash_output);
+            parse_hash_digest_cells(&assigned_blobs.hash_output);
 
         // ==============================================
         // step 3: assert public inputs to the snarks are correct
         // ==============================================
         for (i, chunk) in chunk_pi_hash_digests.iter().enumerate() {
             let hash = self.batch_hash.chunks_with_padding[i].public_input_hash();
-            for j in 0..4 {
-                for k in 0..8 {
-                    log::trace!(
-                        "pi {:02x} {:?}",
-                        hash[j * 8 + k],
-                        chunk[8 * (3 - j) + k].value()
-                    );
-                }
+            for j in 0..DIGEST_LEN {
+                log::trace!("pi {:02x} {:?}", hash[j], chunk[j].value());
             }
         }
 
@@ -371,28 +365,22 @@ impl Circuit<Fr> for AggregationCircuit {
                 }
 
                 for i in 0..MAX_AGG_SNARKS {
-                    for j in 0..4 {
-                        for k in 0..8 {
-                            let mut t1 = Fr::default();
-                            let mut t2 = Fr::default();
-                            chunk_pi_hash_digests[i][j * 8 + k].value().map(|x| t1 = *x);
-                            snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k]
-                                .value()
-                                .map(|x| t2 = *x);
-                            log::trace!(
-                                "{}-th snark: {:?} {:?}",
-                                i,
-                                chunk_pi_hash_digests[i][j * 8 + k].value(),
-                                snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k].value()
-                            );
+                    for j in 0..DIGEST_LEN {
+                        let mut t1 = Fr::default();
+                        let mut t2 = Fr::default();
+                        chunk_pi_hash_digests[i][j].value().map(|x| t1 = *x);
+                        snark_inputs[i * DIGEST_LEN + j].value().map(|x| t2 = *x);
+                        log::trace!(
+                            "{}-th snark: {:?} {:?}",
+                            i,
+                            chunk_pi_hash_digests[i][j].value(),
+                            snark_inputs[i * DIGEST_LEN + j].value()
+                        );
 
-                            region.constrain_equal(
-                                // in the keccak table, the input and output data have different
-                                // endianess
-                                chunk_pi_hash_digests[i][j * 8 + k].cell(),
-                                snark_inputs[i * DIGEST_LEN + (3 - j) * 8 + k].cell(),
-                            )?;
-                        }
+                        region.constrain_equal(
+                            chunk_pi_hash_digests[i][j].cell(),
+                            snark_inputs[i * DIGEST_LEN + j].cell(),
+                        )?;
                     }
                 }
 
@@ -413,20 +401,18 @@ impl Circuit<Fr> for AggregationCircuit {
         }
 
         // public input hash
-        for i in 0..4 {
-            for j in 0..8 {
-                log::trace!(
-                    "pi (circuit vs real): {:?} {:?}",
-                    batch_pi_hash_digest[i * 8 + j].value(),
-                    self.instances()[0][(3 - i) * 8 + j + ACC_LEN]
-                );
+        for (index, batch_pi_hash_digest_cell) in batch_pi_hash_digest.iter().enumerate() {
+            log::trace!(
+                "pi (circuit vs real): {:?} {:?}",
+                batch_pi_hash_digest_cell.value(),
+                self.instances()[0][index + ACC_LEN]
+            );
 
-                layouter.constrain_instance(
-                    batch_pi_hash_digest[i * 8 + j].cell(),
-                    config.instance,
-                    (3 - i) * 8 + j + ACC_LEN,
-                )?;
-            }
+            layouter.constrain_instance(
+                batch_pi_hash_digest_cell.cell(),
+                config.instance,
+                index + ACC_LEN,
+            )?;
         }
 
         // blob data config
@@ -440,7 +426,7 @@ impl Circuit<Fr> for AggregationCircuit {
                 &mut layouter,
                 challenges,
                 &config.rlc_config,
-                &assigned_batch_hash.chunks_are_padding,
+                &assigned_blobs.chunks_are_padding,
                 &blob_data,
                 barycentric_assignments,
             )?;
@@ -449,42 +435,47 @@ impl Circuit<Fr> for AggregationCircuit {
                 || "blob checks",
                 |mut region| -> Result<(), Error> {
                     region.constrain_equal(
-                        assigned_batch_hash.num_valid_snarks.cell(),
+                        assigned_blobs.num_valid_snarks.cell(),
                         blob_data_exports.num_valid_chunks.cell(),
                     )?;
 
+                    // the following constraint is not satisfied
                     for (chunk_data_digest, expected_chunk_data_digest) in blob_data_exports
                         .chunk_data_digests
                         .iter()
-                        .zip_eq(assigned_batch_hash.blob.chunk_tx_data_digests.iter())
+                        .zip_eq(assigned_blobs.blob.chunk_tx_data_digests.iter())
                     {
                         for (c, ec) in chunk_data_digest
                             .iter()
                             .zip_eq(expected_chunk_data_digest.iter())
                         {
+                            println!("blob chunk tx: {:?} {:?}", c.value(), ec.value());
                             region.constrain_equal(c.cell(), ec.cell())?;
                         }
                     }
 
                     for (c, ec) in evaluation_le
                         .iter()
-                        .zip_eq(assigned_batch_hash.blob.y.iter().rev())
+                        .zip_eq(assigned_blobs.blob.y.iter().rev())
                     {
+                        log::trace!("blob y: {:?} {:?}", c.value(), ec.value());
                         region.constrain_equal(c.cell(), ec.cell())?;
                     }
 
                     for (c, ec) in challenge_le
                         .iter()
-                        .zip_eq(assigned_batch_hash.blob.z.iter().rev())
+                        .zip_eq(assigned_blobs.blob.z.iter().rev())
                     {
+                        log::trace!("blob z: {:?} {:?}", c.value(), ec.value());
                         region.constrain_equal(c.cell(), ec.cell())?;
                     }
 
                     for (c, ec) in blob_data_exports
                         .versioned_hash
                         .iter()
-                        .zip_eq(assigned_batch_hash.blob.versioned_hash.iter())
+                        .zip_eq(assigned_blobs.blob.versioned_hash.iter())
                     {
+                        log::trace!("blob version hash: {:?} {:?}", c.value(), ec.value());
                         region.constrain_equal(c.cell(), ec.cell())?;
                     }
 

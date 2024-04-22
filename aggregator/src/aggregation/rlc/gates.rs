@@ -130,6 +130,7 @@ impl RlcConfig {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn five_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
@@ -139,6 +140,7 @@ impl RlcConfig {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn nine_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
@@ -148,6 +150,7 @@ impl RlcConfig {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn thirteen_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
@@ -171,6 +174,7 @@ impl RlcConfig {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
@@ -180,6 +184,7 @@ impl RlcConfig {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn one_hundred_and_sixty_eight_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
@@ -189,6 +194,7 @@ impl RlcConfig {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn two_hundred_and_thirty_two_cell(&self, region_index: RegionIndex) -> Cell {
         Cell {
             region_index,
@@ -522,6 +528,7 @@ impl RlcConfig {
     // decompose a field element into log_size bits of boolean cells
     // require the input to be less than 2^log_size
     // require log_size < 254
+    #[allow(dead_code)]
     pub(crate) fn decomposition(
         &self,
         region: &mut Region<Fr>,
@@ -594,6 +601,7 @@ impl RlcConfig {
 
     // return a boolean if a is smaller than b
     // requires that both a and b are less than 32 bits
+    #[allow(dead_code)]
     pub(crate) fn is_smaller_than(
         &self,
         region: &mut Region<Fr>,
