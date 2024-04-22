@@ -179,7 +179,7 @@ impl ExtractedHashCells {
         let mut output_rlcs = vec![];
         let mut data_lens = vec![];
 
-        // preimages is padded as follows
+        // preimages are padded as follows
         // - the first hash is batch_public_input_hash
         // - the next hashes are chunk\[i\].piHash, we padded it to MAX_AGG_SNARK by repeating the
         //   last chunk
@@ -356,12 +356,6 @@ pub(crate) fn assign_batch_hashes(
     num_valid_chunks: usize,
     preimages: &[Vec<u8>],
 ) -> Result<AssignedBatchHash, Error> {
-    // let extracted_hash_cells = extract_hash_cells(
-    //     &config.keccak_circuit_config,
-    //     layouter,
-    //     challenges,
-    //     preimages,
-    // )?;
     // assign the hash table
     assign_keccak_table(config, layouter, challenges, preimages)?;
 
@@ -372,7 +366,6 @@ pub(crate) fn assign_batch_hashes(
     // 6. chunk[i]'s chunk_pi_hash_rlc_cells == chunk[i-1].chunk_pi_hash_rlc_cells when chunk[i] is
     // padded
     // 7. batch data hash is correct w.r.t. its RLCs
-    // let (num_valid_snarks, chunks_are_padding) = conditional_constraints(
     let extracted_hash_cells = conditional_constraints(
         &config.rlc_config,
         layouter,
@@ -380,7 +373,6 @@ pub(crate) fn assign_batch_hashes(
         chunks_are_valid,
         num_valid_chunks,
         preimages,
-        // &extracted_hash_cells,
     )?;
 
     // 2. batch_pi_hash used same roots as chunk_pi_hash
@@ -397,9 +389,9 @@ pub(crate) fn assign_batch_hashes(
         versioned_hash: batch_pi_input[BATCH_VH_OFFSET..BATCH_VH_OFFSET + 32].to_vec(),
         chunk_tx_data_digests: (0..MAX_AGG_SNARKS)
             .map(|i| {
-                let chunk_pi_input = &extracted_hash_cells.inputs[i];
-                // [INPUT_LEN_PER_ROUND * (2 + 2 * i)..INPUT_LEN_PER_ROUND * (2 + 2 * (i + 1))];
-                chunk_pi_input[CHUNK_TX_DATA_HASH_INDEX..CHUNK_TX_DATA_HASH_INDEX + 32].to_vec()
+                extracted_hash_cells.inputs[i + 1]
+                    [CHUNK_TX_DATA_HASH_INDEX..CHUNK_TX_DATA_HASH_INDEX + 32]
+                    .to_vec()
             })
             .collect(),
     };
