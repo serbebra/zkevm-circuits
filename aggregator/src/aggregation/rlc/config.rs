@@ -6,7 +6,7 @@ use halo2_proofs::{
 
 #[cfg(test)]
 use halo2_proofs::plonk::FirstPhase;
-use zkevm_circuits::util::{Challenges, Expr};
+use zkevm_circuits::{table::KeccakTable, util::{Challenges, Expr}};
 
 /// This config is used to compute RLCs for bytes.
 /// It requires a phase 2 column
@@ -17,14 +17,20 @@ pub struct RlcConfig {
     pub(crate) _phase_1_column: Column<Advice>,
     pub(crate) phase_2_column: Column<Advice>,
     pub(crate) selector: Selector,
+    pub(crate) lookup_gate_selector: Selector,
     pub(crate) fixed: Column<Fixed>,
     pub(crate) enable_challenge1: Selector,
     pub(crate) enable_challenge2: Selector,
 }
 
 impl RlcConfig {
-    pub(crate) fn configure(meta: &mut ConstraintSystem<Fr>, challenge: Challenges) -> Self {
+    pub(crate) fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        keccak_table: &KeccakTable,
+        challenge: Challenges,
+    ) -> Self {
         let selector = meta.complex_selector();
+        let lookup_gate_selector = meta.complex_selector();
         let enable_challenge1 = meta.complex_selector();
         let enable_challenge2 = meta.complex_selector();
         let challenge_expr = challenge.exprs(meta);
@@ -71,11 +77,37 @@ impl RlcConfig {
 
             vec![cs1, cs2, cs3]
         });
+
+        meta.lookup_any("rlc keccak lookup", |meta| {
+            let q = meta.query_selector(lookup_gate_selector);
+            let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
+            let output_rlc = meta.query_advice(phase_2_column, Rotation::next());
+            let data_len = meta.query_advice(phase_2_column, Rotation(2));
+            let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
+            let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
+            let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
+            let table_data_len = meta.query_any(keccak_table.input_len, Rotation::cur());
+            let table_final = meta.query_any(keccak_table.is_final, Rotation::cur());
+
+            vec![
+                (
+                    q.clone() * input_rlc,
+                    table_enabled.clone() * table_final.clone() * table_input_value,
+                ),
+                (
+                    q.clone() * output_rlc,
+                    table_enabled.clone() * table_final.clone() * table_output_value,
+                ),
+                (q * data_len, table_enabled * table_final * table_data_len),
+            ]
+        });
+
         Self {
             #[cfg(test)]
             _phase_1_column,
             phase_2_column,
             selector,
+            lookup_gate_selector,
             fixed,
             enable_challenge1,
             enable_challenge2,

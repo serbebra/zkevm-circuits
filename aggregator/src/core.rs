@@ -158,6 +158,16 @@ pub(crate) struct ExtractedHashCells {
     is_final_cells: Vec<AssignedCell<Fr, Fr>>,
 }
 
+/// Extracted hash cells. Including the padded ones so that the circuit is static.
+#[derive(Default)]
+pub(crate) struct ExtractedHashCells2 {
+    inputs: Vec<Vec<AssignedCell<Fr, Fr>>>,
+    input_rlcs: Vec<AssignedCell<Fr, Fr>>,
+    outputs: Vec<Vec<AssignedCell<Fr, Fr>>>,
+    output_rlcs: Vec<AssignedCell<Fr, Fr>>,
+    data_lens: Vec<AssignedCell<Fr, Fr>>,
+}
+
 #[derive(Default)]
 pub(crate) struct ExpectedBlobCells {
     pub(crate) z: Vec<AssignedCell<Fr, Fr>>,

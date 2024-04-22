@@ -525,6 +525,7 @@ impl CircuitExt<Fr> for AggregationCircuit {
             .chain(
                 [
                     config.0.rlc_config.selector,
+                    config.0.rlc_config.lookup_gate_selector,
                     config.0.rlc_config.enable_challenge1,
                     config.0.rlc_config.enable_challenge2,
                     config.0.blob_data_config.data_selector,

@@ -63,7 +63,7 @@ impl Circuit<Fr> for BlobCircuit {
         let challenges = Challenges::construct(meta);
         let keccak_table = KeccakTable::construct(meta);
 
-        let rlc = RlcConfig::configure(meta, challenges);
+        let rlc = RlcConfig::configure(meta, &keccak_table, challenges);
 
         let parameters = ConfigParams::aggregation_param();
         let range = RangeConfig::<Fr>::configure(

@@ -9,7 +9,7 @@ use halo2_proofs::{
 };
 use snark_verifier::loader::halo2::halo2_ecc::halo2_base::SKIP_FIRST_PASS;
 use snark_verifier_sdk::CircuitExt;
-use zkevm_circuits::util::Challenges;
+use zkevm_circuits::{table::KeccakTable, util::Challenges};
 
 use crate::{
     constants::{ACC_LEN, DIGEST_LEN},
@@ -83,7 +83,8 @@ impl Circuit<Fr> for MockChunkCircuit {
         meta.set_minimum_degree(4);
 
         let challenges = Challenges::construct(meta);
-        let rlc_config = RlcConfig::configure(meta, challenges);
+        let keccak_table = KeccakTable::construct(meta);
+        let rlc_config = RlcConfig::configure(meta, &keccak_table, challenges);
         let instance = meta.instance_column();
         meta.enable_equality(instance);
 

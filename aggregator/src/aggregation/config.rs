@@ -56,9 +56,6 @@ impl AggregationConfig {
             "For now we fix limb_bits = {BITS}, otherwise change code",
         );
 
-        // RLC configuration
-        let rlc_config = RlcConfig::configure(meta, challenges);
-
         // hash configuration for aggregation circuit
         let (keccak_table, keccak_circuit_config) = {
             let keccak_table = KeccakTable::construct(meta);
@@ -74,6 +71,9 @@ impl AggregationConfig {
                 KeccakCircuitConfig::new(meta, keccak_circuit_config_args),
             )
         };
+
+        // RLC configuration
+        let rlc_config = RlcConfig::configure(meta, &keccak_table, challenges);
 
         // base field configuration for aggregation circuit
         let base_field_config = FpConfig::configure(
