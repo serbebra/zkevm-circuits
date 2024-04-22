@@ -347,9 +347,9 @@ impl BlobDataConfig {
             },
         );
 
-        println!("blob meta degree: {}", meta.degree());
-        println!(
-            "blob meta degree: {}",
+        log::trace!("blob meta degree: {}", meta.degree());
+        log::trace!(
+            "blob meta degree with lookups: {}",
             meta.clone().chunk_lookups().degree()
         );
         assert!(meta.degree() <= 5);
