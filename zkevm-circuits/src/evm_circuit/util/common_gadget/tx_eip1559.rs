@@ -58,6 +58,7 @@ impl<F: Field> TxEip1559Gadget<F> {
         tx_id: Expression<F>,
         tx_type: Expression<F>,
         tx_gas: Expression<F>,
+        // tx_gas_price is looked up from TxTable in begin_tx gadget.
         tx_gas_price: &Word<F>,
         tx_l1_fee: &Word<F>,
         value: &Word<F>,
@@ -182,7 +183,7 @@ impl<F: Field> TxEip1559Gadget<F> {
         )?;
 
         let diff_gas_base_fee = tx.max_fee_per_gas - base_fee;
-        let priority_fee_per_gas = base_fee + tx.max_priority_fee_per_gas.min(diff_gas_base_fee);
+        let effective_gas_price = base_fee + tx.max_priority_fee_per_gas.min(diff_gas_base_fee);
         self.gas_sub_base_fee.assign(
             region,
             offset,
@@ -199,7 +200,7 @@ impl<F: Field> TxEip1559Gadget<F> {
         self.effective_gas_price_check.assign(
             region,
             offset,
-            [base_fee, priority_fee_per_gas],
+            [base_fee, effective_gas_price],
             tx.gas_price,
         )?;
 
