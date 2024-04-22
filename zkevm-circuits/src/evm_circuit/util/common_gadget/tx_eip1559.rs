@@ -30,7 +30,7 @@ pub(crate) struct TxEip1559Gadget<F> {
     gas_tip_cap: Word<F>,
     // condition for min(
     // gas_tip_cap, gas_fee_cap - base_fee_per_gas)
-    lt_gas_tip_gas_fee_sub_base_fee: LtWordGadget<F>,
+    lt_gas_tip_cap_vs_gas_fee_cap_sub_base_fee: LtWordGadget<F>,
     // gas_fee_cap - base_fee_per_gas
     gas_sub_base_fee: AddWordsGadget<F, 2, true>,
     // check tx_gas_price = effective_gas_price = priority_fee_per_gas +
@@ -147,7 +147,7 @@ impl<F: Field> TxEip1559Gadget<F> {
             is_eip1559_tx,
             gas_fee_cap,
             gas_tip_cap,
-            lt_gas_tip_gas_fee_sub_base_fee,
+            lt_gas_tip_cap_vs_gas_fee_cap_sub_base_fee: lt_gas_tip_gas_fee_sub_base_fee,
             gas_sub_base_fee,
             effective_gas_price_check,
             mul_gas_fee_cap_by_gas,
@@ -190,7 +190,7 @@ impl<F: Field> TxEip1559Gadget<F> {
             [base_fee, diff_gas_base_fee],
             tx.max_fee_per_gas,
         )?;
-        self.lt_gas_tip_gas_fee_sub_base_fee.assign(
+        self.lt_gas_tip_cap_vs_gas_fee_cap_sub_base_fee.assign(
             region,
             offset,
             tx.max_priority_fee_per_gas,
