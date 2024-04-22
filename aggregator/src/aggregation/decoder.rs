@@ -23,9 +23,13 @@ use zkevm_circuits::{
     util::Challenges,
 };
 
-use crate::aggregation::decoder::witgen::N_BLOCK_HEADER_BYTES;
-
-use self::tables::{LiteralsHeaderTable, RomTagTable};
+use self::{
+    tables::{
+        BitstringAccumulationTable, LiteralLengthCodes, LiteralsHeaderTable, MatchLengthCodes,
+        MatchOffsetCodes, RomSequenceCodes, RomTagTable,
+    },
+    witgen::N_BLOCK_HEADER_BYTES,
+};
 
 #[derive(Clone, Debug)]
 pub struct DecoderConfig {
@@ -63,8 +67,16 @@ pub struct DecoderConfig {
     range16: RangeTable<16>,
     /// Helper table for decoding the regenerated size from LiteralsHeader.
     literals_header_table: LiteralsHeaderTable,
+    /// Helper table for decoding bitstreams.
+    bitstring_accumulation_table: BitstringAccumulationTable,
     /// ROM table for validating tag transition.
     rom_tag_table: RomTagTable,
+    /// ROM table for Literal Length Codes.
+    rom_llc_table: RomSequenceCodes<LiteralLengthCodes>,
+    /// ROM table for Match Length Codes.
+    rom_mlc_table: RomSequenceCodes<MatchLengthCodes>,
+    /// ROM table for Match Offset Codes.
+    rom_moc_table: RomSequenceCodes<MatchOffsetCodes>,
 }
 
 #[derive(Clone, Debug)]
@@ -339,9 +351,13 @@ impl DecoderConfig {
     ) -> Self {
         // Fixed tables
         let rom_tag_table = RomTagTable::construct(meta);
+        let rom_llc_table = RomSequenceCodes::<LiteralLengthCodes>::construct(meta);
+        let rom_mlc_table = RomSequenceCodes::<MatchLengthCodes>::construct(meta);
+        let rom_moc_table = RomSequenceCodes::<MatchOffsetCodes>::construct(meta);
 
         // Helper tables
         let literals_header_table = LiteralsHeaderTable::configure(meta, range8, range16);
+        let bitstring_accumulation_table = BitstringAccumulationTable::configure(meta);
 
         // Peripheral configs
         let tag_config = TagConfig::configure(meta);
@@ -372,7 +388,11 @@ impl DecoderConfig {
             range8,
             range16,
             literals_header_table,
+            bitstring_accumulation_table,
             rom_tag_table,
+            rom_llc_table,
+            rom_mlc_table,
+            rom_moc_table,
         };
 
         macro_rules! is_tag {
