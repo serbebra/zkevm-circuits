@@ -7,7 +7,7 @@ use halo2_proofs::{
 };
 use zkevm_circuits::util::Challenges;
 
-use crate::{constants::LOG_DEGREE, util::assert_equal, MAX_AGG_SNARKS};
+use crate::{constants::LOG_DEGREE, util::assert_equal, DIGEST_LEN, MAX_AGG_SNARKS};
 
 use super::RlcConfig;
 
@@ -97,7 +97,7 @@ impl RlcConfig {
             )?;
             offset += 1;
         }
-        assert_eq!(offset, FIXED_OFFSET_EMPTY_KECCAK + 32);
+        assert_eq!(offset, FIXED_OFFSET_EMPTY_KECCAK + DIGEST_LEN);
 
         Ok(())
     }

@@ -184,7 +184,7 @@ impl ExtractedHashCells {
         // - the next hashes are chunk\[i\].piHash, we padded it to MAX_AGG_SNARK by repeating the
         //   last chunk
         // - the last hash is batch_data_hash, its input is padded to 32*MAX_AGG_SNARK
-        println!("preimage len: {}", preimages.len());
+        log::trace!("preimage len: {}", preimages.len());
         for preimage in preimages
             .iter()
             .take(num_valid_chunks + 1)
@@ -384,13 +384,13 @@ pub(crate) fn assign_batch_hashes(
 
     let batch_pi_input = &extracted_hash_cells.inputs[0]; //[0..INPUT_LEN_PER_ROUND * 2];
     let expected_blob_cells = ExpectedBlobCells {
-        z: batch_pi_input[BATCH_Z_OFFSET..BATCH_Z_OFFSET + 32].to_vec(),
-        y: batch_pi_input[BATCH_Y_OFFSET..BATCH_Y_OFFSET + 32].to_vec(),
-        versioned_hash: batch_pi_input[BATCH_VH_OFFSET..BATCH_VH_OFFSET + 32].to_vec(),
+        z: batch_pi_input[BATCH_Z_OFFSET..BATCH_Z_OFFSET + DIGEST_LEN].to_vec(),
+        y: batch_pi_input[BATCH_Y_OFFSET..BATCH_Y_OFFSET + DIGEST_LEN].to_vec(),
+        versioned_hash: batch_pi_input[BATCH_VH_OFFSET..BATCH_VH_OFFSET + DIGEST_LEN].to_vec(),
         chunk_tx_data_digests: (0..MAX_AGG_SNARKS)
             .map(|i| {
                 extracted_hash_cells.inputs[i + 1]
-                    [CHUNK_TX_DATA_HASH_INDEX..CHUNK_TX_DATA_HASH_INDEX + 32]
+                    [CHUNK_TX_DATA_HASH_INDEX..CHUNK_TX_DATA_HASH_INDEX + DIGEST_LEN]
                     .to_vec()
             })
             .collect(),
