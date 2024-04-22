@@ -705,6 +705,36 @@ impl RlcConfig {
         let diff = self.sub(region, a, b, offset)?;
         self.is_zero(region, &diff, offset)
     }
+
+    // lookup the input and output rlcs from the lookup table
+    pub(crate) fn lookup_keccak_rlcs(
+        &self,
+        region: &mut Region<Fr>,
+        input_rlcs: &AssignedCell<Fr, Fr>,
+        output_rlcs: &AssignedCell<Fr, Fr>,
+        data_len: &AssignedCell<Fr, Fr>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.lookup_gate_selector.enable(region, *offset)?;
+        let _input_rlcs_copied =
+            input_rlcs.copy_advice(|| "lookup input rlc", region, self.phase_2_column, *offset)?;
+        let _output_rlcs_copied = output_rlcs.copy_advice(
+            || "lookup output rlc",
+            region,
+            self.phase_2_column,
+            *offset + 1,
+        )?;
+        let _data_len = data_len.copy_advice(
+            || "lookup data len",
+            region,
+            self.phase_2_column,
+            *offset + 2,
+        )?;
+
+        *offset += 3;
+
+        Ok(())
+    }
 }
 
 #[inline]

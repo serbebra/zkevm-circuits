@@ -1,4 +1,7 @@
+use std::iter::repeat;
+
 use ark_std::{end_timer, start_timer};
+use ethers_core::utils::keccak256;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Region, Value},
     halo2curves::{
@@ -158,6 +161,166 @@ pub(crate) struct ExtractedHashCells {
     is_final_cells: Vec<AssignedCell<Fr, Fr>>,
 }
 
+/// Extracted hash cells. Including the padded ones so that the circuit is static.
+#[derive(Default)]
+pub(crate) struct ExtractedHashCells2 {
+    inputs: Vec<Vec<AssignedCell<Fr, Fr>>>,
+    input_rlcs: Vec<AssignedCell<Fr, Fr>>,
+    outputs: Vec<Vec<AssignedCell<Fr, Fr>>>,
+    output_rlcs: Vec<AssignedCell<Fr, Fr>>,
+    data_lens: Vec<AssignedCell<Fr, Fr>>,
+}
+
+impl ExtractedHashCells2 {
+    /// Assign the cells for hash input/outputs and their RLCs.
+    /// Padded the number of hashes to MAX_AGG_SNARKS
+    /// DOES NOT CONSTRAIN THE CORRECTNESS.
+    /// Call `check_against_lookup_table` function to constrain the hash is correct.
+    pub(crate) fn assign_hash_cells(
+        plonk_config: &RlcConfig,
+        region: &mut Region<Fr>,
+        offset: &mut usize,
+        keccak_input_challenge: &AssignedCell<Fr, Fr>,
+        evm_word_challenge: &AssignedCell<Fr, Fr>,
+        num_valid_chunks: usize,
+        preimages: &[Vec<u8>],
+        chunk_is_valid_cell32s: &[AssignedCell<Fr, Fr>],
+    ) -> Result<Self, halo2_proofs::plonk::Error> {
+        let mut inputs = vec![];
+        let mut input_rlcs = vec![];
+        let mut outputs = vec![];
+        let mut output_rlcs = vec![];
+        let mut data_lens = vec![];
+
+        // preimages is padded as follows
+        // - the first hash is batch_public_input_hash
+        // - the next hashes are chunk\[i\].piHash, we padded it to MAX_AGG_SNARK by repeating the
+        //   last chunk
+        // - the last hash is batch_data_hash, its input is padded to 32*MAX_AGG_SNARK
+        println!("preimage len: {}", preimages.len());
+        for preimage in preimages
+            .iter()
+            .take(num_valid_chunks + 1)
+            .chain(repeat(&preimages[num_valid_chunks]).take(MAX_AGG_SNARKS - num_valid_chunks))
+        {
+            {
+                let mut preimage_cells = vec![];
+                for input in preimage.iter() {
+                    let v = Fr::from(*input as u64);
+                    let cell = plonk_config.load_private(region, &v, offset)?;
+                    preimage_cells.push(cell);
+                }
+                let input_rlc =
+                    plonk_config.rlc(region, &preimage_cells, keccak_input_challenge, offset)?;
+                inputs.push(preimage_cells);
+                input_rlcs.push(input_rlc);
+            }
+            {
+                let mut digest_cells = vec![];
+                let digest = keccak256(preimage);
+                for output in digest.iter() {
+                    let v = Fr::from(*output as u64);
+                    let cell = plonk_config.load_private(region, &v, offset)?;
+                    digest_cells.push(cell);
+                }
+                let output_rlc =
+                    plonk_config.rlc(region, &digest_cells, evm_word_challenge, offset)?;
+                outputs.push(digest_cells);
+                output_rlcs.push(output_rlc)
+            }
+
+            data_lens.push(plonk_config.load_private(
+                region,
+                &Fr::from(preimage.len() as u64),
+                offset,
+            )?);
+        }
+
+        {
+            let batch_data_hash_preimage = &preimages[MAX_AGG_SNARKS+1];
+            let batch_data_hash_digest = keccak256(batch_data_hash_preimage);
+            let batch_data_hash_padded_preimage = batch_data_hash_preimage
+                .iter()
+                .cloned()
+                .chain(repeat(0).take(MAX_AGG_SNARKS * 32 - batch_data_hash_preimage.len()));
+
+            {
+                let mut preimage_cells = vec![];
+                for input in batch_data_hash_padded_preimage {
+                    let v = Fr::from(input as u64);
+                    let cell = plonk_config.load_private(region, &v, offset)?;
+                    preimage_cells.push(cell);
+                }
+                let input_rlc = plonk_config.rlc_with_flag(
+                    region,
+                    &preimage_cells,
+                    keccak_input_challenge,
+                    chunk_is_valid_cell32s,
+                    offset,
+                )?;
+                inputs.push(preimage_cells);
+                input_rlcs.push(input_rlc);
+            }
+
+            {
+                let mut digest_cells = vec![];
+                for output in batch_data_hash_digest.iter() {
+                    let v = Fr::from(*output as u64);
+                    let cell = plonk_config.load_private(region, &v, offset)?;
+                    digest_cells.push(cell);
+                }
+                let output_rlc =
+                    plonk_config.rlc(region, &digest_cells, evm_word_challenge, offset)?;
+                outputs.push(digest_cells);
+                output_rlcs.push(output_rlc)
+            }
+
+            data_lens.push(plonk_config.load_private(
+                region,
+                &Fr::from(batch_data_hash_preimage.len() as u64),
+                offset,
+            )?);
+        }
+
+        Ok(Self {
+            inputs,
+            input_rlcs,
+            outputs,
+            output_rlcs,
+            data_lens,
+        })
+    }
+
+    pub(crate) fn check_against_lookup_table(
+        &self,
+        plonk_config: &RlcConfig,
+        region: &mut Region<Fr>,
+        offset: &mut usize,
+    ) -> Result<(), halo2_proofs::plonk::Error> {
+        for (input_rlcs, (output_rlcs, data_len)) in self
+            .input_rlcs
+            .iter()
+            .zip_eq(self.output_rlcs.iter().zip_eq(self.data_lens.iter()))
+        {
+            plonk_config.lookup_keccak_rlcs(region, input_rlcs, output_rlcs, data_len, offset)?;
+        }
+        for (i, (input_rlcs, output_rlcs)) in self
+            .input_rlcs
+            .iter()
+            .zip_eq(self.output_rlcs.iter())
+            .enumerate()
+        {
+            log::info!(
+                "{}-th rlc {:?} {:?}",
+                i,
+                input_rlcs.value(),
+                output_rlcs.value()
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ExpectedBlobCells {
     pub(crate) z: Vec<AssignedCell<Fr, Fr>>,
@@ -201,6 +364,7 @@ pub(crate) fn assign_batch_hashes(
     layouter: &mut impl Layouter<Fr>,
     challenges: Challenges<Value<Fr>>,
     chunks_are_valid: &[bool],
+    num_valid_chunks: usize,
     preimages: &[Vec<u8>],
 ) -> Result<AssignedBatchHash, Error> {
     let extracted_hash_cells = extract_hash_cells(
@@ -209,6 +373,9 @@ pub(crate) fn assign_batch_hashes(
         challenges,
         preimages,
     )?;
+    // assign the hash table
+    assign_keccak_table(config, layouter, challenges, preimages)?;
+
     // 2. batch_pi_hash used same roots as chunk_pi_hash
     // 2.1. batch_pi_hash and chunk[0] use a same prev_state_root
     // 2.2. batch_pi_hash and chunk[MAX_AGG_SNARKS-1] use a same post_state_root
@@ -232,6 +399,8 @@ pub(crate) fn assign_batch_hashes(
         layouter,
         challenges,
         chunks_are_valid,
+        num_valid_chunks,
+        preimages,
         &extracted_hash_cells,
     )?;
 
@@ -255,6 +424,54 @@ pub(crate) fn assign_batch_hashes(
         num_valid_snarks,
         chunks_are_padding,
     })
+}
+
+/// assign hash table
+pub(crate) fn assign_keccak_table(
+    config: &AggregationConfig,
+    layouter: &mut impl Layouter<Fr>,
+    challenges: Challenges<Value<Fr>>,
+    preimages: &[Vec<u8>],
+) -> Result<(), Error> {
+    let keccak_capacity = KeccakCircuit::<Fr>::capacity_for_row(1 << LOG_DEGREE);
+
+    let timer = start_timer!(|| ("multi keccak").to_string());
+    // preimages consists of the following parts
+    // (1) batchPiHash preimage =
+    //      (chain_id ||
+    //      chunk[0].prev_state_root ||
+    //      chunk[k-1].post_state_root ||
+    //      chunk[k-1].withdraw_root ||
+    //      batch_data_hash)
+    // (2) chunk[i].piHash preimage =
+    //      (chain id ||
+    //      chunk[i].prevStateRoot || chunk[i].postStateRoot ||
+    //      chunk[i].withdrawRoot || chunk[i].datahash)
+    // (3) batchDataHash preimage =
+    //      (chunk[0].dataHash || ... || chunk[k-1].dataHash)
+    // each part of the preimage is mapped to image by Keccak256
+    let witness = multi_keccak(preimages, challenges, keccak_capacity)
+        .map_err(|e| Error::AssertionFailure(format!("multi keccak assignment failed: {e:?}")))?;
+    end_timer!(timer);
+
+    layouter
+        .assign_region(
+            || "assign keccak rows",
+            |mut region| {
+                let timer = start_timer!(|| "assign row");
+                log::trace!("witness length: {}", witness.len());
+                for (offset, keccak_row) in witness.iter().enumerate() {
+                    let _row =
+                        config
+                            .keccak_circuit_config
+                            .set_row(&mut region, offset, keccak_row)?;
+                }
+                end_timer!(timer);
+                Ok(())
+            },
+        )
+        .map_err(|e| Error::AssertionFailure(format!("assign keccak rows: {e}")))?;
+    Ok(())
 }
 
 pub(crate) fn extract_hash_cells(
@@ -549,6 +766,8 @@ pub(crate) fn conditional_constraints(
     layouter: &mut impl Layouter<Fr>,
     challenges: Challenges<Value<Fr>>,
     chunks_are_valid: &[bool],
+    num_valid_chunks: usize,
+    preimages: &[Vec<u8>],
     extracted_hash_cells: &ExtractedHashCells,
 ) -> Result<(AssignedCell<Fr, Fr>, Vec<AssignedCell<Fr, Fr>>), Error> {
     let ExtractedHashCells {
@@ -571,6 +790,13 @@ pub(crate) fn conditional_constraints(
                 // ====================================================
                 // build the flags to indicate the chunks are empty or not
                 // ====================================================
+
+                let keccak_input_challenge =
+                    rlc_config.read_challenge1(&mut region, challenges, &mut offset)?;
+
+                let evm_word_challenge =
+                    rlc_config.read_challenge2(&mut region, challenges, &mut offset)?;
+
                 let chunk_is_valid_cells = chunks_are_valid
                     .iter()
                     .map(|chunk_is_valid| -> Result<_, halo2_proofs::plonk::Error> {
@@ -581,10 +807,36 @@ pub(crate) fn conditional_constraints(
                         )
                     })
                     .collect::<Result<Vec<_>, halo2_proofs::plonk::Error>>()?;
+
+                let chunk_is_valid_cell32s = chunk_is_valid_cells
+                    .iter()
+                    .flat_map(|cell| vec![cell; 32])
+                    .cloned()
+                    .collect::<Vec<_>>();
+
                 let num_valid_snarks =
                     constrain_flags(rlc_config, &mut region, &chunk_is_valid_cells, &mut offset)?;
 
                 log::trace!("number of valid chunks: {:?}", num_valid_snarks.value());
+
+                // ====================================================
+                // extract the hash cells from the witnesses and check against the lookup table
+                // ====================================================
+                let assigned_hash_cells = ExtractedHashCells2::assign_hash_cells(
+                    rlc_config,
+                    &mut region,
+                    &mut offset,
+                    &keccak_input_challenge,
+                    &evm_word_challenge,num_valid_chunks,
+                    preimages,
+                    &chunk_is_valid_cell32s,
+                )?;
+                assigned_hash_cells.check_against_lookup_table(
+                    rlc_config,
+                    &mut region,
+                    &mut offset,
+                )?;
+
                 //
                 // if the num_of_valid_snarks <= 4, which only needs 1 keccak-f round. Therefore
                 // the batch's data hash (input, len, data_rlc, output_rlc) are in the first 300
