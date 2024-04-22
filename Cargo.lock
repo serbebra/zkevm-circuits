@@ -4148,6 +4148,7 @@ dependencies = [
  "auto_impl",
  "cfg-if 1.0.0",
  "dyn-clone",
+ "log",
  "revm-interpreter",
  "revm-precompile",
  "serde",

@@ -4,7 +4,7 @@ use bus_mapping::{
     state_db,
     state_db::{CodeDB, StateDB},
 };
-use eth_types::{l2_types::BlockTrace, ToBigEndian, H160, H256};
+use eth_types::{l2_types::BlockTrace, ToBigEndian, ToWord, Word, H160, H256};
 use log::{trace, Level};
 use mpt_zktrie::state::ZktrieState;
 use revm::{
@@ -129,14 +129,18 @@ impl DatabaseCommit for EvmDatabase {
     fn commit(&mut self, changes: revm::precompile::HashMap<Address, revm::primitives::Account>) {
         for (addr, incoming) in changes {
             let addr = H160::from(**addr);
-            if log::log_enabled!(Level::Trace) {
-                let mut acc = incoming.clone();
-                acc.info.code = None;
-                trace!("commit: addr: {:?}, acc: {:?}", addr, acc);
-            }
             let (_, acc) = self.sdb.get_account_mut(&addr);
-            let acc_is_empty = acc.is_empty();
-
+            let is_empty = acc.is_empty();
+            if log::log_enabled!(Level::Trace) {
+                let mut incoming = incoming.clone();
+                incoming.info.code = None;
+                trace!(
+                    "commit: addr: {:?}, acc: {:?}, old: {:?}",
+                    addr,
+                    incoming,
+                    acc
+                );
+            }
             let new_balance =
                 eth_types::U256::from_little_endian(incoming.info.balance.as_le_slice());
             if acc.balance != new_balance {
@@ -155,14 +159,21 @@ impl DatabaseCommit for EvmDatabase {
                     .new_value = incoming.info.nonce.into();
                 acc.nonce = eth_types::U256::from(incoming.info.nonce);
             }
-            if acc_is_empty && !incoming.is_empty() {
+            if (is_empty && !incoming.is_empty())
+                || acc.code_hash != H256::from(*incoming.info.code_hash)
+            {
                 let key = MptKey::new_code_hash(addr);
                 debug_assert!(!self.updates.contains_key(&key));
+                let code_hash = if is_empty {
+                    Word::zero()
+                } else {
+                    acc.code_hash.to_word()
+                };
                 self.updates.insert(
                     key,
                     MptUpdate::new(
                         key,
-                        eth_types::U256::zero(),
+                        code_hash,
                         eth_types::U256::from_big_endian(incoming.info.code_hash.as_ref()),
                     ),
                 );
@@ -170,11 +181,16 @@ impl DatabaseCommit for EvmDatabase {
 
                 let key = MptKey::new_keccak_code_hash(addr);
                 debug_assert!(!self.updates.contains_key(&key));
+                let keccak_code_hash = if is_empty {
+                    Word::zero()
+                } else {
+                    acc.keccak_code_hash.to_word()
+                };
                 self.updates.insert(
                     key,
                     MptUpdate::new(
                         key,
-                        eth_types::U256::zero(),
+                        keccak_code_hash,
                         eth_types::U256::from_big_endian(incoming.info.keccak_code_hash.as_ref()),
                     ),
                 );
