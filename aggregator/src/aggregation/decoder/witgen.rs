@@ -3,8 +3,11 @@ use std::collections::BTreeMap;
 use eth_types::Field;
 use halo2_proofs::circuit::Value;
 
+// witgen_debug
+use std::io;
+use std::io::Write;
+
 mod params;
-use itertools::assert_equal;
 pub use params::*;
 
 mod types;
@@ -470,7 +473,7 @@ fn process_block_zstd<F: Field>(
         )
     };
     
-    let (bytes_offset, rows, literals, lstream_len, aux_data) = literals_block_result;
+    let (byte_offset, rows, literals, lstream_len, aux_data) = literals_block_result;
     witness_rows.extend_from_slice(&rows);
 
     let last_row = witness_rows.last().expect("last row expected to exist");
@@ -505,27 +508,35 @@ type SequencesProcessingResult<F> = (
 fn process_sequences<F: Field>(
     src: &[u8],
     byte_offset: usize,
-    last_row: &ZstdWitnessRow<F>,
-    randomness: Value<F>,
+    _last_row: &ZstdWitnessRow<F>,
+    _randomness: Value<F>,
 ) -> SequencesProcessingResult<F> {
     // First, process the sequence header
     let byte0 = src.get(byte_offset).expect("First byte of sequence header must exist.").clone();
     assert!(byte0 > 0u8, "Sequences can't be of 0 length");
 
-    let (num_of_sequences, num_sequence_header_bytes) = if byte0 < 128 {
+    let (_num_of_sequences, num_sequence_header_bytes) = if byte0 < 128 {
         (byte0 as u64, 2usize)
     } else {
         let byte1 = src.get(byte_offset + 1).expect("Next byte of sequence header must exist.").clone();
         if byte0 < 255 {
-            ((((byte0 - 128) << 8) + byte1) as u64, 3)
+            ((((byte0 - 128) as u64) << 8) + byte1 as u64, 3)
         } else {
             let byte2 = src.get(byte_offset + 2).expect("Third byte of sequence header must exist.").clone();
-            ((byte1 + (byte2 << 8)) as u64 + 0x7F00, 4)
+            ((byte1 as u64) + ((byte2 as u64) << 8) + 0x7F00, 4)
         }
     };
 
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
     let compression_mode_byte = src.get(byte_offset + num_sequence_header_bytes - 1).expect("Compression mode byte must exist.").clone();
     let mode_bits = value_bits_le(compression_mode_byte);
+
+    // witgen_debug
+    write!(handle, "compression_mode_byte: {}", compression_mode_byte).unwrap();
+    writeln!(handle).unwrap();
 
     let literal_lengths_mode = mode_bits[6] + mode_bits[7] * 2;
     let offsets_mode = mode_bits[4]+ mode_bits[5] * 2;
@@ -534,7 +545,7 @@ fn process_sequences<F: Field>(
 
     assert!(reserved == 0, "Reserved bits must be 0");
 
-    // TODO: Ask about encoding alternatives
+    // TODO: Treatment of other encoding modes
     assert!(literal_lengths_mode == 2, "Only FSE_Compressed_Mode is allowed");
     assert!(offsets_mode == 2, "Only FSE_Compressed_Mode is allowed");
     assert!(match_lengths_mode == 2, "Only FSE_Compressed_Mode is allowed");
@@ -544,8 +555,24 @@ fn process_sequences<F: Field>(
     // Second, process the sequence tables (encoded using FSE)
     let byte_offset = byte_offset + num_sequence_header_bytes;
 
+    // witgen_debug
+    write!(handle, "byte_offset: {}", byte_offset).unwrap();
+    writeln!(handle).unwrap();
+    write!(handle, "byte: {}", src[byte_offset]).unwrap();
+    writeln!(handle).unwrap();
 
-    let mut fse_aux_table = FseAuxiliaryTableData {
+    let (n_fse_bytes, bit_boundaries, table) = 
+        FseAuxiliaryTableData::reconstruct(src, byte_offset)
+            .expect("Reconstructing FSE-packed Literl Length (LL) table should not fail.");
+
+    // witgen_debug
+    write!(handle, "n_fse_bytes: {}", n_fse_bytes).unwrap();
+    writeln!(handle).unwrap();
+    write!(handle, "bit_boundaries: {:?}", bit_boundaries).unwrap();
+    writeln!(handle).unwrap();
+
+
+    let fse_aux_table = FseAuxiliaryTableData {
         byte_offset: 0,
         table_size: 0,
         sym_to_states: BTreeMap::default(),
@@ -758,19 +785,22 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use bitstream_io::write;
-    use halo2_proofs::halo2curves::bn256::Fr;
-    use serde_json::from_str;
+    // witgen_debug
+    // use super::*;
+    // use bitstream_io::write;
+    // use halo2_proofs::halo2curves::bn256::Fr;
+    // use serde_json::from_str;
     use std::{
         fs::{self, File},
-        io::{self, Write},
+        // witgen_debug
+        // io::{self, Write},
     };
 
     #[test]
     #[ignore]
     fn compression_ratio() -> Result<(), std::io::Error> {
         use csv::WriterBuilder;
+        use super::*;
 
         let get_compression_ratio = |data: &[u8]| -> Result<f64, std::io::Error> {
             let raw_len = data.len();
@@ -860,6 +890,54 @@ mod tests {
             encoder.write_all(&raw)?;
             encoder.finish()?
         };
+
+        let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables) =
+            process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
+
+        Ok(())
+    }
+
+
+    // witgen_debug
+    #[test]
+    fn batch_compression_zstd_working_example() -> Result<(), std::io::Error> {
+        use halo2_proofs::halo2curves::bn256::Fr;
+        use hex::FromHex;
+        use super::*;
+
+        // witgen_debug
+        let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
+        
+        let compressed = {
+            let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
+
+            // disable compression of literals, i.e. literals will be raw bytes.
+            encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
+                zstd::zstd_safe::ParamSwitch::Disable,
+            ))?;
+            // set target block size to fit within a single block.
+            encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
+            // set source length, which will be reflected in the frame header.
+            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
+            // do not include the checksum at the end of the encoded data.
+            encoder.include_checksum(false)?;
+            // do not include magic bytes at the start of the frame since we will have a single
+            // frame.
+            encoder.include_magicbytes(false)?;
+            // include the content size to know at decode time the expected size of decoded data.
+            encoder.include_contentsize(true)?;
+
+            encoder.write_all(&raw)?;
+            encoder.finish()?
+        };
+
+        // witgen_debug
+        // write!(handle, "compressed size: {}", compressed.len())?;
+        // writeln!(handle)?;
+        // handle.write_all(&compressed);
+        // for b in &compressed {
+        //     write!(handle, "{} ", b)?;
+        // }
 
         let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables) =
             process::<Fr>(&compressed, Value::known(Fr::from(123456789)));

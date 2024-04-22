@@ -3,7 +3,7 @@ use std::{
     io::Cursor,
 };
 
-use bitstream_io::{BitRead, BitReader, LittleEndian};
+use bitstream_io::{write, BitRead, BitReader, LittleEndian};
 use eth_types::Field;
 use gadgets::impl_expr;
 use halo2_proofs::{circuit::Value, plonk::Expression};
@@ -14,6 +14,10 @@ use super::{
     params::N_BITS_PER_BYTE,
     util::{bit_length, read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
 };
+
+// witgen_debug
+use std::io;
+use std::io::Write;
 
 /// A read-only memory table (fixed table) for decompression circuit to verify that the next tag
 /// fields are assigned correctly.
@@ -73,21 +77,21 @@ impl RomTagTableRow {
 /// The symbol emitted by FSE table. This is also the weight in the canonical Huffman code.
 #[derive(Clone, Copy, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FseSymbol {
-    /// Weight == 0.
+    ///
     S0 = 0,
-    /// Weight == 1.
+    ///
     S1,
-    /// Weight == 2.
+    ///
     S2,
-    /// Weight == 3.
+    ///
     S3,
-    /// Weight == 4.
+    ///
     S4,
-    /// Weight == 5.
+    ///
     S5,
-    /// Weight == 6.
+    ///
     S6,
-    /// Weight == 7.
+    ///
     S7,
 }
 
@@ -204,6 +208,8 @@ pub enum ZstdTag {
     ZstdBlockLstream,
     /// Beginning of sequence section.
     ZstdBlockSequenceHeader,
+    /// sequence bitstream for recovering instructions
+    ZstdBlockSequenceData,
 }
 
 impl ZstdTag {
@@ -224,7 +230,7 @@ impl ZstdTag {
             Self::ZstdBlockJumpTable => false,
             Self::ZstdBlockLstream => false,
             Self::ZstdBlockSequenceHeader => false,
-            // TODO: more tags
+            Self::ZstdBlockSequenceData => true,
         }
     }
 
@@ -245,7 +251,7 @@ impl ZstdTag {
             Self::ZstdBlockJumpTable => true,
             Self::ZstdBlockLstream => true,
             Self::ZstdBlockSequenceHeader => true,
-            // TODO: more tags
+            Self::ZstdBlockSequenceData => true,
         }
     }
 
@@ -266,7 +272,7 @@ impl ZstdTag {
             Self::ZstdBlockJumpTable => false,
             Self::ZstdBlockLstream => true,
             Self::ZstdBlockSequenceHeader => false,
-            // TODO: more tags
+            Self::ZstdBlockSequenceData => true,
         }
     }
 }
@@ -296,6 +302,7 @@ impl ToString for ZstdTag {
             Self::ZstdBlockJumpTable => "ZstdBlockJumpTable",
             Self::ZstdBlockLstream => "ZstdBlockLstream",
             Self::ZstdBlockSequenceHeader => "ZstdBlockSequenceHeader",
+            Self::ZstdBlockSequenceData => "ZstdBlockSequenceData",
         })
     }
 }
@@ -563,7 +570,7 @@ pub struct FseAuxiliaryTableData {
     /// instance, the baseline and the number of bits to read from the FSE bitstream.
     ///
     /// For each symbol, the states are in strictly increasing order.
-    pub sym_to_states: BTreeMap<FseSymbol, Vec<FseTableRow>>,
+    pub sym_to_states: BTreeMap<usize, Vec<FseTableRow>>,
 }
 
 /// Another form of Fse table that has state as key instead of the FseSymbol.
@@ -583,6 +590,10 @@ impl FseAuxiliaryTableData {
     /// FSE table, if the read bitstream was not byte aligned, then we discard the 1..8 bits from
     /// the last byte that we read from.
     pub fn reconstruct(src: &[u8], byte_offset: usize) -> std::io::Result<ReconstructedFse> {
+        // witgen_debug
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+
         // construct little-endian bit-reader.
         let data = src.iter().skip(byte_offset).cloned().collect::<Vec<u8>>();
         let mut reader = BitReader::endian(Cursor::new(&data), LittleEndian);
@@ -601,56 +612,88 @@ impl FseAuxiliaryTableData {
         let mut sym_to_states = BTreeMap::new();
         let mut R = table_size;
         let mut state = 0x00;
-        let mut symbol = FseSymbol::S0;
+        let mut symbol = 0usize;
         let mut idx = 1;
         while R > 0 {
             // number of bits and value read from the variable bit-packed data.
             let (n_bits_read, value) = read_variable_bit_packing(&data, offset, R + 1)?;
 
-            let N = value - 1;
-            let states = std::iter::once(state)
-                .chain((1..N).map(|_| {
-                    state += (table_size >> 1) + (table_size >> 3) + 3;
-                    state &= table_size - 1;
-                    state
-                }))
-                .sorted()
-                .collect::<Vec<u64>>();
-            let (smallest_spot_idx, nbs) = smaller_powers_of_two(table_size, N);
-            let baselines = if N == 1 {
-                vec![0x00]
-            } else {
-                let mut rotated_nbs = nbs.clone();
-                rotated_nbs.rotate_left(smallest_spot_idx);
+            // witgen_debug
+            write!(handle, "synbol: {:?}", symbol).unwrap();
+            writeln!(handle).unwrap();
+            write!(handle, "R: {:?}", R).unwrap();
+            writeln!(handle).unwrap();
+            write!(handle, "n_bits_read: {:?}", n_bits_read).unwrap();
+            writeln!(handle).unwrap();
+            write!(handle, "value_read: {:?}", value).unwrap();
+            writeln!(handle).unwrap();
 
-                let mut baselines = std::iter::once(0x00)
-                    .chain(rotated_nbs.iter().scan(0x00, |baseline, nb| {
-                        *baseline += 1 << nb;
-                        Some(*baseline)
+            let N = value - 1;
+            if N > 0 {
+                let states = std::iter::once(state)
+                    .chain((1..N).map(|_| {
+                        state += (table_size >> 1) + (table_size >> 3) + 3;
+                        state &= table_size - 1;
+                        state
                     }))
-                    .take(N as usize)
+                    .sorted()
                     .collect::<Vec<u64>>();
 
-                baselines.rotate_right(smallest_spot_idx);
-                baselines
-            };
-            sym_to_states.insert(
-                symbol,
-                states
-                    .iter()
-                    .zip(nbs.iter())
-                    .zip(baselines.iter())
-                    .map(|((&state, &nb), &baseline)| FseTableRow {
-                        idx,
-                        state,
-                        num_bits: nb,
-                        baseline,
-                        symbol: symbol.into(),
-                        num_emitted: 0,
-                        n_acc: 0,
-                    })
-                    .collect(),
-            );
+                // witgen_debug
+                write!(handle, "states: {:?}", states).unwrap();
+                writeln!(handle).unwrap();
+
+                let (smallest_spot_idx, nbs) = smaller_powers_of_two(table_size, N);
+                // witgen_debug
+                write!(handle, "smallest_spot_idx: {:?}", smallest_spot_idx).unwrap();
+                writeln!(handle).unwrap();
+                write!(handle, "nbs: {:?}", nbs).unwrap();
+                writeln!(handle).unwrap();
+                writeln!(handle).unwrap();
+
+                let baselines = if N == 1 {
+                    vec![0x00]
+                } else {
+                    let mut rotated_nbs = nbs.clone();
+                    rotated_nbs.rotate_left(smallest_spot_idx);
+
+                    let mut baselines = std::iter::once(0x00)
+                        .chain(rotated_nbs.iter().scan(0x00, |baseline, nb| {
+                            *baseline += 1 << nb;
+                            Some(*baseline)
+                        }))
+                        .take(N as usize)
+                        .collect::<Vec<u64>>();
+
+                    baselines.rotate_right(smallest_spot_idx);
+                    baselines
+                };
+                sym_to_states.insert(
+                    symbol,
+                    states
+                        .iter()
+                        .zip(nbs.iter())
+                        .zip(baselines.iter())
+                        .map(|((&state, &nb), &baseline)| FseTableRow {
+                            idx,
+                            state,
+                            num_bits: nb,
+                            baseline,
+                            symbol: symbol as u64,
+                            num_emitted: 0,
+                            n_acc: 0,
+                        })
+                        .collect(),
+                );
+
+                // update state.
+                state += (table_size >> 1) + (table_size >> 3) + 3;
+                state &= table_size - 1;
+    
+                // remove N slots from a total of R.
+                R -= N;
+            }
+
             idx += 1;
 
             // update the total number of bits read so far.
@@ -658,14 +701,7 @@ impl FseAuxiliaryTableData {
             bit_boundaries.push((offset, value));
 
             // increment symbol.
-            symbol = ((symbol as usize) + 1).into();
-
-            // update state.
-            state += (table_size >> 1) + (table_size >> 3) + 3;
-            state &= table_size - 1;
-
-            // remove N slots from a total of R.
-            R -= N;
+            symbol += 1;
         }
 
         // ignore any bits left to be read until byte-aligned.
@@ -718,8 +754,6 @@ pub struct ZstdWitnessRow<F> {
     pub encoded_data: EncodedData<F>,
     /// Data on decompressed data
     pub decoded_data: DecodedData<F>,
-    /// Huffman code bitstring marker that devides bitstream into symbol segments
-    pub huffman_data: HuffmanData,
     /// Fse decoding state transition data
     pub fse_data: FseTableRow,
     /// Bitstream reader
@@ -736,7 +770,6 @@ impl<F: Field> ZstdWitnessRow<F> {
                 ..Default::default()
             },
             decoded_data: DecodedData::default(),
-            huffman_data: HuffmanData::default(),
             fse_data: FseTableRow::default(),
             bitstream_read_data: BitstreamReadRow::default(),
         }
@@ -763,7 +796,7 @@ mod tests {
 
         assert_eq!(n_bytes, 4);
         assert_eq!(
-            table.sym_to_states.get(&FseSymbol::S1).cloned().unwrap(),
+            table.sym_to_states.get(&1usize).cloned().unwrap(),
             [
                 (0x03, 0x10, 3),
                 (0x0c, 0x18, 3),
