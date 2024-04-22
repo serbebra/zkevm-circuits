@@ -88,6 +88,9 @@ impl Circuit<Fr> for MockChunkCircuit {
         let instance = meta.instance_column();
         meta.enable_equality(instance);
 
+        let cs = meta.clone().chunk_lookups();
+        assert!(cs.degree() <= 5);
+
         MockConfig {
             rlc_config,
             instance,

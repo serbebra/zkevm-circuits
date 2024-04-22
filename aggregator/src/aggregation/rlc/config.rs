@@ -6,7 +6,11 @@ use halo2_proofs::{
 
 #[cfg(test)]
 use halo2_proofs::plonk::FirstPhase;
-use zkevm_circuits::{table::KeccakTable, util::{Challenges, Expr}};
+use itertools::Itertools;
+use zkevm_circuits::{
+    table::{KeccakTable, LookupTable},
+    util::{Challenges, Expr},
+};
 
 /// This config is used to compute RLCs for bytes.
 /// It requires a phase 2 column
@@ -84,23 +88,15 @@ impl RlcConfig {
             let input_rlc = meta.query_advice(phase_2_column, Rotation::cur());
             let output_rlc = meta.query_advice(phase_2_column, Rotation::next());
             let data_len = meta.query_advice(phase_2_column, Rotation(2));
-            let table_enabled = meta.query_any(keccak_table.q_enable, Rotation::cur());
-            let table_input_value = meta.query_any(keccak_table.input_rlc, Rotation::cur());
-            let table_output_value = meta.query_any(keccak_table.output_rlc, Rotation::cur());
-            let table_data_len = meta.query_any(keccak_table.input_len, Rotation::cur());
-            let table_final = meta.query_any(keccak_table.is_final, Rotation::cur());
 
-            vec![
-                (
-                    q.clone() * input_rlc,
-                    table_enabled.clone() * table_final.clone() * table_input_value,
-                ),
-                (
-                    q.clone() * output_rlc,
-                    table_enabled.clone() * table_final.clone() * table_output_value,
-                ),
-                (q * data_len, table_enabled * table_final * table_data_len),
-            ]
+            let input_exprs = vec![1.expr(), 1.expr(), input_rlc, data_len, output_rlc];
+            let table_exprs = keccak_table.table_exprs(meta);
+
+            input_exprs
+                .into_iter()
+                .zip_eq(table_exprs.into_iter())
+                .map(|(input, table)| (q.clone() * input, table))
+                .collect::<Vec<_>>()
         });
 
         Self {
