@@ -245,25 +245,16 @@ mod mcopy_tests {
             copy_events[0].src_id,
             NumberOrHash::Number(expected_call_id),
         );
-        // assert_eq!(copy_events[0].src_addr as usize, src_offset);
-        // assert_eq!(copy_events[0].src_addr_end as usize, src_offset + copy_size);
-        // assert_eq!(copy_events[0].src_type, CopyDataType::Memory);
+        assert_eq!(copy_events[0].src_addr as usize, src_offset);
+        assert_eq!(copy_events[0].src_addr_end as usize, src_offset + copy_size);
+        assert_eq!(copy_events[0].src_type, CopyDataType::Memory);
 
-        // assert_eq!(
-        //     copy_events[0].dst_id,
-        //     NumberOrHash::Number(expected_call_id)
-        // );
-        // assert_eq!(copy_events[0].dst_addr as usize, src_offset);
-        // assert_eq!(copy_events[0].dst_type, CopyDataType::Memory);
-        // assert!(copy_events[0].log_id.is_none());
-
-        // TODO: below for loops should be adapted as now it is no longer related to bytecode
-        // for (idx, (value, is_code, is_mask)) in
-        // copy_events[0].copy_bytes.bytes.iter().enumerate() {     let bytecode_element =
-        // code.get(dest_offset + idx).unwrap_or_default();     if !is_mask {
-        //         assert_eq!(*value, bytecode_element.value);
-        //         assert_eq!(*is_code, bytecode_element.is_code);
-        //     }
-        // }
+        assert_eq!(
+            copy_events[0].dst_id,
+            NumberOrHash::Number(expected_call_id)
+        );
+        assert_eq!(copy_events[0].dst_addr as usize, dest_offset);
+        assert_eq!(copy_events[0].dst_type, CopyDataType::Memory);
+        assert!(copy_events[0].log_id.is_none());
     }
 }
