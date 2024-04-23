@@ -115,6 +115,7 @@ use extcodehash::Extcodehash;
 use extcodesize::Extcodesize;
 use gasprice::GasPrice;
 use logs::Log;
+use mcopy::MCopy;
 use mload::Mload;
 use mstore::Mstore;
 use origin::Origin;
@@ -232,6 +233,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         OpcodeId::SELFBALANCE => Selfbalance::gen_associated_ops,
         OpcodeId::BASEFEE => GetBlockHeaderField::<{ OpcodeId::BASEFEE }>::gen_associated_ops,
         OpcodeId::POP => StackPopOnlyOpcode::<1>::gen_associated_ops,
+        OpcodeId::MCOPY => MCopy::gen_associated_ops,
         OpcodeId::MLOAD => Mload::gen_associated_ops,
         OpcodeId::MSTORE => Mstore::<false>::gen_associated_ops,
         OpcodeId::MSTORE8 => Mstore::<true>::gen_associated_ops,
@@ -463,7 +465,10 @@ pub fn gen_associated_ops(
             log::debug!("stack sanity check passed");
         }
     }
-
+    
+    for (i,_step)  in geth_steps.iter().enumerate() {
+        println!("_step : {} {}", i, _step.op);
+    }
     // check if have error
     let geth_step = &geth_steps[0];
     let mut exec_step = state.new_step(geth_step)?;
@@ -472,6 +477,8 @@ pub fn gen_associated_ops(
     } else {
         None
     };
+
+    println!("cur geth_step is {}", geth_step.op);
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
         log::debug!(
             "geth error {:?} occurred in  {:?} at pc {:?}",
