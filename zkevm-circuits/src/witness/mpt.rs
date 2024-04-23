@@ -184,7 +184,8 @@ impl MptUpdates {
         let wit_gen = self.fill_state_roots_from_generator(wit_gen);
 
         let root_pair2 = (self.old_root, self.new_root);
-        if !root_pair.1.is_zero() && root_pair2 != root_pair {
+        // FIXME: using same value as null root is a hack, better to use Option<U256>?
+        if root_pair.0 != root_pair.1 && root_pair2 != root_pair {
             log::error!(
                 "roots non consistent ({:#x},{:#x}) vs ({:#x},{:#x})",
                 root_pair.0,

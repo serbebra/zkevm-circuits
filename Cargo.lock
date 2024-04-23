@@ -4163,11 +4163,13 @@ dependencies = [
  "env_logger",
  "eth-types",
  "ethers-core",
+ "glob",
  "halo2_proofs",
  "hex",
  "log",
  "mpt-zktrie",
  "revm 8.0.0",
+ "serde",
  "serde_json",
  "zkevm-circuits",
 ]

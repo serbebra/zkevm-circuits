@@ -3,6 +3,7 @@ use crate::{
     utils::{collect_account_proofs, collect_storage_proofs},
 };
 use eth_types::{
+    geth_types::TxType,
     l2_types::{BlockTrace, ExecutionResult},
     ToWord, H256, U256,
 };
@@ -50,20 +51,30 @@ impl EvmExecutor {
         env.cfg.chain_id = l2_trace.chain_id;
         env.block = BlockEnv::from(l2_trace);
 
-        for (tx, exec) in l2_trace
+        for (idx, (tx, exec)) in l2_trace
             .transactions
             .iter()
             .zip(l2_trace.execution_results.iter())
+            .enumerate()
         {
             let mut env = env.clone();
             env.tx = TxEnv::from(tx);
+            let eth_tx = tx.to_eth_tx(
+                l2_trace.header.hash,
+                l2_trace.header.number,
+                Some(idx.into()),
+                l2_trace.header.base_fee_per_gas,
+            );
+            let tx_type = TxType::get_tx_type(&eth_tx);
+            env.tx.scroll.is_l1_msg = tx_type.is_l1_msg();
+            env.tx.scroll.rlp_bytes = Some(revm::primitives::Bytes::from(eth_tx.rlp().to_vec()));
             log::debug!("{env:#?}");
             {
                 let mut revm = revm::Evm::builder()
                     .with_db(&mut self.db)
                     .with_env(env)
                     .build();
-                let result = revm.transact_commit().unwrap();
+                let result = revm.transact_commit().unwrap(); // TODO: handle error
                 log::trace!("{result:#?}");
             }
 
@@ -73,6 +84,7 @@ impl EvmExecutor {
         let mut mpt_updates = MptUpdates {
             old_root: self.old_root.to_word(),
             updates: self.db.updates.clone(),
+            new_root: self.old_root.to_word(),
             ..Default::default()
         };
         mpt_updates.fill_state_roots(&self.mpt_init_state);

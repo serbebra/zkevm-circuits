@@ -1,5 +1,6 @@
 use bus_mapping::circuit_input_builder::{CircuitInputBuilder, CircuitsParams};
-use eth_types::{l2_types::BlockTrace, ToWord, U256};
+use eth_types::{l2_types::BlockTrace, ToWord};
+use glob::glob;
 use halo2_proofs::halo2curves::bn256::Fr;
 use revm_executor::executor::EvmExecutor;
 use std::env;
@@ -10,38 +11,53 @@ fn main() {
 
     let circuits_params = CircuitsParams {
         max_rws: 100000,
-        max_txs: 10,
+        max_txs: 100,
         ..Default::default()
     };
 
-    let trace = std::fs::read_to_string(env::var("TRACE_PATH").unwrap()).unwrap();
-    let l2_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
+    for entry in glob(&format!(
+        "{}/batch_*/**/*.json",
+        env::var("TRACE_PATH").unwrap()
+    ))
+    .unwrap()
+    {
+        let path = entry.unwrap();
+        log::info!("Processing {:?}", path);
+        let trace = std::fs::read_to_string(&path).unwrap();
+        let l2_trace: BlockTrace = serde_json::from_str(&trace).unwrap_or_else(|_| {
+            #[derive(serde::Deserialize, Default, Debug, Clone)]
+            pub struct BlockTraceJsonRpcResult {
+                pub result: BlockTrace,
+            }
+            serde_json::from_str::<BlockTraceJsonRpcResult>(&trace)
+                .unwrap()
+                .result
+        });
 
-    let root_after = l2_trace.storage_trace.root_after.to_word();
+        let root_after = l2_trace.storage_trace.root_after.to_word();
 
-    let mut executor = EvmExecutor::new(&l2_trace);
-    let revm_root_after = executor.handle_block(&l2_trace);
-    let mut revm_updates = executor.db.updates;
-    revm_updates.retain(|_, v| v.old_value != v.new_value);
-    let revm_updates = revm_updates.into_values().collect::<Vec<_>>();
+        let mut executor = EvmExecutor::new(&l2_trace);
+        let revm_root_after = executor.handle_block(&l2_trace);
+        let mut revm_updates = executor.db.updates;
+        revm_updates.retain(|_, v| v.old_value != v.new_value);
 
-    let mut builder =
-        CircuitInputBuilder::new_from_l2_trace(circuits_params, l2_trace, false, false).unwrap();
-    builder.finalize_building().unwrap();
-    let mut block: Block<Fr> = block_convert(&builder.block, &builder.code_db).unwrap();
-    block
-        .mpt_updates
-        .fill_state_roots(builder.mpt_init_state.as_ref().unwrap());
+        let mut builder =
+            CircuitInputBuilder::new_from_l2_trace(circuits_params, l2_trace, false, false)
+                .unwrap();
+        builder.finalize_building().unwrap();
+        let mut block: Block<Fr> = block_convert(&builder.block, &builder.code_db).unwrap();
+        block
+            .mpt_updates
+            .fill_state_roots(builder.mpt_init_state.as_ref().unwrap());
 
-    let mut busmapping_updates = block.mpt_updates.updates;
-    busmapping_updates.retain(|_, v| v.old_value != v.new_value);
-    for v in busmapping_updates.values_mut() {
-        v.new_root = U256::zero();
-        v.old_root = U256::zero();
-        v.original_rws.clear();
+        block.mpt_updates.diff(revm_updates);
+        if revm_root_after != root_after {
+            log::error!(
+                "Root mismatch: {:?}, revm {:x}, l2 {:x}",
+                path,
+                revm_root_after,
+                root_after
+            );
+        }
     }
-    let busmapping_updates = busmapping_updates.into_values().collect::<Vec<_>>();
-
-    assert_eq!(revm_updates, busmapping_updates);
-    assert_eq!(revm_root_after, root_after);
 }

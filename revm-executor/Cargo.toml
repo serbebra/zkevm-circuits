@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-bus-mapping = { path = "../bus-mapping", features = ["scroll"] }
+bus-mapping = { path = "../bus-mapping", features = ["scroll", "shanghai"] }
 env_logger.workspace = true
 ethers-core.workspace = true
 eth-types = { path = "../eth-types" }
@@ -14,7 +14,9 @@ hex.workspace = true
 log.workspace = true
 mpt-zktrie = { path = "../zktrie" }
 revm = { path = "../../revm/crates/revm", features = ["scroll-default-handler"] }
-zkevm-circuits = { path = "../zkevm-circuits", features = ["scroll"] }
+zkevm-circuits = { path = "../zkevm-circuits", features = ["scroll", "shanghai"] }
 
 [dev-dependencies]
+serde.workspace = true
 serde_json.workspace = true
+glob = "0.3"

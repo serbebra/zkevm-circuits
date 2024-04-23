@@ -2,7 +2,9 @@ use crate::{
     l2_types::{BlockTrace, TransactionTrace},
     ToBigEndian,
 };
-use revm::primitives::{Address, BlockEnv, CreateScheme, TransactTo, TxEnv, B256, U256};
+use revm::primitives::{
+    Address, BlockEnv, CreateScheme, ScrollFields, TransactTo, TxEnv, B256, U256,
+};
 
 impl From<&BlockTrace> for BlockEnv {
     fn from(block: &BlockTrace) -> Self {
@@ -63,6 +65,7 @@ impl From<&TransactionTrace> for TxEnv {
             gas_priority_fee: tx.gas_tip_cap.map(|g| U256::from_be_bytes(g.to_be_bytes())),
             blob_hashes: vec![],
             max_fee_per_blob_gas: None,
+            scroll: ScrollFields::default(),
         }
     }
 }
