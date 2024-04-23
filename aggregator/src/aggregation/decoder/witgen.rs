@@ -1876,10 +1876,12 @@ mod tests {
     fn compression_ratio() -> Result<(), std::io::Error> {
         use csv::WriterBuilder;
 
-        let get_compression_ratio = |data: &[u8]| -> Result<(H256, f64), std::io::Error> {
+        let get_compression_ratio = |data: &[u8]| -> Result<(u64, u64, H256), std::io::Error> {
             let raw_len = data.len();
             let compressed = {
+                // compression level = 0 defaults to using level=3, which is zstd's default.
                 let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
+
                 // disable compression of literals, i.e. literals will be raw bytes.
                 encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
                     zstd::zstd_safe::ParamSwitch::Disable,
@@ -1887,29 +1889,33 @@ mod tests {
                 // set target block size to fit within a single block.
                 encoder
                     .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
-                // set source length, which will be reflected in the frame header.
-                encoder.set_pledged_src_size(Some(raw_len as u64))?;
                 // do not include the checksum at the end of the encoded data.
                 encoder.include_checksum(false)?;
                 // do not include magic bytes at the start of the frame since we will have a single
                 // frame.
                 encoder.include_magicbytes(false)?;
+                // set source length, which will be reflected in the frame header.
+                encoder.set_pledged_src_size(Some(raw_len as u64))?;
                 // include the content size to know at decode time the expected size of decoded
                 // data.
                 encoder.include_contentsize(true)?;
+
                 encoder.write_all(data)?;
                 encoder.finish()?
             };
             let hash = keccak256(&compressed);
             let compressed_len = compressed.len();
-            Ok((hash.into(), raw_len as f64 / compressed_len as f64))
+            Ok((raw_len as u64, compressed_len as u64, hash.into()))
         };
 
-        let batches = fs::read_dir("./data")
-            .expect("infallible")
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
-            .map(|entry| fs::read_to_string(entry.path()))
+        let mut batch_files = fs::read_dir("./data")?
+            .map(|entry| entry.map(|e| e.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        batch_files.sort();
+
+        let batches = batch_files
+            .iter()
+            .map(fs::read_to_string)
             .filter_map(|data| data.ok())
             .map(|data| hex::decode(data.trim_end()).expect("Failed to decode hex data"))
             .collect::<Vec<Vec<u8>>>();
@@ -1922,11 +1928,15 @@ mod tests {
 
         // Test and store results in CSV
         for (i, batch) in batches.iter().enumerate() {
-            let (keccak_hash, result) = get_compression_ratio(batch)?;
-            println!("i={:4}, hash={:64x}", i, keccak_hash);
+            let (raw_len, compr_len, keccak_hash) = get_compression_ratio(batch)?;
+            println!(
+                "batch{:0>3}, raw_size={:6}, compr_size={:6}, compr_keccak_hash={:64x}",
+                i, raw_len, compr_len, keccak_hash
+            );
 
             // Write input and result to CSV
-            writer.write_record(&[i.to_string(), batch.len().to_string(), result.to_string()])?;
+            let compr_ratio = raw_len as f64 / compr_len as f64;
+            writer.write_record(&[i.to_string(), raw_len.to_string(), compr_ratio.to_string()])?;
         }
 
         // Flush the CSV writer
@@ -1944,6 +1954,7 @@ mod tests {
         let raw = <Vec<u8>>::from_hex(r#"0100000000000231fb0000000064e588f7000000000000000000000000000000000000000000000000000000000000000000000000007a12000006000000000219f90216038510229a150083039bd49417afd0263d6909ba1f9a8eac697f76532365fb95880234e1a857498000b901a45ae401dc0000000000000000000000000000000000000000000000000000000064e58a1400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000e404e45aaf0000000000000000000000005300000000000000000000000000000000000004000000000000000000000000d9692f1748afee00face2da35242417dd05a86150000000000000000000000000000000000000000000000000000000000000bb8000000000000000000000000c3100d07a5997a7f9f9cdde967d396f9a2aed6a60000000000000000000000000000000000000000000000000234e1a8574980000000000000000000000000000000000000000000000000049032ac61d5dce9e600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000083104ec1a053077484b4d7a88434c2d03c30c3c55bd3a82b259f339f1c0e1e1244189009c5a01c915dd14aed1b824bf610a95560e380ea3213f0bf345df3bddff1acaf7da84d000002d8f902d5068510229a1500830992fd94bbad0e891922a8a4a7e9c39d4cc0559117016fec87082b6be7f5b757b90264ac9650d800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001e00000000000000000000000000000000000000000000000000000000000000164883164560000000000000000000000005300000000000000000000000000000000000004000000000000000000000000ffd2ece82f7959ae184d10fe17865d27b4f0fb9400000000000000000000000000000000000000000000000000000000000001f4fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffce9f6fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcea0a00000000000000000000000000000000000000000000000000082b6be7f5b75700000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006aea61ea08dd6e4834cd43a257ed52d9a31dd3b90000000000000000000000000000000000000000000000000000000064e58a1400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000412210e8a0000000000000000000000000000000000000000000000000000000083104ec2a0bc501c59bceb707d958423bad14c0d0daec84ad067f7e42209ad2cb8d904a55da00a04de4c79ed24b7a82d523b5de63c7ff68a3b7bb519546b3fe4ba8bc90a396600000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec2a037979a5225dd156f51abf9a8601e9156e1b1308c0474d69af98c55627886232ea048ac197295187e7ad48aa34cc37c2625434fa812449337732d8522014f4eacfc00000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec1a087269dbb9e987e5d58ecd3bcb724cbc4e6c843eb9095de16a25263aebfe06f5aa07f3ac49b6847ba51c5319174e51e088117742240f8555c5c1d77108cf0df90d700000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec1a04abdb8572dcabf1996825de6f753124eed41c1292fcfdc4d9a90cb4f8a0f8ff1a06ef25857e2cc9d0fa8b6ecc03b4ba6ef6f3ec1515d570fcc9102e2aa653f347a00000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec2a0882202163cbb9a299709b443b663fbab459440deabfbe183e999c98c00ea80c2a010ecb1e5196f0b1ee3d067d9a158b47b1376706e42ce2e769cf8e986935781dd"#)
             .expect("FromHex failure");
         let compressed = {
+            // compression level = 0 defaults to using level=3, which is zstd's default.
             let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
 
             // disable compression of literals, i.e. literals will be raw bytes.
@@ -1952,13 +1963,13 @@ mod tests {
             ))?;
             // set target block size to fit within a single block.
             encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
-            // set source length, which will be reflected in the frame header.
-            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
             // do not include the checksum at the end of the encoded data.
             encoder.include_checksum(false)?;
             // do not include magic bytes at the start of the frame since we will have a single
             // frame.
             encoder.include_magicbytes(false)?;
+            // set source length, which will be reflected in the frame header.
+            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
             // include the content size to know at decode time the expected size of decoded data.
             encoder.include_contentsize(true)?;
 
