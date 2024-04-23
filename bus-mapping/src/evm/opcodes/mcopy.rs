@@ -170,52 +170,81 @@ mod mcopy_tests {
             ]
         );
 
-        // // add RW table memory word writes.
-        // let length = src_offset + copy_size;
-        // let copy_start = src_offset - src_offset % 32;
-        // let copy_end = length - length % 32;
-        // let word_ops = (copy_end + 32 - copy_start) / 32 - 1;
-        // let copied_bytes = builder.block.copy_events[0]
-        //     .copy_bytes
-        //     .bytes
-        //     .iter()
-        //     .map(|(b, _, _)| *b)
-        //     .collect::<Vec<_>>();
-        // let prev_bytes = builder.block.copy_events[0]
-        //     .copy_bytes
-        //     .bytes_write_prev
-        //     .clone()
-        //     .unwrap();
+        // add RW table memory word reads.
+        let read_end = src_offset + copy_size;
+        let read_slot_start = src_offset - src_offset % 32;
+        let read_slot_end = read_end - read_end % 32;
+        let read_word_ops = (read_slot_end - read_slot_start) / 32 + 1 ;
+        let write_end = dest_offset + copy_size;
 
-        // // read and write ops.
-        // assert_eq!(builder.block.container.memory.len(), word_ops * 2);
-        // assert_eq!(
-        //     (0..word_ops)
-        //         .map(|idx| &builder.block.container.memory[idx])
-        //         .map(|op| (op.rw(), op.op().clone()))
-        //         .collect::<Vec<(RW, MemoryOp)>>(),
-        //     (0..word_ops)
-        //         .map(|idx| {
-        //             (
-        //                 RW::WRITE,
-        //                 MemoryOp::new_write(
-        //                     expected_call_id,
-        //                     MemoryAddress(copy_start + idx * 32),
-        //                     Word::from(&copied_bytes[idx * 32..(idx + 1) * 32]),
-        //                     // get previous value
-        //                     Word::from(&prev_bytes[idx * 32..(idx + 1) * 32]),
-        //                 ),
-        //             )
-        //         })
-        //         .collect::<Vec<(RW, MemoryOp)>>(),
-        // );
+        let write_slot_start = dest_offset - dest_offset % 32;
+        let write_slot_end = write_end - write_end % 32;
+        let write_word_ops = (write_slot_end - write_slot_start) / 32 + 1;
+        let word_ops = read_word_ops + write_word_ops;
 
-        // let copy_events = builder.block.copy_events.clone();
-        // assert_eq!(copy_events.len(), 1);
-        // assert_eq!(
-        //     copy_events[0].src_id,
-        //     NumberOrHash::Number(expected_call_id),
-        // );
+        let read_bytes = builder.block.copy_events[0]
+            .copy_bytes
+            .bytes
+            .iter()
+            .map(|(b, _, _)| *b)
+            .collect::<Vec<_>>();
+        let write_bytes = builder.block.copy_events[0]
+            .copy_bytes
+            .aux_bytes.as_ref()
+            .unwrap()
+            .iter()
+            .map(|(b, _, _)| *b)
+            .collect::<Vec<_>>();
+        let prev_bytes = builder.block.copy_events[0]
+            .copy_bytes
+            .bytes_write_prev
+            .clone()
+            .unwrap();
+
+        // read and write ops.
+        assert_eq!(
+            (0..word_ops)
+                // two mstores generates 4 memory ops.
+                .map(|idx| &builder.block.container.memory[4 + idx]) 
+                .map(|op| (op.rw(), op.op().clone()))
+                .collect::<Vec<(RW, MemoryOp)>>(),
+            (0..word_ops)
+                .map(|idx| {
+                    if idx % 2 == 0 {
+                       // first read op
+                       (
+                        RW::READ,
+                        MemoryOp::new_write(
+                            expected_call_id,
+                            MemoryAddress(read_slot_start + idx * 32),
+                            Word::from(&read_bytes[idx * 32..(idx + 1) * 32]),
+                            // read previous value is same to value
+                            Word::from(&read_bytes[idx * 32..(idx + 1) * 32]),
+                        ),
+                    )
+                    }else{
+                      // second write op
+                      (
+                        RW::WRITE,
+                        MemoryOp::new_write(
+                            expected_call_id,
+                            MemoryAddress(write_slot_start + (idx - 1) * 32),
+                            Word::from(&write_bytes[(idx - 1) * 32..idx * 32]),
+                            // get previous value
+                            Word::from(&prev_bytes[(idx - 1) * 32..idx * 32]),
+                        ),
+                      )
+                }    
+                })
+                .collect::<Vec<(RW, MemoryOp)>>(),
+        );
+
+        let copy_events = builder.block.copy_events.clone();
+        assert_eq!(copy_events.len(), 1);
+        assert_eq!(
+            copy_events[0].src_id,
+            NumberOrHash::Number(expected_call_id),
+        );
         // assert_eq!(copy_events[0].src_addr as usize, src_offset);
         // assert_eq!(copy_events[0].src_addr_end as usize, src_offset + copy_size);
         // assert_eq!(copy_events[0].src_type, CopyDataType::Memory);
