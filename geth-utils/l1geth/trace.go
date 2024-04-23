@@ -164,6 +164,7 @@ func Trace(config TraceConfig) ([]*ExecutionResult, error) {
 		MuirGlacierBlock:    big.NewInt(0),
 		BerlinBlock:         big.NewInt(0),
 		LondonBlock:         big.NewInt(0),
+		CancunTime:          newUint64(0),
 	}
 
 	if config.ChainConfig != nil {
@@ -271,7 +272,8 @@ func Trace(config TraceConfig) ([]*ExecutionResult, error) {
 			"prestateTracer": null
 		}
 		`, loggerConfig))
-		muxTracer, err := tracers.DefaultDirectory.New("muxTracer", new(tracers.Context), muxTracerConfig); if err != nil {
+		muxTracer, err := tracers.DefaultDirectory.New("muxTracer", new(tracers.Context), muxTracerConfig)
+		if err != nil {
 			return nil, err
 		}
 		evm := vm.NewEVM(blockCtx, txContext, stateDB, &chainConfig, vm.Config{Tracer: muxTracer.Hooks, NoBaseFee: true})
