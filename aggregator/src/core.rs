@@ -161,6 +161,7 @@ impl ExtractedHashCells {
     /// Padded the number of hashes to MAX_AGG_SNARKS
     /// DOES NOT CONSTRAIN THE CORRECTNESS.
     /// Call `check_against_lookup_table` function to constrain the hash is correct.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn assign_hash_cells(
         plonk_config: &RlcConfig,
         region: &mut Region<Fr>,

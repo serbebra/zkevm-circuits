@@ -94,7 +94,7 @@ impl RlcConfig {
 
             input_exprs
                 .into_iter()
-                .zip_eq(table_exprs.into_iter())
+                .zip_eq(table_exprs)
                 .map(|(input, table)| (q.clone() * input, table))
                 .collect::<Vec<_>>()
         });
