@@ -519,8 +519,6 @@ impl HuffmanCodesData {
 /// A single row in the FSE table.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FseTableRow {
-    /// Incremental index, starting at 1.
-    pub idx: u64,
     /// The FSE state at this row in the FSE table.
     pub state: u64,
     /// The baseline associated with this state.
@@ -570,7 +568,7 @@ pub struct FseAuxiliaryTableData {
     /// instance, the baseline and the number of bits to read from the FSE bitstream.
     ///
     /// For each symbol, the states are in strictly increasing order.
-    pub sym_to_states: BTreeMap<usize, Vec<FseTableRow>>,
+    pub sym_to_states: BTreeMap<u64, Vec<FseTableRow>>,
 }
 
 /// Another form of Fse table that has state as key instead of the FseSymbol.
@@ -612,24 +610,46 @@ impl FseAuxiliaryTableData {
         let mut sym_to_states = BTreeMap::new();
         let mut R = table_size;
         let mut state = 0x00;
-        let mut symbol = 0usize;
-        let mut idx = 1;
+        let mut symbol = 0;
         while R > 0 {
             // number of bits and value read from the variable bit-packed data.
+            // And update the total number of bits read so far.
             let (n_bits_read, value) = read_variable_bit_packing(&data, offset, R + 1)?;
+            reader.skip(n_bits_read)?;
+            offset += n_bits_read;
+            bit_boundaries.push((offset, value));
 
-            // witgen_debug
-            write!(handle, "synbol: {:?}", symbol).unwrap();
-            writeln!(handle).unwrap();
-            write!(handle, "R: {:?}", R).unwrap();
-            writeln!(handle).unwrap();
-            write!(handle, "n_bits_read: {:?}", n_bits_read).unwrap();
-            writeln!(handle).unwrap();
-            write!(handle, "value_read: {:?}", value).unwrap();
-            writeln!(handle).unwrap();
+            if value == 0 {
+                unimplemented!("value=0 => prob=-1: scenario unimplemented");
+            }
 
             let N = value - 1;
-            if N > 0 {
+
+            // When a symbol has a probability of zero, it is followed by a 2-bits repeat flag. This
+            // repeat flag tells how many probabilities of zeroes follow the current one. It
+            // provides a number ranging from 0 to 3. If it is a 3, another 2-bits repeat flag
+            // follows, and so on.
+            if N == 0 {
+                sym_to_states.insert(symbol, vec![]);
+                symbol += 1;
+
+                loop {
+                    let repeat_bits = reader.read::<u8>(2)?;
+                    offset += 2;
+                    bit_boundaries.push((offset, repeat_bits as u64));
+
+                    for k in 0..repeat_bits {
+                        sym_to_states.insert(symbol + (k as u64), vec![]);
+                    }
+                    symbol += repeat_bits as u64;
+
+                    if repeat_bits < 3 {
+                        break;
+                    }
+                }
+            }
+
+            if N >= 1 {
                 let states = std::iter::once(state)
                     .chain((1..N).map(|_| {
                         state += (table_size >> 1) + (table_size >> 3) + 3;
@@ -638,19 +658,7 @@ impl FseAuxiliaryTableData {
                     }))
                     .sorted()
                     .collect::<Vec<u64>>();
-
-                // witgen_debug
-                write!(handle, "states: {:?}", states).unwrap();
-                writeln!(handle).unwrap();
-
                 let (smallest_spot_idx, nbs) = smaller_powers_of_two(table_size, N);
-                // witgen_debug
-                write!(handle, "smallest_spot_idx: {:?}", smallest_spot_idx).unwrap();
-                writeln!(handle).unwrap();
-                write!(handle, "nbs: {:?}", nbs).unwrap();
-                writeln!(handle).unwrap();
-                writeln!(handle).unwrap();
-
                 let baselines = if N == 1 {
                     vec![0x00]
                 } else {
@@ -675,33 +683,26 @@ impl FseAuxiliaryTableData {
                         .zip(nbs.iter())
                         .zip(baselines.iter())
                         .map(|((&state, &nb), &baseline)| FseTableRow {
-                            idx,
                             state,
                             num_bits: nb,
                             baseline,
-                            symbol: symbol as u64,
+                            symbol,
                             num_emitted: 0,
                             n_acc: 0,
                         })
                         .collect(),
                 );
 
+                // increment symbol.
+                symbol += 1;
+
                 // update state.
                 state += (table_size >> 1) + (table_size >> 3) + 3;
                 state &= table_size - 1;
-    
-                // remove N slots from a total of R.
-                R -= N;
             }
 
-            idx += 1;
-
-            // update the total number of bits read so far.
-            offset += n_bits_read;
-            bit_boundaries.push((offset, value));
-
-            // increment symbol.
-            symbol += 1;
+            // remove N slots from a total of R.
+            R -= N;
         }
 
         // ignore any bits left to be read until byte-aligned.
@@ -796,7 +797,7 @@ mod tests {
 
         assert_eq!(n_bytes, 4);
         assert_eq!(
-            table.sym_to_states.get(&1usize).cloned().unwrap(),
+            table.sym_to_states.get(&1).cloned().unwrap(),
             [
                 (0x03, 0x10, 3),
                 (0x0c, 0x18, 3),
@@ -808,7 +809,6 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(i, &(state, baseline, num_bits))| FseTableRow {
-                idx: (i + 1) as u64,
                 state,
                 symbol: 1,
                 baseline,
@@ -818,6 +818,20 @@ mod tests {
             })
             .collect::<Vec<FseTableRow>>(),
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sequences_fse_reconstruction() -> std::io::Result<()> {
+        let src = vec![
+            0x21, 0x9d, 0x51, 0xcc, 0x18, 0x42, 0x44, 0x81, 0x8c, 0x94, 0xb4, 0x50, 0x1e,
+        ];
+
+        let (n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0)?;
+        let parsed_state_map = table.parse_state_table();
+
+        // TODO: assertions
 
         Ok(())
     }

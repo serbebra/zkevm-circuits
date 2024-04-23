@@ -802,10 +802,12 @@ mod tests {
         use csv::WriterBuilder;
         use super::*;
 
-        let get_compression_ratio = |data: &[u8]| -> Result<f64, std::io::Error> {
+        let get_compression_ratio = |data: &[u8]| -> Result<(u64, u64, H256), std::io::Error> {
             let raw_len = data.len();
             let compressed = {
+                // compression level = 0 defaults to using level=3, which is zstd's default.
                 let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
+
                 // disable compression of literals, i.e. literals will be raw bytes.
                 encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
                     zstd::zstd_safe::ParamSwitch::Disable,
@@ -813,28 +815,33 @@ mod tests {
                 // set target block size to fit within a single block.
                 encoder
                     .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
-                // set source length, which will be reflected in the frame header.
-                encoder.set_pledged_src_size(Some(raw_len as u64))?;
                 // do not include the checksum at the end of the encoded data.
                 encoder.include_checksum(false)?;
                 // do not include magic bytes at the start of the frame since we will have a single
                 // frame.
                 encoder.include_magicbytes(false)?;
+                // set source length, which will be reflected in the frame header.
+                encoder.set_pledged_src_size(Some(raw_len as u64))?;
                 // include the content size to know at decode time the expected size of decoded
                 // data.
                 encoder.include_contentsize(true)?;
+
                 encoder.write_all(data)?;
                 encoder.finish()?
             };
+            let hash = keccak256(&compressed);
             let compressed_len = compressed.len();
-            Ok(raw_len as f64 / compressed_len as f64)
+            Ok((raw_len as u64, compressed_len as u64, hash.into()))
         };
 
-        let batches = fs::read_dir("./data")
-            .expect("infallible")
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
-            .map(|entry| fs::read_to_string(entry.path()))
+        let mut batch_files = fs::read_dir("./data")?
+            .map(|entry| entry.map(|e| e.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        batch_files.sort();
+
+        let batches = batch_files
+            .iter()
+            .map(fs::read_to_string)
             .filter_map(|data| data.ok())
             .map(|data| hex::decode(data.trim_end()).expect("Failed to decode hex data"))
             .collect::<Vec<Vec<u8>>>();
@@ -847,10 +854,15 @@ mod tests {
 
         // Test and store results in CSV
         for (i, batch) in batches.iter().enumerate() {
-            let result = get_compression_ratio(batch)?;
+            let (raw_len, compr_len, keccak_hash) = get_compression_ratio(batch)?;
+            println!(
+                "batch{:0>3}, raw_size={:6}, compr_size={:6}, compr_keccak_hash={:64x}",
+                i, raw_len, compr_len, keccak_hash
+            );
 
             // Write input and result to CSV
-            writer.write_record(&[i.to_string(), batch.len().to_string(), result.to_string()])?;
+            let compr_ratio = raw_len as f64 / compr_len as f64;
+            writer.write_record(&[i.to_string(), raw_len.to_string(), compr_ratio.to_string()])?;
         }
 
         // Flush the CSV writer
@@ -869,6 +881,7 @@ mod tests {
             .expect("FromHex failure");
 
         let compressed = {
+            // compression level = 0 defaults to using level=3, which is zstd's default.
             let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
 
             // disable compression of literals, i.e. literals will be raw bytes.
@@ -877,13 +890,13 @@ mod tests {
             ))?;
             // set target block size to fit within a single block.
             encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
-            // set source length, which will be reflected in the frame header.
-            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
             // do not include the checksum at the end of the encoded data.
             encoder.include_checksum(false)?;
             // do not include magic bytes at the start of the frame since we will have a single
             // frame.
             encoder.include_magicbytes(false)?;
+            // set source length, which will be reflected in the frame header.
+            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
             // include the content size to know at decode time the expected size of decoded data.
             encoder.include_contentsize(true)?;
 
