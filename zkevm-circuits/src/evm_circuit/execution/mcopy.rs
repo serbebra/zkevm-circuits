@@ -32,7 +32,6 @@ use super::ExecutionGadget;
 pub(crate) struct MCopyGadget<F> {
     same_context: SameContextGadget<F>,
     memory_address: MemoryAddressGadget<F>,
-    tx_id: Cell<F>,
     copy_rwc_inc: Cell<F>,
     dest_offset: Cell<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
@@ -49,21 +48,21 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let src_offset = cb.query_cell_phase2();
         let dest_offset = cb.query_cell_phase2();
-        let memory_length = cb.query_word_rlc();
+        let length = cb.query_word_rlc();
 
         cb.stack_pop(dest_offset.expr());
         cb.stack_pop(src_offset.expr());
-        cb.stack_pop(memory_length.expr());
+        cb.stack_pop(length.expr());
 
-        let tx_id = cb.call_context(None, CallContextFieldTag::TxId);
-
-        let memory_address = MemoryAddressGadget::construct(cb, src_offset, memory_length);
+        let memory_address = MemoryAddressGadget::construct(cb, src_offset, length);
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
             memory_address.length(),
             memory_expansion.gas_cost(),
         );
+
+        // dynamic cost + constant cost
         let gas_cost = memory_copier_gas.gas_cost() + OpcodeId::MCOPY.constant_gas_cost().expr();
 
         let copy_rwc_inc = cb.query_cell();
@@ -92,6 +91,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let step_state_transition = StepStateTransition {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
+            //rw_counter: Transition::Delta(3.expr()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
             memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
@@ -103,7 +103,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         Self {
             same_context,
             memory_address,
-            tx_id,
             copy_rwc_inc,
             dest_offset,
             memory_expansion,
@@ -128,9 +127,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             self.memory_address
                 .assign(region, offset, src_offset, length)?;
 
-        self.tx_id
-            .assign(region, offset, Value::known(F::from(transaction.id as u64)))?;
-
+        println!("mcopy copy_rwc_inc : {}, len {}", step.copy_rw_counter_delta, 
+        length.as_u64());
         self.copy_rwc_inc.assign(
             region,
             offset,
