@@ -131,7 +131,7 @@ pub fn le_bits_to_value(bits: &[u8]) -> u64 {
     })
 }
 
-pub fn _be_bits_to_value(bits: &[u8]) -> u64 {
+pub fn be_bits_to_value(bits: &[u8]) -> u64 {
     assert!(bits.len() <= 32);
 
     bits.iter().fold(0, |mut acc, b| {
@@ -141,7 +141,7 @@ pub fn _be_bits_to_value(bits: &[u8]) -> u64 {
 }
 
 // helper utility for helping manage bitstream delimitation
-pub fn _increment_idx(current_byte_idx: usize, current_bit_idx: usize) -> (usize, usize) {
+pub fn increment_idx(current_byte_idx: usize, current_bit_idx: usize) -> (usize, usize) {
     let current_bit_idx = current_bit_idx + 1;
     let mut current_byte_idx = current_byte_idx;
 

@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 use eth_types::Field;
+use ethers_core::k256::pkcs8::der::Sequence;
 use halo2_proofs::circuit::Value;
 
 // witgen_debug
-use std::io;
-use std::io::Write;
+use std::{io, io::Write};
 
 mod params;
 pub use params::*;
@@ -15,6 +15,10 @@ pub use types::{ZstdTag::*, *};
 
 pub mod util;
 use util::{le_bits_to_value, value_bits_le};
+
+use crate::aggregation::decoder::witgen::util::{be_bits_to_value, increment_idx};
+
+const CMOT_N: u64 = 31;
 
 const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
     (FrameHeaderDescriptor, 1),
@@ -208,7 +212,7 @@ type AggregateBlockResult<F> = (
     Vec<u64>,
     Vec<u64>,
     Vec<u64>,
-    FseAuxiliaryTableData,
+    [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
 );
 fn process_block<F: Field>(
     src: &[u8],
@@ -223,18 +227,17 @@ fn process_block<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let last_row = rows.last().expect("last row expected to exist");
-    let (_byte_offset, rows, literals, lstream_len, aux_data, fse_aux_table) =
-        match block_type {
-            BlockType::ZstdCompressedBlock => process_block_zstd(
-                src,
-                byte_offset,
-                last_row,
-                randomness,
-                block_size,
-                last_block,
-            ),
-            _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
-        };
+    let (_byte_offset, rows, literals, lstream_len, aux_data, fse_aux_tables) = match block_type {
+        BlockType::ZstdCompressedBlock => process_block_zstd(
+            src,
+            byte_offset,
+            last_row,
+            randomness,
+            block_size,
+            last_block,
+        ),
+        _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
+    };
     witness_rows.extend_from_slice(&rows);
 
     (
@@ -244,7 +247,7 @@ fn process_block<F: Field>(
         literals,
         lstream_len,
         aux_data,
-        fse_aux_table,
+        fse_aux_tables,
     )
 }
 
@@ -357,7 +360,7 @@ type BlockProcessingResult<F> = (
     Vec<u64>,
     Vec<u64>,
     Vec<u64>,
-    FseAuxiliaryTableData,
+    [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
 );
 
 type LiteralsBlockResult<F> = (usize, Vec<ZstdWitnessRow<F>>, Vec<u64>, Vec<u64>, Vec<u64>);
@@ -371,6 +374,7 @@ fn process_block_zstd<F: Field>(
     block_size: usize,
     last_block: bool,
 ) -> BlockProcessingResult<F> {
+    let end_offset = byte_offset + block_size;
     let mut witness_rows = vec![];
 
     // 1-5 bytes LiteralSectionHeader
@@ -392,47 +396,47 @@ fn process_block_zstd<F: Field>(
         let tag = ZstdTag::ZstdBlockLiteralsRawBytes;
         let tag_next = ZstdTag::ZstdBlockSequenceHeader;
         let literals = src[byte_offset..(byte_offset + regen_size)].to_vec();
-        let value_rlc_iter = literals.iter().scan(
-            last_row.encoded_data.value_rlc,
-            |acc, &byte| {
+        let value_rlc_iter = literals
+            .iter()
+            .scan(last_row.encoded_data.value_rlc, |acc, &byte| {
                 *acc = *acc * randomness + Value::known(F::from(byte as u64));
                 Some(*acc)
-            },
-        );
-        let decoded_value_rlc_iter = literals.iter().scan(
-            last_row.decoded_data.decoded_value_rlc,
-            |acc, &byte| {
-                *acc = *acc * randomness + Value::known(F::from(byte as u64));
-                Some(*acc)
-            },
-        );
-        let tag_value_iter = literals.iter().scan(
-            Value::known(F::zero()),
-            |acc, &byte| {
-                *acc = *acc * randomness + Value::known(F::from(byte as u64));
-                Some(*acc)
-            },
-        );
+            });
+        let decoded_value_rlc_iter =
+            literals
+                .iter()
+                .scan(last_row.decoded_data.decoded_value_rlc, |acc, &byte| {
+                    *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                    Some(*acc)
+                });
+        let tag_value_iter = literals.iter().scan(Value::known(F::zero()), |acc, &byte| {
+            *acc = *acc * randomness + Value::known(F::from(byte as u64));
+            Some(*acc)
+        });
         let tag_value = tag_value_iter.clone().last().expect("Literals must exist.");
-        let tag_rlc_iter = literals.iter().scan(
-            Value::known(F::zero()),
-            |acc, &byte| {
-                *acc = *acc * randomness + Value::known(F::from(byte as u64));
-                Some(*acc)
-            },
-        );
+        let tag_rlc_iter = literals.iter().scan(Value::known(F::zero()), |acc, &byte| {
+            *acc = *acc * randomness + Value::known(F::from(byte as u64));
+            Some(*acc)
+        });
         let tag_rlc = tag_value_iter.clone().last().expect("Literals must exist.");
 
         (
             byte_offset + regen_size,
-            literals.iter()
+            literals
+                .iter()
                 .zip(tag_value_iter)
                 .zip(value_rlc_iter)
                 .zip(decoded_value_rlc_iter)
                 .zip(tag_rlc_iter)
                 .enumerate()
                 .map(
-                    |(i, ((((&value_byte, tag_value_acc), value_rlc), decoded_value_rlc), tag_rlc_acc))| {
+                    |(
+                        i,
+                        (
+                            (((&value_byte, tag_value_acc), value_rlc), decoded_value_rlc),
+                            tag_rlc_acc,
+                        ),
+                    )| {
                         ZstdWitnessRow {
                             state: ZstdState {
                                 tag,
@@ -472,12 +476,13 @@ fn process_block_zstd<F: Field>(
             vec![0, 0, 0, 0],
         )
     };
-    
+
     let (byte_offset, rows, literals, lstream_len, aux_data) = literals_block_result;
     witness_rows.extend_from_slice(&rows);
 
     let last_row = witness_rows.last().expect("last row expected to exist");
-    let (bytes_offset, rows, fse_aux_table) = process_sequences::<F>(src, byte_offset, last_row, randomness);
+    let (bytes_offset, rows, fse_aux_tables, address_table_rows) =
+        process_sequences::<F>(src, byte_offset, end_offset, last_row, randomness);
     witness_rows.extend_from_slice(&rows);
 
     (
@@ -495,34 +500,52 @@ fn process_block_zstd<F: Field>(
             branch,
             sf_max as u64,
         ],
-        fse_aux_table,
+        fse_aux_tables,
     )
 }
 
 type SequencesProcessingResult<F> = (
     usize,
     Vec<ZstdWitnessRow<F>>,
-    FseAuxiliaryTableData,
+    [FseAuxiliaryTableData; 3], // LLT, MLT, CMOT
+    Vec<AddressTableRow>,
 );
 
 fn process_sequences<F: Field>(
     src: &[u8],
     byte_offset: usize,
-    _last_row: &ZstdWitnessRow<F>,
-    _randomness: Value<F>,
+    end_offset: usize,
+    last_row: &ZstdWitnessRow<F>,
+    randomness: Value<F>,
 ) -> SequencesProcessingResult<F> {
+    // Initialize witness rows
+    let mut witness_rows: Vec<ZstdWitnessRow<F>> = vec![];
+
+    // Other consistent values
+    let encoded_len = last_row.encoded_data.encoded_len;
+    let decoded_data = last_row.decoded_data.clone();
+
     // First, process the sequence header
-    let byte0 = src.get(byte_offset).expect("First byte of sequence header must exist.").clone();
+    let byte0 = src
+        .get(byte_offset)
+        .expect("First byte of sequence header must exist.")
+        .clone();
     assert!(byte0 > 0u8, "Sequences can't be of 0 length");
 
     let (_num_of_sequences, num_sequence_header_bytes) = if byte0 < 128 {
         (byte0 as u64, 2usize)
     } else {
-        let byte1 = src.get(byte_offset + 1).expect("Next byte of sequence header must exist.").clone();
+        let byte1 = src
+            .get(byte_offset + 1)
+            .expect("Next byte of sequence header must exist.")
+            .clone();
         if byte0 < 255 {
             ((((byte0 - 128) as u64) << 8) + byte1 as u64, 3)
         } else {
-            let byte2 = src.get(byte_offset + 2).expect("Third byte of sequence header must exist.").clone();
+            let byte2 = src
+                .get(byte_offset + 2)
+                .expect("Third byte of sequence header must exist.")
+                .clone();
             ((byte1 as u64) + ((byte2 as u64) << 8) + 0x7F00, 4)
         }
     };
@@ -531,60 +554,446 @@ fn process_sequences<F: Field>(
     let stdout = io::stdout();
     let mut handle = stdout.lock();
 
-    let compression_mode_byte = src.get(byte_offset + num_sequence_header_bytes - 1).expect("Compression mode byte must exist.").clone();
+    let compression_mode_byte = src
+        .get(byte_offset + num_sequence_header_bytes - 1)
+        .expect("Compression mode byte must exist.")
+        .clone();
     let mode_bits = value_bits_le(compression_mode_byte);
 
-    // witgen_debug
-    write!(handle, "compression_mode_byte: {}", compression_mode_byte).unwrap();
-    writeln!(handle).unwrap();
-
     let literal_lengths_mode = mode_bits[6] + mode_bits[7] * 2;
-    let offsets_mode = mode_bits[4]+ mode_bits[5] * 2;
+    let offsets_mode = mode_bits[4] + mode_bits[5] * 2;
     let match_lengths_mode = mode_bits[2] + mode_bits[3] * 2;
     let reserved = mode_bits[0] + mode_bits[1] * 2;
 
     assert!(reserved == 0, "Reserved bits must be 0");
 
     // TODO: Treatment of other encoding modes
-    assert!(literal_lengths_mode == 2, "Only FSE_Compressed_Mode is allowed");
+    assert!(
+        literal_lengths_mode == 2,
+        "Only FSE_Compressed_Mode is allowed"
+    );
     assert!(offsets_mode == 2, "Only FSE_Compressed_Mode is allowed");
-    assert!(match_lengths_mode == 2, "Only FSE_Compressed_Mode is allowed");
+    assert!(
+        match_lengths_mode == 2,
+        "Only FSE_Compressed_Mode is allowed"
+    );
 
     // witgen_debug. TODO: Add rows for the header
 
     // Second, process the sequence tables (encoded using FSE)
     let byte_offset = byte_offset + num_sequence_header_bytes;
 
-    // witgen_debug
-    write!(handle, "byte_offset: {}", byte_offset).unwrap();
-    writeln!(handle).unwrap();
-    write!(handle, "byte: {}", src[byte_offset]).unwrap();
-    writeln!(handle).unwrap();
-
-    let (n_fse_bytes, bit_boundaries, table) = 
+    // Literal Length Table (LLT)
+    let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) =
         FseAuxiliaryTableData::reconstruct(src, byte_offset)
             .expect("Reconstructing FSE-packed Literl Length (LL) table should not fail.");
+    let llt = table_llt.parse_state_table();
+    let al_llt = bit_boundaries_llt
+        .first()
+        .expect("Accuracy Log should exist")
+        .1
+        + 5;
+
+    // Cooked Match Offset Table (CMOT)
+    let byte_offset = byte_offset + n_fse_bytes_llt;
+    let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) =
+        FseAuxiliaryTableData::reconstruct(src, byte_offset)
+            .expect("Reconstructing FSE-packed Cooked Match Offset (CMO) table should not fail.");
+    let cmot = table_cmot.parse_state_table();
+    let al_cmot = bit_boundaries_cmot
+        .first()
+        .expect("Accuracy Log should exist")
+        .1
+        + 5;
+
+    // Match Length Table (MLT)
+    let byte_offset = byte_offset + n_fse_bytes_cmot;
+    let (n_fse_bytes_mlt, bit_boundaries_mlt, table_mlt) =
+        FseAuxiliaryTableData::reconstruct(src, byte_offset)
+            .expect("Reconstructing FSE-packed Match Length (ML) table should not fail.");
+    let mlt = table_mlt.parse_state_table();
+    let al_mlt = bit_boundaries_mlt
+        .first()
+        .expect("Accuracy Log should exist")
+        .1
+        + 5;
+
+    // TODO: Add FSE witness rows
+
+    // Reconstruct LLTV, CMOTV, and MLTV which specifies bit actions for a specific state
+    let lltv = SequenceFixedStateActionTable::reconstruct_lltv();
+    let cmotv = SequenceFixedStateActionTable::reconstruct_cmotv(CMOT_N);
+    let mltv = SequenceFixedStateActionTable::reconstruct_mltv();
+
+    // Decode sequence bitstream
+    let byte_offset = byte_offset + n_fse_bytes_mlt;
+    let sequence_bitstream = &src[byte_offset..end_offset]
+        .iter()
+        .rev()
+        .clone()
+        .flat_map(|v| {
+            let mut bits = value_bits_le(*v);
+            bits.reverse();
+            bits
+        })
+        .collect::<Vec<u8>>();
+
+    // Bitstream processing state values
+    let mut num_emitted: usize = 0;
+    let n_sequence_data_bytes = end_offset - byte_offset;
+    let mut last_byte_idx: usize = 1;
+    let mut current_byte_idx: usize = 1;
+    let mut current_bit_idx: usize = 0;
+
+    // Update the last row
+    let multiplier =
+        (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
+    let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
+
+    let value_rlc_iter =
+        &src[byte_offset..end_offset]
+            .iter()
+            .scan(Value::known(F::zero()), |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            });
+    let mut value_rlc_iter = value_rlc_iter
+        .clone()
+        .collect::<Vec<Value<F>>>()
+        .into_iter()
+        .rev();
+
+    let tag_value_iter =
+        &src[byte_offset..end_offset]
+            .iter()
+            .scan(Value::known(F::zero()), |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            });
+    let tag_value = tag_value_iter.clone().last().expect("Tag value must exist");
+    let mut tag_value_iter = tag_value_iter
+        .clone()
+        .collect::<Vec<Value<F>>>()
+        .into_iter()
+        .rev();
+
+    let tag_rlc_iter =
+        &src[byte_offset..end_offset]
+            .iter()
+            .scan(Value::known(F::zero()), |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            });
+    let tag_rlc = tag_rlc_iter.clone().last().expect("Tag RLC must exist");
+    let mut tag_rlc_iter = tag_rlc_iter
+        .clone()
+        .collect::<Vec<Value<F>>>()
+        .into_iter()
+        .rev();
+
+    let mut next_tag_value_acc = tag_value_iter.next().unwrap();
+    let next_value_rlc_acc = value_rlc_iter.next().unwrap();
+    let mut next_tag_rlc_acc = tag_rlc_iter.next().unwrap();
+
+    let aux_1 = next_value_rlc_acc;
+    // witgen_debug
+    // let aux_2 = witness_rows[witness_rows.len() - 1].encoded_data.value_rlc;
+
+    let mut padding_end_idx = 0;
+    while sequence_bitstream[padding_end_idx] == 0 {
+        padding_end_idx += 1;
+    }
+
+    // Add a witness row for leading 0s and the sentinel 1-bit
+    witness_rows.push(ZstdWitnessRow {
+        state: ZstdState {
+            tag: ZstdTag::ZstdBlockSequenceData,
+            tag_next: ZstdTag::ZstdBlockSequenceData, // witgen_debug
+            max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
+            tag_len: n_sequence_data_bytes as u64,
+            tag_idx: 1_u64,
+            tag_value,
+            tag_value_acc: next_tag_value_acc,
+            is_tag_change: true,
+            tag_rlc,
+            tag_rlc_acc: next_tag_rlc_acc,
+        },
+        encoded_data: EncodedData {
+            byte_idx: (byte_offset + current_byte_idx) as u64,
+            encoded_len,
+            value_byte: src[byte_offset + current_byte_idx],
+            value_rlc,
+            reverse: true,
+            reverse_len: n_sequence_data_bytes as u64,
+            reverse_idx: (n_sequence_data_bytes - (current_byte_idx - 1)) as u64,
+            aux_1,
+            aux_2: Value::known(F::zero()), // witgen_debug
+        },
+        bitstream_read_data: BitstreamReadRow {
+            bit_start_idx: 0usize,
+            bit_end_idx: padding_end_idx,
+            bit_value: 1u64,
+            is_zero_bit_read: false,
+        },
+        decoded_data: last_row.decoded_data.clone(),
+        fse_data: FseTableRow::default(),
+    });
+
+    // Exclude the leading zero section
+    while sequence_bitstream[current_bit_idx] == 0 {
+        (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
+    }
+    // Exclude the sentinel 1-bit
+    (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
+
+    // Update accumulators
+    if current_byte_idx > last_byte_idx {
+        next_tag_value_acc = tag_value_iter.next().unwrap();
+        next_tag_rlc_acc = tag_rlc_iter.next().unwrap();
+        last_byte_idx = current_byte_idx;
+    }
+
+    // Now the actual data-bearing bitstream starts
+    // The sequence bitstream is interleaved by 6 bit processing strands.
+    // The interleaving order is: CMOVBits, MLVBits, LLVBits, LLFBits, MLFBits, CMOFBits
+    let mut decoded_bitstring_values: Vec<(SequenceDataTag, u64)> = vec![];
+    let mut raw_sequence_instructions: Vec<(usize, usize, usize)> = vec![]; // offset_state, match_length, literal_length
+    let mut curr_instruction: [usize; 3] = [0, 0, 0];
+
+    // Note: mode and order_idx produces 6 distinct decoding state
+    let mut mode: usize = 1; // use 0 or 1 to denote whether bitstream produces data or next decoding state
+    let mut order_idx: usize = 0; // use 0, 1, 2 to denote the order of decoded value within current mode
+
+    let mut state_baselines: [usize; 3] = [0, 0, 0]; // 3 states for LL, ML, CMO
+    let mut decoding_baselines: [usize; 3] = [0, 0, 0]; // 3 decoding bl for CMO, ML, LL
+
+    let data_tags = [
+        SequenceDataTag::CookedMatchOffset_Value,
+        SequenceDataTag::MatchLength_Value,
+        SequenceDataTag::LiteralLength_Value,
+        SequenceDataTag::LiteralLength_FSE,
+        SequenceDataTag::MatchLength_FSE,
+        SequenceDataTag::CookedMatchOffset_FSE,
+    ];
+    let next_nb_to_read_for_states: [usize; 3] =
+        [al_llt as usize, al_mlt as usize, al_cmot as usize]; // Obtained from accuracy log
+    let next_nb_to_read_for_values: [usize; 3] = [0, 0, 0];
+    let mut nb_switch = [next_nb_to_read_for_values, next_nb_to_read_for_states];
+    let v_tables = [cmotv, mltv, lltv];
+    let f_tables = [llt, mlt, cmot];
+
+    let mut is_init = true;
+    let mut nb = nb_switch[mode][order_idx];
+    while current_bit_idx + nb <= n_sequence_data_bytes * N_BITS_PER_BYTE {
+        let bitstring_value =
+            be_bits_to_value(&sequence_bitstream[current_bit_idx..(current_bit_idx + nb)]);
+
+        let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
+        decoded_bitstring_values.push(new_decoded);
+
+        if mode > 0 {
+            // For the initial baseline determination, ML and CMO positions are flipped.
+            if is_init {
+                order_idx = [0, 2, 1][order_idx];
+            }
+
+            // FSE state update step
+            let new_state = (state_baselines[order_idx] as u64) + bitstring_value;
+            let new_state_params = f_tables[order_idx]
+                .get(&new_state)
+                .expect("State should exist.");
+            let state_symbol = new_state_params.0;
+
+            let value_idx = 3 - order_idx - 1;
+
+            // Update baseline and nb for next FSE state transition
+            state_baselines[order_idx] = new_state_params.1 as usize;
+            nb_switch[1][order_idx] = new_state_params.2 as usize;
+
+            // Update baseline and nb for next value decoding
+            decoding_baselines[value_idx] = v_tables[value_idx].states_to_actions
+                [state_symbol as usize]
+                .1
+                 .0 as usize;
+            nb_switch[0][value_idx] = v_tables[value_idx].states_to_actions[state_symbol as usize]
+                .1
+                 .1 as usize;
+
+            // Flip back the idx for first step
+            if is_init {
+                order_idx = [0, 2, 1][order_idx];
+            }
+
+            order_idx += 1;
+
+            if order_idx > 2 {
+                is_init = false;
+                mode = 0; // switch to data mode
+                order_idx = 0;
+            }
+        } else {
+            // Value decoding step
+            let new_value = (decoding_baselines[order_idx] as u64) + bitstring_value;
+            curr_instruction[order_idx] = new_value as usize;
+
+            order_idx += 1;
+
+            if order_idx > 2 {
+                mode = 1; // switch to FSE mode
+                order_idx = 0;
+
+                // Add the instruction
+                let new_instruction = (
+                    curr_instruction[0],
+                    curr_instruction[1],
+                    curr_instruction[2],
+                );
+
+                raw_sequence_instructions.push(new_instruction);
+            }
+        }
+
+        // bitstream witness row data
+        let from_bit_idx = current_bit_idx.rem_euclid(8);
+        let to_bit_idx = if nb > 0 {
+            from_bit_idx + (nb - 1)
+        } else {
+            from_bit_idx
+        };
+
+        // Add a witness row
+        witness_rows.push(ZstdWitnessRow {
+            state: ZstdState {
+                tag: ZstdTag::ZstdBlockSequenceData,
+                tag_next: ZstdTag::ZstdBlockSequenceData, // witgen_debug
+                max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
+                tag_len: n_sequence_data_bytes as u64,
+                tag_idx: current_byte_idx as u64,
+                tag_value,
+                tag_value_acc: next_tag_value_acc,
+                is_tag_change: true,
+                tag_rlc,
+                tag_rlc_acc: next_tag_rlc_acc,
+            },
+            encoded_data: EncodedData {
+                byte_idx: (byte_offset + current_byte_idx) as u64,
+                encoded_len,
+                // value_byte: src[byte_offset + current_byte_idx], // witgen_debug, idx overflow
+                value_byte: src[0], // TODO
+                value_rlc,
+                reverse: true,
+                reverse_len: n_sequence_data_bytes as u64,
+                reverse_idx: (n_sequence_data_bytes - (current_byte_idx - 1)) as u64,
+                aux_1,
+                aux_2: Value::known(F::zero()), // witgen_debug
+            },
+            bitstream_read_data: BitstreamReadRow {
+                bit_start_idx: from_bit_idx,
+                bit_end_idx: to_bit_idx,
+                bit_value: bitstring_value,
+                is_zero_bit_read: (nb == 0),
+            },
+            decoded_data: last_row.decoded_data.clone(),
+            fse_data: FseTableRow::default(), // TODO: Clarify alternating FSE/data segments
+        });
+
+        for _ in 0..nb {
+            (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
+        }
+        if current_byte_idx > last_byte_idx && current_byte_idx <= n_sequence_data_bytes {
+            next_tag_value_acc = tag_value_iter.next().unwrap();
+            next_tag_rlc_acc = tag_rlc_iter.next().unwrap();
+            last_byte_idx = current_byte_idx;
+        }
+
+        if is_init {
+            // On the first step, ML and CMO are flipped
+            let true_idx = [0, 2, 1][order_idx];
+            nb = nb_switch[mode][true_idx];
+        } else {
+            nb = nb_switch[mode][order_idx];
+        }
+    }
 
     // witgen_debug
-    write!(handle, "n_fse_bytes: {}", n_fse_bytes).unwrap();
+    write!(
+        handle,
+        "raw_sequence_instructions: {:?}",
+        raw_sequence_instructions
+    )
+    .unwrap();
     writeln!(handle).unwrap();
-    write!(handle, "bit_boundaries: {:?}", bit_boundaries).unwrap();
-    writeln!(handle).unwrap();
 
+    // Process raw sequence instructions
+    let mut address_table_rows: Vec<AddressTableRow> = vec![];
+    let mut literal_len_acc: usize = 0;
+    let mut repeated_offset: [usize; 3] = [1, 4, 8];
 
-    let fse_aux_table = FseAuxiliaryTableData {
-        byte_offset: 0,
-        table_size: 0,
-        sym_to_states: BTreeMap::default(),
-    };
+    for (idx, inst) in raw_sequence_instructions.iter().enumerate() {
+        let actual_offset = if inst.0 > 3 {
+            inst.0 - 3
+        } else {
+            let mut repeat_idx = inst.0;
+            if inst.2 == 0 {
+                repeat_idx += 1;
+                if repeat_idx > 3 {
+                    repeat_idx = 1;
+                }
+            }
 
-    // Third, process the sequence data
+            repeated_offset[repeat_idx]
+        } as u64;
 
-    // witgen_debug
+        literal_len_acc += inst.2;
+
+        // TODO: Address table rows are not padded right now. witgen_debug
+        address_table_rows.push(AddressTableRow {
+            s_padding: 0,
+            instruction_idx: idx as u64,
+            literal_length: inst.2 as u64,
+            cooked_match_offset: inst.0 as u64,
+            match_length: inst.1 as u64,
+            literal_length_acc: literal_len_acc as u64,
+            repeated_offset1: repeated_offset[0] as u64,
+            repeated_offset2: repeated_offset[1] as u64,
+            repeated_offset3: repeated_offset[2] as u64,
+            actual_offset,
+        });
+
+        // Update repeated offset
+        if inst.0 > 3 {
+            repeated_offset[2] = repeated_offset[1];
+            repeated_offset[1] = repeated_offset[0];
+            repeated_offset[0] = inst.0 - 3;
+        } else {
+            let mut repeat_idx = inst.0;
+            if inst.2 == 0 {
+                repeat_idx += 1;
+                if repeat_idx > 3 {
+                    repeat_idx = 1;
+                }
+            }
+
+            if repeat_idx == 2 {
+                let result = repeated_offset[1];
+                repeated_offset[1] = repeated_offset[0];
+                repeated_offset[0] = result;
+            } else if repeat_idx == 3 {
+                let result = repeated_offset[2];
+                repeated_offset[2] = repeated_offset[1];
+                repeated_offset[1] = repeated_offset[0];
+                repeated_offset[0] = result;
+            } else {
+                // repeat 1
+            }
+        };
+    }
+
     (
-        0,
-        vec![],
-        fse_aux_table,
+        end_offset,
+        witness_rows,
+        [table_llt, table_mlt, table_cmot],
+        address_table_rows,
     )
 }
 
@@ -755,7 +1164,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             new_literals,
             lstream_lens,
             pipeline_data,
-            fse_aux_table,
+            new_fse_aux_tables,
         ) = process_block::<F>(
             src,
             byte_offset,
@@ -766,7 +1175,9 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         literals.extend_from_slice(&new_literals);
         aux_data.extend_from_slice(&lstream_lens);
         aux_data.extend_from_slice(&pipeline_data);
-        fse_aux_tables.push(fse_aux_table);
+        for fse_aux_table in new_fse_aux_tables {
+            fse_aux_tables.push(fse_aux_table);
+        }
 
         if last_block {
             // TODO: Recover this assertion after the sequence section decoding is completed.
@@ -775,101 +1186,98 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         }
     }
 
-    (
-        witness_rows,
-        literals,
-        aux_data,
-        fse_aux_tables,
-    )
+    (witness_rows, literals, aux_data, fse_aux_tables)
 }
 
 #[cfg(test)]
 mod tests {
     // witgen_debug
-    // use super::*;
+    use super::*;
     // use bitstream_io::write;
     // use halo2_proofs::halo2curves::bn256::Fr;
     // use serde_json::from_str;
+
     use std::{
         fs::{self, File},
         // witgen_debug
         // io::{self, Write},
     };
 
-    #[test]
-    #[ignore]
-    fn compression_ratio() -> Result<(), std::io::Error> {
-        use csv::WriterBuilder;
-        use super::*;
+    // witgen_debug
+    // #[test]
+    // #[ignore]
+    // fn compression_ratio() -> Result<(), std::io::Error> {
+    //     use csv::WriterBuilder;
+    //     use super::*;
 
-        let get_compression_ratio = |data: &[u8]| -> Result<(u64, u64, H256), std::io::Error> {
-            let raw_len = data.len();
-            let compressed = {
-                // compression level = 0 defaults to using level=3, which is zstd's default.
-                let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
+    //     let get_compression_ratio = |data: &[u8]| -> Result<(u64, u64, H256), std::io::Error> {
+    //         let raw_len = data.len();
+    //         let compressed = {
+    //             // compression level = 0 defaults to using level=3, which is zstd's default.
+    //             let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
 
-                // disable compression of literals, i.e. literals will be raw bytes.
-                encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
-                    zstd::zstd_safe::ParamSwitch::Disable,
-                ))?;
-                // set target block size to fit within a single block.
-                encoder
-                    .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
-                // do not include the checksum at the end of the encoded data.
-                encoder.include_checksum(false)?;
-                // do not include magic bytes at the start of the frame since we will have a single
-                // frame.
-                encoder.include_magicbytes(false)?;
-                // set source length, which will be reflected in the frame header.
-                encoder.set_pledged_src_size(Some(raw_len as u64))?;
-                // include the content size to know at decode time the expected size of decoded
-                // data.
-                encoder.include_contentsize(true)?;
+    //             // disable compression of literals, i.e. literals will be raw bytes.
+    //             encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
+    //                 zstd::zstd_safe::ParamSwitch::Disable,
+    //             ))?;
+    //             // set target block size to fit within a single block.
+    //             encoder
+    //                 .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
+    //             // do not include the checksum at the end of the encoded data.
+    //             encoder.include_checksum(false)?;
+    //             // do not include magic bytes at the start of the frame since we will have a
+    // single             // frame.
+    //             encoder.include_magicbytes(false)?;
+    //             // set source length, which will be reflected in the frame header.
+    //             encoder.set_pledged_src_size(Some(raw_len as u64))?;
+    //             // include the content size to know at decode time the expected size of decoded
+    //             // data.
+    //             encoder.include_contentsize(true)?;
 
-                encoder.write_all(data)?;
-                encoder.finish()?
-            };
-            let hash = keccak256(&compressed);
-            let compressed_len = compressed.len();
-            Ok((raw_len as u64, compressed_len as u64, hash.into()))
-        };
+    //             encoder.write_all(data)?;
+    //             encoder.finish()?
+    //         };
+    //         let hash = keccak256(&compressed);
+    //         let compressed_len = compressed.len();
+    //         Ok((raw_len as u64, compressed_len as u64, hash.into()))
+    //     };
 
-        let mut batch_files = fs::read_dir("./data")?
-            .map(|entry| entry.map(|e| e.path()))
-            .collect::<Result<Vec<_>, std::io::Error>>()?;
-        batch_files.sort();
+    //     let mut batch_files = fs::read_dir("./data")?
+    //         .map(|entry| entry.map(|e| e.path()))
+    //         .collect::<Result<Vec<_>, std::io::Error>>()?;
+    //     batch_files.sort();
 
-        let batches = batch_files
-            .iter()
-            .map(fs::read_to_string)
-            .filter_map(|data| data.ok())
-            .map(|data| hex::decode(data.trim_end()).expect("Failed to decode hex data"))
-            .collect::<Vec<Vec<u8>>>();
+    //     let batches = batch_files
+    //         .iter()
+    //         .map(fs::read_to_string)
+    //         .filter_map(|data| data.ok())
+    //         .map(|data| hex::decode(data.trim_end()).expect("Failed to decode hex data"))
+    //         .collect::<Vec<Vec<u8>>>();
 
-        let file = File::create("modified-ratio.csv")?;
-        let mut writer = WriterBuilder::new().from_writer(file);
+    //     let file = File::create("modified-ratio.csv")?;
+    //     let mut writer = WriterBuilder::new().from_writer(file);
 
-        // Write headers to CSV
-        writer.write_record(["ID", "Len(input)", "Compression Ratio"])?;
+    //     // Write headers to CSV
+    //     writer.write_record(["ID", "Len(input)", "Compression Ratio"])?;
 
-        // Test and store results in CSV
-        for (i, batch) in batches.iter().enumerate() {
-            let (raw_len, compr_len, keccak_hash) = get_compression_ratio(batch)?;
-            println!(
-                "batch{:0>3}, raw_size={:6}, compr_size={:6}, compr_keccak_hash={:64x}",
-                i, raw_len, compr_len, keccak_hash
-            );
+    //     // Test and store results in CSV
+    //     for (i, batch) in batches.iter().enumerate() {
+    //         let (raw_len, compr_len, keccak_hash) = get_compression_ratio(batch)?;
+    //         println!(
+    //             "batch{:0>3}, raw_size={:6}, compr_size={:6}, compr_keccak_hash={:64x}",
+    //             i, raw_len, compr_len, keccak_hash
+    //         );
 
-            // Write input and result to CSV
-            let compr_ratio = raw_len as f64 / compr_len as f64;
-            writer.write_record(&[i.to_string(), raw_len.to_string(), compr_ratio.to_string()])?;
-        }
+    //         // Write input and result to CSV
+    //         let compr_ratio = raw_len as f64 / compr_len as f64;
+    //         writer.write_record(&[i.to_string(), raw_len.to_string(), compr_ratio.to_string()])?;
+    //     }
 
-        // Flush the CSV writer
-        writer.flush()?;
+    //     // Flush the CSV writer
+    //     writer.flush()?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     #[test]
     fn batch_compression_zstd() -> Result<(), std::io::Error> {
@@ -910,17 +1318,16 @@ mod tests {
         Ok(())
     }
 
-
     // witgen_debug
     #[test]
     fn batch_compression_zstd_working_example() -> Result<(), std::io::Error> {
+        use super::*;
         use halo2_proofs::halo2curves::bn256::Fr;
         use hex::FromHex;
-        use super::*;
 
         // witgen_debug
         let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
-        
+
         let compressed = {
             let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
 
@@ -943,14 +1350,6 @@ mod tests {
             encoder.write_all(&raw)?;
             encoder.finish()?
         };
-
-        // witgen_debug
-        // write!(handle, "compressed size: {}", compressed.len())?;
-        // writeln!(handle)?;
-        // handle.write_all(&compressed);
-        // for b in &compressed {
-        //     write!(handle, "{} ", b)?;
-        // }
 
         let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables) =
             process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
