@@ -110,8 +110,10 @@ mod mcopy_tests {
 
     #[test]
     fn mcopy_opcode_impl() {
+        test_ok(0x40, 0x50, 0x0);
         test_ok(0x40, 0x50, 0x02);
         test_ok(0x60, 0x80, 0xA0);
+        test_ok(0x90, 0x200, 0xE9);
     }
 
     fn test_ok(src_offset: usize, dest_offset: usize, copy_size: usize) {
@@ -174,15 +176,23 @@ mod mcopy_tests {
         let read_end = src_offset + copy_size;
         let read_slot_start = src_offset - src_offset % 32;
         let read_slot_end = read_end - read_end % 32;
-        let read_word_ops = (read_slot_end - read_slot_start) / 32 ;
+        let read_word_ops = if read_slot_end == read_slot_start && copy_size != 0 {
+            // both read & write in one slot.
+            1
+        }else{
+            (read_slot_end - read_slot_start) / 32
+        };
 
         // let read_word_ops = (read_slot_end - read_slot_start) / 32;
         let write_end = dest_offset + copy_size;
-
         let write_slot_start = dest_offset - dest_offset % 32;
         let write_slot_end = write_end - write_end % 32;
-        let write_word_ops = (write_slot_end - write_slot_start) / 32;
-        // let write_word_ops = (write_slot_end - write_slot_start) / 32;
+        let write_word_ops = if write_slot_end == write_slot_start && copy_size != 0 {
+            // both read & write in one slot.
+            1
+        }else{
+            (write_slot_end - write_slot_start) / 32
+        };
 
         let word_ops = read_word_ops + write_word_ops;
 
@@ -207,12 +217,12 @@ mod mcopy_tests {
 
         // read and write ops.
         assert_eq!(
-            (4..word_ops)
+            (4..word_ops + 4)
                 // two mstores generates 4 memory ops.
-                .map(|idx| &builder.block.container.memory[idx]) 
+                .map(|idx| &builder.block.container.memory[idx])
                 .map(|op| (op.rw(), op.op().clone()))
                 .collect::<Vec<(RW, MemoryOp)>>(),
-            (0..word_ops / 2)
+            (0..word_ops)
                 .map(|idx| {
                     // id_index as read or write operation's index.
                     let rw_index = idx / 2 + idx % 2;
