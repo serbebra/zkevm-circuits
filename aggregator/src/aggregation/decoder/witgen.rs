@@ -582,9 +582,13 @@ fn process_sequences<F: Field>(
     );
 
     // witgen_debug. TODO: Add rows for the header
-
+    let multiplier =
+        (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
+    let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
+    
     // Second, process the sequence tables (encoded using FSE)
     let byte_offset = byte_offset + num_sequence_header_bytes;
+    let fse_starting_byte_offset = byte_offset;
 
     // Literal Length Table (LLT)
     let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) =
@@ -621,7 +625,164 @@ fn process_sequences<F: Field>(
         .1
         + 5;
 
-    // TODO: Add FSE witness rows
+
+    // Add witness rows for the FSE tables
+    for (idx, start_offset, end_offset, bit_boundaries, tag_len) in [
+        (
+            0usize, 
+            fse_starting_byte_offset,
+            fse_starting_byte_offset + n_fse_bytes_llt,
+            bit_boundaries_llt,
+            n_fse_bytes_llt as u64,
+        ), 
+        (
+            1usize, 
+            fse_starting_byte_offset + n_fse_bytes_llt,
+            fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot,
+            bit_boundaries_cmot,
+            n_fse_bytes_cmot as u64,
+        ), 
+        (
+            2usize, 
+            fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot,
+            fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot + n_fse_bytes_mlt,
+            bit_boundaries_mlt,
+            n_fse_bytes_mlt as u64,
+        ),
+    ] {
+        let mut tag_value_iter = src[start_offset..end_offset].iter().scan(
+            Value::known(F::zero()),
+            |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            },
+        );
+        let tag_value = tag_value_iter.clone().last().expect("Tag value must exist");
+
+        let mut tag_rlc_iter = src[start_offset..end_offset].iter().scan(
+            Value::known(F::zero()),
+            |acc, &byte| {
+                *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                Some(*acc)
+            },
+        );
+        let tag_rlc = tag_rlc_iter.clone().last().expect("Tag RLC must exist");
+
+        let mut decoded: u8 = 0;
+        let mut n_acc: usize = 0;
+        let mut current_tag_value_acc = Value::known(F::zero());
+        let mut current_tag_rlc_acc = Value::known(F::zero());
+        let mut last_byte_idx: i64 = 0;
+        let mut from_pos: (i64, i64) = (1, 0);
+        let mut to_pos: (i64, i64) = (0, 0);
+        let accuracy_log = bit_boundaries[0].1 + 5;
+
+        let bitstream_rows = bit_boundaries
+            .iter()
+            .enumerate()
+            .map(|(sym, (bit_idx, value))| {
+                from_pos = if sym == 0 { (1, -1) } else  { to_pos };
+
+                from_pos.1 += 1;
+                if from_pos.1 == 8 {
+                    from_pos = (from_pos.0 + 1, 0);
+                }
+
+                from_pos.1 = (from_pos.1 as u64).rem_euclid(8) as i64;
+
+                while from_pos.0 > last_byte_idx {
+                    current_tag_value_acc = tag_value_iter.next().unwrap();
+                    current_tag_rlc_acc = tag_rlc_iter.next().unwrap();
+                    last_byte_idx = from_pos.0;
+                }
+
+                let to_byte_idx = (bit_idx - 1) / 8;
+                let mut to_bit_idx = bit_idx - to_byte_idx * (N_BITS_PER_BYTE as u32) - 1;
+
+                if from_pos.0 < (to_byte_idx + 1) as i64 {
+                    to_bit_idx += 8;
+                }
+
+                to_pos = ((to_byte_idx + 1) as i64, to_bit_idx as i64);
+
+                if sym > 0 && n_acc < (1 << accuracy_log) {
+                    decoded = (sym - 1) as u8;
+                    if *value > 1u64 {
+                        n_acc += (*value - 1) as usize;
+                    }
+                }
+
+                (
+                    decoded,
+                    from_pos.0 as usize,
+                    from_pos.1 as usize,
+                    to_pos.0 as usize,
+                    to_pos.1 as usize,
+                    *value,
+                    current_tag_value_acc,
+                    current_tag_rlc_acc,
+                    0,
+                    n_acc,
+                )
+            })
+            .collect::<Vec<(
+                u8,
+                usize,
+                usize,
+                usize,
+                usize,
+                u64,
+                Value<F>,
+                Value<F>,
+                usize,
+                usize,
+            )>>();
+
+
+        // Transform bitstream rows into witness rows
+        for row in bitstream_rows {
+            witness_rows.push(ZstdWitnessRow {
+                state: ZstdState {
+                    tag: ZstdTag::ZstdBlockFseCode,
+                    tag_next: if idx > 1 {
+                        ZstdTag::ZstdBlockSequenceData
+                    } else {
+                        ZstdTag::ZstdBlockFseCode
+                    },
+                    max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockFseCode),
+                    tag_len,
+                    tag_idx: row.1 as u64,
+                    tag_value,
+                    tag_value_acc: row.6,
+                    is_tag_change: false,
+                    tag_rlc,
+                    tag_rlc_acc: row.7,
+                },
+                encoded_data: EncodedData {
+                    byte_idx: (start_offset + row.1) as u64,
+                    encoded_len,
+                    value_byte: src[start_offset + row.1],
+                    value_rlc,
+                    reverse: false,
+                    ..Default::default()
+                },
+                bitstream_read_data: BitstreamReadRow {
+                    bit_start_idx: row.2,
+                    bit_end_idx: row.4,
+                    bit_value: row.5,
+                    is_zero_bit_read: false,
+                },
+                decoded_data: DecodedData {
+                    decoded_len: last_row.decoded_data.decoded_len,
+                    decoded_len_acc: last_row.decoded_data.decoded_len_acc,
+                    total_decoded_len: last_row.decoded_data.total_decoded_len,
+                    decoded_byte: row.0,
+                    decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
+                },
+                fse_data: FseTableRow::default(),
+            });
+        }
+    }
 
     // Reconstruct LLTV, CMOTV, and MLTV which specifies bit actions for a specific state
     let lltv = SequenceFixedStateActionTable::reconstruct_lltv();
@@ -917,15 +1078,6 @@ fn process_sequences<F: Field>(
             nb = nb_switch[mode][order_idx];
         }
     }
-
-    // witgen_debug
-    write!(
-        handle,
-        "raw_sequence_instructions: {:?}",
-        raw_sequence_instructions
-    )
-    .unwrap();
-    writeln!(handle).unwrap();
 
     // Process raw sequence instructions
     let mut address_table_rows: Vec<AddressTableRow> = vec![];
