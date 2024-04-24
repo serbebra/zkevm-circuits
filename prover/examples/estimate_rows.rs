@@ -2,7 +2,7 @@ use prover::{
     zkevm::circuit::{SuperCircuit, TargetCircuit},
     BlockTrace,
 };
-use std::{fmt::format, process, process::Command};
+use std::fs::File;
 use zkevm_circuits::evm_circuit::ExecutionState;
 
 fn main() {
@@ -12,20 +12,16 @@ fn main() {
     let block_trace = vec![block_trace];
     println!("{}", ExecutionState::BeginTx.get_step_height());
     let now = std::time::Instant::now();
-
-    Command::new("perf")
-        .arg("record")
-        .arg("-F99")
-        .arg(format!("--pid={}", process::id()))
-        .arg("--call-graph")
-        .arg("dwarf")
-        .arg("--")
-        .arg("sleep")
-        .arg("1")
-        .spawn()
+    let guard = pprof::ProfilerGuardBuilder::default()
+        .frequency(1000)
+        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+        .build()
         .unwrap();
-
     let result = estimate_rows(block_trace);
+    if let Ok(report) = guard.report().build() {
+        let file = File::create("flamegraph.svg").unwrap();
+        report.flamegraph(file).unwrap();
+    };
     let elapsed = now.elapsed();
     println!("elapsed: {elapsed:?}, result: {result}");
 }

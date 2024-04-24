@@ -36,6 +36,9 @@ serde_json = { workspace = true, features = ["unbounded_depth"] }
 serde_stacker.workspace = true
 sha2 ="0.10.2"
 
+[dev-dependencies]
+pprof = { version = "0.13", features = ["flamegraph"] }
+
 [features]
 default = []
 parallel_syn = ["halo2_proofs/parallel_syn", "zkevm-circuits/parallel_syn"]
