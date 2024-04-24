@@ -668,10 +668,10 @@ impl SequenceFixedStateActionTable {
     }
 
     /// Reconstruct action state table for offset recovery
-    pub fn reconstruct_cmotv(N: u64) -> Self {
+    pub fn reconstruct_cmotv(n: u64) -> Self {
         let mut states_to_actions = vec![];
 
-        for idx in 0..=N {
+        for idx in 0..=n {
             states_to_actions.push((idx, ((1 << idx) as u64, idx)))
         }
 

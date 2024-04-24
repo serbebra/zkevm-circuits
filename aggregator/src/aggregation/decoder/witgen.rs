@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use eth_types::Field;
 use ethers_core::k256::pkcs8::der::Sequence;
 use halo2_proofs::circuit::Value;
+use zstd::zstd_safe::WriteBuf;
 
 // witgen_debug
 use std::{io, io::Write};
@@ -481,8 +482,8 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let last_row = witness_rows.last().expect("last row expected to exist");
-    let (bytes_offset, rows, fse_aux_tables, address_table_rows) =
-        process_sequences::<F>(src, byte_offset, end_offset, last_row, randomness);
+    let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs) =
+        process_sequences::<F>(src, byte_offset, end_offset, literals.clone(), last_row, randomness);
     witness_rows.extend_from_slice(&rows);
 
     (
@@ -508,13 +509,15 @@ type SequencesProcessingResult<F> = (
     usize,
     Vec<ZstdWitnessRow<F>>,
     [FseAuxiliaryTableData; 3], // LLT, MLT, CMOT
-    Vec<AddressTableRow>,
+    Vec<AddressTableRow>, // Parsed sequence instructions
+    Vec<u8>, // Recovered original input
 );
 
 fn process_sequences<F: Field>(
     src: &[u8],
     byte_offset: usize,
     end_offset: usize,
+    literals: Vec<u64>,
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
 ) -> SequencesProcessingResult<F> {
@@ -946,7 +949,6 @@ fn process_sequences<F: Field>(
 
         literal_len_acc += inst.2;
 
-        // TODO: Address table rows are not padded right now. witgen_debug
         address_table_rows.push(AddressTableRow {
             s_padding: 0,
             instruction_idx: idx as u64,
@@ -989,11 +991,33 @@ fn process_sequences<F: Field>(
         };
     }
 
+    // Executing sequence instructions to acquire the original input.
+    // At this point, the address table rows are not padded. Paddings will be added as sequence instructions progress.
+    let mut recovered_inputs: Vec<u8> = vec![];
+    let mut current_literal_pos: usize = 0;
+
+    for inst in address_table_rows.clone() {
+        let new_literal_pos = current_literal_pos + (inst.literal_length as usize);
+        recovered_inputs.extend_from_slice(literals[current_literal_pos..new_literal_pos].iter().map(|&v| v as u8).collect::<Vec<u8>>().as_slice());
+
+        let match_pos = recovered_inputs.len() - (inst.actual_offset as usize);
+        let matched_bytes = recovered_inputs.clone().into_iter().skip(match_pos).take(inst.match_length as usize).collect::<Vec<u8>>();
+        recovered_inputs.extend_from_slice(&matched_bytes.as_slice());
+
+        current_literal_pos = new_literal_pos;
+    }
+
+    // Add remaining literal bytes
+    if current_literal_pos < literals.len() {
+        recovered_inputs.extend_from_slice(literals[current_literal_pos..literals.len()].iter().map(|&v| v as u8).collect::<Vec<u8>>().as_slice());
+    }
+
     (
         end_offset,
         witness_rows,
         [table_llt, table_mlt, table_cmot],
         address_table_rows,
+        recovered_inputs,
     )
 }
 
@@ -1327,6 +1351,20 @@ mod tests {
 
         // witgen_debug
         let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
+
+        // witgen_debug
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+
+        // witgen_debug
+        write!(
+            handle,
+            "raw_inputs: {:?}",
+            raw.clone()
+        )
+        .unwrap();
+        writeln!(handle).unwrap();
+        
 
         let compressed = {
             let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
