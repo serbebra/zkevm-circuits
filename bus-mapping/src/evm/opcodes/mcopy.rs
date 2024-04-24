@@ -177,7 +177,7 @@ mod mcopy_tests {
         let read_slot_start = src_offset - src_offset % 32;
         let read_slot_end = read_end - read_end % 32;
         let read_word_ops = if read_slot_end == read_slot_start && copy_size != 0 {
-            // both read & write in one slot.
+            // read within one slot.
             1
         }else{
             (read_slot_end - read_slot_start) / 32
@@ -188,7 +188,7 @@ mod mcopy_tests {
         let write_slot_start = dest_offset - dest_offset % 32;
         let write_slot_end = write_end - write_end % 32;
         let write_word_ops = if write_slot_end == write_slot_start && copy_size != 0 {
-            // both read & write in one slot.
+            // write within one slot
             1
         }else{
             (write_slot_end - write_slot_start) / 32
@@ -224,7 +224,7 @@ mod mcopy_tests {
                 .collect::<Vec<(RW, MemoryOp)>>(),
             (0..word_ops)
                 .map(|idx| {
-                    // id_index as read or write operation's index.
+                    // rw_index as read or write operation's index.
                     let rw_index = idx / 2 + idx % 2;
                     if idx % 2 == 0 {
                        // first read op
