@@ -484,7 +484,14 @@ fn process_block_zstd<F: Field>(
 
     let last_row = witness_rows.last().expect("last row expected to exist");
     let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs) =
-        process_sequences::<F>(src, byte_offset, end_offset, literals.clone(), last_row, randomness);
+        process_sequences::<F>(
+            src,
+            byte_offset,
+            end_offset,
+            literals.clone(),
+            last_row,
+            randomness,
+        );
     witness_rows.extend_from_slice(&rows);
 
     (
@@ -510,8 +517,8 @@ type SequencesProcessingResult<F> = (
     usize,
     Vec<ZstdWitnessRow<F>>,
     [FseAuxiliaryTableData; 3], // LLT, MLT, CMOT
-    Vec<AddressTableRow>, // Parsed sequence instructions
-    Vec<u8>, // Recovered original input
+    Vec<AddressTableRow>,       // Parsed sequence instructions
+    Vec<u8>,                    // Recovered original input
 );
 
 fn process_sequences<F: Field>(
@@ -589,72 +596,64 @@ fn process_sequences<F: Field>(
     // Add witness rows for the sequence header
     let sequence_header_start_offset = byte_offset;
     let sequence_header_end_offset = byte_offset + num_sequence_header_bytes;
-    let tag_value_iter = src[sequence_header_start_offset..sequence_header_end_offset].iter().scan(
-        Value::known(F::zero()),
-        |acc, &byte| {
+    let tag_value_iter = src[sequence_header_start_offset..sequence_header_end_offset]
+        .iter()
+        .scan(Value::known(F::zero()), |acc, &byte| {
             *acc = *acc * randomness + Value::known(F::from(byte as u64));
             Some(*acc)
-        },
-    );
+        });
     let tag_value = tag_value_iter.clone().last().expect("Tag value must exist");
 
-    let tag_rlc_iter = src[sequence_header_start_offset..sequence_header_end_offset].iter().scan(
-        Value::known(F::zero()),
-        |acc, &byte| {
+    let tag_rlc_iter = src[sequence_header_start_offset..sequence_header_end_offset]
+        .iter()
+        .scan(Value::known(F::zero()), |acc, &byte| {
             *acc = *acc * randomness + Value::known(F::from(byte as u64));
             Some(*acc)
-        },
-    );
+        });
     let tag_rlc = tag_rlc_iter.clone().last().expect("Tag RLC must exist");
 
-    let header_rows = 
-        src[sequence_header_start_offset..sequence_header_end_offset]
-            .iter()
-            .zip(tag_value_iter)
-            .zip(tag_rlc_iter)
-            .enumerate()
-            .map(
-                |(
-                    i,
-                    ((&value_byte, tag_value_acc), tag_rlc_acc),
-                )| {
-                    ZstdWitnessRow {
-                        state: ZstdState {
-                            tag: ZstdTag::ZstdBlockSequenceHeader,
-                            tag_next: ZstdTag::ZstdBlockFseCode,
-                            max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceHeader),
-                            tag_len: num_sequence_header_bytes as u64,
-                            tag_idx: (i + 1) as u64,
-                            tag_value,
-                            tag_value_acc,
-                            is_tag_change: i == 0,
-                            tag_rlc,
-                            tag_rlc_acc,
-                        },
-                        encoded_data: EncodedData {
-                            byte_idx: (sequence_header_start_offset + i + 1) as u64,
-                            encoded_len: last_row.encoded_data.encoded_len,
-                            value_byte,
-                            value_rlc,
-                            reverse: false,
-                            ..Default::default()
-                        },
-                        decoded_data: DecodedData {
-                            decoded_len: last_row.decoded_data.decoded_len,
-                            decoded_len_acc: last_row.decoded_data.decoded_len + (i as u64) + 1,
-                            total_decoded_len: last_row.decoded_data.total_decoded_len,
-                            decoded_byte: value_byte,
-                            decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
-                        },
-                        bitstream_read_data: BitstreamReadRow::default(),
-                        fse_data: FseTableRow::default(),
-                    }
+    let header_rows = src[sequence_header_start_offset..sequence_header_end_offset]
+        .iter()
+        .zip(tag_value_iter)
+        .zip(tag_rlc_iter)
+        .enumerate()
+        .map(
+            |(i, ((&value_byte, tag_value_acc), tag_rlc_acc))| ZstdWitnessRow {
+                state: ZstdState {
+                    tag: ZstdTag::ZstdBlockSequenceHeader,
+                    tag_next: ZstdTag::ZstdBlockFseCode,
+                    max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceHeader),
+                    tag_len: num_sequence_header_bytes as u64,
+                    tag_idx: (i + 1) as u64,
+                    tag_value,
+                    tag_value_acc,
+                    is_tag_change: i == 0,
+                    tag_rlc,
+                    tag_rlc_acc,
                 },
-            )
-            .collect::<Vec<_>>();
+                encoded_data: EncodedData {
+                    byte_idx: (sequence_header_start_offset + i + 1) as u64,
+                    encoded_len: last_row.encoded_data.encoded_len,
+                    value_byte,
+                    value_rlc,
+                    reverse: false,
+                    ..Default::default()
+                },
+                decoded_data: DecodedData {
+                    decoded_len: last_row.decoded_data.decoded_len,
+                    decoded_len_acc: last_row.decoded_data.decoded_len + (i as u64) + 1,
+                    total_decoded_len: last_row.decoded_data.total_decoded_len,
+                    decoded_byte: value_byte,
+                    decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
+                },
+                bitstream_read_data: BitstreamReadRow::default(),
+                fse_data: FseTableRow::default(),
+            },
+        )
+        .collect::<Vec<_>>();
 
     witness_rows.extend_from_slice(&header_rows);
-    
+
     // Second, process the sequence tables (encoded using FSE)
     let byte_offset = sequence_header_end_offset;
     let fse_starting_byte_offset = byte_offset;
@@ -694,47 +693,46 @@ fn process_sequences<F: Field>(
         .1
         + 5;
 
-
     // Add witness rows for the FSE tables
     for (idx, start_offset, end_offset, bit_boundaries, tag_len) in [
         (
-            0usize, 
+            0usize,
             fse_starting_byte_offset,
             fse_starting_byte_offset + n_fse_bytes_llt,
             bit_boundaries_llt,
             n_fse_bytes_llt as u64,
-        ), 
+        ),
         (
-            1usize, 
+            1usize,
             fse_starting_byte_offset + n_fse_bytes_llt,
             fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot,
             bit_boundaries_cmot,
             n_fse_bytes_cmot as u64,
-        ), 
+        ),
         (
-            2usize, 
+            2usize,
             fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot,
             fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot + n_fse_bytes_mlt,
             bit_boundaries_mlt,
             n_fse_bytes_mlt as u64,
         ),
     ] {
-        let mut tag_value_iter = src[start_offset..end_offset].iter().scan(
-            Value::known(F::zero()),
-            |acc, &byte| {
-                *acc = *acc * randomness + Value::known(F::from(byte as u64));
-                Some(*acc)
-            },
-        );
+        let mut tag_value_iter =
+            src[start_offset..end_offset]
+                .iter()
+                .scan(Value::known(F::zero()), |acc, &byte| {
+                    *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                    Some(*acc)
+                });
         let tag_value = tag_value_iter.clone().last().expect("Tag value must exist");
 
-        let mut tag_rlc_iter = src[start_offset..end_offset].iter().scan(
-            Value::known(F::zero()),
-            |acc, &byte| {
-                *acc = *acc * randomness + Value::known(F::from(byte as u64));
-                Some(*acc)
-            },
-        );
+        let mut tag_rlc_iter =
+            src[start_offset..end_offset]
+                .iter()
+                .scan(Value::known(F::zero()), |acc, &byte| {
+                    *acc = *acc * randomness + Value::known(F::from(byte as u64));
+                    Some(*acc)
+                });
         let tag_rlc = tag_rlc_iter.clone().last().expect("Tag RLC must exist");
 
         let mut decoded: u8 = 0;
@@ -750,7 +748,7 @@ fn process_sequences<F: Field>(
             .iter()
             .enumerate()
             .map(|(sym, (bit_idx, value))| {
-                from_pos = if sym == 0 { (1, -1) } else  { to_pos };
+                from_pos = if sym == 0 { (1, -1) } else { to_pos };
 
                 from_pos.1 += 1;
                 if from_pos.1 == 8 {
@@ -806,7 +804,6 @@ fn process_sequences<F: Field>(
                 usize,
                 usize,
             )>>();
-
 
         // Transform bitstream rows into witness rows
         for row in bitstream_rows {
@@ -1211,16 +1208,28 @@ fn process_sequences<F: Field>(
     }
 
     // Executing sequence instructions to acquire the original input.
-    // At this point, the address table rows are not padded. Paddings will be added as sequence instructions progress.
+    // At this point, the address table rows are not padded. Paddings will be added as sequence
+    // instructions progress.
     let mut recovered_inputs: Vec<u8> = vec![];
     let mut current_literal_pos: usize = 0;
 
     for inst in address_table_rows.clone() {
         let new_literal_pos = current_literal_pos + (inst.literal_length as usize);
-        recovered_inputs.extend_from_slice(literals[current_literal_pos..new_literal_pos].iter().map(|&v| v as u8).collect::<Vec<u8>>().as_slice());
+        recovered_inputs.extend_from_slice(
+            literals[current_literal_pos..new_literal_pos]
+                .iter()
+                .map(|&v| v as u8)
+                .collect::<Vec<u8>>()
+                .as_slice(),
+        );
 
         let match_pos = recovered_inputs.len() - (inst.actual_offset as usize);
-        let matched_bytes = recovered_inputs.clone().into_iter().skip(match_pos).take(inst.match_length as usize).collect::<Vec<u8>>();
+        let matched_bytes = recovered_inputs
+            .clone()
+            .into_iter()
+            .skip(match_pos)
+            .take(inst.match_length as usize)
+            .collect::<Vec<u8>>();
         recovered_inputs.extend_from_slice(&matched_bytes.as_slice());
 
         current_literal_pos = new_literal_pos;
@@ -1228,7 +1237,13 @@ fn process_sequences<F: Field>(
 
     // Add remaining literal bytes
     if current_literal_pos < literals.len() {
-        recovered_inputs.extend_from_slice(literals[current_literal_pos..literals.len()].iter().map(|&v| v as u8).collect::<Vec<u8>>().as_slice());
+        recovered_inputs.extend_from_slice(
+            literals[current_literal_pos..literals.len()]
+                .iter()
+                .map(|&v| v as u8)
+                .collect::<Vec<u8>>()
+                .as_slice(),
+        );
     }
 
     (
@@ -1531,7 +1546,18 @@ mod tests {
             .expect("FromHex failure");
 
         // witgen_debug
-        // let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
+        // let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O
+        // Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou
+        // wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I
+        // hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art
+        // thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor
+        // face, nor any other part@Belonging to a man. O, be some other name!@What's in a name?
+        // that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he
+        // not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo,
+        // doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take
+        // thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be
+        // Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my
+        // counsel?").as_bytes().to_vec();
 
         let compressed = {
             // compression level = 0 defaults to using level=3, which is zstd's default.
