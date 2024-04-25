@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use eth_types::Field;
 use ethers_core::k256::pkcs8::der::Sequence;
 use halo2_proofs::circuit::Value;
+use zkevm_circuits::witness;
 use zstd::zstd_safe::WriteBuf;
 
 // witgen_debug
@@ -581,13 +582,81 @@ fn process_sequences<F: Field>(
         "Only FSE_Compressed_Mode is allowed"
     );
 
-    // witgen_debug. TODO: Add rows for the header
     let multiplier =
         (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
     let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
+
+    // witgen_debug. TODO: Add rows for the header
+    let sequence_header_start_offset = byte_offset;
+    let sequence_header_end_offset = byte_offset + num_sequence_header_bytes;
+    let tag_value_iter = src[sequence_header_start_offset..sequence_header_end_offset].iter().scan(
+        Value::known(F::zero()),
+        |acc, &byte| {
+            *acc = *acc * randomness + Value::known(F::from(byte as u64));
+            Some(*acc)
+        },
+    );
+    let tag_value = tag_value_iter.clone().last().expect("Tag value must exist");
+
+    let tag_rlc_iter = src[sequence_header_start_offset..sequence_header_end_offset].iter().scan(
+        Value::known(F::zero()),
+        |acc, &byte| {
+            *acc = *acc * randomness + Value::known(F::from(byte as u64));
+            Some(*acc)
+        },
+    );
+    let tag_rlc = tag_rlc_iter.clone().last().expect("Tag RLC must exist");
+
+    let header_rows = 
+        src[sequence_header_start_offset..sequence_header_end_offset]
+            .iter()
+            .zip(tag_value_iter)
+            .zip(tag_rlc_iter)
+            .enumerate()
+            .map(
+                |(
+                    i,
+                    ((&value_byte, tag_value_acc), tag_rlc_acc),
+                )| {
+                    ZstdWitnessRow {
+                        state: ZstdState {
+                            tag: ZstdTag::ZstdBlockSequenceHeader,
+                            tag_next: ZstdTag::ZstdBlockFseCode,
+                            max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceHeader),
+                            tag_len: num_sequence_header_bytes as u64,
+                            tag_idx: (i + 1) as u64,
+                            tag_value,
+                            tag_value_acc,
+                            is_tag_change: i == 0,
+                            tag_rlc,
+                            tag_rlc_acc,
+                        },
+                        encoded_data: EncodedData {
+                            byte_idx: (sequence_header_start_offset + i + 1) as u64,
+                            encoded_len: last_row.encoded_data.encoded_len,
+                            value_byte,
+                            value_rlc,
+                            reverse: false,
+                            ..Default::default()
+                        },
+                        decoded_data: DecodedData {
+                            decoded_len: last_row.decoded_data.decoded_len,
+                            decoded_len_acc: last_row.decoded_data.decoded_len + (i as u64) + 1,
+                            total_decoded_len: last_row.decoded_data.total_decoded_len,
+                            decoded_byte: value_byte,
+                            decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
+                        },
+                        bitstream_read_data: BitstreamReadRow::default(),
+                        fse_data: FseTableRow::default(),
+                    }
+                },
+            )
+            .collect::<Vec<_>>();
+
+    witness_rows.extend_from_slice(&header_rows);
     
     // Second, process the sequence tables (encoded using FSE)
-    let byte_offset = byte_offset + num_sequence_header_bytes;
+    let byte_offset = sequence_header_end_offset;
     let fse_starting_byte_offset = byte_offset;
 
     // Literal Length Table (LLT)
