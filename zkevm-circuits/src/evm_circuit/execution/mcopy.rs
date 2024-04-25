@@ -12,7 +12,7 @@ use crate::{
             math_gadget::IsZeroGadget,
             memory_gadget::{
                 CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
-                MemoryExpansionGadget,
+                MemoryExpansionGadget, MemoryWordSizeGadget,
             },
             not, select, CachedRegion, Cell, Word,
         },
@@ -23,7 +23,7 @@ use crate::{
 use bus_mapping::evm::OpcodeId;
 use bus_mapping::circuit_input_builder::CopyDataType;
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
-use gadgets::util::Expr;
+use gadgets::util::{Expr, expr_from_bytes};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 use super::ExecutionGadget;
@@ -36,6 +36,7 @@ pub(crate) struct MCopyGadget<F> {
     dest_offset: Cell<F>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
+    dest_word_size: MemoryWordSizeGadget<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
@@ -54,7 +55,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         cb.stack_pop(src_offset.expr());
         cb.stack_pop(length.expr());
 
-        let memory_address = MemoryAddressGadget::construct(cb, src_offset, length);
+        let memory_address = MemoryAddressGadget::construct(cb, src_offset, length.clone());
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
@@ -62,6 +63,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             memory_expansion.gas_cost(),
         );
 
+        let dest_word_size = MemoryWordSizeGadget::construct(cb, dest_offset.expr() + 
+           expr_from_bytes(&length.cells[..5]));
         // dynamic cost + constant cost
         let gas_cost = memory_copier_gas.gas_cost() + OpcodeId::MCOPY.constant_gas_cost().expr();
 
@@ -94,7 +97,9 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             //rw_counter: Transition::Delta(3.expr()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
-            memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
+            //memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
+            memory_word_size: Transition::To(dest_word_size.expr()),
+
             gas_left: Transition::Delta(-gas_cost),
             ..Default::default()
         };
@@ -107,6 +112,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             dest_offset,
             memory_expansion,
             memory_copier_gas,
+            dest_word_size,
         }
     }
 
@@ -154,6 +160,9 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             length.as_u64(),
             memory_expansion_gas_cost,
         )?;
+
+        let dest_end = dest_offset.as_u64() + length.as_u64();
+        self.dest_word_size.assign(region, offset, dest_end)?;
 
         Ok(())
     }
@@ -219,23 +228,15 @@ mod test {
 
     #[test]
     fn mcopy_empty() {
-        test_ok(Word::from("0x20"), Word::zero(), 0x0); // single slot
-        //test_ok(Word::from("0x10"), Word::zero(), 0x22); // multi slots
+        test_ok(Word::from("0x20"), Word::zero(), 0x0);
+        test_ok(Word::from("0xa8"), Word::from("0x2f"), 0x0);
     }
 
     #[test]
-    fn extcodecopy_nonempty() {
-        // test_ok(
-        //     Some(Account {
-        //         address: *EXTERNAL_ADDRESS,
-        //         code: Bytes::from([10, 40]),
-        //         ..Default::default()
-        //     }),
-        //     Word::zero(),
-        //     Word::zero(),
-        //     0x36,
-        //     true,
-        // ); // warm account
+    fn mcopy_non_empty() {
+        // copy within one slot
+        test_ok(Word::from("0x20"), Word::from("0x40"), 0x01);
+        // TODO: copy across multi slots
     }
 
     // TODO: add mcopy OOG cases
