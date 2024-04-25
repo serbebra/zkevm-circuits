@@ -65,6 +65,10 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let dest_word_size = MemoryWordSizeGadget::construct(cb, dest_offset.expr() + 
            expr_from_bytes(&length.cells[..5]));
+
+        // if no acutal copy happens, memory_word_size doesn't change.
+        let dest_word_size_delta = select::expr(memory_address.has_length(), 
+        dest_word_size.expr(), cb.curr.state.memory_word_size.expr());
         // dynamic cost + constant cost
         let gas_cost = memory_copier_gas.gas_cost() + OpcodeId::MCOPY.constant_gas_cost().expr();
 
@@ -91,14 +95,14 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
                 copy_rwc_inc.expr(),
             );
         });
-
+       
         let step_state_transition = StepStateTransition {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
             //rw_counter: Transition::Delta(3.expr()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
             //memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
-            memory_word_size: Transition::To(dest_word_size.expr()),
+            memory_word_size: Transition::To(dest_word_size_delta),
 
             gas_left: Transition::Delta(-gas_cost),
             ..Default::default()
@@ -189,7 +193,10 @@ mod test {
       
         let mut code = Bytecode::default();
         code.append(&bytecode! {
-            // TODO: prepare memory values by mstore
+            // prepare memory values by mstore
+            PUSH10(0x6040ef28)
+            PUSH2(0x20)
+            MSTORE
             PUSH32(length)
             PUSH32(src_offset)
             PUSH32(dest_offset)
@@ -236,7 +243,9 @@ mod test {
     fn mcopy_non_empty() {
         // copy within one slot
         test_ok(Word::from("0x20"), Word::from("0x40"), 0x01);
-        // TODO: copy across multi slots
+        // copy across multi slots
+        test_ok(Word::from("0x20"), Word::from("0x40"), 0xA0);
+        test_ok(Word::from("0x80"), Word::from("0x100"), 0xE4);
     }
 
     // TODO: add mcopy OOG cases
