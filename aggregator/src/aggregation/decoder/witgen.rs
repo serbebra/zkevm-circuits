@@ -555,8 +555,8 @@ fn process_sequences<F: Field>(
     };
 
     // witgen_debug
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
+    // let stdout = io::stdout();
+    // let mut handle = stdout.lock();
 
     let compression_mode_byte = src
         .get(byte_offset + num_sequence_header_bytes - 1)
@@ -586,7 +586,7 @@ fn process_sequences<F: Field>(
         (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
     let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
 
-    // witgen_debug. TODO: Add rows for the header
+    // Add witness rows for the sequence header
     let sequence_header_start_offset = byte_offset;
     let sequence_header_end_offset = byte_offset + num_sequence_header_bytes;
     let tag_value_iter = src[sequence_header_start_offset..sequence_header_end_offset].iter().scan(
@@ -929,8 +929,6 @@ fn process_sequences<F: Field>(
     let mut next_tag_rlc_acc = tag_rlc_iter.next().unwrap();
 
     let aux_1 = next_value_rlc_acc;
-    // witgen_debug
-    // let aux_2 = witness_rows[witness_rows.len() - 1].encoded_data.value_rlc;
 
     let mut padding_end_idx = 0;
     while sequence_bitstream[padding_end_idx] == 0 {
@@ -941,7 +939,7 @@ fn process_sequences<F: Field>(
     witness_rows.push(ZstdWitnessRow {
         state: ZstdState {
             tag: ZstdTag::ZstdBlockSequenceData,
-            tag_next: ZstdTag::ZstdBlockSequenceData, // witgen_debug
+            tag_next: ZstdTag::ZstdBlockSequenceData,
             max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
             tag_len: n_sequence_data_bytes as u64,
             tag_idx: 1_u64,
@@ -960,7 +958,7 @@ fn process_sequences<F: Field>(
             reverse_len: n_sequence_data_bytes as u64,
             reverse_idx: (n_sequence_data_bytes - (current_byte_idx - 1)) as u64,
             aux_1,
-            aux_2: Value::known(F::zero()), // witgen_debug
+            aux_2: Value::known(F::zero()),
         },
         bitstream_read_data: BitstreamReadRow {
             bit_start_idx: 0usize,
@@ -1098,7 +1096,7 @@ fn process_sequences<F: Field>(
         witness_rows.push(ZstdWitnessRow {
             state: ZstdState {
                 tag: ZstdTag::ZstdBlockSequenceData,
-                tag_next: ZstdTag::ZstdBlockSequenceData, // witgen_debug
+                tag_next: ZstdTag::ZstdBlockSequenceData,
                 max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
                 tag_len: n_sequence_data_bytes as u64,
                 tag_idx: current_byte_idx as u64,
@@ -1118,7 +1116,7 @@ fn process_sequences<F: Field>(
                 reverse_len: n_sequence_data_bytes as u64,
                 reverse_idx: (n_sequence_data_bytes - (current_byte_idx - 1)) as u64,
                 aux_1,
-                aux_2: Value::known(F::zero()), // witgen_debug
+                aux_2: Value::known(F::zero()),
             },
             bitstream_read_data: BitstreamReadRow {
                 bit_start_idx: from_bit_idx,
@@ -1444,8 +1442,7 @@ mod tests {
 
     use std::{
         fs::{self, File},
-        // witgen_debug
-        // io::{self, Write},
+        io::{self, Write},
     };
 
     // witgen_debug
@@ -1533,6 +1530,9 @@ mod tests {
         let raw = <Vec<u8>>::from_hex(r#"0100000000000231fb0000000064e588f7000000000000000000000000000000000000000000000000000000000000000000000000007a12000006000000000219f90216038510229a150083039bd49417afd0263d6909ba1f9a8eac697f76532365fb95880234e1a857498000b901a45ae401dc0000000000000000000000000000000000000000000000000000000064e58a1400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000e404e45aaf0000000000000000000000005300000000000000000000000000000000000004000000000000000000000000d9692f1748afee00face2da35242417dd05a86150000000000000000000000000000000000000000000000000000000000000bb8000000000000000000000000c3100d07a5997a7f9f9cdde967d396f9a2aed6a60000000000000000000000000000000000000000000000000234e1a8574980000000000000000000000000000000000000000000000000049032ac61d5dce9e600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000083104ec1a053077484b4d7a88434c2d03c30c3c55bd3a82b259f339f1c0e1e1244189009c5a01c915dd14aed1b824bf610a95560e380ea3213f0bf345df3bddff1acaf7da84d000002d8f902d5068510229a1500830992fd94bbad0e891922a8a4a7e9c39d4cc0559117016fec87082b6be7f5b757b90264ac9650d800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001e00000000000000000000000000000000000000000000000000000000000000164883164560000000000000000000000005300000000000000000000000000000000000004000000000000000000000000ffd2ece82f7959ae184d10fe17865d27b4f0fb9400000000000000000000000000000000000000000000000000000000000001f4fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffce9f6fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcea0a00000000000000000000000000000000000000000000000000082b6be7f5b75700000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006aea61ea08dd6e4834cd43a257ed52d9a31dd3b90000000000000000000000000000000000000000000000000000000064e58a1400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000412210e8a0000000000000000000000000000000000000000000000000000000083104ec2a0bc501c59bceb707d958423bad14c0d0daec84ad067f7e42209ad2cb8d904a55da00a04de4c79ed24b7a82d523b5de63c7ff68a3b7bb519546b3fe4ba8bc90a396600000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec2a037979a5225dd156f51abf9a8601e9156e1b1308c0474d69af98c55627886232ea048ac197295187e7ad48aa34cc37c2625434fa812449337732d8522014f4eacfc00000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec1a087269dbb9e987e5d58ecd3bcb724cbc4e6c843eb9095de16a25263aebfe06f5aa07f3ac49b6847ba51c5319174e51e088117742240f8555c5c1d77108cf0df90d700000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec1a04abdb8572dcabf1996825de6f753124eed41c1292fcfdc4d9a90cb4f8a0f8ff1a06ef25857e2cc9d0fa8b6ecc03b4ba6ef6f3ec1515d570fcc9102e2aa653f347a00000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec2a0882202163cbb9a299709b443b663fbab459440deabfbe183e999c98c00ea80c2a010ecb1e5196f0b1ee3d067d9a158b47b1376706e42ce2e769cf8e986935781dd"#)
             .expect("FromHex failure");
 
+        // witgen_debug
+        // let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
+
         let compressed = {
             // compression level = 0 defaults to using level=3, which is zstd's default.
             let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
@@ -1550,59 +1550,6 @@ mod tests {
             encoder.include_magicbytes(false)?;
             // set source length, which will be reflected in the frame header.
             encoder.set_pledged_src_size(Some(raw.len() as u64))?;
-            // include the content size to know at decode time the expected size of decoded data.
-            encoder.include_contentsize(true)?;
-
-            encoder.write_all(&raw)?;
-            encoder.finish()?
-        };
-
-        let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables) =
-            process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
-
-        Ok(())
-    }
-
-    // witgen_debug
-    #[test]
-    fn batch_compression_zstd_working_example() -> Result<(), std::io::Error> {
-        use super::*;
-        use halo2_proofs::halo2curves::bn256::Fr;
-        use hex::FromHex;
-
-        // witgen_debug
-        let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
-
-        // witgen_debug
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
-
-        // witgen_debug
-        write!(
-            handle,
-            "raw_inputs: {:?}",
-            raw.clone()
-        )
-        .unwrap();
-        writeln!(handle).unwrap();
-        
-
-        let compressed = {
-            let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
-
-            // disable compression of literals, i.e. literals will be raw bytes.
-            encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
-                zstd::zstd_safe::ParamSwitch::Disable,
-            ))?;
-            // set target block size to fit within a single block.
-            encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
-            // set source length, which will be reflected in the frame header.
-            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
-            // do not include the checksum at the end of the encoded data.
-            encoder.include_checksum(false)?;
-            // do not include magic bytes at the start of the frame since we will have a single
-            // frame.
-            encoder.include_magicbytes(false)?;
             // include the content size to know at decode time the expected size of decoded data.
             encoder.include_contentsize(true)?;
 
