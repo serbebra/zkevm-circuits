@@ -228,6 +228,12 @@ fn process_block<F: Field>(
         process_block_header(src, byte_offset, last_row, randomness);
     witness_rows.extend_from_slice(&rows);
 
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+    write!(handle, "=> byte_offset after a block header: {:?}", byte_offset);
+    writeln!(handle);
+
     let last_row = rows.last().expect("last row expected to exist");
     let (_byte_offset, rows, literals, lstream_len, aux_data, fse_aux_tables) = match block_type {
         BlockType::ZstdCompressedBlock => process_block_zstd(
@@ -394,6 +400,12 @@ fn process_block_zstd<F: Field>(
 
     witness_rows.extend_from_slice(&rows);
 
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+    write!(handle, "=> byte_offset after literal header: {:?}", byte_offset);
+    writeln!(handle);
+
     let literals_block_result: LiteralsBlockResult<F> = {
         let tag = ZstdTag::ZstdBlockLiteralsRawBytes;
         let tag_next = ZstdTag::ZstdBlockSequenceHeader;
@@ -482,6 +494,10 @@ fn process_block_zstd<F: Field>(
     let (byte_offset, rows, literals, lstream_len, aux_data) = literals_block_result;
     witness_rows.extend_from_slice(&rows);
 
+    // witgen_debug
+    write!(handle, "=> byte_offset after literal block processed: {:?}", byte_offset);
+    writeln!(handle);
+
     let last_row = witness_rows.last().expect("last row expected to exist");
     let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs) =
         process_sequences::<F>(
@@ -493,6 +509,10 @@ fn process_block_zstd<F: Field>(
             randomness,
         );
     witness_rows.extend_from_slice(&rows);
+
+    // witgen_debug
+    write!(handle, "=> byte_offset after sequence_processing: {:?}", byte_offset);
+    writeln!(handle);
 
     (
         bytes_offset,
@@ -529,6 +549,10 @@ fn process_sequences<F: Field>(
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
 ) -> SequencesProcessingResult<F> {
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
     // Initialize witness rows
     let mut witness_rows: Vec<ZstdWitnessRow<F>> = vec![];
 
@@ -543,7 +567,7 @@ fn process_sequences<F: Field>(
         .clone();
     assert!(byte0 > 0u8, "Sequences can't be of 0 length");
 
-    let (_num_of_sequences, num_sequence_header_bytes) = if byte0 < 128 {
+    let (num_of_sequences, num_sequence_header_bytes) = if byte0 < 128 {
         (byte0 as u64, 2usize)
     } else {
         let byte1 = src
@@ -562,14 +586,21 @@ fn process_sequences<F: Field>(
     };
 
     // witgen_debug
-    // let stdout = io::stdout();
-    // let mut handle = stdout.lock();
-
+    write!(handle, "=> num_of_sequences: {:?}", num_of_sequences);
+    writeln!(handle);
+    write!(handle, "=> num_sequence_header_bytes: {:?}", num_sequence_header_bytes);
+    writeln!(handle);
+    
     let compression_mode_byte = src
         .get(byte_offset + num_sequence_header_bytes - 1)
         .expect("Compression mode byte must exist.")
         .clone();
     let mode_bits = value_bits_le(compression_mode_byte);
+
+    write!(handle, "=> compression_mode_byte: {:?}", compression_mode_byte);
+    writeln!(handle);
+    write!(handle, "=> compression_mode_byte_bits: {:?}", mode_bits);
+    writeln!(handle);
 
     let literal_lengths_mode = mode_bits[6] + mode_bits[7] * 2;
     let offsets_mode = mode_bits[4] + mode_bits[5] * 2;
@@ -1405,6 +1436,10 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     let mut fse_aux_tables: Vec<FseAuxiliaryTableData> = vec![];
     let byte_offset = 0;
 
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
     // FrameHeaderDescriptor and FrameContentSize
     let (byte_offset, rows) = process_frame_header::<F>(
         src,
@@ -1414,9 +1449,13 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     );
     witness_rows.extend_from_slice(&rows);
 
+    // witgen_debug
+    write!(handle, "=> byte_offset after frame header: {:?}", byte_offset);
+    writeln!(handle);
+
     loop {
         let (
-            _byte_offset,
+            byte_offset,
             rows,
             last_block,
             new_literals,
@@ -1436,6 +1475,10 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         for fse_aux_table in new_fse_aux_tables {
             fse_aux_tables.push(fse_aux_table);
         }
+
+        // witgen_debug
+        write!(handle, "=> byte_offset after a block: {:?}", byte_offset);
+        writeln!(handle);
 
         if last_block {
             // TODO: Recover this assertion after the sequence section decoding is completed.
@@ -1541,9 +1584,19 @@ mod tests {
         use halo2_proofs::halo2curves::bn256::Fr;
         use hex::FromHex;
 
+        // witgen_debug
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+
         use super::*;
         let raw = <Vec<u8>>::from_hex(r#"0100000000000231fb0000000064e588f7000000000000000000000000000000000000000000000000000000000000000000000000007a12000006000000000219f90216038510229a150083039bd49417afd0263d6909ba1f9a8eac697f76532365fb95880234e1a857498000b901a45ae401dc0000000000000000000000000000000000000000000000000000000064e58a1400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000e404e45aaf0000000000000000000000005300000000000000000000000000000000000004000000000000000000000000d9692f1748afee00face2da35242417dd05a86150000000000000000000000000000000000000000000000000000000000000bb8000000000000000000000000c3100d07a5997a7f9f9cdde967d396f9a2aed6a60000000000000000000000000000000000000000000000000234e1a8574980000000000000000000000000000000000000000000000000049032ac61d5dce9e600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000083104ec1a053077484b4d7a88434c2d03c30c3c55bd3a82b259f339f1c0e1e1244189009c5a01c915dd14aed1b824bf610a95560e380ea3213f0bf345df3bddff1acaf7da84d000002d8f902d5068510229a1500830992fd94bbad0e891922a8a4a7e9c39d4cc0559117016fec87082b6be7f5b757b90264ac9650d800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001e00000000000000000000000000000000000000000000000000000000000000164883164560000000000000000000000005300000000000000000000000000000000000004000000000000000000000000ffd2ece82f7959ae184d10fe17865d27b4f0fb9400000000000000000000000000000000000000000000000000000000000001f4fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffce9f6fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcea0a00000000000000000000000000000000000000000000000000082b6be7f5b75700000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006aea61ea08dd6e4834cd43a257ed52d9a31dd3b90000000000000000000000000000000000000000000000000000000064e58a1400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000412210e8a0000000000000000000000000000000000000000000000000000000083104ec2a0bc501c59bceb707d958423bad14c0d0daec84ad067f7e42209ad2cb8d904a55da00a04de4c79ed24b7a82d523b5de63c7ff68a3b7bb519546b3fe4ba8bc90a396600000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec2a037979a5225dd156f51abf9a8601e9156e1b1308c0474d69af98c55627886232ea048ac197295187e7ad48aa34cc37c2625434fa812449337732d8522014f4eacfc00000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec1a087269dbb9e987e5d58ecd3bcb724cbc4e6c843eb9095de16a25263aebfe06f5aa07f3ac49b6847ba51c5319174e51e088117742240f8555c5c1d77108cf0df90d700000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec1a04abdb8572dcabf1996825de6f753124eed41c1292fcfdc4d9a90cb4f8a0f8ff1a06ef25857e2cc9d0fa8b6ecc03b4ba6ef6f3ec1515d570fcc9102e2aa653f347a00000137f9013480850f7eb06980830317329446ce46951d12710d85bc4fe10bb29c6ea501207787019945ca262000b8c4b2dd898a000000000000000000000000000000000000000000000000000000000000002000000000000000000000000065e4e8d7bd50191abfee6e5bcdc4d16ddfe9975e000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000083104ec2a0882202163cbb9a299709b443b663fbab459440deabfbe183e999c98c00ea80c2a010ecb1e5196f0b1ee3d067d9a158b47b1376706e42ce2e769cf8e986935781dd"#)
             .expect("FromHex failure");
+
+        // witgen_debug
+        write!(handle, "=> raw bytes: {:?}", raw);
+        writeln!(handle);
+        write!(handle, "=> raw bytes len: {:?}", raw.len());
+        writeln!(handle);
 
         // witgen_debug
         // let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O
@@ -1582,6 +1635,12 @@ mod tests {
             encoder.write_all(&raw)?;
             encoder.finish()?
         };
+
+        // witgen_debug
+        write!(handle, "=> compressed bytes: {:?}", compressed);
+        writeln!(handle);
+        write!(handle, "=> compressed len: {:?}", compressed.len());
+        writeln!(handle);
 
         let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables) =
             process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
