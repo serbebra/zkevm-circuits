@@ -20,10 +20,9 @@ use crate::{
     },
     table::{AccountFieldTag, CallContextFieldTag},
 };
-use bus_mapping::evm::OpcodeId;
-use bus_mapping::circuit_input_builder::CopyDataType;
+use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
-use gadgets::util::{Expr, expr_from_bytes};
+use gadgets::util::{expr_from_bytes, Expr};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 use super::ExecutionGadget;
@@ -63,12 +62,17 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             memory_expansion.gas_cost(),
         );
 
-        let dest_word_size = MemoryWordSizeGadget::construct(cb, dest_offset.expr() + 
-           expr_from_bytes(&length.cells[..5]));
+        let dest_word_size = MemoryWordSizeGadget::construct(
+            cb,
+            dest_offset.expr() + expr_from_bytes(&length.cells[..5]),
+        );
 
         // if no acutal copy happens, memory_word_size doesn't change.
-        let dest_word_size_delta = select::expr(memory_address.has_length(), 
-        dest_word_size.expr(), cb.curr.state.memory_word_size.expr());
+        let dest_word_size_delta = select::expr(
+            memory_address.has_length(),
+            dest_word_size.expr(),
+            cb.curr.state.memory_word_size.expr(),
+        );
         // dynamic cost + constant cost
         let gas_cost = memory_copier_gas.gas_cost() + OpcodeId::MCOPY.constant_gas_cost().expr();
 
@@ -95,7 +99,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
                 copy_rwc_inc.expr(),
             );
         });
-       
+
         let step_state_transition = StepStateTransition {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
             //rw_counter: Transition::Delta(3.expr()),
@@ -133,12 +137,10 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let [dest_offset, src_offset, length] =
             [0, 1, 2].map(|idx| block.rws[step.rw_indices[idx]].stack_value());
-        let memory_address =
-            self.memory_address
-                .assign(region, offset, src_offset, length)?;
+        let memory_address = self
+            .memory_address
+            .assign(region, offset, src_offset, length)?;
 
-        println!("mcopy copy_rwc_inc : {}, len {}", step.copy_rw_counter_delta, 
-        length.as_u64());
         self.copy_rwc_inc.assign(
             region,
             offset,
@@ -149,7 +151,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             ),
         )?;
 
-        self.dest_offset.assign(region, offset, Value::known(F::from(dest_offset.as_u64())))?;
+        self.dest_offset
+            .assign(region, offset, Value::known(F::from(dest_offset.as_u64())))?;
 
         let (_, memory_expansion_gas_cost) = self.memory_expansion.assign(
             region,
@@ -185,12 +188,7 @@ mod test {
     static EXTERNAL_ADDRESS: LazyLock<Address> =
         LazyLock::new(|| address!("0xaabbccddee000000000000000000000000000000"));
 
-    fn test_ok(
-        dest_offset: Word,
-        src_offset: Word,
-        length: usize,
-    ) {
-      
+    fn test_ok(dest_offset: Word, src_offset: Word, length: usize) {
         let mut code = Bytecode::default();
         code.append(&bytecode! {
             // prepare memory values by mstore

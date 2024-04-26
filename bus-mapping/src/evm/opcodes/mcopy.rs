@@ -178,7 +178,7 @@ mod mcopy_tests {
         let read_word_ops = if read_slot_end == read_slot_start && copy_size != 0 {
             // read within one slot.
             1
-        }else{
+        } else {
             (read_slot_end - read_slot_start) / 32
         };
 
@@ -188,7 +188,7 @@ mod mcopy_tests {
         let write_word_ops = if write_slot_end == write_slot_start && copy_size != 0 {
             // write within one slot
             1
-        }else{
+        } else {
             (write_slot_end - write_slot_start) / 32
         };
 
@@ -202,7 +202,8 @@ mod mcopy_tests {
             .collect::<Vec<_>>();
         let write_bytes = builder.block.copy_events[0]
             .copy_bytes
-            .aux_bytes.as_ref()
+            .aux_bytes
+            .as_ref()
             .unwrap()
             .iter()
             .map(|(b, _, _)| *b)
@@ -225,30 +226,30 @@ mod mcopy_tests {
                     // rw_index as read or write operation's index.
                     let rw_index = idx / 2 + idx % 2;
                     if idx % 2 == 0 {
-                       // first read op
-                       (
-                        RW::READ,
-                        MemoryOp::new_write(
-                            expected_call_id,
-                            MemoryAddress(read_slot_start + rw_index * 32),
-                            Word::from(&read_bytes[rw_index * 32..(rw_index + 1) * 32]),
-                            // previous value is same to value for reading operation
-                            Word::from(&read_bytes[rw_index * 32..(rw_index + 1) * 32]),
-                        ),
-                    )
-                    }else{
-                      // second write op
-                      (
-                        RW::WRITE,
-                        MemoryOp::new_write(
-                            expected_call_id,
-                            MemoryAddress(write_slot_start + (rw_index - 1) * 32),
-                            Word::from(&write_bytes[(rw_index - 1) * 32..rw_index * 32]),
-                            // get previous value
-                            Word::from(&prev_bytes[(rw_index - 1) * 32..rw_index * 32]),
-                        ),
-                      )
-                }    
+                        // first read op
+                        (
+                            RW::READ,
+                            MemoryOp::new_write(
+                                expected_call_id,
+                                MemoryAddress(read_slot_start + rw_index * 32),
+                                Word::from(&read_bytes[rw_index * 32..(rw_index + 1) * 32]),
+                                // previous value is same to value for reading operation
+                                Word::from(&read_bytes[rw_index * 32..(rw_index + 1) * 32]),
+                            ),
+                        )
+                    } else {
+                        // second write op
+                        (
+                            RW::WRITE,
+                            MemoryOp::new_write(
+                                expected_call_id,
+                                MemoryAddress(write_slot_start + (rw_index - 1) * 32),
+                                Word::from(&write_bytes[(rw_index - 1) * 32..rw_index * 32]),
+                                // get previous value
+                                Word::from(&prev_bytes[(rw_index - 1) * 32..rw_index * 32]),
+                            ),
+                        )
+                    }
                 })
                 .collect::<Vec<(RW, MemoryOp)>>(),
         );
