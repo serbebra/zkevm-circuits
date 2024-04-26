@@ -62,6 +62,7 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGMemoryCopyGadget<F> {
                 OpcodeId::CODECOPY.expr(),
                 OpcodeId::EXTCODECOPY.expr(),
                 OpcodeId::RETURNDATACOPY.expr(),
+                OpcodeId::MCOPY.expr(),
             ],
         );
 
@@ -277,7 +278,7 @@ mod tests {
                 TestingData::new_for_common_opcode(*opcode, *dst_offset, *copy_size, None);
 
             test_root(&testing_data);
-            //test_internal(&testing_data);
+            test_internal(&testing_data);
         }
     }
 
@@ -302,8 +303,7 @@ mod tests {
                 TestingData::new_for_mcopy(*dst_offset, *src_offset, *copy_size, None);
 
             test_root(&testing_data);
-            // TODO: enable below internal test
-            //test_internal(&testing_data);
+            test_internal(&testing_data);
         }
     }
 
@@ -411,7 +411,7 @@ mod tests {
             copy_size: u64,
             gas_cost: Option<u64>,
         ) -> Self {
-            let mut bytecode = bytecode! {
+            let bytecode = bytecode! {
                 PUSH32(copy_size)
                 PUSH32(src_offset)
                 PUSH32(dst_offset)
