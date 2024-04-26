@@ -1,27 +1,23 @@
-use crate::{
-    evm_circuit::{
-        param::{N_BYTES_ACCOUNT_ADDRESS, N_BYTES_MEMORY_WORD_SIZE, N_BYTES_U64},
-        step::ExecutionState,
-        util::{
-            common_gadget::{SameContextGadget, WordByteCapGadget},
-            constraint_builder::{
-                ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
-                Transition,
-            },
-            from_bytes,
-            math_gadget::IsZeroGadget,
-            memory_gadget::{
-                CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
-                MemoryExpansionGadget, MemoryWordSizeGadget,
-            },
-            not, select, CachedRegion, Cell, Word,
+use crate::evm_circuit::{
+    param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE},
+    step::ExecutionState,
+    util::{
+        common_gadget::{SameContextGadget, WordByteCapGadget},
+        constraint_builder::{
+            ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
+            Transition,
         },
-        witness::{Block, Call, ExecStep, Transaction},
+        from_bytes,
+        memory_gadget::{
+            CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
+            MemoryExpansionGadget, MemoryWordSizeGadget,
+        },
+        not, select, CachedRegion, Cell, Word,
     },
-    table::{AccountFieldTag, CallContextFieldTag},
+    witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
+use eth_types::{evm_types::GasCost, Field, ToScalar};
 use gadgets::util::{expr_from_bytes, Expr};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
@@ -64,7 +60,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let dest_word_size = MemoryWordSizeGadget::construct(
             cb,
-            dest_offset.expr() + expr_from_bytes(&length.cells[..5]),
+            dest_offset.expr() + expr_from_bytes(&length.cells[..N_BYTES_MEMORY_ADDRESS]),
         );
 
         // if no acutal copy happens, memory_word_size doesn't change.
@@ -102,10 +98,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let step_state_transition = StepStateTransition {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
-            //rw_counter: Transition::Delta(3.expr()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
-            //memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
             memory_word_size: Transition::To(dest_word_size_delta),
 
             gas_left: Transition::Delta(-gas_cost),
@@ -129,8 +123,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
         block: &Block<F>,
-        transaction: &Transaction,
-        call: &Call,
+        _transaction: &Transaction,
+        _call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
@@ -168,8 +162,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             memory_expansion_gas_cost,
         )?;
 
-        let dest_end = dest_offset.as_u64() + length.as_u64();
-        self.dest_word_size.assign(region, offset, dest_end)?;
+        let dest_word_end = dest_offset.as_u64() + length.as_u64();
+        self.dest_word_size.assign(region, offset, dest_word_end)?;
 
         Ok(())
     }
@@ -179,9 +173,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 mod test {
     use crate::{evm_circuit::test::rand_bytes_array, test_util::CircuitTestBuilder};
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use eth_types::{
-        address, bytecode, geth_types::Account, Address, Bytecode, Bytes, ToWord, Word,
-    };
+    use eth_types::{address, bytecode, Address, Bytecode, Bytes, ToWord, Word};
     use mock::TestContext;
     use std::sync::LazyLock;
 
