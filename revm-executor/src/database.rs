@@ -6,21 +6,20 @@ use bus_mapping::{
 };
 use eth_types::{l2_types::BlockTrace, ToBigEndian, ToWord, Word, H160, H256};
 use log::{trace, Level};
-use mpt_zktrie::state::ZktrieState;
+use mpt_zktrie::state::{AccountData, ZktrieState};
 use revm::{
     db::DatabaseRef,
     primitives::{AccountInfo, Address, Bytecode, B256, U256},
     DatabaseCommit,
 };
-use std::{collections::BTreeMap, convert::Infallible};
-use zkevm_circuits::witness::{MptKey, MptUpdate};
+use std::{collections::HashMap, convert::Infallible};
+use zktrie::ZkTrie;
 
-#[derive(Debug)]
 pub struct EvmDatabase {
     tx_id: usize,
     code_db: CodeDB,
     pub(crate) sdb: StateDB,
-    pub updates: BTreeMap<MptKey, MptUpdate>,
+    zktrie: ZkTrie,
 }
 
 impl EvmDatabase {
@@ -45,12 +44,33 @@ impl EvmDatabase {
         code_db.insert(Vec::new());
         update_codedb(&mut code_db, &sdb, &l2_trace).unwrap();
 
+        let old_root = l2_trace.storage_trace.root_before;
+        let zktrie_state = ZktrieState::from_trace_with_additional(
+            old_root,
+            collect_account_proofs(&l2_trace.storage_trace),
+            collect_storage_proofs(&l2_trace.storage_trace),
+            l2_trace
+                .storage_trace
+                .deletion_proofs
+                .iter()
+                .map(ethers_core::types::Bytes::as_ref),
+        )
+        .unwrap();
+        let root = *zktrie_state.root();
+        log::debug!("building partial statedb done, root {}", hex::encode(root));
+        let mem_db = zktrie_state.into_inner();
+        let zktrie = mem_db.new_trie(&root).unwrap();
+
         EvmDatabase {
             tx_id: 1,
             code_db,
             sdb,
-            updates: BTreeMap::new(),
+            zktrie,
         }
+    }
+
+    pub fn root(&self) -> H256 {
+        H256::from(self.zktrie.root())
     }
 }
 
@@ -126,11 +146,15 @@ impl revm::Database for EvmDatabase {
 }
 
 impl DatabaseCommit for EvmDatabase {
-    fn commit(&mut self, changes: revm::precompile::HashMap<Address, revm::primitives::Account>) {
+    fn commit(&mut self, changes: HashMap<Address, revm::primitives::Account>) {
         for (addr, incoming) in changes {
             let addr = H160::from(**addr);
             let (_, acc) = self.sdb.get_account_mut(&addr);
             let is_empty = acc.is_empty();
+            if is_empty && incoming.is_empty() {
+                continue;
+            }
+
             if log::log_enabled!(Level::Trace) {
                 let mut incoming = incoming.clone();
                 incoming.info.code = None;
@@ -141,88 +165,82 @@ impl DatabaseCommit for EvmDatabase {
                     acc
                 );
             }
-            let new_balance =
-                eth_types::U256::from_little_endian(incoming.info.balance.as_le_slice());
+
+            let mut acc_data = self
+                .zktrie
+                .get_account(addr.as_bytes())
+                .map(AccountData::from)
+                .unwrap_or_default();
+
+            if !incoming.storage.is_empty() {
+                // get current storage root
+                let storage_root_before = acc_data.storage_root;
+                // get storage tire
+                let mut storage_tire = self
+                    .zktrie
+                    .get_db()
+                    .new_trie(storage_root_before.as_fixed_bytes())
+                    .expect("unable to get storage trie");
+
+                for (storage_key, slot) in incoming.storage.iter() {
+                    if !slot.present_value().is_zero() {
+                        acc.storage.insert(
+                            eth_types::U256::from_little_endian(storage_key.as_le_slice()),
+                            eth_types::U256::from_little_endian(slot.present_value().as_le_slice()),
+                        );
+
+                        storage_tire
+                            .update_store(
+                                &storage_key.to_be_bytes::<32>(),
+                                &slot.present_value().to_be_bytes(),
+                            )
+                            .expect("failed to update storage");
+                    } else if !slot.original_value().is_zero() {
+                        acc.storage.remove(&eth_types::U256::from_little_endian(
+                            storage_key.as_le_slice(),
+                        ));
+                        storage_tire.delete(&storage_key.to_be_bytes::<32>());
+                    }
+                }
+
+                acc_data.storage_root = H256::from(storage_tire.root());
+            }
+
+            let new_balance = Word::from_little_endian(incoming.info.balance.as_le_slice());
             if acc.balance != new_balance {
-                let key = MptKey::new_balance(addr);
-                self.updates
-                    .entry(key)
-                    .or_insert_with(|| MptUpdate::new(key, acc.balance, new_balance))
-                    .new_value = new_balance;
                 acc.balance = new_balance;
+                acc_data.balance = new_balance;
             }
+
             if acc.nonce.as_u64() != incoming.info.nonce {
-                let key = MptKey::new_nonce(addr);
-                self.updates
-                    .entry(key)
-                    .or_insert_with(|| MptUpdate::new(key, acc.nonce, incoming.info.nonce.into()))
-                    .new_value = incoming.info.nonce.into();
-                acc.nonce = eth_types::U256::from(incoming.info.nonce);
+                acc.nonce = incoming.info.nonce.to_word();
+                acc_data.nonce = incoming.info.nonce;
             }
+
             if (is_empty && !incoming.is_empty())
                 || acc.code_hash != H256::from(*incoming.info.code_hash)
             {
-                let key = MptKey::new_code_hash(addr);
-                debug_assert!(!self.updates.contains_key(&key));
-                let code_hash = if is_empty {
-                    Word::zero()
-                } else {
-                    acc.code_hash.to_word()
-                };
-                self.updates.insert(
-                    key,
-                    MptUpdate::new(
-                        key,
-                        code_hash,
-                        eth_types::U256::from_big_endian(incoming.info.code_hash.as_ref()),
-                    ),
-                );
-                acc.code_hash = H256::from(*incoming.info.code_hash);
-
-                let key = MptKey::new_keccak_code_hash(addr);
-                debug_assert!(!self.updates.contains_key(&key));
-                let keccak_code_hash = if is_empty {
-                    Word::zero()
-                } else {
-                    acc.keccak_code_hash.to_word()
-                };
-                self.updates.insert(
-                    key,
-                    MptUpdate::new(
-                        key,
-                        keccak_code_hash,
-                        eth_types::U256::from_big_endian(incoming.info.keccak_code_hash.as_ref()),
-                    ),
-                );
-                acc.keccak_code_hash = H256::from(*incoming.info.keccak_code_hash);
-
-                let key = MptKey::new_code_size(addr);
-                debug_assert!(!self.updates.contains_key(&key));
+                let poseidon_code_hash = H256::from(incoming.info.code_hash.0);
+                let keccak_code_hash = H256::from(incoming.info.keccak_code_hash.0);
                 let code_size = incoming
                     .info
                     .code
                     .as_ref()
                     .map(|c| c.len())
                     .unwrap_or_default();
-                self.updates
-                    .insert(key, MptUpdate::new(key, acc.code_size, code_size.into()));
-                acc.code_size = eth_types::U256::from(code_size);
+
+                acc.code_hash = poseidon_code_hash;
+                acc.keccak_code_hash = keccak_code_hash;
+                acc.code_size = code_size.to_word();
+
+                acc_data.poseidon_code_hash = poseidon_code_hash;
+                acc_data.keccak_code_hash = keccak_code_hash;
+                acc_data.code_size = code_size as u64;
             }
 
-            for (storage_key, slot) in incoming.storage.iter() {
-                let storage_key = eth_types::U256::from_little_endian(storage_key.as_le_slice());
-                let is_cleared = slot.present_value().is_zero();
-                let key = MptKey::new_storage(self.tx_id, addr, storage_key, !is_cleared);
-                let original_value =
-                    eth_types::U256::from_little_endian(slot.original_value().as_le_slice());
-                let present_value =
-                    eth_types::U256::from_little_endian(slot.present_value().as_le_slice());
-                let old = acc.storage.insert(storage_key, present_value);
-                debug_assert_eq!(old.unwrap_or_default(), original_value);
-                debug_assert!(!self.updates.contains_key(&key));
-                self.updates
-                    .insert(key, MptUpdate::new(key, original_value, present_value));
-            }
+            self.zktrie
+                .update_account(addr.as_bytes(), &acc_data.into())
+                .expect("failed to update account");
         }
 
         self.tx_id += 1;

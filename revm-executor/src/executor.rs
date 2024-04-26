@@ -1,52 +1,23 @@
-use crate::{
-    database::EvmDatabase,
-    utils::{collect_account_proofs, collect_storage_proofs},
-};
+use crate::database::EvmDatabase;
 use eth_types::{
     geth_types::TxType,
     l2_types::{BlockTrace, ExecutionResult},
-    ToWord, H256, U256,
+    H256,
 };
-use mpt_zktrie::state::ZktrieState;
 use revm::primitives::{BlockEnv, Env, TxEnv};
-use zkevm_circuits::witness::MptUpdates;
 
-#[derive(Debug)]
 pub struct EvmExecutor {
     pub db: EvmDatabase,
-    old_root: H256,
-    mpt_init_state: ZktrieState,
 }
 
 impl EvmExecutor {
     pub fn new(l2_trace: &BlockTrace) -> Self {
-        let old_root = l2_trace.storage_trace.root_before;
-        let mpt_init_state = ZktrieState::from_trace_with_additional(
-            old_root,
-            collect_account_proofs(&l2_trace.storage_trace),
-            collect_storage_proofs(&l2_trace.storage_trace),
-            l2_trace
-                .storage_trace
-                .deletion_proofs
-                .iter()
-                .map(ethers_core::types::Bytes::as_ref),
-        )
-        .unwrap();
-        log::debug!(
-            "building partial statedb done, root {}",
-            hex::encode(mpt_init_state.root())
-        );
-
         let db = EvmDatabase::new(l2_trace);
 
-        Self {
-            db,
-            old_root,
-            mpt_init_state,
-        }
+        Self { db }
     }
 
-    pub fn handle_block(&mut self, l2_trace: &BlockTrace) -> U256 {
+    pub fn handle_block(&mut self, l2_trace: &BlockTrace) -> H256 {
         let mut env = Box::new(Env::default());
         env.cfg.chain_id = l2_trace.chain_id;
         env.block = BlockEnv::from(l2_trace);
@@ -80,15 +51,7 @@ impl EvmExecutor {
 
             self.post_check(exec);
         }
-
-        let mut mpt_updates = MptUpdates {
-            old_root: self.old_root.to_word(),
-            updates: self.db.updates.clone(),
-            new_root: self.old_root.to_word(),
-            ..Default::default()
-        };
-        mpt_updates.fill_state_roots(&self.mpt_init_state);
-        mpt_updates.new_root
+        self.db.root()
     }
 
     fn post_check(&mut self, exec: &ExecutionResult) {

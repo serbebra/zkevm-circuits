@@ -37,9 +37,7 @@ fn main() {
         let root_after = l2_trace.storage_trace.root_after.to_word();
 
         let mut executor = EvmExecutor::new(&l2_trace);
-        let revm_root_after = executor.handle_block(&l2_trace);
-        let mut revm_updates = executor.db.updates;
-        revm_updates.retain(|_, v| v.old_value != v.new_value);
+        let revm_root_after = executor.handle_block(&l2_trace).to_word();
 
         let mut builder =
             CircuitInputBuilder::new_from_l2_trace(circuits_params, l2_trace, false, false)
@@ -50,13 +48,13 @@ fn main() {
             .mpt_updates
             .fill_state_roots(builder.mpt_init_state.as_ref().unwrap());
 
-        block.mpt_updates.diff(revm_updates);
         if revm_root_after != root_after {
-            log::error!(
+            for update in block.mpt_updates.updates.values() {
+                log::info!("Update: {:?}", update);
+            }
+            panic!(
                 "Root mismatch: {:?}, revm {:x}, l2 {:x}",
-                path,
-                revm_root_after,
-                root_after
+                path, revm_root_after, root_after
             );
         }
     }
