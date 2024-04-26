@@ -320,15 +320,9 @@ pub enum OpcodeId {
 }
 
 impl OpcodeId {
-    #[cfg(feature = "shanghai")]
     /// Returns `true` if the `OpcodeId` is a `PUSHn` (including `PUSH0`).
     pub fn is_push(&self) -> bool {
         self.as_u8() >= Self::PUSH0.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
-    }
-    #[cfg(not(feature = "shanghai"))]
-    /// Returns `true` if the `OpcodeId` is a `PUSHn`.
-    pub fn is_push(&self) -> bool {
-        self.as_u8() >= Self::PUSH1.as_u8() && self.as_u8() <= Self::PUSH32.as_u8()
     }
 
     /// Returns `true` if the `OpcodeId` is a `PUSH1` .. `PUSH32` (excluding `PUSH0`).
@@ -976,9 +970,7 @@ impl From<u8> for OpcodeId {
             0x58u8 => OpcodeId::PC,
             0x59u8 => OpcodeId::MSIZE,
             0x5bu8 => OpcodeId::JUMPDEST,
-            // config feature cancun ?
             0x5eu8 => OpcodeId::MCOPY,
-            #[cfg(feature = "shanghai")]
             0x5fu8 => OpcodeId::PUSH0,
             0x60u8 => OpcodeId::PUSH1,
             0x61u8 => OpcodeId::PUSH2,
@@ -1067,7 +1059,6 @@ impl From<u8> for OpcodeId {
             0x45u8 => OpcodeId::GASLIMIT,
             0x46u8 => OpcodeId::CHAINID,
             0x47u8 => OpcodeId::SELFBALANCE,
-            #[cfg(not(feature = "scroll"))]
             0x48u8 => OpcodeId::BASEFEE,
             0x54u8 => OpcodeId::SLOAD,
             0x55u8 => OpcodeId::SSTORE,
@@ -1135,12 +1126,8 @@ impl FromStr for OpcodeId {
             "PC" => OpcodeId::PC,
             "MSIZE" => OpcodeId::MSIZE,
             "JUMPDEST" => OpcodeId::JUMPDEST,
-            // need to configure feature cancun ?
             "MCOPY" => OpcodeId::MCOPY,
-            #[cfg(feature = "shanghai")]
             "PUSH0" => OpcodeId::PUSH0,
-            #[cfg(not(feature = "shanghai"))]
-            "PUSH0" => OpcodeId::INVALID(0x5f),
             "PUSH1" => OpcodeId::PUSH1,
             "PUSH2" => OpcodeId::PUSH2,
             "PUSH3" => OpcodeId::PUSH3,
@@ -1246,12 +1233,12 @@ impl FromStr for OpcodeId {
             #[cfg(not(feature = "scroll"))]
             "SELFDESTRUCT" => OpcodeId::SELFDESTRUCT,
             "CHAINID" => OpcodeId::CHAINID,
-            #[cfg(not(feature = "scroll"))]
             "BASEFEE" => OpcodeId::BASEFEE,
-            #[cfg(feature = "scroll")]
-            "BASEFEE" => OpcodeId::INVALID(0x48),
-            "TLOAD" => OpcodeId::INVALID(0xb3),
-            "TSTORE" => OpcodeId::INVALID(0xb4),
+            "BLOBHASH" => OpcodeId::INVALID(0x49),
+            "BLOBBASEFEE" => OpcodeId::INVALID(0x4a),
+            "TLOAD" => OpcodeId::INVALID(0x5c),
+            "TSTORE" => OpcodeId::INVALID(0x5d),
+            "MCOPY" => OpcodeId::INVALID(0x5e),
             _ => {
                 // Parse an invalid opcode value as reported by geth
                 static RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -1293,13 +1280,7 @@ mod opcode_ids_tests {
     // TODO: add MCOPY test here ?
     #[test]
     fn push_n() {
-        #[cfg(feature = "shanghai")]
         assert!(matches!(OpcodeId::push_n(0), Ok(OpcodeId::PUSH0)));
-        #[cfg(not(feature = "shanghai"))]
-        assert!(matches!(
-            OpcodeId::push_n(0),
-            Err(Error::InvalidOpConversion)
-        ));
         assert!(matches!(OpcodeId::push_n(1), Ok(OpcodeId::PUSH1)));
         assert!(matches!(OpcodeId::push_n(10), Ok(OpcodeId::PUSH10)));
         assert!(matches!(
@@ -1310,10 +1291,7 @@ mod opcode_ids_tests {
 
     #[test]
     fn postfix() {
-        #[cfg(feature = "shanghai")]
         assert_eq!(OpcodeId::PUSH0.postfix(), Some(0));
-        #[cfg(not(feature = "shanghai"))]
-        assert_eq!(OpcodeId::PUSH0.postfix(), None);
         assert_eq!(OpcodeId::PUSH1.postfix(), Some(1));
         assert_eq!(OpcodeId::PUSH10.postfix(), Some(10));
         assert_eq!(OpcodeId::LOG2.postfix(), Some(2));
