@@ -16,7 +16,6 @@ impl Opcode for MCopy {
         state: &mut CircuitInputStateRef,
         geth_steps: &[GethExecStep],
     ) -> Result<Vec<ExecStep>, Error> {
-        println!("MCopy::gen_associated_ops");
         let geth_step = &geth_steps[0];
         let mut exec_step = state.new_step(geth_step)?;
 
@@ -59,7 +58,7 @@ fn gen_copy_event(
     let src_addr_end = src_offset.as_u64() + length;
 
     // Reset offset to Uint64 maximum value if overflow, and set source start to the
-    // minimum value of offset and code size.
+    // minimum value of offset.
     let src_addr = u64::try_from(src_offset)
         .unwrap_or(u64::MAX)
         .min(src_addr_end);
@@ -183,7 +182,6 @@ mod mcopy_tests {
             (read_slot_end - read_slot_start) / 32
         };
 
-        // let read_word_ops = (read_slot_end - read_slot_start) / 32;
         let write_end = dest_offset + copy_size;
         let write_slot_start = dest_offset - dest_offset % 32;
         let write_slot_end = write_end - write_end % 32;

@@ -466,9 +466,6 @@ pub fn gen_associated_ops(
         }
     }
     
-    for (i,_step)  in geth_steps.iter().enumerate() {
-        println!("_step : {} {}", i, _step.op);
-    }
     // check if have error
     let geth_step = &geth_steps[0];
     let mut exec_step = state.new_step(geth_step)?;
@@ -478,9 +475,8 @@ pub fn gen_associated_ops(
         None
     };
 
-    println!("cur geth_step is {}", geth_step.op);
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
-        log::debug!(
+        println!(
             "geth error {:?} occurred in  {:?} at pc {:?}",
             exec_error,
             geth_step.op,
