@@ -291,7 +291,7 @@ fn trace_config_to_witness_block_l2(
     let root_after = block_trace.storage_trace.root_after.to_word();
 
     let mut revm = revm_executor::executor::EvmExecutor::new(&block_trace);
-    let revm_root_after = revm.handle_block(&block_trace);
+    let revm_root_after = revm.handle_block(&block_trace).to_word();
     log::trace!("revm: end_state_root={revm_root_after:#x}");
 
     let geth_traces = block_trace
@@ -328,8 +328,6 @@ fn trace_config_to_witness_block_l2(
     );
 
     if revm_root_after != root_after {
-        block.mpt_updates.diff(revm.db.updates);
-
         return Err(StateTestError::EndStateRootMismatch {
             revm: revm_root_after,
             trace: root_after,
