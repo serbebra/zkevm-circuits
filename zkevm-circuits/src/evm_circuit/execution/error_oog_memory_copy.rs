@@ -259,14 +259,18 @@ mod tests {
         OpcodeId::CALLDATACOPY,
         OpcodeId::CODECOPY,
         OpcodeId::RETURNDATACOPY,
-        OpcodeId::MCOPY,
     ];
 
     const TESTING_DST_OFFSET_COPY_SIZE_PAIRS: &[(u64, u64)] =
         &[(0x20, 0), (0x40, 20), (0x2000, 0x200)];
 
     // pair type (dest_offset, src_offset, copy_size)
-    const TESTING_MCOPY_PARIS: &[(u64, u64, u64)] = &[(0x20, 80, 10)]; // add more later
+    const TESTING_MCOPY_PARIS: &[(u64, u64, u64)] = &[
+        (0x20, 80, 2),
+        (0x80, 0x60, 20),
+        (0x80, 100, 20),
+        (0xa0, 80, 99),
+    ];
 
     #[test]
     fn test_oog_memory_copy_for_common_opcodes() {
@@ -298,9 +302,9 @@ mod tests {
 
     #[test]
     fn test_oog_memory_copy_for_mcopy() {
-        for (dst_offset, src_offset, copy_size) in TESTING_MCOPY_PARIS {
+        for (src_offset, dst_offset, copy_size) in TESTING_MCOPY_PARIS {
             let testing_data =
-                TestingData::new_for_mcopy(*dst_offset, *src_offset, *copy_size, None);
+                TestingData::new_for_mcopy(*src_offset, *dst_offset, *copy_size, None);
 
             test_root(&testing_data);
             test_internal(&testing_data);
@@ -406,8 +410,8 @@ mod tests {
         }
 
         pub fn new_for_mcopy(
-            dst_offset: u64,
             src_offset: u64,
+            dst_offset: u64,
             copy_size: u64,
             gas_cost: Option<u64>,
         ) -> Self {
@@ -419,11 +423,12 @@ mod tests {
             };
 
             let gas_cost = gas_cost.unwrap_or_else(|| {
+                let cur_memory_word_size = (src_offset + 31) / 32;
                 let memory_word_size = (dst_offset + copy_size + 31) / 32;
 
                 let gas_cost = OpcodeId::PUSH32.constant_gas_cost().0 * 3
                     + memory_copier_gas_cost(
-                        src_offset,
+                        cur_memory_word_size,
                         memory_word_size,
                         copy_size,
                         GasCost::COPY.as_u64(),
