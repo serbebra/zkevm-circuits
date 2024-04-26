@@ -256,9 +256,9 @@ mod tests {
     };
 
     const TESTING_COMMON_OPCODES: &[OpcodeId] = &[
-        // OpcodeId::CALLDATACOPY,
-        // OpcodeId::CODECOPY,
-        // OpcodeId::RETURNDATACOPY,
+        OpcodeId::CALLDATACOPY,
+        OpcodeId::CODECOPY,
+        OpcodeId::RETURNDATACOPY,
         OpcodeId::MCOPY,
     ];
 
@@ -266,7 +266,7 @@ mod tests {
         &[(0x20, 0), (0x40, 20), (0x2000, 0x200)];
 
     // pair type (dest_offset, src_offset, copy_size)
-    const TESTING_MCOPY_PARIS: &[(u64, u64, u64)] = &[(0x20, 0, 10)]; // add more later
+    const TESTING_MCOPY_PARIS: &[(u64, u64, u64)] = &[(0x20, 80, 10)]; // add more later
 
     #[test]
     fn test_oog_memory_copy_for_common_opcodes() {

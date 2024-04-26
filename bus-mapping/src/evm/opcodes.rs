@@ -465,7 +465,7 @@ pub fn gen_associated_ops(
             log::debug!("stack sanity check passed");
         }
     }
-    
+
     // check if have error
     let geth_step = &geth_steps[0];
     let mut exec_step = state.new_step(geth_step)?;
@@ -476,7 +476,7 @@ pub fn gen_associated_ops(
     };
 
     if let Some(exec_error) = state.get_step_err(geth_step, next_step).unwrap() {
-        println!(
+        log::debug!(
             "geth error {:?} occurred in  {:?} at pc {:?}",
             exec_error,
             geth_step.op,
