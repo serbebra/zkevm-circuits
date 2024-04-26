@@ -197,7 +197,6 @@ impl WitnessGenerator {
                 );
                 let mut acc = *acc;
                 acc.storage_root = storage_root_after;
-                log::info!("acc {:?} storage_root -> {:?}", address, acc.storage_root);
                 Some(acc)
             } else {
                 // sanity check
