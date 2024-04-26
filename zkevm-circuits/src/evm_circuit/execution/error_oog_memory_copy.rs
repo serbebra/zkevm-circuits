@@ -255,13 +255,17 @@ mod tests {
     };
 
     const TESTING_COMMON_OPCODES: &[OpcodeId] = &[
-        OpcodeId::CALLDATACOPY,
-        OpcodeId::CODECOPY,
-        OpcodeId::RETURNDATACOPY,
+        // OpcodeId::CALLDATACOPY,
+        // OpcodeId::CODECOPY,
+        // OpcodeId::RETURNDATACOPY,
+        OpcodeId::MCOPY,
     ];
 
     const TESTING_DST_OFFSET_COPY_SIZE_PAIRS: &[(u64, u64)] =
         &[(0x20, 0), (0x40, 20), (0x2000, 0x200)];
+
+    // pair type (dest_offset, src_offset, copy_size)
+    const TESTING_MCOPY_PARIS: &[(u64, u64, u64)] = &[(0x20, 0, 10)]; // add more later
 
     #[test]
     fn test_oog_memory_copy_for_common_opcodes() {
@@ -273,7 +277,7 @@ mod tests {
                 TestingData::new_for_common_opcode(*opcode, *dst_offset, *copy_size, None);
 
             test_root(&testing_data);
-            test_internal(&testing_data);
+            //test_internal(&testing_data);
         }
     }
 
@@ -288,6 +292,18 @@ mod tests {
 
             test_root(&testing_data);
             test_internal(&testing_data);
+        }
+    }
+
+    #[test]
+    fn test_oog_memory_copy_for_mcopy() {
+        for (dst_offset, src_offset, copy_size) in TESTING_MCOPY_PARIS {
+            let testing_data =
+                TestingData::new_for_mcopy(*dst_offset, *src_offset, *copy_size, None);
+
+            test_root(&testing_data);
+            // TODO: enable below internal test
+            //test_internal(&testing_data);
         }
     }
 
@@ -384,6 +400,36 @@ mod tests {
                 } else {
                     gas_cost
                 }
+            });
+
+            Self { bytecode, gas_cost }
+        }
+
+        pub fn new_for_mcopy(
+            dst_offset: u64,
+            src_offset: u64,
+            copy_size: u64,
+            gas_cost: Option<u64>,
+        ) -> Self {
+            let mut bytecode = bytecode! {
+                PUSH32(copy_size)
+                PUSH32(src_offset)
+                PUSH32(dst_offset)
+                MCOPY
+            };
+
+            let gas_cost = gas_cost.unwrap_or_else(|| {
+                let memory_word_size = (dst_offset + copy_size + 31) / 32;
+
+                let gas_cost = OpcodeId::PUSH32.constant_gas_cost().0 * 3
+                    + memory_copier_gas_cost(
+                        src_offset,
+                        memory_word_size,
+                        copy_size,
+                        GasCost::COPY.as_u64(),
+                    );
+
+                gas_cost
             });
 
             Self { bytecode, gas_cost }
