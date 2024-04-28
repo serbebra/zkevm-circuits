@@ -228,14 +228,14 @@ mod test {
             .run();
     }
 
-   // tests for zero copy length
+    // tests for zero copy length
     #[test]
     fn mcopy_empty() {
         test_ok(Word::from("0x20"), Word::zero(), 0x0);
         test_ok(Word::from("0xa8"), Word::from("0x2f"), 0x0);
     }
 
-   // tests for real copy
+    // tests for real copy
     #[test]
     fn mcopy_non_empty() {
         // copy within one slot
