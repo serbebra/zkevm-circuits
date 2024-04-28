@@ -289,7 +289,7 @@ impl<F: Field> EvmCircuit<F> {
     }
 }
 
-const FIXED_TABLE_ROWS_NO_BITWISE: usize = 3652;
+const FIXED_TABLE_ROWS_NO_BITWISE: usize = 3656; // TODO: check just mcopy increase 4 rows
 const FIXED_TABLE_ROWS: usize = FIXED_TABLE_ROWS_NO_BITWISE + 3 * 65536;
 
 impl<F: Field> SubCircuit<F> for EvmCircuit<F> {
