@@ -1250,7 +1250,6 @@ impl FromStr for OpcodeId {
             "BLOBBASEFEE" => OpcodeId::INVALID(0x4a),
             "TLOAD" => OpcodeId::TLOAD,
             "TSTORE" => OpcodeId::TSTORE,
-            "MCOPY" => OpcodeId::INVALID(0x5e),
             _ => {
                 // Parse an invalid opcode value as reported by geth
                 static RE: LazyLock<Regex> = LazyLock::new(|| {
