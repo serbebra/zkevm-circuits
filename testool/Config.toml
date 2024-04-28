@@ -22,7 +22,9 @@ ignore_tests = []
 
 [[suite]]
 id="EIP5656"
-path = "tests/src/GeneralStateTestsFiller/Cancun/stEIP5656-MCOPY/*"
+paths = [
+    "tests/src/GeneralStateTestsFiller/Cancun/stEIP5656-MCOPY/*"
+]
 max_gas = 500000
 max_steps = 1000
 ignore_tests = []
