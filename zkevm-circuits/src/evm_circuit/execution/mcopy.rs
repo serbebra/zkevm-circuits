@@ -23,6 +23,7 @@ use halo2_proofs::{circuit::Value, plonk::Error};
 
 use super::ExecutionGadget;
 
+// Gadget for MCOPY opcode
 #[derive(Clone, Debug)]
 pub(crate) struct MCopyGadget<F> {
     same_context: SameContextGadget<F>,
@@ -72,6 +73,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         // dynamic cost + constant cost
         let gas_cost = memory_copier_gas.gas_cost() + OpcodeId::MCOPY.constant_gas_cost().expr();
 
+        // copy_rwc_inc used in copy circuit lookup.
         let copy_rwc_inc = cb.query_cell();
         cb.condition(memory_address.has_length(), |cb| {
             cb.copy_table_lookup(
@@ -79,11 +81,14 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
                 CopyDataType::Memory.expr(),
                 cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
+                // src_addr
                 memory_address.offset(),
+                // src_addr_end
                 memory_address.end_offset(),
-                // memory_address.offset(),
+                // dest_addr
                 dest_offset.expr(),
                 memory_address.length(),
+                // rlc_acc is 0 here.
                 0.expr(),
                 copy_rwc_inc.expr(),
             );
@@ -223,12 +228,14 @@ mod test {
             .run();
     }
 
+   // tests for zero copy length
     #[test]
     fn mcopy_empty() {
         test_ok(Word::from("0x20"), Word::zero(), 0x0);
         test_ok(Word::from("0xa8"), Word::from("0x2f"), 0x0);
     }
 
+   // tests for real copy
     #[test]
     fn mcopy_non_empty() {
         // copy within one slot
@@ -238,5 +245,5 @@ mod test {
         test_ok(Word::from("0x80"), Word::from("0x100"), 0xE4);
     }
 
-    // TODO: add mcopy OOG cases
+    // mcopy OOG cases added in ./execution/error_oog_memory_copy.rs
 }

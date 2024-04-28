@@ -264,7 +264,7 @@ mod tests {
     const TESTING_DST_OFFSET_COPY_SIZE_PAIRS: &[(u64, u64)] =
         &[(0x20, 0), (0x40, 20), (0x2000, 0x200)];
 
-    // pair type (dest_offset, src_offset, copy_size)
+    // pair type (src_offset, dest_offset, copy_size)
     const TESTING_MCOPY_PARIS: &[(u64, u64, u64)] = &[
         (0x20, 80, 2),
         (0x80, 0x60, 20),
@@ -302,9 +302,9 @@ mod tests {
 
     #[test]
     fn test_oog_memory_copy_for_mcopy() {
-        for (src_offset, dst_offset, copy_size) in TESTING_MCOPY_PARIS {
+        for (src_offset, dest_offset, copy_size) in TESTING_MCOPY_PARIS {
             let testing_data =
-                TestingData::new_for_mcopy(*src_offset, *dst_offset, *copy_size, None);
+                TestingData::new_for_mcopy(*src_offset, *dest_offset, *copy_size, None);
 
             test_root(&testing_data);
             test_internal(&testing_data);

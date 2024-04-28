@@ -1277,7 +1277,6 @@ impl fmt::Display for OpcodeId {
 mod opcode_ids_tests {
     use super::*;
 
-    // TODO: add MCOPY test here ?
     #[test]
     fn push_n() {
         assert!(matches!(OpcodeId::push_n(0), Ok(OpcodeId::PUSH0)));

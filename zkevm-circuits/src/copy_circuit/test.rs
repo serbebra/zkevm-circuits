@@ -383,6 +383,8 @@ fn copy_circuit_valid_codecopy() {
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
+// unit test for mcopy in copy circuit side.
+// copy circuit itself doesn't need to change for mcopy because it already supports memory --> memory type.
 #[test]
 fn copy_circuit_valid_mcopy() {
     let builder = gen_mcopy_data();
