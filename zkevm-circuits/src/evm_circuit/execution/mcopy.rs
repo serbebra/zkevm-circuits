@@ -8,6 +8,7 @@ use crate::evm_circuit::{
             Transition,
         },
         from_bytes,
+        math_gadget::MinMaxGadget,
         memory_gadget::{
             CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
             MemoryExpansionGadget, MemoryWordSizeGadget,
@@ -30,9 +31,10 @@ pub(crate) struct MCopyGadget<F> {
     memory_address: MemoryAddressGadget<F>,
     copy_rwc_inc: Cell<F>,
     dest_offset: Cell<F>,
+    // indicate which address memory expand from, can be src_offset or dest_offset
+    expand_from_addr: MinMaxGadget<F, N_BYTES_MEMORY_ADDRESS>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
-    dest_word_size: MemoryWordSizeGadget<F>,
 }
 
 impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
@@ -48,28 +50,32 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         let length = cb.query_word_rlc();
 
         cb.stack_pop(dest_offset.expr());
-        cb.stack_pop(src_offset.expr());
+        cb.stack_pop(src_offset.clone().expr());
         cb.stack_pop(length.expr());
 
-        let memory_address = MemoryAddressGadget::construct(cb, src_offset, length.clone());
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
+        let memory_address = MemoryAddressGadget::construct(cb, src_offset.clone(), length.clone());
+        // notice that dest_offset may not greater than src_offset
+        let expand_from_addr = MinMaxGadget::construct(cb, src_offset.expr(), dest_offset.expr());
+        let expand_end_addr = select::expr(
+            memory_address.has_length(),
+            expand_from_addr.max() + from_bytes::expr(&length.cells[..N_BYTES_MEMORY_ADDRESS]),
+            0.expr(),
+        );
+
+        let memory_expansion = MemoryExpansionGadget::construct(cb, [expand_end_addr.clone()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
             memory_address.length(),
             memory_expansion.gas_cost(),
         );
 
-        let dest_word_size = MemoryWordSizeGadget::construct(
-            cb,
-            dest_offset.expr() + expr_from_bytes(&length.cells[..N_BYTES_MEMORY_ADDRESS]),
-        );
-
         // if no acutal copy happens, memory_word_size doesn't change.
-        let dest_word_size_delta = select::expr(
+        let dest_word_size = select::expr(
             memory_address.has_length(),
-            dest_word_size.expr(),
+            memory_expansion.next_memory_word_size(),
             cb.curr.state.memory_word_size.expr(),
         );
+
         // dynamic cost + constant cost
         let gas_cost = memory_copier_gas.gas_cost() + OpcodeId::MCOPY.constant_gas_cost().expr();
 
@@ -105,7 +111,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
-            memory_word_size: Transition::To(dest_word_size_delta),
+            memory_word_size: Transition::To(dest_word_size),
 
             gas_left: Transition::Delta(-gas_cost),
             ..Default::default()
@@ -117,9 +123,10 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             memory_address,
             copy_rwc_inc,
             dest_offset,
+            expand_from_addr,
             memory_expansion,
             memory_copier_gas,
-            dest_word_size,
+            // dest_word_size,
         }
     }
 
@@ -140,6 +147,11 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             .memory_address
             .assign(region, offset, src_offset, length)?;
 
+        // todo: will remove later
+        println!(
+            "dest_offset {} src_offset {}, length {} ",
+            dest_offset, src_offset, length
+        );
         self.copy_rwc_inc.assign(
             region,
             offset,
@@ -150,14 +162,31 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             ),
         )?;
 
-        self.dest_offset
-            .assign(region, offset, Value::known(F::from(dest_offset.as_u64())))?;
+        let dest_offset_u64 = dest_offset.as_u64();
+        let src_offset_u64 = src_offset.as_u64();
 
-        let (_, memory_expansion_gas_cost) = self.memory_expansion.assign(
+        self.dest_offset
+            .assign(region, offset, Value::known(F::from(dest_offset_u64)))?;
+        let (_, expand_adress) = self.expand_from_addr.assign(
+            region,
+            offset,
+            F::from(src_offset_u64),
+            F::from(dest_offset_u64),
+        )?;
+
+        // todo: will remove later
+        println!("expand_adress {},", expand_adress.get_lower_64(),);
+        let memory_expand_address = if length.is_zero() {
+            0u64
+        } else {
+            expand_adress.get_lower_64() + length.as_u64()
+        };
+
+        let (next_memory_word_size, memory_expansion_gas_cost) = self.memory_expansion.assign(
             region,
             offset,
             step.memory_word_size(),
-            [memory_address],
+            [memory_expand_address],
         )?;
 
         self.memory_copier_gas.assign(
@@ -167,8 +196,18 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             memory_expansion_gas_cost,
         )?;
 
-        let dest_word_end = dest_offset.as_u64() + length.as_u64();
-        self.dest_word_size.assign(region, offset, dest_word_end)?;
+        // todo: will remove later
+        println!(
+            "next_memory_word_size {}, memory_expansion_gas_cost {}",
+            next_memory_word_size, memory_expansion_gas_cost
+        );
+        for _step in _transaction.steps.clone() {
+            println!(
+                "step {}, memory_word_size {}",
+                _step.execution_state,
+                _step.memory_word_size()
+            )
+        }
 
         Ok(())
     }
@@ -185,7 +224,7 @@ mod test {
     static EXTERNAL_ADDRESS: LazyLock<Address> =
         LazyLock::new(|| address!("0xaabbccddee000000000000000000000000000000"));
 
-    fn test_ok(dest_offset: Word, src_offset: Word, length: usize) {
+    fn test_ok(src_offset: Word, dest_offset: Word, length: usize) {
         let mut code = Bytecode::default();
         code.append(&bytecode! {
             // prepare memory values by mstore
@@ -239,10 +278,10 @@ mod test {
     #[test]
     fn mcopy_non_empty() {
         // copy within one slot
-        test_ok(Word::from("0x20"), Word::from("0x40"), 0x01);
+        test_ok(Word::from("0x20"), Word::from("0x39"), 0x01);
         // copy across multi slots
-        test_ok(Word::from("0x20"), Word::from("0x40"), 0xA0);
-        test_ok(Word::from("0x80"), Word::from("0x100"), 0xE4);
+        test_ok(Word::from("0x30"), Word::from("0x30"), 0xA0);
+        test_ok(Word::from("0x40"), Word::from("0x40"), 0xE4);
     }
 
     // mcopy OOG cases added in ./execution/error_oog_memory_copy.rs
