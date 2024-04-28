@@ -663,7 +663,6 @@ pub fn run_test(
     if !circuits_config.super_circuit {
         if (*CIRCUIT).is_empty() {
             CircuitTestBuilder::<1, 1>::new_from_block(witness_block)
-                .copy_checks(None)
                 .run();
         } else {
             match (*CIRCUIT).as_str() {
