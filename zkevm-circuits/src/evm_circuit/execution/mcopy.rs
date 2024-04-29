@@ -30,9 +30,9 @@ pub(crate) struct MCopyGadget<F> {
     memory_src_address: MemoryAddressGadget<F>,
     memory_dest_address: MemoryAddressGadget<F>,
     copy_rwc_inc: Cell<F>,
-    // indicate which address memory expand from, can be src_offset or dest_offset
-    expand_from_addr: MinMaxGadget<F, N_BYTES_MEMORY_ADDRESS>,
-    memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
+    // two address expansion, then select greater one to calculate memory word size
+    // and gas cost
+    memory_expansion: MemoryExpansionGadget<F, 2, N_BYTES_MEMORY_WORD_SIZE>,
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
 }
 
@@ -58,32 +58,19 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         let memory_dest_address =
             MemoryAddressGadget::construct(cb, dest_offset.clone(), length.clone());
 
-        // notice that dest_offset may not greater than src_offset
-        let expand_from_addr = MinMaxGadget::construct(
+        // if no acutal copy happens, memory_word_size doesn't change. MemoryExpansionGadget handle
+        // it internally
+        let memory_expansion = MemoryExpansionGadget::construct(
             cb,
-            memory_src_address.offset(),
-            memory_dest_address.offset(),
+            [
+                memory_src_address.end_offset(),
+                memory_dest_address.end_offset(),
+            ],
         );
-        // TODO: refactor into MemoryExpansionGadget ?
-        let expand_end_addr = select::expr(
-            memory_src_address.has_length(),
-            expand_from_addr.max() + memory_src_address.length(),
-            // memory_dest_address.end_offset(),
-            0.expr(),
-        );
-
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [expand_end_addr]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
             memory_src_address.length(),
             memory_expansion.gas_cost(),
-        );
-
-        // if no acutal copy happens, memory_word_size doesn't change.
-        let dest_word_size = select::expr(
-            memory_src_address.has_length(),
-            memory_expansion.next_memory_word_size(),
-            cb.curr.state.memory_word_size.expr(),
         );
 
         // dynamic cost + constant cost
@@ -121,7 +108,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             rw_counter: Transition::Delta(cb.rw_counter_offset()),
             program_counter: Transition::Delta(1.expr()),
             stack_pointer: Transition::Delta(3.expr()),
-            memory_word_size: Transition::To(dest_word_size),
+            memory_word_size: Transition::To(memory_expansion.next_memory_word_size()),
 
             gas_left: Transition::Delta(-gas_cost),
             ..Default::default()
@@ -133,7 +120,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             memory_src_address,
             memory_dest_address,
             copy_rwc_inc,
-            expand_from_addr,
             memory_expansion,
             memory_copier_gas,
         }
@@ -184,26 +170,13 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             step.stack_pointer,
             dest_offset_u64
         );
-        self.expand_from_addr
-            .assign(region, offset, F::from(src_addr), F::from(dest_addr))?;
 
-        let memory_expand_address = if length.is_zero() {
-            0u64
-        } else {
-            let expand_addr = if src_offset_u64 < dest_offset_u64 {
-                dest_offset_u64
-            } else {
-                src_offset_u64
-            };
-            expand_addr + length.as_u64()
-        };
-
-        println!("memory_expand_address is {}", memory_expand_address);
         let (next_memory_word_size, memory_expansion_gas_cost) = self.memory_expansion.assign(
             region,
             offset,
             step.memory_word_size(),
-            [memory_expand_address],
+            //[memory_expand_address],
+            [src_addr, dest_addr],
         )?;
 
         self.memory_copier_gas.assign(
@@ -215,8 +188,8 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         // todo: will remove later
         println!(
-            "next_memory_word_size {}, memory_expansion_gas_cost {}, memory_expand_address {}",
-            next_memory_word_size, memory_expansion_gas_cost, memory_expand_address
+            "next_memory_word_size {}, memory_expansion_gas_cost {}",
+            next_memory_word_size, memory_expansion_gas_cost
         );
         for _step in _transaction.steps.clone() {
             println!(
