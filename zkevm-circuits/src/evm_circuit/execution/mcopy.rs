@@ -2,10 +2,9 @@ use crate::evm_circuit::{
     param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE},
     step::ExecutionState,
     util::{
-        common_gadget::{SameContextGadget, WordByteCapGadget},
+        common_gadget::SameContextGadget,
         constraint_builder::{
-            ConstrainBuilderCommon, EVMConstraintBuilder, ReversionInfo, StepStateTransition,
-            Transition,
+            ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
         },
         from_bytes,
         math_gadget::MinMaxGadget,
@@ -19,7 +18,7 @@ use crate::evm_circuit::{
 };
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, ToScalar};
-use gadgets::util::{expr_from_bytes, Expr};
+use gadgets::util::Expr;
 use halo2_proofs::{circuit::Value, plonk::Error};
 
 use super::ExecutionGadget;
@@ -126,7 +125,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             expand_from_addr,
             memory_expansion,
             memory_copier_gas,
-            // dest_word_size,
         }
     }
 
@@ -143,15 +141,9 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let [dest_offset, src_offset, length] =
             [0, 1, 2].map(|idx| block.rws[step.rw_indices[idx]].stack_value());
-        let memory_address = self
-            .memory_address
+        self.memory_address
             .assign(region, offset, src_offset, length)?;
 
-        // todo: will remove later
-        println!(
-            "dest_offset {} src_offset {}, length {} ",
-            dest_offset, src_offset, length
-        );
         self.copy_rwc_inc.assign(
             region,
             offset,

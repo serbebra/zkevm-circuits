@@ -4,7 +4,7 @@ use crate::{
     },
     Error,
 };
-use eth_types::{Bytecode, GethExecStep, Word};
+use eth_types::{GethExecStep, Word};
 
 use super::Opcode;
 
