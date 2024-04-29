@@ -10,7 +10,7 @@ use crate::evm_circuit::{
         math_gadget::MinMaxGadget,
         memory_gadget::{
             CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
-            MemoryExpansionGadget, MemoryWordSizeGadget,
+            MemoryExpansionGadget,
         },
         not, select, CachedRegion, Cell, Word,
     },
@@ -207,9 +207,9 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::{evm_circuit::test::rand_bytes_array, test_util::CircuitTestBuilder};
+    use crate::test_util::CircuitTestBuilder;
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use eth_types::{address, bytecode, Address, Bytecode, Bytes, ToWord, Word};
+    use eth_types::{address, bytecode, Address, Bytecode, Word};
     use mock::TestContext;
     use std::sync::LazyLock;
 
