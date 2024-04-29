@@ -12,7 +12,7 @@ use crate::evm_circuit::{
             CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
             MemoryExpansionGadget,
         },
-        not, select, CachedRegion, Cell, Word,
+        not, select, CachedRegion, Cell,
     },
     witness::{Block, Call, ExecStep, Transaction},
 };
@@ -27,9 +27,9 @@ use super::ExecutionGadget;
 #[derive(Clone, Debug)]
 pub(crate) struct MCopyGadget<F> {
     same_context: SameContextGadget<F>,
-    memory_address: MemoryAddressGadget<F>,
+    memory_src_address: MemoryAddressGadget<F>,
+    memory_dest_address: MemoryAddressGadget<F>,
     copy_rwc_inc: Cell<F>,
-    dest_offset: Cell<F>,
     // indicate which address memory expand from, can be src_offset or dest_offset
     expand_from_addr: MinMaxGadget<F, N_BYTES_MEMORY_ADDRESS>,
     memory_expansion: MemoryExpansionGadget<F, 1, N_BYTES_MEMORY_WORD_SIZE>,
@@ -45,6 +45,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         let opcode = cb.query_cell();
 
         let src_offset = cb.query_cell_phase2();
+        // change dest_offset to word_rlc
         let dest_offset = cb.query_cell_phase2();
         let length = cb.query_word_rlc();
 
@@ -52,25 +53,35 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         cb.stack_pop(src_offset.clone().expr());
         cb.stack_pop(length.expr());
 
-        let memory_address = MemoryAddressGadget::construct(cb, src_offset.clone(), length.clone());
+        let memory_src_address =
+            MemoryAddressGadget::construct(cb, src_offset.clone(), length.clone());
+        let memory_dest_address =
+            MemoryAddressGadget::construct(cb, dest_offset.clone(), length.clone());
+
         // notice that dest_offset may not greater than src_offset
-        let expand_from_addr = MinMaxGadget::construct(cb, src_offset.expr(), dest_offset.expr());
+        let expand_from_addr = MinMaxGadget::construct(
+            cb,
+            memory_src_address.offset(),
+            memory_dest_address.offset(),
+        );
+        // TODO: refactor into MemoryExpansionGadget ?
         let expand_end_addr = select::expr(
-            memory_address.has_length(),
-            expand_from_addr.max() + from_bytes::expr(&length.cells[..N_BYTES_MEMORY_ADDRESS]),
+            memory_src_address.has_length(),
+            expand_from_addr.max() + memory_src_address.length(),
+            // memory_dest_address.end_offset(),
             0.expr(),
         );
 
-        let memory_expansion = MemoryExpansionGadget::construct(cb, [expand_end_addr.clone()]);
+        let memory_expansion = MemoryExpansionGadget::construct(cb, [expand_end_addr]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
             cb,
-            memory_address.length(),
+            memory_src_address.length(),
             memory_expansion.gas_cost(),
         );
 
         // if no acutal copy happens, memory_word_size doesn't change.
         let dest_word_size = select::expr(
-            memory_address.has_length(),
+            memory_src_address.has_length(),
             memory_expansion.next_memory_word_size(),
             cb.curr.state.memory_word_size.expr(),
         );
@@ -80,26 +91,26 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         // copy_rwc_inc used in copy circuit lookup.
         let copy_rwc_inc = cb.query_cell();
-        cb.condition(memory_address.has_length(), |cb| {
+        cb.condition(memory_src_address.has_length(), |cb| {
             cb.copy_table_lookup(
                 cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
                 cb.curr.state.call_id.expr(),
                 CopyDataType::Memory.expr(),
                 // src_addr
-                memory_address.offset(),
+                memory_src_address.offset(),
                 // src_addr_end
-                memory_address.end_offset(),
+                memory_src_address.end_offset(),
                 // dest_addr
-                dest_offset.expr(),
-                memory_address.length(),
+                memory_dest_address.offset(),
+                memory_dest_address.length(),
                 // rlc_acc is 0 here.
                 0.expr(),
                 copy_rwc_inc.expr(),
             );
         });
 
-        cb.condition(not::expr(memory_address.has_length()), |cb| {
+        cb.condition(not::expr(memory_src_address.has_length()), |cb| {
             cb.require_zero(
                 "if no bytes to copy, copy table rwc inc == 0",
                 copy_rwc_inc.expr(),
@@ -119,9 +130,9 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         Self {
             same_context,
-            memory_address,
+            memory_src_address,
+            memory_dest_address,
             copy_rwc_inc,
-            dest_offset,
             expand_from_addr,
             memory_expansion,
             memory_copier_gas,
@@ -141,8 +152,12 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         let [dest_offset, src_offset, length] =
             [0, 1, 2].map(|idx| block.rws[step.rw_indices[idx]].stack_value());
-        self.memory_address
+        let src_addr = self
+            .memory_src_address
             .assign(region, offset, src_offset, length)?;
+        let dest_addr = self
+            .memory_dest_address
+            .assign(region, offset, dest_offset, length)?;
 
         self.copy_rwc_inc.assign(
             region,
@@ -157,23 +172,33 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         let dest_offset_u64 = dest_offset.as_u64();
         let src_offset_u64 = src_offset.as_u64();
 
-        self.dest_offset
-            .assign(region, offset, Value::known(F::from(dest_offset_u64)))?;
-        let (_, expand_adress) = self.expand_from_addr.assign(
-            region,
+        // TODO: will remove
+        println!(
+            "dest_offset {}, src_offset {}, length {} rw_counter {}, offset {}, 
+        stack_pointer {} dest_offset_u64 {}",
+            dest_offset,
+            src_offset,
+            length,
+            step.rw_counter,
             offset,
-            F::from(src_offset_u64),
-            F::from(dest_offset_u64),
-        )?;
+            step.stack_pointer,
+            dest_offset_u64
+        );
+        self.expand_from_addr
+            .assign(region, offset, F::from(src_addr), F::from(dest_addr))?;
 
-        // todo: will remove later
-        println!("expand_adress {},", expand_adress.get_lower_64(),);
         let memory_expand_address = if length.is_zero() {
             0u64
         } else {
-            expand_adress.get_lower_64() + length.as_u64()
+            let expand_addr = if src_offset_u64 < dest_offset_u64 {
+                dest_offset_u64
+            } else {
+                src_offset_u64
+            };
+            expand_addr + length.as_u64()
         };
 
+        println!("memory_expand_address is {}", memory_expand_address);
         let (next_memory_word_size, memory_expansion_gas_cost) = self.memory_expansion.assign(
             region,
             offset,
@@ -190,14 +215,15 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 
         // todo: will remove later
         println!(
-            "next_memory_word_size {}, memory_expansion_gas_cost {}",
-            next_memory_word_size, memory_expansion_gas_cost
+            "next_memory_word_size {}, memory_expansion_gas_cost {}, memory_expand_address {}",
+            next_memory_word_size, memory_expansion_gas_cost, memory_expand_address
         );
         for _step in _transaction.steps.clone() {
             println!(
-                "step {}, memory_word_size {}",
+                "step {}, memory_word_size {}, rw_counter {}",
                 _step.execution_state,
-                _step.memory_word_size()
+                _step.memory_word_size(),
+                _step.rw_counter,
             )
         }
 
@@ -264,6 +290,7 @@ mod test {
     fn mcopy_empty() {
         test_ok(Word::from("0x20"), Word::zero(), 0x0);
         test_ok(Word::from("0xa8"), Word::from("0x2f"), 0x0);
+        test_ok(Word::from("0x0"), Word::from("0x600"), 0x0);
     }
 
     // tests for real copy
@@ -274,6 +301,7 @@ mod test {
         // copy across multi slots
         test_ok(Word::from("0x30"), Word::from("0x30"), 0xA0);
         test_ok(Word::from("0x40"), Word::from("0x40"), 0xE4);
+        test_ok(Word::from("0x0"), Word::from("0x100"), 0x20);
     }
 
     // mcopy OOG cases added in ./execution/error_oog_memory_copy.rs
