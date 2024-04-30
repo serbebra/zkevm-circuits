@@ -45,7 +45,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         let opcode = cb.query_cell();
 
         let src_offset = cb.query_cell_phase2();
-        // change dest_offset to word_rlc
         let dest_offset = cb.query_cell_phase2();
         let length = cb.query_word_rlc();
 
@@ -193,10 +192,10 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         );
         for _step in _transaction.steps.clone() {
             println!(
-                "step {}, memory_word_size {}, rw_counter {}",
+                "step {}, memory_word_size {}, memory_size {}",
                 _step.execution_state,
                 _step.memory_word_size(),
-                _step.rw_counter,
+                _step.memory_size,
             )
         }
 

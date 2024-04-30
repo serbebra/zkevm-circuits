@@ -1949,6 +1949,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length,
             &bytecode.code,
             &mut self.call_ctx_mut()?.memory,
+            false,
         );
 
         let copy_steps = CopyEventStepsBuilder::new()
@@ -2038,6 +2039,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length,
             result,
             &mut self.caller_ctx_mut()?.memory,
+            false,
         );
 
         let read_slot_bytes = MemoryRef(result).read_chunk(src_range);
@@ -2095,6 +2097,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length,
             &call_ctx.call_data,
             &mut call_ctx.memory,
+            false,
         );
 
         let copy_steps = CopyEventStepsBuilder::memory_range(range)
@@ -2143,6 +2146,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length,
             call_data,
             &mut call_ctx.memory,
+            false,
         );
 
         let read_slot_bytes = self.caller_ctx()?.memory.read_chunk(src_range);
@@ -2204,6 +2208,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length,
             return_data,
             &mut call_ctx.memory,
+            false,
         );
         let read_slot_bytes = self.call()?.last_callee_memory.read_chunk(src_range);
 
@@ -2268,6 +2273,7 @@ impl<'a> CircuitInputStateRef<'a> {
             copy_length,
             &memory.0,
             &mut call_ctx.memory,
+            true,
         );
         let read_slot_bytes = memory.read_chunk(src_range);
 
@@ -2412,13 +2418,28 @@ fn combine_copy_slot_bytes(
     copy_length: usize,
     src_data: &[impl Into<u8> + Clone],
     dst_memory: &mut Memory,
+    is_memory_copy: bool, // indicates memroy --> memory copy type.
 ) -> (MemoryWordRange, MemoryWordRange, Vec<u8>) {
     let mut src_range = MemoryWordRange::align_range(src_addr, copy_length);
     let mut dst_range = MemoryWordRange::align_range(dst_addr, copy_length);
     src_range.ensure_equal_length(&mut dst_range);
 
     // Extend call memory.
-    dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
+    // TODO: check if dst_addr > src_addr for mcopy ?
+    // dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
+    if is_memory_copy && dst_addr < src_addr {
+        dst_memory.extend_for_range(src_addr.into(), copy_length.into());
+    } else {
+        dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
+    }
+
+    println!(
+        "combine_copy_slot_bytes: dst_memory len {}, dest_addr {:?} copy_length {:?}",
+        dst_memory.len(),
+        dst_addr,
+        copy_length
+    );
+
     let dst_begin_slot = dst_range.start_slot().0;
     let dst_end_slot = dst_range.end_slot().0;
 
