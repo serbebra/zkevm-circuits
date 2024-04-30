@@ -104,7 +104,6 @@ mod mcopy_tests {
         circuit_input_builder::{CopyDataType, ExecState, NumberOrHash},
         mock::BlockData,
         operation::{MemoryOp, StackOp, RW},
-        state_db::CodeDB,
     };
 
     #[test]

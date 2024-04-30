@@ -1,19 +1,17 @@
 use crate::{
     evm_circuit::{
-        param::{N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_WORD_SIZE},
+        param::N_BYTES_MEMORY_WORD_SIZE,
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
             constraint_builder::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition, Transition,
             },
-            from_bytes,
-            math_gadget::MinMaxGadget,
             memory_gadget::{
                 CommonMemoryAddressGadget, MemoryAddressGadget, MemoryCopierGasGadget,
                 MemoryExpansionGadget,
             },
-            not, select, CachedRegion, Cell,
+            not, CachedRegion, Cell,
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -158,7 +156,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
         )?;
 
         let dest_offset_u64 = dest_offset.as_u64();
-        let src_offset_u64 = src_offset.as_u64();
+        //let src_offset_u64 = src_offset.as_u64();
 
         // TODO: will remove
         println!(

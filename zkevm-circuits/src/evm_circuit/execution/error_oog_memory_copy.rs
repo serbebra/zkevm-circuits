@@ -426,15 +426,13 @@ mod tests {
                 let cur_memory_word_size = (src_offset + 31) / 32;
                 let memory_word_size = (dst_offset + copy_size + 31) / 32;
 
-                let gas_cost = OpcodeId::PUSH32.constant_gas_cost().0 * 3
+                OpcodeId::PUSH32.constant_gas_cost().0 * 3
                     + memory_copier_gas_cost(
                         cur_memory_word_size,
                         memory_word_size,
                         copy_size,
                         GasCost::COPY.as_u64(),
-                    );
-
-                gas_cost
+                    )
             });
 
             Self { bytecode, gas_cost }
