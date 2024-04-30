@@ -1880,7 +1880,7 @@ mod tests {
             let raw_len = data.len();
             let compressed = {
                 let mut encoder = crate::blob::init_zstd_encoder();
-                encoder.set_pledged_src_size(Some(raw_len as u64))?; 
+                encoder.set_pledged_src_size(Some(raw_len as u64))?;
                 encoder.write_all(data)?;
                 encoder.finish()?
             };
@@ -1917,7 +1917,12 @@ mod tests {
 
             // Write input and result to CSV
             let compr_ratio = raw_len as f64 / compr_len as f64;
-            writer.write_record(&[i.to_string(), raw_len.to_string(), compr_ratio.to_string(), format!("{:#x}", keccak_hash)])?;
+            writer.write_record(&[
+                i.to_string(),
+                raw_len.to_string(),
+                compr_ratio.to_string(),
+                format!("{:#x}", keccak_hash),
+            ])?;
         }
 
         // Flush the CSV writer
