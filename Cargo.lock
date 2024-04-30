@@ -2793,11 +2793,11 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "eth-types",
- "halo2_proofs",
+ "halo2curves",
  "hex",
  "log",
  "num-bigint",
- "poseidon-circuit",
+ "poseidon-base",
  "serde",
  "serde_json",
  "zktrie",

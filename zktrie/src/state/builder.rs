@@ -10,8 +10,8 @@ use std::{
     sync::Once,
 };
 
-use halo2_proofs::halo2curves::{bn256::Fr, group::ff::PrimeField};
-use hash_circuit::hash::Hashable;
+use halo2curves::{bn256::Fr, group::ff::PrimeField};
+use poseidon_base::hash::Hashable;
 
 /// Init hash scheme
 pub fn init_hash_scheme() {
