@@ -2415,7 +2415,239 @@ impl DecoderConfig {
     pub fn assign(
         &self,
         layouter: &mut impl Layouter<Fr>,
+        witness_rows: Vec<ZstdWitnessRow<F>>,
+        aux_data: Vec<u64>,
+        fse_aux_tables: Vec<FseAuxiliaryTableData>,
+        challenges: &Challenges<Value<F>>,
     ) -> Result<AssignedDecoderConfigExports, Error> {
         unimplemented!()
+
+
+
+
+
+
+
+
+
+        // pub struct DecoderConfig {
+        //     /// Fixed column to mark the first row in the layout.
+        //     q_first: Column<Fixed>,
+        //     /// The byte index in the encoded data. At the first byte, byte_idx = 1.
+        //     byte_idx: Column<Advice>,
+        //     /// The byte value at this byte index in the encoded data.
+        //     byte: Column<Advice>,
+        //     /// The byte value decomposed in its bits. The endianness of bits depends on whether or not we
+        //     /// are processing a chunk of bytes from back-to-front or not. The bits follow
+        //     /// little-endianness if bytes are processed from back-to-front, otherwise big-endianness.
+        //     bits: [Column<Advice>; N_BITS_PER_BYTE],
+        //     /// The RLC of the zstd encoded bytes.
+        //     encoded_rlc: Column<Advice>,
+        //     /// The byte that is (possibly) decoded at the current row.
+        //     decoded_byte: Column<Advice>,
+        //     /// The RLC of the bytes decoded.
+        //     decoded_rlc: Column<Advice>,
+        //     /// The size of the final decoded bytes.
+        //     decoded_len: Column<Advice>,
+        //     /// An incremental accumulator of the number of bytes decoded so far.
+        //     decoded_len_acc: Column<Advice>,
+        //     /// Once all the encoded bytes are decoded, we append the layout with padded rows.
+        //     is_padding: Column<Advice>,
+        //     /// Zstd tag related config.
+        //     tag_config: TagConfig,
+
+                    // struct TagConfig {
+                    //     /// Marks all enabled rows.
+                    //     q_enable: Column<Fixed>,
+                    //     /// The ZstdTag being processed at the current row.
+                    //     tag: Column<Advice>,
+                    //     /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
+                    //     /// value.
+                    //     tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
+                    //     /// The Zstd tag that will be processed after processing the current tag.
+                    //     tag_next: Column<Advice>,
+                    //     /// The number of bytes in the current tag.
+                    //     tag_len: Column<Advice>,
+                    //     /// The byte index within the current tag. At the first tag byte, tag_idx = 1.
+                    //     tag_idx: Column<Advice>,
+                    //     /// A utility gadget to identify the row where tag_idx == tag_len.
+                    //     tag_idx_eq_tag_len: IsEqualConfig<Fr>,
+                    //     /// The maximum number bytes that the current tag may occupy. This is an upper bound on the
+                    //     /// number of bytes required to encode this tag. For instance, the LiteralsHeader is variable
+                    //     /// sized, ranging from 1-5 bytes. The max_len for LiteralsHeader would be 5.
+                    //     max_len: Column<Advice>,
+                    //     /// The RLC of bytes in the tag.
+                    //     tag_rlc: Column<Advice>,
+                    //     /// Represents keccak randomness exponentiated by the tag len.
+                    //     rpow_tag_len: Column<Advice>,
+                    //     /// Whether this tag outputs decoded bytes or not.
+                    //     is_output: Column<Advice>,
+                    //     /// Whether this tag is processed from back-to-front or not.
+                    //     is_reverse: Column<Advice>,
+                    //     /// Whether this row represents the first byte in a new tag. Effectively this also means that
+                    //     /// the previous row represented the last byte of the tag processed previously.
+                    //     ///
+                    //     /// The only exception is the first row in the layout where for the FrameHeaderDescriptor we do
+                    //     /// not set this boolean value. We instead use the q_first fixed column to conditionally
+                    //     /// constrain the first row.
+                    //     is_change: Column<Advice>,
+                    //     /// Degree reduction: FrameContentSize
+                    //     is_frame_content_size: Column<Advice>,
+                    //     /// Degree reduction: BlockHeader
+                    //     is_block_header: Column<Advice>,
+                    //     /// Degree reduction: SequenceFseCode
+                    //     is_fse_code: Column<Advice>,
+                    // }
+
+        //     /// Block related config.
+        //     block_config: BlockConfig,
+
+                    // struct BlockConfig {
+                    //     /// The number of bytes in this block.
+                    //     block_len: Column<Advice>,
+                    //     /// The index of this zstd block. The first block has a block_idx = 1.
+                    //     block_idx: Column<Advice>,
+                    //     /// Whether this block is the last block in the zstd encoded data.
+                    //     is_last_block: Column<Advice>,
+                    //     /// Helper boolean column to tell us whether we are in the block's contents. This field is not
+                    //     /// set for FrameHeaderDescriptor and FrameContentSize. For the tags that occur while decoding
+                    //     /// the block's contents, this field is set.
+                    //     is_block: Column<Advice>,
+                    //     /// Number of sequences decoded from the sequences section header in the block.
+                    //     num_sequences: Column<Advice>,
+                    // }
+
+        //     /// Decoding helpers for the sequences section header.
+        //     sequences_header_decoder: SequencesHeaderDecoder,
+
+                    // #[derive(Clone, Debug)]
+                    // struct SequencesHeaderDecoder {
+                    //     /// Helper gadget to evaluate byte0 < 128.
+                    //     pub byte0_lt_0x80: LtConfig<Fr, 8>,
+                    //     /// Helper gadget to evaluate byte0 < 255.
+                    //     pub byte0_lt_0xff: LtConfig<Fr, 8>,
+                    // }
+                    
+                    // struct DecodedSequencesHeader {
+                    //     /// The number of sequences in the sequences section.
+                    //     num_sequences: Expression<Fr>,
+                    //     /// The number of bytes in the sequences section header.
+                    //     tag_len: Expression<Fr>,
+                    //     /// The compression mode's bit0 for literals length.
+                    //     comp_mode_bit0_ll: Expression<Fr>,
+                    //     /// The compression mode's bit1 for literals length.
+                    //     comp_mode_bit1_ll: Expression<Fr>,
+                    //     /// The compression mode's bit0 for offsets.
+                    //     comp_mode_bit0_om: Expression<Fr>,
+                    //     /// The compression mode's bit1 for offsets.
+                    //     comp_mode_bit1_om: Expression<Fr>,
+                    //     /// The compression mode's bit0 for match lengths.
+                    //     comp_mode_bit0_ml: Expression<Fr>,
+                    //     /// The compression mode's bit1 for match lengths.
+                    //     comp_mode_bit1_ml: Expression<Fr>,
+                    // }
+
+        //     /// Config for reading and decoding bitstreams.
+        //     bitstream_decoder: BitstreamDecoder,
+
+                    // pub struct BitstreamDecoder {
+                    //     /// The bit-index where the bittsring begins. 0 <= bit_index_start < 8.
+                    //     bit_index_start: Column<Advice>,
+                    //     /// The bit-index where the bitstring ends. 0 <= bit_index_end < 24.
+                    //     bit_index_end: Column<Advice>,
+                    //     /// Helper gadget to know if the bitstring was spanned over a single byte.
+                    //     bit_index_end_cmp_7: ComparatorConfig<Fr, 1>,
+                    //     /// Helper gadget to know if the bitstring was spanned over 2 bytes.
+                    //     bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
+                    //     /// Helper gadget to know if the bitstring was spanned over 3 bytes.
+                    //     bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
+                    //     /// The value of the binary bitstring.
+                    //     bitstring_value: Column<Advice>,
+                    //     /// Helper gadget to know when the bitstring value is 1 or 3. This is useful in the case
+                    //     /// of decoding/reconstruction of FSE table, where a value=1 implies a special case of
+                    //     /// prob=0, where the symbol is instead followed by a 2-bit repeat flag. The repeat flag
+                    //     /// bits themselves could be followed by another 2-bit repeat flag if the repeat flag's
+                    //     /// value is 3.
+                    //     bitstring_value_eq_1: IsEqualConfig<Fr>,
+                    //     /// Helper config as per the above doc.
+                    //     bitstring_value_eq_3: IsEqualConfig<Fr>,
+                    //     /// Boolean that is set for a special case:
+                    //     /// - The bitstring that we have read in the current row is byte-aligned up to the next or the
+                    //     /// next-to-next byte. In this case, the next or the next-to-next following row(s) should have
+                    //     /// the is_nil field set.
+                    //     is_nil: Column<Advice>,
+                    //     /// Boolean that is set for a special case:
+                    //     /// - We don't read from the bitstream, i.e. we read 0 number of bits. We can witness such a
+                    //     /// case while applying an FSE table to bitstream, where the number of bits to be read from
+                    //     /// the bitstream is 0. This can happen when we decode sequences in the SequencesData tag.
+                    //     is_nb0: Column<Advice>,
+                    //     /// Helper gadget to check when bit_index_start == bit_index_end.
+                    //     start_eq_end: IsEqualConfig<Fr>,
+                    // }
+
+
+        //     /// Config established while recovering the FSE table.
+        //     fse_decoder: FseDecoder,
+
+                    // pub struct FseDecoder {
+                    //     /// The byte_idx at which the FSE table is described at.
+                    //     byte_offset: Column<Advice>,
+                    //     /// The FSE table that is being decoded in this tag. Possible values are:
+                    //     /// - LLT = 0, MOT = 1, MLT = 2
+                    //     table_kind: Column<Advice>,
+                    //     /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
+                    //     /// of the FSE table.
+                    //     table_size: Column<Advice>,
+                    //     /// The incremental symbol for which probability is decoded.
+                    //     symbol: Column<Advice>,
+                    //     /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
+                    //     /// This is the normalised probability for the symbol.
+                    //     probability_acc: Column<Advice>,
+                    //     /// Whether we are in the repeat bits loop.
+                    //     is_repeat_bits_loop: Column<Advice>,
+                    // }
+
+        //     /// Range Table for [0, 8).
+        //     range8: RangeTable<8>,
+        //     /// Range Table for [0, 16).
+        //     range16: RangeTable<16>,
+        //     /// Helper table for decoding the regenerated size from LiteralsHeader.
+        //     literals_header_table: LiteralsHeaderTable,
+        //     /// Helper table for decoding bitstreams.
+        //     bitstring_table: BitstringTable,
+        //     /// Helper table for decoding FSE tables.
+        //     fse_table: FseTable,
+        //     /// ROM table for validating tag transition.
+        //     rom_tag_table: RomTagTable,
+        //     /// ROM table for the correct order in which FSE tables are described in the sequences section.
+        //     rom_fse_order_table: RomFseOrderTable,
+        //     /// ROM table for Literal Length Codes.
+        //     rom_llc_table: RomSequenceCodes<LiteralLengthCodes>,
+        //     /// ROM table for Match Length Codes.
+        //     rom_mlc_table: RomSequenceCodes<MatchLengthCodes>,
+        //     /// ROM table for Match Offset Codes.
+        //     rom_moc_table: RomSequenceCodes<MatchOffsetCodes>,
+        // }
+
+
+
+
+        // pub struct AssignedDecoderConfigExports {
+        //     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
+        //     pub encoded_rlc: AssignedCell<Fr, Fr>,
+        //     /// The RLC of the decoded bytes, i.e. batch bytes.
+        //     pub decoded_rlc: AssignedCell<Fr, Fr>,
+        // }
+
+
+
+
+
+
+
+
+
+
+
     }
 }
