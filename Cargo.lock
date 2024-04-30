@@ -2793,7 +2793,6 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "eth-types",
- "halo2-mpt-circuits",
  "halo2_proofs",
  "hex",
  "log",
@@ -5477,6 +5476,7 @@ dependencies = [
  "gadgets",
  "halo2-base",
  "halo2-ecc",
+ "halo2-mpt-circuits",
  "halo2_gadgets",
  "halo2_proofs",
  "hex",
