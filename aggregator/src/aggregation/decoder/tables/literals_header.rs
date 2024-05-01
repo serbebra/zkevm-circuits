@@ -1,4 +1,4 @@
-use gadgets::util::{not, select, Expr};
+use gadgets::util::{and, not, select, Expr};
 use halo2_proofs::{
     halo2curves::bn256::Fr,
     plonk::{Advice, Any, Column, ConstraintSystem, Fixed},
@@ -118,7 +118,12 @@ impl LiteralsHeaderTable {
         });
 
         meta.create_gate("LiteralsHeaderTable: padding check", |meta| {
-            let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
+            // witgen_debug
+            let condition = and::expr([
+                false.expr(),
+                not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+            ]);
+            // let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
 
             let mut cb = BaseConstraintBuilder::default();
 

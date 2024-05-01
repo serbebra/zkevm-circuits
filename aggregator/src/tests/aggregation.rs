@@ -7,7 +7,7 @@ use snark_verifier::loader::halo2::halo2_ecc::halo2_base::utils::fs::gen_srs;
 use snark_verifier_sdk::{gen_pk, gen_snark_shplonk, verify_snark_shplonk, CircuitExt};
 
 use crate::{
-    aggregation::{AggregationCircuit, DecoderConfig}, batch::BatchHash, constants::MAX_AGG_SNARKS, layer_0,
+    aggregation::AggregationCircuit, batch::BatchHash, constants::MAX_AGG_SNARKS, layer_0,
     tests::mock_chunk::MockChunkCircuit, ChunkHash,
 };
 

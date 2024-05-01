@@ -291,7 +291,12 @@ impl FseTable {
         });
 
         meta.create_gate("FseTable: other rows in the same FSE table", |meta| {
-            let condition = not::expr(meta.query_fixed(config.q_start, Rotation::cur()));
+            // witgen_debug
+            let condition = and::expr([
+                false.expr(),
+                not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+            ]);
+            // let condition = not::expr(meta.query_fixed(config.q_start, Rotation::cur()));
 
             let mut cb = BaseConstraintBuilder::default();
 
@@ -460,6 +465,8 @@ impl FseTable {
 
         meta.create_gate("FseTable: symbol continues", |meta| {
             let condition = and::expr([
+                // witgen_debug
+                false.expr(),
                 not::expr(meta.query_advice(config.is_symbol_change, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);

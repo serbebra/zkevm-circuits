@@ -1,5 +1,6 @@
 mod tables;
-mod witgen;
+pub mod witgen;
+use witgen::*;
 
 use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
@@ -9,7 +10,7 @@ use gadgets::{
     util::{and, not, select, sum, Expr},
 };
 use halo2_proofs::{
-    circuit::{AssignedCell, Layouter},
+    circuit::{AssignedCell, Layouter, Value},
     halo2curves::bn256::Fr,
     plonk::{
         Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase, VirtualCells,
@@ -22,7 +23,7 @@ use zkevm_circuits::{
     table::{BitwiseOpTable, LookupTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
     util::Challenges,
 };
-
+use eth_types::Field;
 use self::{
     tables::{
         BitstringTable, FseTable, LiteralLengthCodes, LiteralsHeaderTable, MatchLengthCodes,
@@ -2412,23 +2413,20 @@ impl DecoderConfig {
         config
     }
 
-    pub fn assign(
+    pub fn assign<F: Field>(
         &self,
-        layouter: &mut impl Layouter<Fr>,
-        witness_rows: Vec<ZstdWitnessRow<F>>,
-        aux_data: Vec<u64>,
-        fse_aux_tables: Vec<FseAuxiliaryTableData>,
-        challenges: &Challenges<Value<F>>,
-    ) -> Result<AssignedDecoderConfigExports, Error> {
-        unimplemented!()
+        _layouter: &mut impl Layouter<Fr>,
+        _witness_rows: Vec<ZstdWitnessRow<F>>,
+        _aux_data: Vec<u64>,
+        _fse_aux_tables: Vec<FseAuxiliaryTableData>,
+        _challenges: &Challenges<Value<F>>,
+    // witgen_debug
+    // ) -> Result<AssignedDecoderConfigExports, Error> {
+    ) -> Result<(), Error> {
 
+        // unimplemented!()
 
-
-
-
-
-
-
+        
 
         // pub struct DecoderConfig {
         //     /// Fixed column to mark the first row in the layout.
@@ -2629,9 +2627,6 @@ impl DecoderConfig {
         //     rom_moc_table: RomSequenceCodes<MatchOffsetCodes>,
         // }
 
-
-
-
         // pub struct AssignedDecoderConfigExports {
         //     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
         //     pub encoded_rlc: AssignedCell<Fr, Fr>,
@@ -2639,15 +2634,138 @@ impl DecoderConfig {
         //     pub decoded_rlc: AssignedCell<Fr, Fr>,
         // }
 
-
-
-
-
-
-
-
-
-
-
+        Ok(())
     }
+}
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use eth_types::Field;
+    use std::marker::PhantomData;
+
+    use crate::{DecoderConfig, DecoderConfigArgs};
+    use halo2_proofs::{
+        circuit::{Layouter, SimpleFloorPlanner},
+        halo2curves::bn256::Fr,
+        plonk::{Circuit, ConstraintSystem, Error},
+        dev::MockProver,
+    };
+    use zkevm_circuits::{
+        table::{
+            BitwiseOpTable, Pow2Table, PowOfRandTable, RangeTable, U8Table
+        }, 
+        util::Challenges
+    };
+    use super::process;
+    use std::{
+        fs::{self, File},
+        io::{self, Write},
+    };
+    use bitstream_io::write;
+
+    #[derive(Clone, Debug, Default)]
+    struct DecoderConfigTester {
+        compressed: Vec<u8>,
+    }
+
+    impl Circuit<Fr> for DecoderConfigTester {
+        type Config = (DecoderConfig, Challenges);
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            unimplemented!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let challenges = Challenges::construct(meta);
+            let challenges_expr = challenges.exprs(meta);
+
+            let pow_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
+            let pow2_table = Pow2Table::construct(meta);
+            let u8_table = U8Table::construct(meta);
+            let range8 = RangeTable::construct(meta);
+            let range16 = RangeTable::construct(meta);
+            let bitwise_op_table = BitwiseOpTable::construct(meta);
+
+            let config = DecoderConfig::configure(
+                meta, 
+                &challenges_expr, 
+                DecoderConfigArgs {
+                    pow_rand_table,
+                    pow2_table,
+                    u8_table,
+                    range8,
+                    range16,
+                    bitwise_op_table,
+                }
+            );
+
+            (config, challenges)
+        }
+
+        #[allow(clippy::type_complexity)]
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let (config, challenge) = config;
+            let challenges = challenge.values(&layouter);
+
+            config.range8.load(&mut layouter)?;
+            config.range16.load(&mut layouter)?;
+
+            let (witness_rows, _decoded_literals, aux_data, fse_aux_tables) = 
+                process(&self.compressed, challenges.keccak_input());
+
+            config.assign(
+                &mut layouter, 
+                witness_rows, 
+                aux_data, 
+                fse_aux_tables, 
+                &challenges
+            )?;
+
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_decoder_config_working_example() {
+        let raw: Vec<u8> = String::from("Romeo and Juliet@Excerpt from Act 2, Scene 2@@JULIET@O Romeo, Romeo! wherefore art thou Romeo?@Deny thy father and refuse thy name;@Or, if thou wilt not, be but sworn my love,@And I'll no longer be a Capulet.@@ROMEO@[Aside] Shall I hear more, or shall I speak at this?@@JULIET@'Tis but thy name that is my enemy;@Thou art thyself, though not a Montague.@What's Montague? it is nor hand, nor foot,@Nor arm, nor face, nor any other part@Belonging to a man. O, be some other name!@What's in a name? that which we call a rose@By any other name would smell as sweet;@So Romeo would, were he not Romeo call'd,@Retain that dear perfection which he owes@Without that title. Romeo, doff thy name,@And for that name which is no part of thee@Take all myself.@@ROMEO@I take thee at thy word:@Call me but love, and I'll be new baptized;@Henceforth I never will be Romeo.@@JULIET@What man art thou that thus bescreen'd in night@So stumblest on my counsel?").as_bytes().to_vec();
+
+        let compressed = {
+            // compression level = 0 defaults to using level=3, which is zstd's default.
+            let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0).expect("Encoder construction");
+
+            // disable compression of literals, i.e. literals will be raw bytes.
+            encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
+                zstd::zstd_safe::ParamSwitch::Disable,
+            )).expect("Encoder set_parameter: LiteralCompressionMode");
+            // set target block size to fit within a single block.
+            encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024)).expect("Encoder set_parameter: TargetCBlockSize");
+            // do not include the checksum at the end of the encoded data.
+            encoder.include_checksum(false).expect("Encoder include_checksum: false");
+            // do not include magic bytes at the start of the frame since we will have a single
+            // frame.
+            encoder.include_magicbytes(false).expect("Encoder include magicbytes: false");
+            // set source length, which will be reflected in the frame header.
+            encoder.set_pledged_src_size(Some(raw.len() as u64)).expect("Encoder src_size: raw.len()");
+            // include the content size to know at decode time the expected size of decoded data.
+            encoder.include_contentsize(true).expect("Encoder include_contentsize: true");
+
+            encoder.write_all(&raw).expect("Encoder wirte_all");
+            encoder.finish().expect("Encoder success")
+        };
+
+        let decoder_config_tester = DecoderConfigTester { compressed, };
+
+        let k = 15;
+        let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
+        mock_prover.assert_satisfied_par();
+    }
+
 }

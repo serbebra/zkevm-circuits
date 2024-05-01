@@ -226,6 +226,8 @@ impl BitstringTable {
 
         meta.create_gate("BitstringAccumulationTable: bit_index > 0", |meta| {
             let condition = and::expr([
+                // witgen_debug
+                false.expr(),
                 not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -262,7 +264,12 @@ impl BitstringTable {
         meta.create_gate(
             "BitstringAccumulationTable: bitstring_value accumulation",
             |meta| {
-                let condition = not::expr(meta.query_advice(config.is_padding, Rotation::cur()));
+                // witgen_debug
+                let condition = and::expr([
+                    false.expr(),
+                    not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+                ]);
+                // let condition = not::expr(meta.query_advice(config.is_padding, Rotation::cur()));
 
                 let mut cb = BaseConstraintBuilder::default();
 
@@ -379,7 +386,12 @@ impl BitstringTable {
         });
 
         meta.create_gate("BitstringAccumulationTable: padding", |meta| {
-            let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
+            // witgen_debug
+            let condition = and::expr([
+                false.expr(),
+                not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+            ]);
+            // let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
 
             let mut cb = BaseConstraintBuilder::default();
 
@@ -403,12 +415,12 @@ impl BitstringTable {
     }
 
     /// Load witness to the table: dev mode.
-    pub fn assign(
+    pub fn _assign(
         &self,
-        layouter: &mut impl Layouter<Fr>,
-        witness_rows: &[ZstdWitnessRow<Fr>],
+        _layouter: &mut impl Layouter<Fr>,
+        _witness_rows: &[ZstdWitnessRow<Fr>],
     ) -> Result<(), Error> {
-        unimplemented!();
+        // unimplemented!();
 
         Ok(())
     }

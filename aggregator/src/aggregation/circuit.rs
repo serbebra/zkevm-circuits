@@ -440,7 +440,7 @@ impl Circuit<Fr> for AggregationCircuit {
 
             let batch_data = BatchData::from(&self.batch_hash);
 
-            let blob_data_exports = config.blob_data_config.assign(
+            let _blob_data_exports = config.blob_data_config.assign(
                 &mut layouter,
                 challenges,
                 &config.rlc_config,
@@ -518,48 +518,6 @@ impl Circuit<Fr> for AggregationCircuit {
                 },
             )?;
         }
-
-
-
-        // ==============================================
-        // step 5: Assign Decoder Config
-        // ==============================================
-        // witgen_debug
-        // let barycentric = {
-        //     let mut first_pass = halo2_base::SKIP_FIRST_PASS;
-        //     layouter.assign_region(
-        //         || "barycentric evaluation",
-        //         |region| {
-        //             if first_pass {
-        //                 first_pass = false;
-        //                 return Ok(AssignedBarycentricEvaluationConfig::default());
-        //             }
-
-        //             let mut ctx = Context::new(
-        //                 region,
-        //                 ContextParams {
-        //                     max_rows: config.flex_gate().max_rows,
-        //                     num_context_ids: 1,
-        //                     fixed_columns: config.flex_gate().constants.clone(),
-        //                 },
-        //             );
-
-        //             let barycentric = config.barycentric.assign(
-        //                 &mut ctx,
-        //                 &self.batch_hash.point_evaluation_assignments.coefficients,
-        //                 self.batch_hash
-        //                     .point_evaluation_assignments
-        //                     .challenge_digest,
-        //                 self.batch_hash.point_evaluation_assignments.evaluation,
-        //             );
-
-        //             config.barycentric.scalar.range.finalize(&mut ctx);
-        //             ctx.print_stats(&["barycentric evaluation"]);
-
-        //             Ok(barycentric)
-        //         },
-        //     )?
-        // };
 
         end_timer!(witness_time);
 

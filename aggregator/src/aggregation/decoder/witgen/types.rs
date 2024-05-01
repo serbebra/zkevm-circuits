@@ -1,9 +1,9 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     io::Cursor,
 };
 
-use bitstream_io::{write, BitRead, BitReader, LittleEndian};
+use bitstream_io::{BitRead, BitReader, LittleEndian};
 use eth_types::Field;
 use gadgets::impl_expr;
 use halo2_proofs::{circuit::Value, plonk::Expression};
@@ -12,11 +12,15 @@ use strum_macros::EnumIter;
 
 use super::{
     params::N_BITS_PER_BYTE,
-    util::{bit_length, read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
+    util::{read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
 };
 
 // witgen_debug
-use std::{io, io::Write};
+// use std::{
+//     // io, 
+//     // witgen_debug
+//     // io::Write
+// };
 
 /// A read-only memory table (fixed table) for decompression circuit to verify that the next tag
 /// fields are assigned correctly.
@@ -390,131 +394,6 @@ pub struct HuffmanData {
     pub k: (u8, u8),
 }
 
-/// Witness to the HuffmanCodesTable.
-#[derive(Clone, Debug)]
-pub struct HuffmanCodesData {
-    /// The byte offset in the frame at which the FSE table is described.
-    pub byte_offset: u64,
-    /// A mapping of symbol to the weight assigned to it as per canonical Huffman coding. The
-    /// symbol is the raw byte that is encoded using a Huffman code and the weight assigned to it
-    /// is a symbol emitted by the corresponding FSE table.
-    pub weights: Vec<FseSymbol>,
-}
-
-/// Denotes the tuple (max_bitstring_len, Map<symbol, (weight, bit_value)>).
-type ParsedCanonicalHuffmanCode = (u64, BTreeMap<u64, (u64, u64)>);
-/// A representation indexed by bitstring (String) as key for decoding symbols specifically.
-/// Huffman code decoding ensures prefix code, thus the explicit articulation of bitstring is
-/// necessary.
-type ParsedCanonicalHuffmanCodeBitstringMap = (u64, HashMap<String, u64>);
-
-impl HuffmanCodesData {
-    /// Reconstruct the bitstrings for each symbol based on the canonical Huffman code weights. The
-    /// returned value is tuple of max bitstring length and a map from symbol to its weight and bit
-    /// value.
-    pub fn parse_canonical(&self) -> ParsedCanonicalHuffmanCode {
-        let sum_weights: u64 = self
-            .weights
-            .iter()
-            .map(|&weight| {
-                let weight: usize = weight.into();
-                if weight > 0 {
-                    1 << (weight - 1)
-                } else {
-                    0
-                }
-            })
-            .sum();
-
-        // Calculate the last symbol's weight and append it.
-        let max_bitstring_len = bit_length(sum_weights);
-        let nearest_pow2 = 1 << max_bitstring_len;
-        let last_weight = ((nearest_pow2 - sum_weights) as f64).log2() as u64;
-        let weights = self
-            .weights
-            .iter()
-            .map(|&weight| weight as u64)
-            .chain(std::iter::once(last_weight))
-            .collect::<Vec<u64>>();
-
-        let mut sym_to_tuple = BTreeMap::new();
-        let mut bit_value = 0;
-        for l in (0..=max_bitstring_len).rev() {
-            bit_value = (bit_value + 1) >> 1;
-            weights
-                .iter()
-                .enumerate()
-                .filter(|(_symbol, &weight)| max_bitstring_len - weight + 1 == l)
-                .for_each(|(symbol, &weight)| {
-                    sym_to_tuple.insert(symbol as u64, (weight, bit_value));
-                    bit_value += 1;
-                });
-        }
-
-        // populate symbols that don't occur in the Huffman code.
-        weights
-            .iter()
-            .enumerate()
-            .filter(|(_, &weight)| weight == 0)
-            .for_each(|(sym, _)| {
-                sym_to_tuple.insert(sym as u64, (0, 0));
-            });
-
-        (max_bitstring_len, sym_to_tuple)
-    }
-
-    /// parse bit string map
-    pub fn parse_bitstring_map(&self) -> ParsedCanonicalHuffmanCodeBitstringMap {
-        let mut weights: Vec<usize> = self.weights.iter().map(|w| *w as usize).collect();
-        let sum_weights: usize = weights
-            .iter()
-            .filter_map(|&w| if w > 0 { Some(1 << (w - 1)) } else { None })
-            .sum();
-
-        let nearest_pow_2: usize = 1 << (sum_weights - 1).next_power_of_two().trailing_zeros();
-        weights.push(f64::log2((nearest_pow_2 - sum_weights) as f64).ceil() as usize + 1);
-        let max_number_of_bits = nearest_pow_2.trailing_zeros() as usize;
-        let n = weights.len();
-
-        let bitstring_length: Vec<usize> = weights
-            .iter()
-            .map(|&w| {
-                if w != 0 {
-                    max_number_of_bits - w + 1
-                } else {
-                    0
-                }
-            })
-            .collect();
-
-        let mut bitstring_map = HashMap::new();
-        let mut cur_bit_value = 0;
-
-        for bit_len in (1..=max_number_of_bits).rev() {
-            cur_bit_value += 1;
-            cur_bit_value >>= 1;
-
-            for (sym, b_len) in bitstring_length.iter().enumerate().take(n) {
-                if *b_len == bit_len {
-                    bitstring_map.insert(
-                        format!("{:0width$b}", cur_bit_value, width = bit_len),
-                        sym as u64,
-                    );
-                    cur_bit_value += 1;
-                }
-            }
-        }
-
-        let max_bitstring_len = bitstring_map
-            .keys()
-            .map(|k| k.len())
-            .max()
-            .expect("Keys have maximum len");
-
-        (max_bitstring_len as u64, bitstring_map)
-    }
-}
-
 /// A single row in the FSE table.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FseTableRow {
@@ -548,13 +427,13 @@ pub struct BitstreamReadRow {
 /// Sequence data is interleaved with 6 bitstreams. Each producing a different type of value.
 #[derive(Clone, Copy, Debug)]
 pub enum SequenceDataTag {
-    NULL = 0,
-    LiteralLength_FSE,
-    MatchLength_FSE,
-    CookedMatchOffset_FSE,
-    LiteralLength_Value,
-    MatchLength_Value,
-    CookedMatchOffset_Value,
+    Null = 0,
+    LiteralLengthFse,
+    MatchLengthFse,
+    CookedMatchOffsetFse,
+    LiteralLengthValue,
+    MatchLengthValue,
+    CookedMatchOffsetValue,
 }
 
 /// A single row in the Address table.
@@ -721,10 +600,6 @@ impl FseAuxiliaryTableData {
     /// FSE table, if the read bitstream was not byte aligned, then we discard the 1..8 bits from
     /// the last byte that we read from.
     pub fn reconstruct(src: &[u8], byte_offset: usize) -> std::io::Result<ReconstructedFse> {
-        // witgen_debug
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
-
         // construct little-endian bit-reader.
         let data = src.iter().skip(byte_offset).cloned().collect::<Vec<u8>>();
         let mut reader = BitReader::endian(Cursor::new(&data), LittleEndian);
@@ -941,7 +816,7 @@ mod tests {
             ]
             .iter()
             .enumerate()
-            .map(|(i, &(state, baseline, num_bits))| FseTableRow {
+            .map(|(_i, &(state, baseline, num_bits))| FseTableRow {
                 state,
                 symbol: 1,
                 baseline,
@@ -961,103 +836,10 @@ mod tests {
             0x21, 0x9d, 0x51, 0xcc, 0x18, 0x42, 0x44, 0x81, 0x8c, 0x94, 0xb4, 0x50, 0x1e,
         ];
 
-        let (n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0)?;
-        let parsed_state_map = table.parse_state_table();
+        let (_n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0)?;
+        let _parsed_state_map = table.parse_state_table();
 
         // TODO: assertions
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_huffman_bitstring_reconstruction() -> std::io::Result<()> {
-        let weights = vec![
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 6, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-            1, 2, 0, 0, 0, 2, 0, 1, 1, 1, 1, 1, 0, 0, 1, 2, 1, 0, 1, 1, 1, 2, 0, 0, 1, 1, 1, 1, 0,
-            1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 5, 3, 3, 3, 6, 3, 2, 4, 4, 0, 1, 4, 4, 5, 5, 2, 0, 4, 4,
-            5, 3, 1, 3, 1, 3,
-        ]
-        .into_iter()
-        .map(FseSymbol::from)
-        .collect::<Vec<FseSymbol>>();
-
-        let huffman_codes_data = HuffmanCodesData {
-            byte_offset: 0,
-            weights,
-        };
-
-        let (max_bitstring_len, bitstring_map) = huffman_codes_data.parse_bitstring_map();
-
-        let expected_bitstrings: [(&str, u64); 53] = [
-            ("01001", 10),
-            ("110", 32),
-            ("00000000", 33),
-            ("0001100", 39),
-            ("001010", 44),
-            ("0001101", 46),
-            ("00000001", 50),
-            ("00000010", 58),
-            ("0001110", 59),
-            ("0001111", 63),
-            ("00000011", 65),
-            ("00000100", 66),
-            ("00000101", 67),
-            ("00000110", 68),
-            ("00000111", 69),
-            ("00001000", 72),
-            ("0010000", 73),
-            ("00001001", 74),
-            ("00001010", 76),
-            ("00001011", 77),
-            ("00001100", 78),
-            ("0010001", 79),
-            ("00001101", 82),
-            ("00001110", 83),
-            ("00001111", 84),
-            ("00010000", 85),
-            ("00010001", 87),
-            ("00010010", 91),
-            ("00010011", 93),
-            ("1000", 97),
-            ("001011", 98),
-            ("001100", 99),
-            ("001101", 100),
-            ("111", 101),
-            ("001110", 102),
-            ("0010010", 103),
-            ("01010", 104),
-            ("01011", 105),
-            ("00010100", 107),
-            ("01100", 108),
-            ("01101", 109),
-            ("1001", 110),
-            ("1010", 111),
-            ("0010011", 112),
-            ("01110", 114),
-            ("01111", 115),
-            ("1011", 116),
-            ("001111", 117),
-            ("00010101", 118),
-            ("010000", 119),
-            ("00010110", 120),
-            ("010001", 121),
-            ("00010111", 122),
-        ];
-
-        assert_eq!(max_bitstring_len, 8, "max bitstring len is 8");
-        assert_eq!(
-            expected_bitstrings.len(),
-            bitstring_map.len(),
-            "# of bitstring is the same"
-        );
-        for pair in expected_bitstrings {
-            assert_eq!(
-                *bitstring_map.get(pair.0).unwrap(),
-                pair.1,
-                "bitstring mapping is correct"
-            );
-        }
 
         Ok(())
     }
