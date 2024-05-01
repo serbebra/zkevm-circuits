@@ -936,7 +936,7 @@ mod tests {
         ];
 
         // witgen_debug
-        let (_n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0)?;
+        let (_n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0, FseTableKind::LLT, 0)?;
         let _parsed_state_map = table.parse_state_table();
 
         // TODO: assertions
