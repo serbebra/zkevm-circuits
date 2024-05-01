@@ -694,7 +694,12 @@ fn process_sequences<F: Field>(
 
     // Literal Length Table (LLT)
     let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) =
-        FseAuxiliaryTableData::reconstruct(src, byte_offset)
+        // witgen_debug
+        // src: &[u8],
+        // block_idx: u64,
+        // table_kind: FseTableKind,
+        // byte_offset: usize,
+        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::LLT, byte_offset)
             .expect("Reconstructing FSE-packed Literl Length (LL) table should not fail.");
     let llt = table_llt.parse_state_table();
     let al_llt = bit_boundaries_llt
@@ -706,7 +711,8 @@ fn process_sequences<F: Field>(
     // Cooked Match Offset Table (CMOT)
     let byte_offset = byte_offset + n_fse_bytes_llt;
     let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) =
-        FseAuxiliaryTableData::reconstruct(src, byte_offset)
+        // witgen_debug
+        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MOT, byte_offset)
             .expect("Reconstructing FSE-packed Cooked Match Offset (CMO) table should not fail.");
     let cmot = table_cmot.parse_state_table();
     let al_cmot = bit_boundaries_cmot
@@ -718,7 +724,8 @@ fn process_sequences<F: Field>(
     // Match Length Table (MLT)
     let byte_offset = byte_offset + n_fse_bytes_cmot;
     let (n_fse_bytes_mlt, bit_boundaries_mlt, table_mlt) =
-        FseAuxiliaryTableData::reconstruct(src, byte_offset)
+        // witgen_debug
+        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MLT, byte_offset)
             .expect("Reconstructing FSE-packed Match Length (ML) table should not fail.");
     let mlt = table_mlt.parse_state_table();
     let al_mlt = bit_boundaries_mlt
@@ -1495,12 +1502,12 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     for (idx, row) in witness_rows.iter().enumerate() {
         write!(
             handle, 
-            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
+            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
             idx, 
             row.state.tag, row.state.tag_next, row.state.max_tag_len, row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc, row.state.is_tag_change, row.state.tag_rlc_acc,
             row.encoded_data.byte_idx, row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse, row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1, row.encoded_data.aux_2, row.encoded_data.value_rlc,
             row.decoded_data.decoded_len, row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len, row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,
-            row.fse_data.state, row.fse_data.baseline, row.fse_data.num_bits, row.fse_data.symbol, row.fse_data.num_emitted, row.fse_data.n_acc,
+            row.fse_data.state, row.fse_data.baseline, row.fse_data.num_bits, row.fse_data.symbol, row.fse_data.num_emitted,
             row.bitstream_read_data.bit_start_idx, row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value, row.bitstream_read_data.is_zero_bit_read,
         ).unwrap();
 

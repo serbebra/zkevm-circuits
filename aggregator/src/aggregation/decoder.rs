@@ -24,7 +24,7 @@ use zkevm_circuits::{
     table::{BitwiseOpTable, LookupTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
     util::Challenges,
 };
-use eth_types::Field;
+
 use self::{
     tables::{
         BitstringTable, FseTable, FseTableKind, LiteralsHeaderTable, RomFseOrderTable,
