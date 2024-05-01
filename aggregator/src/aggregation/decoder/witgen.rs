@@ -23,6 +23,8 @@ use crate::aggregation::decoder::witgen::util::{be_bits_to_value, increment_idx}
 
 const CMOT_N: u64 = 31;
 
+use crate::aggregation::decoder::tables::FseTableKind;
+
 const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
     (FrameHeaderDescriptor, 1),
     (FrameContentSize, 8),
@@ -1155,6 +1157,8 @@ fn process_sequences<F: Field>(
             },
             decoded_data: last_row.decoded_data.clone(),
             fse_data: FseTableRow::default(), // TODO: Clarify alternating FSE/data segments
+            // TODO(ray): pls check where to get this field from.
+            // is_state_skipped: false,
         });
 
         for _ in 0..nb {
