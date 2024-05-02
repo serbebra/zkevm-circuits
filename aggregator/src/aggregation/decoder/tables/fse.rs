@@ -120,22 +120,18 @@ pub struct FseTable {
     baseline: Column<Advice>,
     /// The number of bits to read from bitstream when at this state.
     nb: Column<Advice>,
-    /// Fixed lookup table.
-    fixed_table: FixedTable,
 }
 
 impl FseTable {
     /// Configure the FSE table.
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        fixed_table: &FixedTable,
         u8_table: U8Table,
         range8_table: RangeTable<8>,
         pow2_table: Pow2Table<20>,
         bitwise_op_table: BitwiseOpTable,
     ) -> Self {
-        // Fixed table to check the transition of table kinds and block idx.
-        let fixed_table = FixedTable::construct(meta);
-
         // Auxiliary table to validate that (baseline, nb) were assigned correctly to the states
         // allocated to a symbol.
         let sorted_table = FseSortedStatesTable::configure(meta, pow2_table, u8_table);
@@ -155,7 +151,6 @@ impl FseTable {
             is_skipped_state: meta.advice_column(),
             baseline: meta.advice_column(),
             nb: meta.advice_column(),
-            fixed_table,
         };
 
         // Check that on the starting row of each FSE table, i.e. q_start=true:
@@ -235,7 +230,7 @@ impl FseTable {
                     0.expr(), // unused
                 ]
                 .into_iter()
-                .zip_eq(config.fixed_table.table_exprs(meta))
+                .zip_eq(fixed_table.table_exprs(meta))
                 .map(|(arg, table)| (condition.expr() * arg, table))
                 .collect()
             },
@@ -605,7 +600,7 @@ impl FseTable {
                 nb,
             ]
             .into_iter()
-            .zip_eq(config.fixed_table.table_exprs(meta))
+            .zip_eq(fixed_table.table_exprs(meta))
             .map(|(arg, table)| (condition.expr() * arg, table))
             .collect()
         });

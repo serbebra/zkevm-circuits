@@ -972,7 +972,14 @@ impl DecoderConfig {
         // Helper tables
         let literals_header_table = LiteralsHeaderTable::configure(meta, range8, range16);
         let bitstring_table = BitstringTable::configure(meta);
-        let fse_table = FseTable::configure(meta, u8_table, range8, pow2_table, bitwise_op_table);
+        let fse_table = FseTable::configure(
+            meta,
+            &fixed_table,
+            u8_table,
+            range8,
+            pow2_table,
+            bitwise_op_table,
+        );
         // TODO(enable): let sequence_instruction_table = SequenceInstructionTable::configure(meta);
 
         // Peripheral configs
