@@ -17,15 +17,9 @@ mod types;
 pub use types::{ZstdTag::*, *};
 
 pub mod util;
-use util::{le_bits_to_value, value_bits_le};
+use util::{be_bits_to_value, increment_idx, le_bits_to_value, value_bits_le};
 
-use crate::aggregation::decoder::witgen::util::{be_bits_to_value, increment_idx};
-
-const CMOT_N: u64 = 31;
-
-use crate::aggregation::decoder::tables::FseTableKind;
-
-const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
+const TAG_MAX_LEN: [(ZstdTag, u64); 13] = [
     (FrameHeaderDescriptor, 1),
     (FrameContentSize, 8),
     (BlockHeader, 3),

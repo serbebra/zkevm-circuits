@@ -11,8 +11,6 @@ use itertools::Itertools;
 use strum_macros::EnumIter;
 use std::collections::HashMap;
 
-use crate::aggregation::decoder::tables::FseTableKind;
-
 use super::{
     params::N_BITS_PER_BYTE,
     util::{read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
@@ -290,6 +288,20 @@ impl From<ZstdTag> for usize {
         value as usize
     }
 }
+
+/// FSE table variants that we observe in the sequences section.
+#[derive(Clone, Copy, Debug)]
+#[allow(clippy::upper_case_acronyms)]
+pub enum FseTableKind {
+    /// Literal length FSE table.
+    LLT = 1,
+    /// Match offset FSE table.
+    MOT,
+    /// Match length FSE table.
+    MLT,
+}
+
+impl_expr!(FseTableKind);
 
 impl ToString for ZstdTag {
     fn to_string(&self) -> String {
@@ -908,7 +920,7 @@ impl<F: Field> ZstdWitnessRow<F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::aggregation::decoder::tables::{predefined_table, FsePredefinedTable};
+    use crate::aggregation::decoder::tables::{predefined_fse, PredefinedFse};
 
     use super::*;
 
@@ -1006,7 +1018,7 @@ mod tests {
                     &normalised_probs,
                     table_kind.accuracy_log(),
                 );
-            let expected_predefined_table = predefined_table(table_kind);
+            let expected_predefined_table = predefined_fse(table_kind);
 
             let mut computed_predefined_table = sym_to_states
                 .values()
@@ -1020,14 +1032,18 @@ mod tests {
                 .zip_eq(computed_predefined_table.iter())
                 .enumerate()
             {
-                assert_eq!(computed.state, expected.0, "state mismatch at i={}", i);
-                assert_eq!(computed.symbol, expected.1, "symbol mismatch at i={}", i);
+                assert_eq!(computed.state, expected.state, "state mismatch at i={}", i);
                 assert_eq!(
-                    computed.baseline, expected.2,
+                    computed.symbol, expected.symbol,
+                    "symbol mismatch at i={}",
+                    i
+                );
+                assert_eq!(
+                    computed.baseline, expected.baseline,
                     "baseline mismatch at i={}",
                     i
                 );
-                assert_eq!(computed.num_bits, expected.3, "nb mismatch at i={}", i);
+                assert_eq!(computed.num_bits, expected.nb, "nb mismatch at i={}", i);
             }
         }
     }
