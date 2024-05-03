@@ -34,6 +34,8 @@ fn lookup_max_tag_len(tag: ZstdTag) -> u64 {
     TAG_MAX_LEN.iter().find(|record| record.0 == tag).unwrap().1
 }
 
+const CMOT_N: u64 = 31;
+
 /// FrameHeaderDescriptor and FrameContentSize
 fn process_frame_header<F: Field>(
     src: &[u8],
