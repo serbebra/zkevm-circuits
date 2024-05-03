@@ -29,11 +29,10 @@ use zkevm_circuits::{
 use crate::aggregation::decoder::tables::FixedLookupTag;
 
 use self::{
-    tables::{BitstringTable, FixedTable, FseTable, LiteralsHeaderTable},
-    witgen::{
+    tables::{BitstringTable, FixedTable, FseTable, LiteralsHeaderTable}, util::value_bits_le, witgen::{
         FseTableKind, ZstdTag, N_BITS_PER_BYTE, N_BITS_REPEAT_FLAG, N_BITS_ZSTD_TAG,
         N_BLOCK_HEADER_BYTES,
-    },
+    }
 };
 
 #[derive(Clone, Debug)]
@@ -3452,12 +3451,12 @@ impl DecoderConfig {
     // witgen_debug
     // ) -> Result<AssignedDecoderConfigExports, Error> {
     ) -> Result<(), Error> {
-        // Load auxiliary tables
-        self.range8.load(layouter);
-        self.range16.load(layouter);
-        self.fixed_table.load(layouter);
-
-        
+        /////////////////////////////////////////
+        //////// Load Auxiliary Tables  /////////
+        /////////////////////////////////////////
+        self.range8.load(layouter)?;
+        self.range16.load(layouter)?;
+        self.fixed_table.load(layouter)?;
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
@@ -3493,40 +3492,163 @@ impl DecoderConfig {
                 ),
             ));
         }
-        self.literals_header_table.assign(layouter, literal_headers);
+        self.literals_header_table.assign(layouter, literal_headers)?;
 
 
+        layouter.assign_region(
+            || "Decompression table region",
+            |mut region| {
+                /////////////////////////////////////////
+                /////////// Assign First Row  ///////////
+                /////////////////////////////////////////
+                region.assign_fixed(
+                    || "q_first",
+                    self.q_first,
+                    0,
+                    || Value::known(Fr::one()),
+                )?;
 
+                for (i, row) in witness_rows.iter().enumerate() {
+                    region.assign_advice(
+                        || "is_padding",
+                        self.is_padding,
+                        i,
+                        || Value::known(Fr::from(0u64)),
+                    )?;
+                    region.assign_advice(
+                        || "byte_idx",
+                        self.byte_idx,
+                        i,
+                        || Value::known(Fr::from(row.encoded_data.byte_idx)),
+                    )?;
+                    region.assign_advice(
+                        || "byte",
+                        self.byte,
+                        i,
+                        || Value::known(Fr::from(row.encoded_data.value_byte as u64)),
+                    )?;
+                    let bits = value_bits_le(row.encoded_data.value_byte);
+                    let is_reverse = row.encoded_data.reverse;
+                    for (idx, col) in self.bits.iter().rev().enumerate() {
+                        region.assign_advice(
+                            || "value_bits",
+                            *col,
+                            i,
+                            || {
+                                Value::known(Fr::from(
+                                    (if is_reverse {
+                                        bits[idx]
+                                    } else {
+                                        bits[N_BITS_PER_BYTE - idx - 1]
+                                    }) as u64,
+                                ))
+                            }
+                        )?;
+                    }
+                    // witgen_debug
+                    // region.assign_advice(
+                    //     || "encoded_rlc",
+                    //     self.encoded_rlc,
+                    //     i,
+                    //     || row.encoded_data.value_rlc.into(),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "decoded_rlc",
+                    //     self.decoded_rlc,
+                    //     i,
+                    //     || row.decoded_data.decoded_value_rlc.into(),
+                    // )?;
+                    region.assign_advice(
+                        || "decoded_byte",
+                        self.decoded_byte,
+                        i,
+                        || Value::known(Fr::from(row.decoded_data.decoded_byte as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "decoded_len",
+                        self.decoded_len,
+                        i,
+                        || Value::known(Fr::from(row.decoded_data.decoded_len as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "decoded_len_acc",
+                        self.decoded_len_acc,
+                        i,
+                        || Value::known(Fr::from(row.decoded_data.decoded_len_acc as u64)),
+                    )?;
 
+                    /////////////////////////////////////////
+                    ///// Assign Bitstream Decoder  /////////
+                    /////////////////////////////////////////
 
-        // self.literals_header_table.assign(
-        //     layouter,
-        // )
+                    region.assign_advice(
+                        || "bit_index_start",
+                        self.bitstream_decoder.bit_index_start,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "bit_index_end",
+                        self.bitstream_decoder.bit_index_end,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "bitstring_value",
+                        self.bitstream_decoder.bitstring_value,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "is_nb0",
+                        self.bitstream_decoder.is_nb0,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.is_zero_bit_read as u64)),
+                    )?;
 
+                    let bit_end_idx = row.bitstream_read_data.bit_end_idx;
+                    let is_end_aligned = bit_end_idx == 7 || bit_end_idx == 15 || bit_end_idx == 23;
+                    let is_start_aligned = row.bitstream_read_data.bit_start_idx == 0;
+                    let is_nil = is_start_aligned || is_end_aligned;
+
+                    region.assign_advice(
+                        || "is_nil",
+                        self.bitstream_decoder.is_nil,
+                        i,
+                        || Value::known(Fr::from(is_nil as u64)),
+                    )?;
+                    //     /// Config for reading and decoding bitstreams.
+                    //     bitstream_decoder: BitstreamDecoder,
+
+                    // pub struct BitstreamDecoder {
+
+                    //     /// Helper gadget to know if the bitstring was spanned over a single byte.
+                    //     bit_index_end_cmp_7: ComparatorConfig<Fr, 1>,
+                    //     /// Helper gadget to know if the bitstring was spanned over 2 bytes.
+                    //     bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
+                    //     /// Helper gadget to know if the bitstring was spanned over 3 bytes.
+                    //     bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
+
+                    //     /// Helper gadget to know when the bitstring value is 1 or 3. This is useful in the case
+                    //     /// of decoding/reconstruction of FSE table, where a value=1 implies a special case of
+                    //     /// prob=0, where the symbol is instead followed by a 2-bit repeat flag. The repeat flag
+                    //     /// bits themselves could be followed by another 2-bit repeat flag if the repeat flag's
+                    //     /// value is 3.
+                    //     bitstring_value_eq_1: IsEqualConfig<Fr>,
+                    //     /// Helper config as per the above doc.
+                    //     bitstring_value_eq_3: IsEqualConfig<Fr>,
+
+                    //     /// Helper gadget to check when bit_index_start == bit_index_end.
+                    //     start_eq_end: IsEqualConfig<Fr>,
+                    // }
+                }
+
+                Ok(())
+            },
+        )?;
 
         // pub struct DecoderConfig {
-        //     /// Fixed column to mark the first row in the layout.
-        //     q_first: Column<Fixed>,
-        //     /// The byte index in the encoded data. At the first byte, byte_idx = 1.
-        //     byte_idx: Column<Advice>,
-        //     /// The byte value at this byte index in the encoded data.
-        //     byte: Column<Advice>,
-        //     /// The byte value decomposed in its bits. The endianness of bits depends on whether or not we
-        //     /// are processing a chunk of bytes from back-to-front or not. The bits follow
-        //     /// little-endianness if bytes are processed from back-to-front, otherwise big-endianness.
-        //     bits: [Column<Advice>; N_BITS_PER_BYTE],
-        //     /// The RLC of the zstd encoded bytes.
-        //     encoded_rlc: Column<Advice>,
-        //     /// The byte that is (possibly) decoded at the current row.
-        //     decoded_byte: Column<Advice>,
-        //     /// The RLC of the bytes decoded.
-        //     decoded_rlc: Column<Advice>,
-        //     /// The size of the final decoded bytes.
-        //     decoded_len: Column<Advice>,
-        //     /// An incremental accumulator of the number of bytes decoded so far.
-        //     decoded_len_acc: Column<Advice>,
-        //     /// Once all the encoded bytes are decoded, we append the layout with padded rows.
-        //     is_padding: Column<Advice>,
+
         //     /// Zstd tag related config.
         //     tag_config: TagConfig,
 
@@ -3601,64 +3723,6 @@ impl DecoderConfig {
                     //     /// Helper gadget to evaluate byte0 < 255.
                     //     pub byte0_lt_0xff: LtConfig<Fr, 8>,
                     // }
-                    
-                    // struct DecodedSequencesHeader {
-                    //     /// The number of sequences in the sequences section.
-                    //     num_sequences: Expression<Fr>,
-                    //     /// The number of bytes in the sequences section header.
-                    //     tag_len: Expression<Fr>,
-                    //     /// The compression mode's bit0 for literals length.
-                    //     comp_mode_bit0_ll: Expression<Fr>,
-                    //     /// The compression mode's bit1 for literals length.
-                    //     comp_mode_bit1_ll: Expression<Fr>,
-                    //     /// The compression mode's bit0 for offsets.
-                    //     comp_mode_bit0_om: Expression<Fr>,
-                    //     /// The compression mode's bit1 for offsets.
-                    //     comp_mode_bit1_om: Expression<Fr>,
-                    //     /// The compression mode's bit0 for match lengths.
-                    //     comp_mode_bit0_ml: Expression<Fr>,
-                    //     /// The compression mode's bit1 for match lengths.
-                    //     comp_mode_bit1_ml: Expression<Fr>,
-                    // }
-
-        //     /// Config for reading and decoding bitstreams.
-        //     bitstream_decoder: BitstreamDecoder,
-
-                    // pub struct BitstreamDecoder {
-                    //     /// The bit-index where the bittsring begins. 0 <= bit_index_start < 8.
-                    //     bit_index_start: Column<Advice>,
-                    //     /// The bit-index where the bitstring ends. 0 <= bit_index_end < 24.
-                    //     bit_index_end: Column<Advice>,
-                    //     /// Helper gadget to know if the bitstring was spanned over a single byte.
-                    //     bit_index_end_cmp_7: ComparatorConfig<Fr, 1>,
-                    //     /// Helper gadget to know if the bitstring was spanned over 2 bytes.
-                    //     bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
-                    //     /// Helper gadget to know if the bitstring was spanned over 3 bytes.
-                    //     bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
-                    //     /// The value of the binary bitstring.
-                    //     bitstring_value: Column<Advice>,
-                    //     /// Helper gadget to know when the bitstring value is 1 or 3. This is useful in the case
-                    //     /// of decoding/reconstruction of FSE table, where a value=1 implies a special case of
-                    //     /// prob=0, where the symbol is instead followed by a 2-bit repeat flag. The repeat flag
-                    //     /// bits themselves could be followed by another 2-bit repeat flag if the repeat flag's
-                    //     /// value is 3.
-                    //     bitstring_value_eq_1: IsEqualConfig<Fr>,
-                    //     /// Helper config as per the above doc.
-                    //     bitstring_value_eq_3: IsEqualConfig<Fr>,
-                    //     /// Boolean that is set for a special case:
-                    //     /// - The bitstring that we have read in the current row is byte-aligned up to the next or the
-                    //     /// next-to-next byte. In this case, the next or the next-to-next following row(s) should have
-                    //     /// the is_nil field set.
-                    //     is_nil: Column<Advice>,
-                    //     /// Boolean that is set for a special case:
-                    //     /// - We don't read from the bitstream, i.e. we read 0 number of bits. We can witness such a
-                    //     /// case while applying an FSE table to bitstream, where the number of bits to be read from
-                    //     /// the bitstream is 0. This can happen when we decode sequences in the SequencesData tag.
-                    //     is_nb0: Column<Advice>,
-                    //     /// Helper gadget to check when bit_index_start == bit_index_end.
-                    //     start_eq_end: IsEqualConfig<Fr>,
-                    // }
-
 
         //     /// Config established while recovering the FSE table.
         //     fse_decoder: FseDecoder,
@@ -3681,8 +3745,6 @@ impl DecoderConfig {
                     //     is_repeat_bits_loop: Column<Advice>,
                     // }
 
-        //     /// Helper table for decoding the regenerated size from LiteralsHeader.
-        //     literals_header_table: LiteralsHeaderTable,
         //     /// Helper table for decoding bitstreams.
         //     bitstring_table: BitstringTable,
         //     /// Helper table for decoding FSE tables.

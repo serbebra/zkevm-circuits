@@ -3,7 +3,10 @@
 
 use eth_types::Field;
 // use ethers_core::k256::pkcs8::der::Sequence;
-use halo2_proofs::circuit::Value;
+use halo2_proofs::{
+    circuit::Value,
+    halo2curves::bn256::Fr,
+};
 // use zkevm_circuits::witness;
 // use zstd::zstd_safe::WriteBuf;
 

@@ -187,7 +187,7 @@ impl LiteralsHeaderTable {
                     || Value::known(F::one()),
                 )?;
 
-                for (offset, (block_idx, byte_offset, (byte0, byte1, byte2))) in
+                for (offset, (block_idx, _byte_offset, (byte0, byte1, byte2))) in
                     literals_headers.clone().into_iter().enumerate()
                 {
                     let lh_bytes = [byte0 as u8, byte1 as u8, byte2 as u8];
