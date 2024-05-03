@@ -329,6 +329,7 @@ impl ToString for ZstdTag {
 pub struct ZstdState<F> {
     pub tag: ZstdTag,
     pub tag_next: ZstdTag,
+    pub block_idx: u64,
     pub max_tag_len: u64,
     pub tag_len: u64,
     pub tag_idx: u64,
@@ -345,6 +346,7 @@ impl<F: Field> Default for ZstdState<F> {
         Self {
             tag: ZstdTag::Null,
             tag_next: ZstdTag::FrameHeaderDescriptor,
+            block_idx: 0,
             max_tag_len: 0,
             tag_len: 0,
             tag_idx: 0,

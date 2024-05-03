@@ -131,6 +131,7 @@ fn process_frame_header<F: Field>(
                 tag: ZstdTag::FrameHeaderDescriptor,
                 tag_next: ZstdTag::FrameContentSize,
                 max_tag_len: lookup_max_tag_len(ZstdTag::FrameHeaderDescriptor),
+                block_idx: 0,
                 tag_len: 1,
                 tag_idx: 1,
                 tag_value: Value::known(F::from(*fhd_byte as u64)),
@@ -169,6 +170,7 @@ fn process_frame_header<F: Field>(
                             state: ZstdState {
                                 tag: ZstdTag::FrameContentSize,
                                 tag_next: ZstdTag::BlockHeader,
+                                block_idx: 0,
                                 max_tag_len: lookup_max_tag_len(ZstdTag::FrameContentSize),
                                 tag_len: fcs_tag_len as u64,
                                 tag_idx: (i + 1) as u64,
@@ -217,6 +219,7 @@ type AggregateBlockResult<F> = (
 );
 fn process_block<F: Field>(
     src: &[u8],
+    block_idx: u64,
     byte_offset: usize,
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
@@ -224,7 +227,7 @@ fn process_block<F: Field>(
     let mut witness_rows = vec![];
 
     let (byte_offset, rows, last_block, block_type, block_size) =
-        process_block_header(src, byte_offset, last_row, randomness);
+        process_block_header(src, block_idx, byte_offset, last_row, randomness);
     witness_rows.extend_from_slice(&rows);
 
     // witgen_debug
@@ -237,6 +240,7 @@ fn process_block<F: Field>(
     let (_byte_offset, rows, literals, lstream_len, aux_data, fse_aux_tables) = match block_type {
         BlockType::ZstdCompressedBlock => process_block_zstd(
             src,
+            block_idx,
             byte_offset,
             last_row,
             randomness,
@@ -260,6 +264,7 @@ fn process_block<F: Field>(
 
 fn process_block_header<F: Field>(
     src: &[u8],
+    block_idx: u64,
     byte_offset: usize,
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
@@ -332,6 +337,7 @@ fn process_block_header<F: Field>(
                     state: ZstdState {
                         tag: ZstdTag::BlockHeader,
                         tag_next,
+                        block_idx,
                         max_tag_len: lookup_max_tag_len(ZstdTag::BlockHeader),
                         tag_len: N_BLOCK_HEADER_BYTES as u64,
                         tag_idx: (i + 1) as u64,
@@ -375,6 +381,7 @@ type LiteralsBlockResult<F> = (usize, Vec<ZstdWitnessRow<F>>, Vec<u64>, Vec<u64>
 #[allow(unused_variables)]
 fn process_block_zstd<F: Field>(
     src: &[u8],
+    block_idx: u64,
     byte_offset: usize,
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
@@ -386,7 +393,7 @@ fn process_block_zstd<F: Field>(
 
     // 1-5 bytes LiteralSectionHeader
     let literals_header_result: LiteralsHeaderProcessingResult<F> =
-        process_block_zstd_literals_header::<F>(src, byte_offset, last_row, randomness);
+        process_block_zstd_literals_header::<F>(src, block_idx, byte_offset, last_row, randomness);
     let (
         byte_offset,
         rows,
@@ -454,6 +461,7 @@ fn process_block_zstd<F: Field>(
                             state: ZstdState {
                                 tag,
                                 tag_next,
+                                block_idx,
                                 max_tag_len: lookup_max_tag_len(tag),
                                 tag_len: regen_size as u64,
                                 tag_idx: (i + 1) as u64,
@@ -501,6 +509,7 @@ fn process_block_zstd<F: Field>(
     let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs) =
         process_sequences::<F>(
             src,
+            block_idx,
             byte_offset,
             end_offset,
             literals.clone(),
@@ -542,6 +551,7 @@ type SequencesProcessingResult<F> = (
 
 fn process_sequences<F: Field>(
     src: &[u8],
+    block_idx: u64,
     byte_offset: usize,
     end_offset: usize,
     literals: Vec<u64>,
@@ -652,6 +662,7 @@ fn process_sequences<F: Field>(
                 state: ZstdState {
                     tag: ZstdTag::ZstdBlockSequenceHeader,
                     tag_next: ZstdTag::ZstdBlockFseCode,
+                    block_idx,
                     max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceHeader),
                     tag_len: num_sequence_header_bytes as u64,
                     tag_idx: (i + 1) as u64,
@@ -852,6 +863,7 @@ fn process_sequences<F: Field>(
                     } else {
                         ZstdTag::ZstdBlockFseCode
                     },
+                    block_idx,
                     max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockFseCode),
                     tag_len,
                     tag_idx: row.1 as u64,
@@ -974,6 +986,7 @@ fn process_sequences<F: Field>(
         state: ZstdState {
             tag: ZstdTag::ZstdBlockSequenceData,
             tag_next: ZstdTag::ZstdBlockSequenceData,
+            block_idx,
             max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
             tag_len: n_sequence_data_bytes as u64,
             tag_idx: 1_u64,
@@ -1131,6 +1144,7 @@ fn process_sequences<F: Field>(
             state: ZstdState {
                 tag: ZstdTag::ZstdBlockSequenceData,
                 tag_next: ZstdTag::ZstdBlockSequenceData,
+                block_idx,
                 max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
                 tag_len: n_sequence_data_bytes as u64,
                 tag_idx: current_byte_idx as u64,
@@ -1306,6 +1320,7 @@ type LiteralsHeaderProcessingResult<F> = (
 
 fn process_block_zstd_literals_header<F: Field>(
     src: &[u8],
+    block_idx: u64,
     byte_offset: usize,
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
@@ -1397,6 +1412,7 @@ fn process_block_zstd_literals_header<F: Field>(
                     state: ZstdState {
                         tag: ZstdTag::ZstdBlockLiteralsHeader,
                         tag_next,
+                        block_idx,
                         max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockLiteralsHeader),
                         tag_len: n_bytes_header as u64,
                         tag_idx: (i + 1) as u64,
@@ -1461,6 +1477,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     // write!(handle, "=> byte_offset after frame header: {:?}", byte_offset).unwrap();
     // writeln!(handle).unwrap();
 
+    let mut block_idx: u64 = 1;
     loop {
         let (
             _byte_offset,
@@ -1472,6 +1489,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             new_fse_aux_tables,
         ) = process_block::<F>(
             src,
+            block_idx,
             byte_offset,
             rows.last().expect("last row expected to exist"),
             randomness,
@@ -1492,15 +1510,17 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             // TODO: Recover this assertion after the sequence section decoding is completed.
             // assert!(byte_offset >= src.len());
             break;
+        } else {
+            block_idx += 1;
         }
     }
 
     for (idx, row) in witness_rows.iter().enumerate() {
         write!(
             handle, 
-            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
+            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
             idx, 
-            row.state.tag, row.state.tag_next, row.state.max_tag_len, row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc, row.state.is_tag_change, row.state.tag_rlc_acc,
+            row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len, row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc, row.state.is_tag_change, row.state.tag_rlc_acc,
             row.encoded_data.byte_idx, row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse, row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1, row.encoded_data.aux_2, row.encoded_data.value_rlc,
             row.decoded_data.decoded_len, row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len, row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,
             row.fse_data.state, row.fse_data.baseline, row.fse_data.num_bits, row.fse_data.symbol, row.fse_data.num_emitted,
