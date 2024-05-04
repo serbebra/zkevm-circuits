@@ -2383,26 +2383,27 @@ impl DecoderConfig {
             },
         );
 
-        meta.lookup_any(
-            "DecoderConfig: tag ZstdBlockSequenceFseCode (normalised probability of symbol)",
-            |meta| {
-                // At every row where a non-nil bitstring is read:
-                // - except the AL bits (is_change=true)
-                // - except when the value=1, i.e. prob=0
-                // - except when we are in repeat-bits loop
-                // - except the trailing bits (if they exist)
-                let condition = and::expr([
-                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-                    not::expr(config.bitstream_decoder.is_prob0(meta, Rotation::cur())),
-                    not::expr(
-                        meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
-                    ),
-                    not::expr(
-                        meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
-                    ),
-                ]);
+        // witgen_debug
+        // meta.lookup_any(
+        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (normalised probability of symbol)",
+        //     |meta| {
+        //         // At every row where a non-nil bitstring is read:
+        //         // - except the AL bits (is_change=true)
+        //         // - except when the value=1, i.e. prob=0
+        //         // - except when we are in repeat-bits loop
+        //         // - except the trailing bits (if they exist)
+        //         let condition = and::expr([
+        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+        //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+        //             not::expr(config.bitstream_decoder.is_prob0(meta, Rotation::cur())),
+        //             not::expr(
+        //                 meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
+        //             ),
+        //             not::expr(
+        //                 meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
+        //             ),
+        //         ]);
 
         //         let (block_idx, fse_table_kind, fse_table_size, fse_symbol, bitstring_value) = (
         //             meta.query_advice(config.block_config.block_idx, Rotation::cur()),
@@ -3114,25 +3115,26 @@ impl DecoderConfig {
         //                 .block_config
         //                 .is_predefined(meta, &config.fse_decoder, Rotation::cur());
 
-                [
-                    0.expr(), // q_first
-                    block_idx,
-                    table_kind,
-                    table_size,
-                    is_predefined_mode, // is_predefined
-                    state,
-                    symbol,
-                    baseline,
-                    nb,
-                    0.expr(), // is_skipped_state
-                    0.expr(), // is_padding
-                ]
-                .into_iter()
-                .zip_eq(config.fse_table.table_exprs_by_state(meta))
-                .map(|(arg, table)| (condition.expr() * arg, table))
-                .collect()
-            },
-        );
+        //         [
+        //             0.expr(), // q_first
+        //             block_idx,
+        //             table_kind,
+        //             table_size,
+        //             is_predefined_mode, // is_predefined
+        //             state,
+        //             symbol,
+        //             baseline,
+        //             nb,
+        //             0.expr(), // is_skipped_state
+        //             0.expr(), // is_padding
+        //         ]
+        //         .into_iter()
+        //         .zip_eq(config.fse_table.table_exprs_by_state(meta))
+        //         .map(|(arg, table)| (condition.expr() * arg, table))
+        //         .collect()
+            
+        //     },
+        // );
 
         debug_assert!(meta.degree() <= 9);
 
@@ -3799,24 +3801,24 @@ impl DecoderConfig {
                     //     i,
                     //     || row.decoded_data.decoded_value_rlc.into(),
                     // )?;
-                    region.assign_advice(
-                        || "decoded_byte",
-                        self.decoded_byte,
-                        i,
-                        || Value::known(Fr::from(row.decoded_data.decoded_byte as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "decoded_len",
-                        self.decoded_len,
-                        i,
-                        || Value::known(Fr::from(row.decoded_data.decoded_len as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "decoded_len_acc",
-                        self.decoded_len_acc,
-                        i,
-                        || Value::known(Fr::from(row.decoded_data.decoded_len_acc as u64)),
-                    )?;
+                    // region.assign_advice(
+                    //     || "decoded_byte",
+                    //     self.decoded_byte,
+                    //     i,
+                    //     || Value::known(Fr::from(row.decoded_data.decoded_byte as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "decoded_len",
+                    //     self.decoded_len,
+                    //     i,
+                    //     || Value::known(Fr::from(row.decoded_data.decoded_len as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "decoded_len_acc",
+                    //     self.decoded_len_acc,
+                    //     i,
+                    //     || Value::known(Fr::from(row.decoded_data.decoded_len_acc as u64)),
+                    // )?;
 
                     /////////////////////////////////////////
                     ///// Assign Bitstream Decoder  /////////
