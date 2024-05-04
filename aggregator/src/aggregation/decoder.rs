@@ -2273,23 +2273,31 @@ impl DecoderConfig {
 
                 // bitstream can be byte-unaligned (trailing bits are ignored)
                 //
-                // We have the following scenarios for the last row of tag=FseCode:
+                // One of the following scenarios is true for the last row of tag=FseCode:
                 // - the last row is the trailing bits (ignored).
                 // - the last row is a valid bitstring that is byte-aligned.
+                //      - aligned_one_byte(0)
+                //      - aligned_two_bytes(-1)
+                //      - aligned_three_bytes(-2)
+                let is_trailing_bits =
+                    meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur());
                 cb.require_equal(
                     "last bitstring is either byte-aligned or the 0-7 trailing bits",
                     sum::expr([
-                        meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
+                        is_trailing_bits.expr(),
                         and::expr([
-                            config
-                                .bitstream_decoder
-                                .aligned_one_byte(meta, Rotation::cur()),
-                            config
-                                .bitstream_decoder
-                                .aligned_two_bytes(meta, Rotation::prev()),
-                            config
-                                .bitstream_decoder
-                                .aligned_three_bytes(meta, Rotation(-2)),
+                            not::expr(is_trailing_bits),
+                            sum::expr([
+                                config
+                                    .bitstream_decoder
+                                    .aligned_one_byte(meta, Rotation::cur()),
+                                config
+                                    .bitstream_decoder
+                                    .aligned_two_bytes(meta, Rotation::prev()),
+                                config
+                                    .bitstream_decoder
+                                    .aligned_three_bytes(meta, Rotation(-2)),
+                            ]),
                         ]),
                     ]),
                     1.expr(),
