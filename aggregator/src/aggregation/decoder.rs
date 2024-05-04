@@ -78,6 +78,8 @@ pub struct DecoderConfig {
     fse_table: FseTable,
     /// Helper table for sequences as instructions.
     /// TODO(enable): sequence_instruction_table: SequenceInstructionTable,
+    /// Helper table in the "output" region for accumulating the result of executing sequences.
+    /// TODO(enable): sequence_execution_table: SequenceExecutionTable,
     /// Fixed lookups table.
     fixed_table: FixedTable,
 }
@@ -952,7 +954,11 @@ impl DecoderConfig {
         // TODO(enable): let sequence_instruction_table = SequenceInstructionTable::configure(meta);
 
         // Peripheral configs
-        let (byte, is_padding) = (meta.advice_column(), meta.advice_column());
+        let (byte_idx, byte, is_padding) = (
+            meta.advice_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+        );
         let tag_config = TagConfig::configure(meta);
         let block_config = BlockConfig::configure(meta, is_padding);
         let sequences_header_decoder =
@@ -961,10 +967,25 @@ impl DecoderConfig {
         let fse_decoder = FseDecoder::configure(meta);
         let sequences_data_decoder = SequencesDataDecoder::configure(meta);
 
+        // TODO(enable):
+        // let literals_table = [
+        //     tag_config.tag,
+        //     block_config.block_idx,
+        //     byte_idx,
+        //     byte,
+        //     is_padding,
+        // ];
+        // let sequence_execution_table = SequenceExecutionTable::configure(
+        //     meta,
+        //     challenges,
+        //     &literals_table,
+        //     &sequence_instruction_table,
+        // );
+
         // Main config
         let config = Self {
             q_first: meta.fixed_column(),
-            byte_idx: meta.advice_column(),
+            byte_idx,
             byte,
             bits: (0..N_BITS_PER_BYTE)
                 .map(|_| meta.advice_column())
@@ -987,6 +1008,7 @@ impl DecoderConfig {
             bitstring_table,
             fse_table,
             // TODO(enable): sequence_instruction_table,
+            // TODO(enable): sequence_execution_table,
             fixed_table,
         };
 
