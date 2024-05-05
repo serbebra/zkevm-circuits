@@ -7,7 +7,7 @@ use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
     comparator::{ComparatorChip, ComparatorConfig, ComparatorInstruction},
     is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
-    less_than::{LtChip, LtConfig},
+    less_than::{LtChip, LtConfig, LtInstruction},
     util::{and, not, select, sum, Expr},
 };
 use halo2_proofs::{
@@ -3745,6 +3745,9 @@ impl DecoderConfig {
         }
         self.literals_header_table.assign(layouter, literal_headers)?;
 
+        /////////////////////////////////////////
+        ///// Assign Decompression Region  //////
+        /////////////////////////////////////////
         layouter.assign_region(
             || "Decompression table region",
             |mut region| {
@@ -3758,6 +3761,9 @@ impl DecoderConfig {
                     || Value::known(Fr::one()),
                 )?;
 
+                /////////////////////////////////////////
+                ///////// Assign Witness Rows  //////////
+                /////////////////////////////////////////
                 for (i, row) in witness_rows.iter().enumerate() {
                     region.assign_advice(
                         || "is_padding",
@@ -4157,14 +4163,20 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
                     )?;
-              
-                    // struct SequencesHeaderDecoder {
-                    //     /// Helper gadget to evaluate byte0 < 128.
-                    //     pub byte0_lt_0x80: LtConfig<Fr, 1>,
-                    //     /// Helper gadget to evaluate byte0 < 255.
-                    //     pub byte0_lt_0xff: LtConfig<Fr, 1>,
-                    // }
-
+                    let byte0_lt_0x80 = LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
+                    byte0_lt_0x80.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.encoded_data.value_byte as u64),
+                        Fr::from(0x80 as u64),
+                    )?;
+                    let byte0_lt_0xff = LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
+                    byte0_lt_0xff.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.encoded_data.value_byte as u64),
+                        Fr::from(0xff as u64),
+                    )?;
 
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
