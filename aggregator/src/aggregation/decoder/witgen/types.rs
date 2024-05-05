@@ -129,8 +129,9 @@ impl From<usize> for FseSymbol {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum BlockType {
+    #[default]
     RawBlock = 0,
     RleBlock,
     ZstdCompressedBlock,
@@ -147,6 +148,21 @@ impl From<u8> for BlockType {
             _ => unreachable!("BlockType is 2 bits"),
         }
     }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct BlockInfo {
+    pub block_idx: usize,
+    pub block_type: BlockType,
+    pub block_len: usize,
+    pub is_last_block: bool,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SequenceInfo {
+    pub block_idx: usize,
+    pub num_sequences: usize,
+    pub compression_mode: [bool; 3],
 }
 
 /// The type of Lstream.

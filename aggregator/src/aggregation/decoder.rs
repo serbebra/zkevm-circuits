@@ -3688,12 +3688,20 @@ impl DecoderConfig {
         witness_rows: Vec<ZstdWitnessRow<Fr>>,
         _aux_data: Vec<u64>,
         _fse_aux_tables: Vec<FseAuxiliaryTableData>,
+        block_info_arr: Vec<BlockInfo>,
+        sequence_info_arr: Vec<SequenceInfo>,
         challenges: &Challenges<Value<Fr>>,
     // witgen_debug
     // ) -> Result<AssignedDecoderConfigExports, Error> {
     ) -> Result<(), Error> {
         let mut pow_of_rand: Vec<Value<Fr>> = vec![Value::known(Fr::ONE)];
         let challenge = challenges.keccak_input();
+
+        assert!(block_info_arr.len() > 0, "Must have at least 1 block");
+        assert!(sequence_info_arr.len() > 0, "Must have at least 1 block");
+
+        let mut curr_block_info = block_info_arr[0];
+        let mut curr_sequence_info = sequence_info_arr[0];
 
         /////////////////////////////////////////
         //////// Load Auxiliary Tables  /////////
@@ -3925,7 +3933,6 @@ impl DecoderConfig {
         //             }
 
 
-
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
                     /////////////////////////////////////////
@@ -4057,11 +4064,62 @@ impl DecoderConfig {
                         //             }
 
 
+                    /////////////////////////////////////////
+                    ///////// Assign Block Config  //////////
+                    /////////////////////////////////////////
+                    let block_idx = row.state.block_idx;
+                    if block_idx != curr_block_info.block_idx as u64 {
+                        curr_block_info = block_info_arr.iter().find(|&b| b.block_idx == block_idx as usize).expect("Block info should exist").clone();
+                    }
+                    if block_idx != curr_sequence_info.block_idx as u64 {
+                        curr_sequence_info = sequence_info_arr.iter().find(|&s| s.block_idx == block_idx as usize).expect("Sequence info should exist").clone();
+                    }
+                    region.assign_advice(
+                        || "block_config.block_len",
+                        self.block_config.block_len,
+                        i,
+                        || Value::known(Fr::from(curr_block_info.block_len as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "block_config.block_idx",
+                        self.block_config.block_idx,
+                        i,
+                        || Value::known(Fr::from(curr_block_info.block_idx as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "block_config.is_last_block",
+                        self.block_config.is_last_block,
+                        i,
+                        || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
+                    )?;
+                    let is_not_block = row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize;
+                    region.assign_advice(
+                        || "block_config.is_block",
+                        self.block_config.is_block,
+                        i,
+                        || Value::known(Fr::from(!is_not_block as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "block_config.num_sequences",
+                        self.block_config.num_sequences,
+                        i,
+                        || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                    )?;
 
-
-
-
-
+                    let table_names = ["LLT", "MOT", "MLT"];
+                    for idx in 0..3 {
+                        region.assign_advice(
+                            || table_names[idx],
+                            self.block_config.compression_modes[idx],
+                            i,
+                            || Value::known(Fr::from(curr_sequence_info.compression_mode[idx] as u64)),
+                        )?;
+                    }
+        //             struct BlockConfig {
+        //                 /// Helper gadget to know if the number of sequences is 0.
+        //                 is_empty_sequences: IsEqualConfig<Fr>,
+        //             }
+          
 
 
 
@@ -4077,37 +4135,7 @@ impl DecoderConfig {
 
 
 
-        // pub struct DecoderConfig {
-        //     /// Block related config.
-        //     block_config: BlockConfig,
 
-        //             struct BlockConfig {
-        //                 /// The number of bytes in this block.
-        //                 block_len: Column<Advice>,
-        //                 /// The index of this zstd block. The first block has a block_idx = 1.
-        //                 block_idx: Column<Advice>,
-        //                 /// Whether this block is the last block in the zstd encoded data.
-        //                 is_last_block: Column<Advice>,
-        //                 /// Helper boolean column to tell us whether we are in the block's contents. This field is not
-        //                 /// set for FrameHeaderDescriptor and FrameContentSize. For the tags that occur while decoding
-        //                 /// the block's contents, this field is set.
-        //                 is_block: Column<Advice>,
-        //                 /// Number of sequences decoded from the sequences section header in the block.
-        //                 num_sequences: Column<Advice>,
-        //                 /// Helper gadget to know if the number of sequences is 0.
-        //                 is_empty_sequences: IsEqualConfig<Fr>,
-        //                 /// For sequence decoding, the tag=ZstdBlockSequenceHeader bytes tell us the Compression_Mode
-        //                 /// utilised for Literals Lengths, Match Offsets and Match Lengths. We expect only 2
-        //                 /// possibilities:
-        //                 /// 1. Predefined_Mode (value=0)
-        //                 /// 2. Fse_Compressed_Mode (value=2)
-        //                 ///
-        //                 /// Which means a single boolean flag is sufficient to take note of which compression mode is
-        //                 /// utilised for each of the above purposes. The boolean flag will be set if we utilise the
-        //                 /// Fse_Compressed_Mode.
-        //                 compression_modes: [Column<Advice>; 3],
-        //             }
-          
 
         //     /// Config established while recovering the FSE table.
         //     fse_decoder: FseDecoder,
@@ -4252,14 +4280,16 @@ mod tests {
             config.range8.load(&mut layouter)?;
             config.range16.load(&mut layouter)?;
 
-            let (witness_rows, _decoded_literals, aux_data, fse_aux_tables) = 
+            let (witness_rows, _decoded_literals, aux_data, fse_aux_tables, block_info_arr, sequence_info_arr) = 
                 process(&self.compressed, challenges.keccak_input());
 
             config.assign::<Fr>(
                 &mut layouter, 
                 witness_rows, 
                 aux_data, 
-                fse_aux_tables, 
+                fse_aux_tables,
+                block_info_arr,
+                sequence_info_arr,
                 &challenges
             )?;
 

@@ -214,7 +214,8 @@ fn process_frame_header<F: Field>(
 type AggregateBlockResult<F> = (
     usize,
     Vec<ZstdWitnessRow<F>>,
-    bool,
+    BlockInfo,
+    SequenceInfo,
     Vec<u64>,
     Vec<u64>,
     Vec<u64>,
@@ -229,7 +230,7 @@ fn process_block<F: Field>(
 ) -> AggregateBlockResult<F> {
     let mut witness_rows = vec![];
 
-    let (byte_offset, rows, last_block, block_type, block_size) =
+    let (byte_offset, rows, block_info) =
         process_block_header(src, block_idx, byte_offset, last_row, randomness);
     witness_rows.extend_from_slice(&rows);
 
@@ -240,15 +241,15 @@ fn process_block<F: Field>(
     writeln!(handle).unwrap();
 
     let last_row = rows.last().expect("last row expected to exist");
-    let (_byte_offset, rows, literals, lstream_len, aux_data, fse_aux_tables) = match block_type {
+    let (_byte_offset, rows, literals, lstream_len, aux_data, sequence_info, fse_aux_tables) = match block_info.block_type {
         BlockType::ZstdCompressedBlock => process_block_zstd(
             src,
             block_idx,
             byte_offset,
             last_row,
             randomness,
-            block_size,
-            last_block,
+            block_info.block_len,
+            block_info.is_last_block,
         ),
         _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
     };
@@ -257,7 +258,8 @@ fn process_block<F: Field>(
     (
         byte_offset,
         witness_rows,
-        last_block,
+        block_info,
+        sequence_info,
         literals,
         lstream_len,
         aux_data,
@@ -271,19 +273,21 @@ fn process_block_header<F: Field>(
     byte_offset: usize,
     last_row: &ZstdWitnessRow<F>,
     randomness: Value<F>,
-) -> (usize, Vec<ZstdWitnessRow<F>>, bool, BlockType, usize) {
+) -> (usize, Vec<ZstdWitnessRow<F>>, BlockInfo) {
+    let mut block_info = BlockInfo::default();
+    block_info.block_idx = block_idx as usize;
     let bh_bytes = src
         .iter()
         .skip(byte_offset)
         .take(N_BLOCK_HEADER_BYTES)
         .cloned()
         .collect::<Vec<u8>>();
-    let last_block = (bh_bytes[0] & 1) == 1;
-    let block_type = BlockType::from((bh_bytes[0] >> 1) & 3);
-    let block_size =
+    block_info.is_last_block = (bh_bytes[0] & 1) == 1;
+    block_info.block_type = BlockType::from((bh_bytes[0] >> 1) & 3);
+    block_info.block_len =
         (bh_bytes[2] as usize * 256 * 256 + bh_bytes[1] as usize * 256 + bh_bytes[0] as usize) >> 3;
 
-    let tag_next = match block_type {
+    let tag_next = match block_info.block_type {
         BlockType::ZstdCompressedBlock => ZstdTag::ZstdBlockLiteralsHeader,
         _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
     };
@@ -364,9 +368,7 @@ fn process_block_header<F: Field>(
                 },
             )
             .collect::<Vec<_>>(),
-        last_block,
-        block_type,
-        block_size,
+        block_info,
     )
 }
 
@@ -376,6 +378,7 @@ type BlockProcessingResult<F> = (
     Vec<u64>,
     Vec<u64>,
     Vec<u64>,
+    SequenceInfo,
     [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
 );
 
@@ -509,7 +512,7 @@ fn process_block_zstd<F: Field>(
     writeln!(handle).unwrap();
 
     let last_row = witness_rows.last().expect("last row expected to exist");
-    let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs) =
+    let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs, sequence_info) =
         process_sequences::<F>(
             src,
             block_idx,
@@ -540,6 +543,7 @@ fn process_block_zstd<F: Field>(
             branch,
             sf_max as u64,
         ],
+        sequence_info,
         fse_aux_tables,
     )
 }
@@ -550,6 +554,7 @@ type SequencesProcessingResult<F> = (
     [FseAuxiliaryTableData; 3], // LLT, MLT, CMOT
     Vec<AddressTableRow>,       // Parsed sequence instructions
     Vec<u8>,                    // Recovered original input
+    SequenceInfo,
 );
 
 fn process_sequences<F: Field>(
@@ -573,6 +578,9 @@ fn process_sequences<F: Field>(
     let _decoded_data = last_row.decoded_data.clone();
 
     // First, process the sequence header
+    let mut sequence_info = SequenceInfo::default();
+    sequence_info.block_idx = block_idx as usize;
+    
     let byte0 = src
         .get(byte_offset)
         .expect("First byte of sequence header must exist.")
@@ -596,6 +604,7 @@ fn process_sequences<F: Field>(
             ((byte1 as u64) + ((byte2 as u64) << 8) + 0x7F00, 4)
         }
     };
+    sequence_info.num_sequences = num_of_sequences as usize;
 
     // witgen_debug
     write!(handle, "=> num_of_sequences: {:?}", num_of_sequences).unwrap();
@@ -623,14 +632,18 @@ fn process_sequences<F: Field>(
 
     // TODO: Treatment of other encoding modes
     assert!(
-        literal_lengths_mode == 2,
+        literal_lengths_mode == 2 || literal_lengths_mode == 0,
         "Only FSE_Compressed_Mode is allowed"
     );
-    assert!(offsets_mode == 2, "Only FSE_Compressed_Mode is allowed");
     assert!(
-        match_lengths_mode == 2,
+        offsets_mode == 2 || offsets_mode == 0, 
         "Only FSE_Compressed_Mode is allowed"
     );
+    assert!(
+        match_lengths_mode == 2 || match_lengths_mode == 0,
+        "Only FSE_Compressed_Mode is allowed"
+    );
+    sequence_info.compression_mode = [literal_lengths_mode > 0, offsets_mode > 0, match_lengths_mode > 0];
 
     let multiplier =
         (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
@@ -1308,6 +1321,7 @@ fn process_sequences<F: Field>(
         [table_llt, table_mlt, table_cmot],
         address_table_rows,
         recovered_inputs,
+        sequence_info,
     )
 }
 
@@ -1453,6 +1467,8 @@ pub type MultiBlockProcessResult<F> = (
     Vec<u64>,
     Vec<u64>,
     Vec<FseAuxiliaryTableData>,
+    Vec<BlockInfo>,
+    Vec<SequenceInfo>,
 );
 
 /// Process a slice of bytes into decompression circuit witness rows
@@ -1461,6 +1477,8 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     let mut literals: Vec<u64> = vec![];
     let mut aux_data: Vec<u64> = vec![];
     let mut fse_aux_tables: Vec<FseAuxiliaryTableData> = vec![];
+    let mut block_info_arr: Vec<BlockInfo> = vec![];
+    let mut sequence_info_arr: Vec<SequenceInfo> = vec![];
     let byte_offset = 0;
 
     // witgen_debug
@@ -1485,7 +1503,8 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         let (
             _byte_offset,
             rows,
-            last_block,
+            block_info,
+            sequence_info,
             new_literals,
             lstream_lens,
             pipeline_data,
@@ -1509,13 +1528,16 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         // write!(handle, "=> byte_offset after a block: {:?}", byte_offset).unwrap();
         // writeln!(handle).unwrap();
 
-        if last_block {
+        if block_info.is_last_block {
             // TODO: Recover this assertion after the sequence section decoding is completed.
             // assert!(byte_offset >= src.len());
             break;
         } else {
             block_idx += 1;
         }
+
+        block_info_arr.push(block_info);
+        sequence_info_arr.push(sequence_info);
     }
 
     for (idx, row) in witness_rows.iter().enumerate() {
@@ -1533,7 +1555,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         writeln!(handle).unwrap();
     }
 
-    (witness_rows, literals, aux_data, fse_aux_tables)
+    (witness_rows, literals, aux_data, fse_aux_tables, block_info_arr, sequence_info_arr)
 }
 
 #[cfg(test)]
@@ -1679,7 +1701,7 @@ mod tests {
         // write!(handle, "=> compressed len: {:?}", compressed.len()).unwrap();
         // writeln!(handle).unwrap();
 
-        let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables) =
+        let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables, block_info_arr, sequence_info_arr) =
             process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
 
         Ok(())
