@@ -155,22 +155,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             ),
         )?;
 
-        let dest_offset_u64 = dest_offset.as_u64();
-        //let src_offset_u64 = src_offset.as_u64();
-
-        // TODO: will remove
-        println!(
-            "dest_offset {}, src_offset {}, length {} rw_counter {}, offset {}, 
-        stack_pointer {} dest_offset_u64 {}",
-            dest_offset,
-            src_offset,
-            length,
-            step.rw_counter,
-            offset,
-            step.stack_pointer,
-            dest_offset_u64
-        );
-
         let (next_memory_word_size, memory_expansion_gas_cost) = self.memory_expansion.assign(
             region,
             offset,

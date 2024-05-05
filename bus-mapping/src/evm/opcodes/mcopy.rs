@@ -49,13 +49,21 @@ fn gen_copy_event(
     length: u64,
     exec_step: &mut ExecStep,
 ) -> Result<CopyEvent, Error> {
+    let src_u64_overflow = src_offset > Word::from(u64::MAX);
+    let dest_u64_overflow = dest_offset > Word::from(u64::MAX);
+    // TODO: remove debug info later
+    println!(
+        "src_offset {}, dest_offset {}, length {}, src_u64_overflow {},
+    dest_u64_overflow {}",
+        src_offset, dest_offset, length, src_u64_overflow, dest_u64_overflow
+    );
     let rw_counter_start = state.block_ctx.rwc;
 
     let call_id = state.call()?.call_id;
 
     // Get low Uint64 of offset.
     let dst_addr = dest_offset.low_u64();
-    let src_addr_end = src_offset.as_u64() + length;
+    let src_addr_end = src_offset.low_u64() + length;
 
     // Reset offset to Uint64 maximum value if overflow, and set source start to the
     // minimum value of offset.
