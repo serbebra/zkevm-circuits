@@ -902,6 +902,7 @@ fn process_sequences<F: Field>(
                     bit_end_idx: row.4,
                     bit_value: row.5,
                     is_zero_bit_read: false,
+                    ..Default::default()
                 },
                 decoded_data: DecodedData {
                     decoded_len: last_row.decoded_data.decoded_len,
@@ -1028,6 +1029,7 @@ fn process_sequences<F: Field>(
             bit_end_idx: padding_end_idx,
             bit_value: 1u64,
             is_zero_bit_read: false,
+            ..Default::default()
         },
         decoded_data: last_row.decoded_data.clone(),
         fse_data: FseTableRow::default(),
@@ -1050,6 +1052,7 @@ fn process_sequences<F: Field>(
     // Now the actual data-bearing bitstream starts
     // The sequence bitstream is interleaved by 6 bit processing strands.
     // The interleaving order is: CMOVBits, MLVBits, LLVBits, LLFBits, MLFBits, CMOFBits
+    let mut seq_idx: usize = 0;
     let mut decoded_bitstring_values: Vec<(SequenceDataTag, u64)> = vec![];
     let mut raw_sequence_instructions: Vec<(usize, usize, usize)> = vec![]; // offset_state, match_length, literal_length
     let mut curr_instruction: [usize; 3] = [0, 0, 0];
@@ -1078,6 +1081,7 @@ fn process_sequences<F: Field>(
 
     let mut is_init = true;
     let mut nb = nb_switch[mode][order_idx];
+    
     while current_bit_idx + nb <= n_sequence_data_bytes * N_BITS_PER_BYTE {
         let bitstring_value =
             be_bits_to_value(&sequence_bitstream[current_bit_idx..(current_bit_idx + nb)]);
@@ -1085,6 +1089,7 @@ fn process_sequences<F: Field>(
         let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
         decoded_bitstring_values.push(new_decoded);
 
+        let mut curr_baseline = 0;
         if mode > 0 {
             // For the initial baseline determination, ML and CMO positions are flipped.
             if is_init {
@@ -1092,7 +1097,8 @@ fn process_sequences<F: Field>(
             }
 
             // FSE state update step
-            let new_state = (state_baselines[order_idx] as u64) + bitstring_value;
+            curr_baseline = state_baselines[order_idx];
+            let new_state = (curr_baseline as u64) + bitstring_value;
             let new_state_params = f_tables[order_idx]
                 .get(&new_state)
                 .expect("State should exist.");
@@ -1127,7 +1133,8 @@ fn process_sequences<F: Field>(
             }
         } else {
             // Value decoding step
-            let new_value = (decoding_baselines[order_idx] as u64) + bitstring_value;
+            curr_baseline = decoding_baselines[order_idx];
+            let new_value = (curr_baseline as u64) + bitstring_value;
             curr_instruction[order_idx] = new_value as usize;
 
             order_idx += 1;
@@ -1144,6 +1151,7 @@ fn process_sequences<F: Field>(
                 );
 
                 raw_sequence_instructions.push(new_instruction);
+                seq_idx += 1;
             }
         }
 
@@ -1187,6 +1195,20 @@ fn process_sequences<F: Field>(
                 bit_end_idx: to_bit_idx,
                 bit_value: bitstring_value,
                 is_zero_bit_read: (nb == 0),
+                is_seq_init: is_init,
+                seq_idx,
+                states: if mode > 0 {
+                    [order_idx == 0, order_idx == 1, order_idx == 2]
+                } else {
+                    [false, false, false]
+                },
+                symbols: if mode > 0 {
+                    [false, false, false]
+                } else {
+                    [order_idx == 2, order_idx == 1, order_idx == 0]
+                },
+                values: [0, 0, 0],
+                baseline: curr_baseline as u64,
             },
             decoded_data: last_row.decoded_data.clone(),
             fse_data: FseTableRow::default(), // TODO: Clarify alternating FSE/data segments
@@ -1216,6 +1238,18 @@ fn process_sequences<F: Field>(
     let mut address_table_rows: Vec<AddressTableRow> = vec![];
     let mut literal_len_acc: usize = 0;
     let mut repeated_offset: [usize; 3] = [1, 4, 8];
+
+    for idx in 0..witness_rows.len() {
+        if witness_rows[idx].state.tag == ZstdTag::ZstdBlockSequenceData && !witness_rows[idx].bitstream_read_data.is_seq_init {
+            let seq_idx = witness_rows[idx].bitstream_read_data.seq_idx;
+            witness_rows[idx].bitstream_read_data.values = [
+                // literal length, match length and match offset.
+                raw_sequence_instructions[seq_idx].2 as u64,
+                raw_sequence_instructions[seq_idx].1 as u64,
+                raw_sequence_instructions[seq_idx].0 as u64,
+            ];
+        }   
+    }
 
     for (idx, inst) in raw_sequence_instructions.iter().enumerate() {
         let actual_offset = if inst.0 > 3 {

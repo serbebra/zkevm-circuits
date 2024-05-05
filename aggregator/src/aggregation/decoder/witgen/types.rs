@@ -421,6 +421,18 @@ pub struct BitstreamReadRow {
     pub bit_value: u64,
     /// Whether 0 bit is read
     pub is_zero_bit_read: bool,
+    /// Indicator for when sequence data bitstream initial baselines are determined
+    pub is_seq_init: bool,
+    /// Idx of sequence instruction
+    pub seq_idx: usize,
+    /// The states (LLT, MLT, MOT) at this row
+    pub states: [bool; 3],
+    /// The symbols emitted at this state (LLT, MLT, MOT)
+    pub symbols: [bool; 3],
+    /// The values computed for literal length, match length and match offset.
+    pub values: [u64; 3],
+    /// The baseline value associated with this state.
+    pub baseline: u64,
 }
 
 /// Sequence data is interleaved with 6 bitstreams. Each producing a different type of value.

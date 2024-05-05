@@ -3747,64 +3747,6 @@ impl DecoderConfig {
         }
         self.literals_header_table.assign(layouter, literal_headers)?;
 
-
-
-
-
-
-/// Decoding helpers for the sequences section header.
-// sequences_header_decoder: SequencesHeaderDecoder,
-
-// struct SequencesHeaderDecoder {
-//     /// Helper gadget to evaluate byte0 < 128.
-//     pub byte0_lt_0x80: LtConfig<Fr, 1>,
-//     /// Helper gadget to evaluate byte0 < 255.
-//     pub byte0_lt_0xff: LtConfig<Fr, 1>,
-// }
-//     /// Config required while applying the FSE tables on the Sequences data.
-//     sequences_data_decoder: SequencesDataDecoder,
-
-//             pub struct SequencesDataDecoder {
-//                 /// The incremental index of the sequence. The first sequence has an index of idx=1.
-//                 idx: Column<Advice>,
-//                 /// A boolean column to identify rows where we are finding the initial state of the FSE table.
-//                 /// This is tricky since the order is not the same as the below interleaved order of decoding
-//                 /// sequences. The is_init_state flag is set only while reading the first 3 bitstrings (after
-//                 /// the sentinel bitstring) to compute the initial states of LLT -> MOT -> MLT in this order.
-//                 is_init_state: Column<Advice>,
-//                 /// A boolean column to help us determine the exact purpose of the bitstring we are currently
-//                 /// reading. Since the sequences data is interleaved with 6 possible variants:
-//                 /// 1. MOT Code to Value
-//                 /// 2. MLT Code to Value
-//                 /// 3. LLT Code to Value
-//                 /// 4. LLT FSE update
-//                 /// 5. MLT FSE update
-//                 /// 6. MOT FSE update, goto #1
-//                 ///
-//                 /// The tuple:
-//                 /// (
-//                 ///     fse_decoder.table_kind,
-//                 ///     sequences_data_decoder.is_update_state,
-//                 /// )
-//                 ///
-//                 /// tells us exactly which variant we are at currently.
-//                 is_update_state: Column<Advice>,
-//                 /// The states (LLT, MLT, MOT) at this row.
-//                 states: [Column<Advice>; 3],
-//                 /// The symbols emitted at this state (LLT, MLT, MOT).
-//                 symbols: [Column<Advice>; 3],
-//                 /// The values computed for literal length, match length and match offset.
-//                 values: [Column<Advice>; 3],
-//                 /// The baseline value associated with this state.
-//                 baseline: Column<Advice>,
-//             }
-    
-
-
-
-
-
-
         layouter.assign_region(
             || "Decompression table region",
             |mut region| {
@@ -4019,14 +3961,12 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from((row.state.is_tag_change && i > 0) as u64)),
                     )?;
-
                     region.assign_advice(
                         || "tag_config.is_reverse",
                         self.tag_config.is_reverse,
                         i,
                         || Value::known(Fr::from(row.encoded_data.reverse as u64)),
                     )?;
-
                     region.assign_advice(
                         || "tag_config.tag_rlc",
                         self.tag_config.tag_rlc,
@@ -4045,11 +3985,15 @@ impl DecoderConfig {
                         let mut last = pow_of_rand.last().expect("Last pow_of_rand exists.").clone();
                         for _ in pow_of_rand.len()..=tag_len {
                             last = last * challenges.keccak_input();
+                            pow_of_rand.push(last.clone());
                         }
                     }
-
-                    //                 /// Represents keccak randomness exponentiated by the tag len.
-                    //                 rpow_tag_len: Column<Advice>,
+                    region.assign_advice(
+                        || "tag_config.rpow_tag_len",
+                        self.tag_config.rpow_tag_len,
+                        i,
+                        || pow_of_rand[tag_len],
+                    )?;
 
                     // Zstd tag related config.
                         //     tag_config: TagConfig,  
@@ -4121,49 +4065,93 @@ impl DecoderConfig {
         //             }
           
 
+                    ////////////////////////////////////////////////////////////
+                    ///////// Assign Extra Sequence Bitstream Fields  //////////
+                    ////////////////////////////////////////////////////////////
+                    region.assign_advice(
+                        || "sequence_data_decoder.idx",
+                        self.sequences_data_decoder.idx,
+                        i,
+                        || Value::known(Fr::from((row.bitstream_read_data.seq_idx + 1) as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "sequence_data_decoder.is_init_state",
+                        self.sequences_data_decoder.is_init_state,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.is_seq_init as u64)),
+                    )?;
+
+                    let seq_states = row.bitstream_read_data.states;
+                    let seq_symbols = row.bitstream_read_data.symbols;
+                    let is_update_state = seq_states[0] || seq_states[1] || seq_states[2];
+                    let tables = ["LLT", "MLT", "MOT"];
+                    for idx in 0..3 {
+                        region.assign_advice(
+                            || format!("sequence_data_decoder.states: {:?}", tables[idx]),
+                            self.sequences_data_decoder.states[idx],
+                            i,
+                            || Value::known(Fr::from(seq_states[idx] as u64)),
+                        )?;
+                        region.assign_advice(
+                            || format!("sequence_data_decoder.symbols: {:?}", tables[idx]),
+                            self.sequences_data_decoder.symbols[idx],
+                            i,
+                            || Value::known(Fr::from(seq_symbols[idx] as u64)),
+                        )?;
+                        region.assign_advice(
+                            || format!("sequence_data_decoder.values: {:?}", tables[idx]),
+                            self.sequences_data_decoder.values[idx],
+                            i,
+                            || Value::known(Fr::from(row.bitstream_read_data.values[idx] as u64)),
+                        )?;
+                    }
+                    region.assign_advice(
+                        || "sequence_data_decoder.is_update_state",
+                        self.sequences_data_decoder.is_update_state,
+                        i,
+                        || Value::known(Fr::from(is_update_state as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "sequence_data_decoder.baseline",
+                        self.sequences_data_decoder.baseline,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
+                    )?;
+              
+                    // struct SequencesHeaderDecoder {
+                    //     /// Helper gadget to evaluate byte0 < 128.
+                    //     pub byte0_lt_0x80: LtConfig<Fr, 1>,
+                    //     /// Helper gadget to evaluate byte0 < 255.
+                    //     pub byte0_lt_0xff: LtConfig<Fr, 1>,
+                    // }
 
 
+                    ////////////////////////////////////////////////
+                    ///////// Assign FSE Decoding Fields  //////////
+                    ////////////////////////////////////////////////
+                    //     /// Config established while recovering the FSE table.
+                    //     fse_decoder: FseDecoder,
 
-
-
+                    //             pub struct FseDecoder {
+                    //                 /// The FSE table that is being decoded in this tag. Possible values are:
+                    //                 /// - LLT = 0, MOT = 1, MLT = 2
+                    //                 table_kind: Column<Advice>,
+                    //                 /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
+                    //                 /// of the FSE table.
+                    //                 table_size: Column<Advice>,
+                    //                 /// The incremental symbol for which probability is decoded.
+                    //                 symbol: Column<Advice>,
+                    //                 /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
+                    //                 /// This is the normalised probability for the symbol.
+                    //                 probability_acc: Column<Advice>,
+                    //                 /// Whether we are in the repeat bits loop.
+                    //                 is_repeat_bits_loop: Column<Advice>,
+                    //                 /// Whether this row represents the 0-7 trailing bits that should be ignored.
+                    //                 is_trailing_bits: Column<Advice>,
+                    //             }
                 }
 
-                Ok(())
-            },
-        )?;
-
-
-
-
-
-
-        //     /// Config established while recovering the FSE table.
-        //     fse_decoder: FseDecoder,
-
-        //             pub struct FseDecoder {
-        //                 /// The FSE table that is being decoded in this tag. Possible values are:
-        //                 /// - LLT = 0, MOT = 1, MLT = 2
-        //                 table_kind: Column<Advice>,
-        //                 /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
-        //                 /// of the FSE table.
-        //                 table_size: Column<Advice>,
-        //                 /// The incremental symbol for which probability is decoded.
-        //                 symbol: Column<Advice>,
-        //                 /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
-        //                 /// This is the normalised probability for the symbol.
-        //                 probability_acc: Column<Advice>,
-        //                 /// Whether we are in the repeat bits loop.
-        //                 is_repeat_bits_loop: Column<Advice>,
-        //                 /// Whether this row represents the 0-7 trailing bits that should be ignored.
-        //                 is_trailing_bits: Column<Advice>,
-        //             }
-
-
-
-
-
-
-        //     // witgen_debug
+                //     // witgen_debug
         //     // /// Helper table for decoding bitstreams.
         //     // bitstring_table: BitstringTable,
         //     // witgen_debug
@@ -4174,20 +4162,9 @@ impl DecoderConfig {
         //     is_padding: Column<Advice>,
         // }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                Ok(())
+            },
+        )?;
 
         // pub struct AssignedDecoderConfigExports {
         //     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
@@ -4199,9 +4176,6 @@ impl DecoderConfig {
         Ok(())
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
