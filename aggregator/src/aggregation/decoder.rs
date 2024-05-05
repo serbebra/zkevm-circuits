@@ -698,7 +698,7 @@ impl BitstreamDecoder {
 #[derive(Clone, Debug)]
 pub struct FseDecoder {
     /// The FSE table that is being decoded in this tag. Possible values are:
-    /// - LLT = 0, MOT = 1, MLT = 2
+    /// - LLT = 1, MOT = 2, MLT = 3
     table_kind: Column<Advice>,
     /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
     /// of the FSE table.
@@ -1047,12 +1047,12 @@ impl DecoderConfig {
         is_tag!(is_zb_sequence_header, ZstdBlockSequenceHeader);
         is_tag!(is_zb_sequence_fse, ZstdBlockFseCode);
         // TODO: update to ZstdBlockSequenceData once witgen code is merged.
-        is_tag!(is_zb_sequence_data, ZstdBlockHuffmanCode);
+        is_tag!(is_zb_sequence_data, ZstdBlockSequenceData);
 
         is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
         is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
         // TODO: update to ZstdBlockSequenceData once witgen code is merged.
-        is_prev_tag!(is_prev_sequence_data, ZstdBlockHuffmanCode);
+        is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
 
         meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
             vec![(
@@ -1936,8 +1936,7 @@ impl DecoderConfig {
                 meta.query_advice(config.tag_config.tag_next, Rotation::cur()),
                 select::expr(
                     no_fse_tables,
-                    // TODO: replace with SequencesData once witgen code is merged.
-                    ZstdTag::ZstdBlockHuffmanCode.expr(),
+                    ZstdTag::ZstdBlockSequenceData.expr(),
                     ZstdTag::ZstdBlockFseCode.expr(),
                 ),
             );
@@ -3182,8 +3181,7 @@ impl DecoderConfig {
                         .block_config
                         .is_empty_sequences(meta, Rotation::prev()),
                     ZstdTag::ZstdBlockSequenceHeader.expr(),
-                    // TODO: replace with ZstdBlockSequenceData when witgen is merged.
-                    ZstdTag::ZstdBlockHuffmanCode.expr(),
+                    ZstdTag::ZstdBlockSequenceData.expr(),
                 ),
             );
 
@@ -3687,19 +3685,23 @@ impl DecoderConfig {
     pub fn assign<F: Field>(
         &self,
         layouter: &mut impl Layouter<Fr>,
-        witness_rows: Vec<ZstdWitnessRow<F>>,
+        witness_rows: Vec<ZstdWitnessRow<Fr>>,
         _aux_data: Vec<u64>,
         _fse_aux_tables: Vec<FseAuxiliaryTableData>,
-        _challenges: &Challenges<Value<F>>,
+        challenges: &Challenges<Value<Fr>>,
     // witgen_debug
     // ) -> Result<AssignedDecoderConfigExports, Error> {
     ) -> Result<(), Error> {
+        let mut pow_of_rand: Vec<Value<Fr>> = vec![Value::known(Fr::ONE)];
+        let challenge = challenges.keccak_input();
+
         /////////////////////////////////////////
         //////// Load Auxiliary Tables  /////////
         /////////////////////////////////////////
         self.range8.load(layouter)?;
         self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
+        self.pow2_table.load(layouter)?;
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
@@ -3709,7 +3711,7 @@ impl DecoderConfig {
             .iter()
             .filter(|r| r.state.tag == ZstdTag::ZstdBlockLiteralsHeader)
             .map(|r| r.clone())
-            .collect::<Vec<ZstdWitnessRow<F>>>();
+            .collect::<Vec<ZstdWitnessRow<Fr>>>();
         let max_block_idx = witness_rows.iter().last().expect("Last row of witness exists.").state.block_idx;
         for curr_block_idx in 1..=max_block_idx {
             let byte_idx = literal_header_rows
@@ -3736,6 +3738,63 @@ impl DecoderConfig {
             ));
         }
         self.literals_header_table.assign(layouter, literal_headers)?;
+
+
+
+
+
+
+/// Decoding helpers for the sequences section header.
+// sequences_header_decoder: SequencesHeaderDecoder,
+
+// struct SequencesHeaderDecoder {
+//     /// Helper gadget to evaluate byte0 < 128.
+//     pub byte0_lt_0x80: LtConfig<Fr, 1>,
+//     /// Helper gadget to evaluate byte0 < 255.
+//     pub byte0_lt_0xff: LtConfig<Fr, 1>,
+// }
+//     /// Config required while applying the FSE tables on the Sequences data.
+//     sequences_data_decoder: SequencesDataDecoder,
+
+//             pub struct SequencesDataDecoder {
+//                 /// The incremental index of the sequence. The first sequence has an index of idx=1.
+//                 idx: Column<Advice>,
+//                 /// A boolean column to identify rows where we are finding the initial state of the FSE table.
+//                 /// This is tricky since the order is not the same as the below interleaved order of decoding
+//                 /// sequences. The is_init_state flag is set only while reading the first 3 bitstrings (after
+//                 /// the sentinel bitstring) to compute the initial states of LLT -> MOT -> MLT in this order.
+//                 is_init_state: Column<Advice>,
+//                 /// A boolean column to help us determine the exact purpose of the bitstring we are currently
+//                 /// reading. Since the sequences data is interleaved with 6 possible variants:
+//                 /// 1. MOT Code to Value
+//                 /// 2. MLT Code to Value
+//                 /// 3. LLT Code to Value
+//                 /// 4. LLT FSE update
+//                 /// 5. MLT FSE update
+//                 /// 6. MOT FSE update, goto #1
+//                 ///
+//                 /// The tuple:
+//                 /// (
+//                 ///     fse_decoder.table_kind,
+//                 ///     sequences_data_decoder.is_update_state,
+//                 /// )
+//                 ///
+//                 /// tells us exactly which variant we are at currently.
+//                 is_update_state: Column<Advice>,
+//                 /// The states (LLT, MLT, MOT) at this row.
+//                 states: [Column<Advice>; 3],
+//                 /// The symbols emitted at this state (LLT, MLT, MOT).
+//                 symbols: [Column<Advice>; 3],
+//                 /// The values computed for literal length, match length and match offset.
+//                 values: [Column<Advice>; 3],
+//                 /// The baseline value associated with this state.
+//                 baseline: Column<Advice>,
+//             }
+    
+
+
+
+
 
 
         layouter.assign_region(
@@ -3788,37 +3847,18 @@ impl DecoderConfig {
                             }
                         )?;
                     }
-                    // witgen_debug
-                    // region.assign_advice(
-                    //     || "encoded_rlc",
-                    //     self.encoded_rlc,
-                    //     i,
-                    //     || row.encoded_data.value_rlc.into(),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "decoded_rlc",
-                    //     self.decoded_rlc,
-                    //     i,
-                    //     || row.decoded_data.decoded_value_rlc.into(),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "decoded_byte",
-                    //     self.decoded_byte,
-                    //     i,
-                    //     || Value::known(Fr::from(row.decoded_data.decoded_byte as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "decoded_len",
-                    //     self.decoded_len,
-                    //     i,
-                    //     || Value::known(Fr::from(row.decoded_data.decoded_len as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "decoded_len_acc",
-                    //     self.decoded_len_acc,
-                    //     i,
-                    //     || Value::known(Fr::from(row.decoded_data.decoded_len_acc as u64)),
-                    // )?;
+                    region.assign_advice(
+                        || "encoded_rlc",
+                        self.encoded_rlc,
+                        i,
+                        || row.encoded_data.value_rlc,
+                    )?;
+                    region.assign_advice(
+                        || "decoded_len",
+                        self.decoded_len,
+                        i,
+                        || Value::known(Fr::from(row.decoded_data.decoded_len as u64)),
+                    )?;
 
                     /////////////////////////////////////////
                     ///// Assign Bitstream Decoder  /////////
@@ -3860,139 +3900,266 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(is_nil as u64)),
                     )?;
-                    //     /// Config for reading and decoding bitstreams.
-                    //     bitstream_decoder: BitstreamDecoder,
+  
+        //                 /// Helper gadget to know if the bitstring was spanned over a single byte.
+        //                 bit_index_end_cmp_7: ComparatorConfig<Fr, 1>,
+        //                 /// Helper gadget to know if the bitstring was spanned over 2 bytes.
+        //                 bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
+        //                 /// Helper gadget to know if the bitstring was spanned over 3 bytes.
+        //                 bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
+        //                 /// Helper gadget to know when the bitstring value is 0. This contributes to an edge-case in
+        //                 /// decoding and reconstructing the FSE table from normalised distributions, where a value=0
+        //                 /// implies prob=-1 ("less than 1" probability). In this case, the symbol is allocated a state
+        //                 /// at the end of the FSE table, with baseline=0x00 and nb=AL, i.e. reset state.
+        //                 bitstring_value_eq_0: IsEqualConfig<Fr>,
+        //                 /// Helper gadget to know when the bitstring value is 1 or 3. This is useful in the case
+        //                 /// of decoding/reconstruction of FSE table, where a value=1 implies a special case of
+        //                 /// prob=0, where the symbol is instead followed by a 2-bit repeat flag. The repeat flag
+        //                 /// bits themselves could be followed by another 2-bit repeat flag if the repeat flag's
+        //                 /// value is 3.
+        //                 bitstring_value_eq_1: IsEqualConfig<Fr>,
+        //                 /// Helper config as per the above doc.
+        //                 bitstring_value_eq_3: IsEqualConfig<Fr>,
+        //                 /// Helper gadget to check when bit_index_start has not changed.
+        //                 start_unchanged: IsEqualConfig<Fr>,
+        //             }
 
-                    // pub struct BitstreamDecoder {
 
-                    //     /// Helper gadget to know if the bitstring was spanned over a single byte.
-                    //     bit_index_end_cmp_7: ComparatorConfig<Fr, 1>,
-                    //     /// Helper gadget to know if the bitstring was spanned over 2 bytes.
-                    //     bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
-                    //     /// Helper gadget to know if the bitstring was spanned over 3 bytes.
-                    //     bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
 
-                    //     /// Helper gadget to know when the bitstring value is 1 or 3. This is useful in the case
-                    //     /// of decoding/reconstruction of FSE table, where a value=1 implies a special case of
-                    //     /// prob=0, where the symbol is instead followed by a 2-bit repeat flag. The repeat flag
-                    //     /// bits themselves could be followed by another 2-bit repeat flag if the repeat flag's
-                    //     /// value is 3.
-                    //     bitstring_value_eq_1: IsEqualConfig<Fr>,
-                    //     /// Helper config as per the above doc.
-                    //     bitstring_value_eq_3: IsEqualConfig<Fr>,
+                    /////////////////////////////////////////
+                    ////////// Assign Tag Config  ///////////
+                    /////////////////////////////////////////
+                    region.assign_fixed(
+                        || "tag_config.q_enable",
+                        self.tag_config.q_enable,
+                        i,
+                        || Value::known(Fr::one()),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag",
+                        self.tag_config.tag,
+                        i,
+                        || Value::known(Fr::from(row.state.tag as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_next",
+                        self.tag_config.tag_next,
+                        i,
+                        || Value::known(Fr::from(row.state.tag_next as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_len",
+                        self.tag_config.tag_len,
+                        i,
+                        || Value::known(Fr::from(row.state.tag_len as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.max_len",
+                        self.tag_config.max_len,
+                        i,
+                        || Value::known(Fr::from(row.state.max_tag_len as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_idx",
+                        self.tag_config.tag_idx,
+                        i,
+                        || Value::known(Fr::from(row.state.tag_idx as u64)),
+                    )?;
 
-                    //     /// Helper gadget to check when bit_index_start == bit_index_end.
-                    //     start_eq_end: IsEqualConfig<Fr>,
-                    // }
+                    let is_sequence_data = row.state.tag == ZstdTag::ZstdBlockSequenceData;
+                    region.assign_advice(
+                        || "tag_config.is_sequence_data",
+                        self.tag_config.is_sequence_data,
+                        i,
+                        || Value::known(Fr::from(is_sequence_data as u64)),
+                    )?;
+
+                    let is_frame_content_size = row.state.tag == ZstdTag::FrameContentSize;
+                    region.assign_advice(
+                        || "tag_config.is_frame_content_size",
+                        self.tag_config.is_frame_content_size,
+                        i,
+                        || Value::known(Fr::from(is_frame_content_size as u64)),
+                    )?;
+
+                    let is_block_header = row.state.tag == ZstdTag::BlockHeader;
+                    region.assign_advice(
+                        || "tag_config.is_block_header",
+                        self.tag_config.is_block_header,
+                        i,
+                        || Value::known(Fr::from(is_block_header as u64)),
+                    )?;
+
+                    let is_fse_code = row.state.tag == ZstdTag::ZstdBlockFseCode;
+                    region.assign_advice(
+                        || "tag_config.is_fse_code",
+                        self.tag_config.is_fse_code,
+                        i,
+                        || Value::known(Fr::from(is_fse_code as u64)),
+                    )?;
+
+                    let is_null = row.state.tag == ZstdTag::Null;
+                    region.assign_advice(
+                        || "tag_config.is_null",
+                        self.tag_config.is_null,
+                        i,
+                        || Value::known(Fr::from(is_null as u64)),
+                    )?;
+
+                    region.assign_advice(
+                        || "tag_config.is_change",
+                        self.tag_config.is_change,
+                        i,
+                        || Value::known(Fr::from((row.state.is_tag_change && i > 0) as u64)),
+                    )?;
+
+                    region.assign_advice(
+                        || "tag_config.is_reverse",
+                        self.tag_config.is_reverse,
+                        i,
+                        || Value::known(Fr::from(row.encoded_data.reverse as u64)),
+                    )?;
+
+                    region.assign_advice(
+                        || "tag_config.tag_rlc",
+                        self.tag_config.tag_rlc,
+                        i,
+                        || row.state.tag_rlc_acc,
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.is_output",
+                        self.tag_config.is_output,
+                        i,
+                        || Value::known(Fr::from(row.state.tag.is_output() as u64)),
+                    )?;
+
+                    let tag_len = row.state.tag_len as usize;
+                    if tag_len >= pow_of_rand.len() {
+                        let mut last = pow_of_rand.last().expect("Last pow_of_rand exists.").clone();
+                        for _ in pow_of_rand.len()..=tag_len {
+                            last = last * challenges.keccak_input();
+                        }
+                    }
+
+                    //                 /// Represents keccak randomness exponentiated by the tag len.
+                    //                 rpow_tag_len: Column<Advice>,
+
+                    // Zstd tag related config.
+                        //     tag_config: TagConfig,  
+                        //             struct TagConfig {
+                        //                 /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
+                        //                 /// value.
+                        //                 tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
+                        //                 /// A utility gadget to identify the row where tag_idx == tag_len.
+                        //                 tag_idx_eq_tag_len: IsEqualConfig<Fr>,
+
+
+                        //             }
+
+
+
+
+
+
+
+
+
+
+
+
+
                 }
 
                 Ok(())
             },
         )?;
 
+
+
+
         // pub struct DecoderConfig {
-
-        //     /// Zstd tag related config.
-        //     tag_config: TagConfig,
-
-                    // struct TagConfig {
-                    //     /// Marks all enabled rows.
-                    //     q_enable: Column<Fixed>,
-                    //     /// The ZstdTag being processed at the current row.
-                    //     tag: Column<Advice>,
-                    //     /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
-                    //     /// value.
-                    //     tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
-                    //     /// The Zstd tag that will be processed after processing the current tag.
-                    //     tag_next: Column<Advice>,
-                    //     /// The number of bytes in the current tag.
-                    //     tag_len: Column<Advice>,
-                    //     /// The byte index within the current tag. At the first tag byte, tag_idx = 1.
-                    //     tag_idx: Column<Advice>,
-                    //     /// A utility gadget to identify the row where tag_idx == tag_len.
-                    //     tag_idx_eq_tag_len: IsEqualConfig<Fr>,
-                    //     /// The maximum number bytes that the current tag may occupy. This is an upper bound on the
-                    //     /// number of bytes required to encode this tag. For instance, the LiteralsHeader is variable
-                    //     /// sized, ranging from 1-5 bytes. The max_len for LiteralsHeader would be 5.
-                    //     max_len: Column<Advice>,
-                    //     /// The RLC of bytes in the tag.
-                    //     tag_rlc: Column<Advice>,
-                    //     /// Represents keccak randomness exponentiated by the tag len.
-                    //     rpow_tag_len: Column<Advice>,
-                    //     /// Whether this tag outputs decoded bytes or not.
-                    //     is_output: Column<Advice>,
-                    //     /// Whether this tag is processed from back-to-front or not.
-                    //     is_reverse: Column<Advice>,
-                    //     /// Whether this row represents the first byte in a new tag. Effectively this also means that
-                    //     /// the previous row represented the last byte of the tag processed previously.
-                    //     ///
-                    //     /// The only exception is the first row in the layout where for the FrameHeaderDescriptor we do
-                    //     /// not set this boolean value. We instead use the q_first fixed column to conditionally
-                    //     /// constrain the first row.
-                    //     is_change: Column<Advice>,
-                    //     /// Degree reduction: FrameContentSize
-                    //     is_frame_content_size: Column<Advice>,
-                    //     /// Degree reduction: BlockHeader
-                    //     is_block_header: Column<Advice>,
-                    //     /// Degree reduction: SequenceFseCode
-                    //     is_fse_code: Column<Advice>,
-                    // }
-
         //     /// Block related config.
         //     block_config: BlockConfig,
 
-                    // struct BlockConfig {
-                    //     /// The number of bytes in this block.
-                    //     block_len: Column<Advice>,
-                    //     /// The index of this zstd block. The first block has a block_idx = 1.
-                    //     block_idx: Column<Advice>,
-                    //     /// Whether this block is the last block in the zstd encoded data.
-                    //     is_last_block: Column<Advice>,
-                    //     /// Helper boolean column to tell us whether we are in the block's contents. This field is not
-                    //     /// set for FrameHeaderDescriptor and FrameContentSize. For the tags that occur while decoding
-                    //     /// the block's contents, this field is set.
-                    //     is_block: Column<Advice>,
-                    //     /// Number of sequences decoded from the sequences section header in the block.
-                    //     num_sequences: Column<Advice>,
-                    // }
-
-        //     /// Decoding helpers for the sequences section header.
-        //     sequences_header_decoder: SequencesHeaderDecoder,
-
-                    // #[derive(Clone, Debug)]
-                    // struct SequencesHeaderDecoder {
-                    //     /// Helper gadget to evaluate byte0 < 128.
-                    //     pub byte0_lt_0x80: LtConfig<Fr, 8>,
-                    //     /// Helper gadget to evaluate byte0 < 255.
-                    //     pub byte0_lt_0xff: LtConfig<Fr, 8>,
-                    // }
+        //             struct BlockConfig {
+        //                 /// The number of bytes in this block.
+        //                 block_len: Column<Advice>,
+        //                 /// The index of this zstd block. The first block has a block_idx = 1.
+        //                 block_idx: Column<Advice>,
+        //                 /// Whether this block is the last block in the zstd encoded data.
+        //                 is_last_block: Column<Advice>,
+        //                 /// Helper boolean column to tell us whether we are in the block's contents. This field is not
+        //                 /// set for FrameHeaderDescriptor and FrameContentSize. For the tags that occur while decoding
+        //                 /// the block's contents, this field is set.
+        //                 is_block: Column<Advice>,
+        //                 /// Number of sequences decoded from the sequences section header in the block.
+        //                 num_sequences: Column<Advice>,
+        //                 /// Helper gadget to know if the number of sequences is 0.
+        //                 is_empty_sequences: IsEqualConfig<Fr>,
+        //                 /// For sequence decoding, the tag=ZstdBlockSequenceHeader bytes tell us the Compression_Mode
+        //                 /// utilised for Literals Lengths, Match Offsets and Match Lengths. We expect only 2
+        //                 /// possibilities:
+        //                 /// 1. Predefined_Mode (value=0)
+        //                 /// 2. Fse_Compressed_Mode (value=2)
+        //                 ///
+        //                 /// Which means a single boolean flag is sufficient to take note of which compression mode is
+        //                 /// utilised for each of the above purposes. The boolean flag will be set if we utilise the
+        //                 /// Fse_Compressed_Mode.
+        //                 compression_modes: [Column<Advice>; 3],
+        //             }
+          
 
         //     /// Config established while recovering the FSE table.
         //     fse_decoder: FseDecoder,
 
-                    // pub struct FseDecoder {
-                    //     /// The byte_idx at which the FSE table is described at.
-                    //     byte_offset: Column<Advice>,
-                    //     /// The FSE table that is being decoded in this tag. Possible values are:
-                    //     /// - LLT = 0, MOT = 1, MLT = 2
-                    //     table_kind: Column<Advice>,
-                    //     /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
-                    //     /// of the FSE table.
-                    //     table_size: Column<Advice>,
-                    //     /// The incremental symbol for which probability is decoded.
-                    //     symbol: Column<Advice>,
-                    //     /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
-                    //     /// This is the normalised probability for the symbol.
-                    //     probability_acc: Column<Advice>,
-                    //     /// Whether we are in the repeat bits loop.
-                    //     is_repeat_bits_loop: Column<Advice>,
-                    // }
+        //             pub struct FseDecoder {
+        //                 /// The FSE table that is being decoded in this tag. Possible values are:
+        //                 /// - LLT = 0, MOT = 1, MLT = 2
+        //                 table_kind: Column<Advice>,
+        //                 /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
+        //                 /// of the FSE table.
+        //                 table_size: Column<Advice>,
+        //                 /// The incremental symbol for which probability is decoded.
+        //                 symbol: Column<Advice>,
+        //                 /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
+        //                 /// This is the normalised probability for the symbol.
+        //                 probability_acc: Column<Advice>,
+        //                 /// Whether we are in the repeat bits loop.
+        //                 is_repeat_bits_loop: Column<Advice>,
+        //                 /// Whether this row represents the 0-7 trailing bits that should be ignored.
+        //                 is_trailing_bits: Column<Advice>,
+        //             }
 
-        //     /// Helper table for decoding bitstreams.
-        //     bitstring_table: BitstringTable,
-        //     /// Helper table for decoding FSE tables.
-        //     fse_table: FseTable,
+
+
+
+
+
+        //     // witgen_debug
+        //     // /// Helper table for decoding bitstreams.
+        //     // bitstring_table: BitstringTable,
+        //     // witgen_debug
+        //     // /// Helper table for decoding FSE tables.
+        //     // fse_table: FseTable,
+
+        //     /// Once all the encoded bytes are decoded, we append the layout with padded rows.
+        //     is_padding: Column<Advice>,
         // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         // pub struct AssignedDecoderConfigExports {
         //     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
@@ -4088,7 +4255,7 @@ mod tests {
             let (witness_rows, _decoded_literals, aux_data, fse_aux_tables) = 
                 process(&self.compressed, challenges.keccak_input());
 
-            config.assign(
+            config.assign::<Fr>(
                 &mut layouter, 
                 witness_rows, 
                 aux_data, 

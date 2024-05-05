@@ -192,24 +192,12 @@ pub enum ZstdTag {
     FrameContentSize,
     /// The block's header.
     BlockHeader,
-    /// Raw bytes.
-    RawBlockBytes,
-    /// Run-length encoded bytes.
-    RleBlockBytes,
     /// Zstd block's literals header.
     ZstdBlockLiteralsHeader,
     /// Zstd blocks might contain raw bytes.
     ZstdBlockLiteralsRawBytes,
-    /// Zstd blocks might contain rle bytes.
-    ZstdBlockLiteralsRleBytes,
     /// Zstd block's huffman header and FSE code.
     ZstdBlockFseCode,
-    /// Zstd block's huffman code.
-    ZstdBlockHuffmanCode,
-    /// Zstd block's jump table.
-    ZstdBlockJumpTable,
-    /// Literal stream.
-    ZstdBlockLstream,
     /// Beginning of sequence section.
     ZstdBlockSequenceHeader,
     /// sequence bitstream for recovering instructions
@@ -224,15 +212,9 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => false,
             Self::BlockHeader => false,
-            Self::RawBlockBytes => true,
-            Self::RleBlockBytes => true,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
-            Self::ZstdBlockLiteralsRleBytes => false,
             Self::ZstdBlockFseCode => false,
-            Self::ZstdBlockHuffmanCode => false,
-            Self::ZstdBlockJumpTable => false,
-            Self::ZstdBlockLstream => false,
             Self::ZstdBlockSequenceHeader => false,
             Self::ZstdBlockSequenceData => true,
         }
@@ -245,15 +227,9 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => false,
             Self::BlockHeader => false,
-            Self::RawBlockBytes => true,
-            Self::RleBlockBytes => true,
             Self::ZstdBlockLiteralsHeader => true,
             Self::ZstdBlockLiteralsRawBytes => true,
-            Self::ZstdBlockLiteralsRleBytes => true,
             Self::ZstdBlockFseCode => true,
-            Self::ZstdBlockHuffmanCode => true,
-            Self::ZstdBlockJumpTable => true,
-            Self::ZstdBlockLstream => true,
             Self::ZstdBlockSequenceHeader => true,
             Self::ZstdBlockSequenceData => true,
         }
@@ -266,15 +242,9 @@ impl ZstdTag {
             Self::FrameHeaderDescriptor => false,
             Self::FrameContentSize => true,
             Self::BlockHeader => true,
-            Self::RawBlockBytes => false,
-            Self::RleBlockBytes => false,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
-            Self::ZstdBlockLiteralsRleBytes => false,
             Self::ZstdBlockFseCode => false,
-            Self::ZstdBlockHuffmanCode => true,
-            Self::ZstdBlockJumpTable => false,
-            Self::ZstdBlockLstream => true,
             Self::ZstdBlockSequenceHeader => false,
             Self::ZstdBlockSequenceData => true,
         }
@@ -310,15 +280,9 @@ impl ToString for ZstdTag {
             Self::FrameHeaderDescriptor => "FrameHeaderDescriptor",
             Self::FrameContentSize => "FrameContentSize",
             Self::BlockHeader => "BlockHeader",
-            Self::RawBlockBytes => "RawBlockBytes",
-            Self::RleBlockBytes => "RleBlockBytes",
             Self::ZstdBlockLiteralsHeader => "ZstdBlockLiteralsHeader",
             Self::ZstdBlockLiteralsRawBytes => "ZstdBlockLiteralsRawBytes",
-            Self::ZstdBlockLiteralsRleBytes => "ZstdBlockLiteralsRleBytes",
             Self::ZstdBlockFseCode => "ZstdBlockFseCode",
-            Self::ZstdBlockHuffmanCode => "ZstdBlockHuffmanCode",
-            Self::ZstdBlockJumpTable => "ZstdBlockJumpTable",
-            Self::ZstdBlockLstream => "ZstdBlockLstream",
             Self::ZstdBlockSequenceHeader => "ZstdBlockSequenceHeader",
             Self::ZstdBlockSequenceData => "ZstdBlockSequenceData",
         })
