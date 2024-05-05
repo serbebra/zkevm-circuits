@@ -5,8 +5,8 @@ use witgen::*;
 
 use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
-    comparator::{ComparatorChip, ComparatorConfig},
-    is_equal::{IsEqualChip, IsEqualConfig},
+    comparator::{ComparatorChip, ComparatorConfig, ComparatorInstruction},
+    is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
     less_than::{LtChip, LtConfig},
     util::{and, not, select, sum, Expr},
 };
@@ -25,7 +25,6 @@ use zkevm_circuits::{
     table::{BitwiseOpTable, LookupTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
     util::Challenges, witness,
 };
-
 use crate::aggregation::decoder::tables::FixedLookupTag;
 
 use self::{
@@ -3695,7 +3694,6 @@ impl DecoderConfig {
     // ) -> Result<AssignedDecoderConfigExports, Error> {
     ) -> Result<(), Error> {
         let mut pow_of_rand: Vec<Value<Fr>> = vec![Value::known(Fr::ONE)];
-        let challenge = challenges.keccak_input();
 
         assert!(block_info_arr.len() > 0, "Must have at least 1 block");
         assert!(sequence_info_arr.len() > 0, "Must have at least 1 block");
@@ -3850,30 +3848,69 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(is_nil as u64)),
                     )?;
-  
-        //                 /// Helper gadget to know if the bitstring was spanned over a single byte.
-        //                 bit_index_end_cmp_7: ComparatorConfig<Fr, 1>,
-        //                 /// Helper gadget to know if the bitstring was spanned over 2 bytes.
-        //                 bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
-        //                 /// Helper gadget to know if the bitstring was spanned over 3 bytes.
-        //                 bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
-        //                 /// Helper gadget to know when the bitstring value is 0. This contributes to an edge-case in
-        //                 /// decoding and reconstructing the FSE table from normalised distributions, where a value=0
-        //                 /// implies prob=-1 ("less than 1" probability). In this case, the symbol is allocated a state
-        //                 /// at the end of the FSE table, with baseline=0x00 and nb=AL, i.e. reset state.
-        //                 bitstring_value_eq_0: IsEqualConfig<Fr>,
-        //                 /// Helper gadget to know when the bitstring value is 1 or 3. This is useful in the case
-        //                 /// of decoding/reconstruction of FSE table, where a value=1 implies a special case of
-        //                 /// prob=0, where the symbol is instead followed by a 2-bit repeat flag. The repeat flag
-        //                 /// bits themselves could be followed by another 2-bit repeat flag if the repeat flag's
-        //                 /// value is 3.
-        //                 bitstring_value_eq_1: IsEqualConfig<Fr>,
-        //                 /// Helper config as per the above doc.
-        //                 bitstring_value_eq_3: IsEqualConfig<Fr>,
-        //                 /// Helper gadget to check when bit_index_start has not changed.
-        //                 start_unchanged: IsEqualConfig<Fr>,
-        //             }
 
+                    let bit_index_end_cmp_7 =
+                        ComparatorChip::construct(self.bitstream_decoder.bit_index_end_cmp_7.clone());
+                    bit_index_end_cmp_7.assign(
+                        &mut region,
+                        i,
+                        Fr::from(bit_end_idx as u64),
+                        Fr::from(7u64),
+                    )?;
+
+                    let bit_index_end_cmp_15 =
+                        ComparatorChip::construct(self.bitstream_decoder.bit_index_end_cmp_15.clone());
+                    bit_index_end_cmp_15.assign(
+                        &mut region,
+                        i,
+                        Fr::from(bit_end_idx as u64),
+                        Fr::from(15u64),
+                    )?;
+
+                    let bit_index_end_cmp_23 =
+                        ComparatorChip::construct(self.bitstream_decoder.bit_index_end_cmp_23.clone());
+                    bit_index_end_cmp_23.assign(
+                        &mut region,
+                        i,
+                        Fr::from(bit_end_idx as u64),
+                        Fr::from(23u64),
+                    )?;
+
+                    let bitstring_value_eq_0 =
+                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_0.clone());
+                    bitstring_value_eq_0.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                        Value::known(Fr::from(0u64)),
+                    )?;
+
+                    let bitstring_value_eq_1 =
+                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_1.clone());
+                    bitstring_value_eq_1.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                        Value::known(Fr::from(1u64)),
+                    )?;
+
+                    let bitstring_value_eq_3 =
+                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
+                    bitstring_value_eq_3.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                        Value::known(Fr::from(3u64)),
+                    )?;
+
+                    let start_unchanged =
+                        IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
+                    start_unchanged.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
+                        Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
+                    )?;
 
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
@@ -3995,18 +4032,17 @@ impl DecoderConfig {
                         || pow_of_rand[tag_len],
                     )?;
 
-                    // Zstd tag related config.
-                        //     tag_config: TagConfig,  
-                        //             struct TagConfig {
-                        //                 /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
-                        //                 /// value.
-                        //                 tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
-                        //                 /// A utility gadget to identify the row where tag_idx == tag_len.
-                        //                 tag_idx_eq_tag_len: IsEqualConfig<Fr>,
+                    let tag_idx_eq_tag_len =
+                        IsEqualChip::construct(self.tag_config.tag_idx_eq_tag_len.clone());
+                    tag_idx_eq_tag_len.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.state.tag_idx as u64)),
+                        Value::known(Fr::from(row.state.tag_len as u64)),
+                    )?;
 
-
-                        //             }
-
+                    let tag_chip = BinaryNumberChip::construct(self.tag_config.tag_bits);
+                    tag_chip.assign(&mut region, i, &row.state.tag)?;
 
                     /////////////////////////////////////////
                     ///////// Assign Block Config  //////////
@@ -4059,11 +4095,15 @@ impl DecoderConfig {
                             || Value::known(Fr::from(curr_sequence_info.compression_mode[idx] as u64)),
                         )?;
                     }
-        //             struct BlockConfig {
-        //                 /// Helper gadget to know if the number of sequences is 0.
-        //                 is_empty_sequences: IsEqualConfig<Fr>,
-        //             }
-          
+
+                    let is_empty_sequences =
+                        IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
+                    is_empty_sequences.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                        Value::known(Fr::from(0u64)),
+                    )?;
 
                     ////////////////////////////////////////////////////////////
                     ///////// Assign Extra Sequence Bitstream Fields  //////////
