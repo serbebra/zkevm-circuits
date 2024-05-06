@@ -1,6 +1,6 @@
 use gadgets::util::{and, not, select, Expr};
 use halo2_proofs::{
-    circuit::Layouter,
+    circuit::{Layouter, Value},
     halo2curves::bn256::Fr,
     plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed},
     poly::Rotation,
@@ -10,7 +10,7 @@ use zkevm_circuits::{
     table::{LookupTable, RangeTable, U8Table},
 };
 
-use crate::aggregation::decoder::witgen::ZstdWitnessRow;
+use crate::aggregation::decoder::{util::value_bits_le, witgen::{ZstdTag, ZstdWitnessRow}, BlockInfo};
 
 /// In the process of decoding zstd encoded data, there are several scenarios in which we process
 /// bits instead of bytes, for instance:
@@ -439,12 +439,224 @@ impl BitstringTable {
     }
 
     /// Load witness to the table: dev mode.
-    pub fn _assign(
+    pub fn assign(
         &self,
-        _layouter: &mut impl Layouter<Fr>,
-        _witness_rows: &[ZstdWitnessRow<Fr>],
+        layouter: &mut impl Layouter<Fr>,
+        block_info_arr: &Vec<BlockInfo>,
+        witness_rows: &[ZstdWitnessRow<Fr>],
     ) -> Result<(), Error> {
-        // unimplemented!();
+        let mut offset: usize = 0;
+        assert!(!witness_rows.is_empty());
+
+        layouter.assign_region(
+            || "Bitstring Accumulation Table",
+            |mut region| {
+                region.assign_fixed(
+                    || "q_first",
+                    self.q_first,
+                    0,
+                    || Value::known(Fr::one()),
+                )?;
+        
+                // Multi-block assignment
+                for block in block_info_arr {
+                    // Fse decoding rows
+                    let fse_offset = witness_rows
+                        .iter()
+                        .find(|&r| r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockFseCode)
+                        .unwrap()
+                        .encoded_data
+                        .byte_idx;
+                    let fse_rows = witness_rows
+                        .iter()
+                        .filter(|&r| {
+                            r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockFseCode
+                        })
+                        .map(|r| {
+                            (
+                                r.encoded_data.byte_idx as usize,
+                                r.encoded_data.value_byte as u64,
+                                r.bitstream_read_data.bit_start_idx,
+                                r.bitstream_read_data.bit_end_idx,
+                                r.bitstream_read_data.bit_value,
+                                r.state.tag.is_reverse() as u64,
+                            )
+                        })
+                        .collect::<Vec<(usize, u64, usize, usize, u64, u64)>>();
+        
+                    // Sequence data rows
+                    let sequence_data_offset = witness_rows
+                        .iter()
+                        .find(|&r| r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockSequenceData)
+                        .unwrap()
+                        .encoded_data
+                        .byte_idx;
+                    let sequence_data_rows = witness_rows
+                        .iter()
+                        .filter(|&r| {
+                            r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockSequenceData
+                        })
+                        .map(|r| {
+                            (
+                                r.encoded_data.byte_idx as usize,
+                                r.encoded_data.value_byte as u64,
+                                r.bitstream_read_data.bit_start_idx,
+                                r.bitstream_read_data.bit_end_idx,
+                                r.bitstream_read_data.bit_value,
+                                r.state.tag.is_reverse() as u64,
+                            )
+                        })
+                        .collect::<Vec<(usize, u64, usize, usize, u64, u64)>>();
+        
+                    for (byte_offset, rows) in [
+                        (fse_offset, fse_rows),
+                        (sequence_data_offset, sequence_data_rows),
+                    ].into_iter() {
+                        for grouped_rows in rows.windows(3) {
+                            let curr_row = grouped_rows[0].clone();
+
+                            let byte_idx_1 = grouped_rows[0].0;
+                            let byte_idx_2 = grouped_rows[1].0;
+                            let byte_idx_3 = grouped_rows[2].0;
+                            let byte_1 = grouped_rows[0].1;
+                            let byte_2 = grouped_rows[1].1;
+                            let byte_3 = grouped_rows[2].1;
+
+                            let byte_1_bits = value_bits_le(byte_1 as u8);
+                            let byte_2_bits = value_bits_le(byte_2 as u8);
+                            let byte_3_bits = value_bits_le(byte_3 as u8);
+        
+                            let bits = if curr_row.5 > 0 {
+                                // reversed
+                                [
+                                    byte_1_bits.into_iter().rev().collect::<Vec<u8>>(),
+                                    byte_2_bits.into_iter().rev().collect::<Vec<u8>>(),
+                                    byte_3_bits.into_iter().rev().collect::<Vec<u8>>(),
+                                ]
+                                .concat()
+                            } else {
+                                // not reversed
+                                [byte_1_bits, byte_2_bits, byte_3_bits].concat()
+                            };
+
+                            let mut acc: u64 = 0;
+                            let mut bitstring_len: u64 = 0;
+
+                            for (bit_idx, bit) in bits.into_iter().enumerate().take(16) {
+                                region.assign_advice(
+                                    || "byte_idx_1",
+                                    self.byte_idx_1,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(byte_idx_1 as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "byte_idx_2",
+                                    self.byte_idx_2,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(byte_idx_2 as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "byte_idx_3",
+                                    self.byte_idx_3,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(byte_idx_3 as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "byte_1",
+                                    self.byte_1,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(byte_1 as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "byte_2",
+                                    self.byte_2,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(byte_2 as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "byte_3",
+                                    self.byte_3,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(byte_3 as u64)),
+                                )?;
+
+                                if bit_idx >= curr_row.2 && bit_idx <= curr_row.3 {
+                                    acc = acc * 2 + (bit as u64);
+                                    bitstring_len += 1;
+                                }
+                                region.assign_advice(
+                                    || "bit",
+                                    self.bit,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(bit as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "bitstring_value",
+                                    self.bitstring_value,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(curr_row.4 as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "bitstring_value_acc",
+                                    self.bitstring_value_acc,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(acc)),
+                                )?;
+                                region.assign_advice(
+                                    || "bitstring_len",
+                                    self.bitstring_len,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(bitstring_len)),
+                                )?;
+                                region.assign_advice(
+                                    || "from_start",
+                                    self.from_start,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from((bit_idx <= curr_row.3) as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "until_end",
+                                    self.until_end,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from((bit_idx >= curr_row.2) as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "is_reverse",
+                                    self.is_reverse,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(curr_row.5 as u64)),
+                                )?;
+
+                                // Assign fixed columns
+                                region.assign_fixed(
+                                    || "bit_index",
+                                    self.bit_index,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from(bit_idx as u64)),
+                                )?;
+                                region.assign_fixed(
+                                    || "q_start",
+                                    self.q_start,
+                                    offset + bit_idx,
+                                    || Value::known(Fr::from((bit_idx == 0) as u64)),
+                                )?;
+                            }
+
+                            offset += 16;
+                        }
+                    }
+                }
+
+                Ok(())
+            },
+        )?;
+
+        // witgen_debug
+        //     /// After all rows of meaningful bytes are done, we mark the remaining rows by a padding
+        //     /// boolean where our constraints are skipped.
+        //     pub is_padding: Column<Advice>,
+        // }
+
 
         Ok(())
     }

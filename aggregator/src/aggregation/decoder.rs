@@ -3760,10 +3760,8 @@ impl DecoderConfig {
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
-
         self.fse_table.assign(layouter, fse_aux_tables)?;
-        // witgen_debug
-        // self.bitstring_table._assign(layouter, witness_rows);
+        self.bitstring_table.assign(layouter, &block_info_arr, &witness_rows)?;
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
@@ -4252,28 +4250,37 @@ impl DecoderConfig {
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
                     ////////////////////////////////////////////////
-                    //     /// Config established while recovering the FSE table.
-                    //     fse_decoder: FseDecoder,
 
-                    //             pub struct FseDecoder {
-                    //                 /// The FSE table that is being decoded in this tag. Possible
-                    // values are:                 /// - LLT = 0, MOT = 1, MLT =
-                    // 2                 table_kind: Column<Advice>,
-                    //                 /// The number of states in the FSE table. table_size == 1 <<
-                    // AL, where AL is the accuracy log                 /// of
-                    // the FSE table.                 table_size:
-                    // Column<Advice>,                 /// The incremental
-                    // symbol for which probability is decoded.
-                    // symbol: Column<Advice>,                 /// An
-                    // accumulator of the number of states allocated to each symbol as we decode the
-                    // FSE table.                 /// This is the normalised
-                    // probability for the symbol.
-                    // probability_acc: Column<Advice>,                 ///
-                    // Whether we are in the repeat bits loop.
-                    // is_repeat_bits_loop: Column<Advice>,                 ///
-                    // Whether this row represents the 0-7 trailing bits that should be ignored.
-                    //                 is_trailing_bits: Column<Advice>,
-                    //             }
+                    // #[derive(Clone, Debug)]
+                    // pub struct FseDecoder {
+                    //     /// The FSE table that is being decoded in this tag. Possible values are:
+                    //     /// - LLT = 1, MOT = 2, MLT = 3
+                    //     table_kind: Column<Advice>,
+                    //     /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
+                    //     /// of the FSE table.
+                    //     table_size: Column<Advice>,
+                    //     /// The incremental symbol for which probability is decoded.
+                    //     symbol: Column<Advice>,
+                    //     /// The value decoded as per variable bit-packing.
+                    //     value_decoded: Column<Advice>,
+                    //     /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
+                    //     /// This is the normalised probability for the symbol.
+                    //     probability_acc: Column<Advice>,
+                    //     /// Whether we are in the repeat bits loop.
+                    //     is_repeat_bits_loop: Column<Advice>,
+                    //     /// Whether this row represents the 0-7 trailing bits that should be ignored.
+                    //     is_trailing_bits: Column<Advice>,
+                    //     /// Helper gadget to know when the decoded value is 0. This contributes to an edge-case in
+                    //     /// decoding and reconstructing the FSE table from normalised distributions, where a value=0
+                    //     /// implies prob=-1 ("less than 1" probability). In this case, the symbol is allocated a state
+                    //     /// at the end of the FSE table, with baseline=0x00 and nb=AL, i.e. reset state.
+                    //     value_decoded_eq_0: IsEqualConfig<Fr>,
+                    //     /// Helper gadget to know when the decoded value is 1. This is useful in the edge-case in
+                    //     /// decoding and reconstructing the FSE table, where a value=1 implies a special case of
+                    //     /// prob=0, where the symbol is instead followed by a 2-bit repeat flag.
+                    //     value_decoded_eq_1: IsEqualConfig<Fr>,
+                    // }
+
                 }
 
                 //     /// Once all the encoded bytes are decoded, we append the layout with padded
