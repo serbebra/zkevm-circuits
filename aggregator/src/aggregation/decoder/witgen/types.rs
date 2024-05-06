@@ -204,7 +204,7 @@ pub enum ZstdTag {
     ZstdBlockLiteralsHeader,
     /// Zstd blocks might contain raw bytes.
     ZstdBlockLiteralsRawBytes,
-    /// Zstd block's huffman header and FSE code.
+    /// Zstd block's FSE code.
     ZstdBlockFseCode,
     /// Beginning of sequence section.
     ZstdBlockSequenceHeader,
