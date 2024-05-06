@@ -3950,24 +3950,6 @@ impl DecoderConfig {
                         Fr::from(23u64),
                     )?;
 
-                    let bitstring_value_eq_0 =
-                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_0.clone());
-                    bitstring_value_eq_0.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
-                        Value::known(Fr::from(0u64)),
-                    )?;
-
-                    let bitstring_value_eq_1 =
-                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_1.clone());
-                    bitstring_value_eq_1.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
-                        Value::known(Fr::from(1u64)),
-                    )?;
-
                     let bitstring_value_eq_3 =
                         IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
                     bitstring_value_eq_3.assign(
