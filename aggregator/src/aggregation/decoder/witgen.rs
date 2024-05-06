@@ -1,6 +1,7 @@
 use eth_types::Field;
 // use ethers_core::k256::pkcs8::der::Sequence;
 use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
+use revm_primitives::bitvec::ptr::write;
 // use zkevm_circuits::witness;
 // use zstd::zstd_safe::WriteBuf;
 
@@ -1114,6 +1115,7 @@ fn process_sequences<F: Field>(
                 is_init = false;
                 mode = 0; // switch to data mode
                 order_idx = 0;
+                seq_idx += 1;
             }
         } else {
             // Value decoding step
@@ -1135,7 +1137,6 @@ fn process_sequences<F: Field>(
                 );
 
                 raw_sequence_instructions.push(new_instruction);
-                seq_idx += 1;
             }
         }
 
@@ -1229,12 +1230,14 @@ fn process_sequences<F: Field>(
             && !witness_rows[idx].bitstream_read_data.is_seq_init
         {
             let seq_idx = witness_rows[idx].bitstream_read_data.seq_idx;
-            witness_rows[idx].bitstream_read_data.values = [
-                // literal length, match length and match offset.
-                raw_sequence_instructions[seq_idx].2 as u64,
-                raw_sequence_instructions[seq_idx].1 as u64,
-                raw_sequence_instructions[seq_idx].0 as u64,
-            ];
+            if seq_idx > 0 {
+                witness_rows[idx].bitstream_read_data.values = [
+                    // literal length, match length and match offset.
+                    raw_sequence_instructions[seq_idx - 1].2 as u64,
+                    raw_sequence_instructions[seq_idx - 1].1 as u64,
+                    raw_sequence_instructions[seq_idx - 1].0 as u64,
+                ];
+            }
         }
     }
 
@@ -1533,6 +1536,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             rows.last().expect("last row expected to exist"),
             randomness,
         );
+
         witness_rows.extend_from_slice(&rows);
         literals.extend_from_slice(&new_literals);
         aux_data.extend_from_slice(&lstream_lens);
@@ -1541,6 +1545,9 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             fse_aux_tables.push(fse_aux_table);
         }
 
+        block_info_arr.push(block_info);
+        sequence_info_arr.push(sequence_info);
+
         if block_info.is_last_block {
             // TODO: Recover this assertion after the sequence section decoding is completed.
             // assert!(byte_offset >= src.len());
@@ -1548,26 +1555,23 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         } else {
             block_idx += 1;
         }
-
-        block_info_arr.push(block_info);
-        sequence_info_arr.push(sequence_info);
     }
 
     // witgen_debug
-    for (idx, row) in witness_rows.iter().enumerate() {
-        write!(
-            handle,
-            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
-            idx,
-            row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len, row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc, row.state.is_tag_change, row.state.tag_rlc_acc,
-            row.encoded_data.byte_idx, row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse, row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1, row.encoded_data.aux_2, row.encoded_data.value_rlc,
-            row.decoded_data.decoded_len, row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len, row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,
-            row.fse_data.state, row.fse_data.baseline, row.fse_data.num_bits, row.fse_data.symbol, row.fse_data.num_emitted,
-            row.bitstream_read_data.bit_start_idx, row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value, row.bitstream_read_data.is_zero_bit_read,
-        ).unwrap();
+    // for (idx, row) in witness_rows.iter().enumerate() {
+    //     write!(
+    //         handle,
+    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
+    //         idx,
+    //         row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len, row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc, row.state.is_tag_change, row.state.tag_rlc_acc,
+    //         row.encoded_data.byte_idx, row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse, row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1, row.encoded_data.aux_2, row.encoded_data.value_rlc,
+    //         row.decoded_data.decoded_len, row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len, row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,
+    //         row.fse_data.state, row.fse_data.baseline, row.fse_data.num_bits, row.fse_data.symbol, row.fse_data.num_emitted,
+    //         row.bitstream_read_data.bit_start_idx, row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value, row.bitstream_read_data.is_zero_bit_read,
+    //     ).unwrap();
 
-        writeln!(handle).unwrap();
-    }
+    //     writeln!(handle).unwrap();
+    // }
 
     (
         witness_rows,

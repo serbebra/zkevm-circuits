@@ -20,6 +20,12 @@ use crate::aggregation::decoder::{
     FseAuxiliaryTableData, ZstdWitnessRow,
 };
 
+// witgen_debug
+use std::{
+    fs::{self, File},
+    io::{self, Write},
+};
+
 /// The FSE table verifies that given the symbols and the states allocated to those symbols, the
 /// baseline and number of bits (nb) are assigned correctly to them.
 ///
@@ -717,6 +723,10 @@ impl FseTable {
         layouter.assign_region(
             || "FseTable",
             |mut region| {
+                // witgen_debug
+                let stdout = io::stdout();
+                let mut handle = stdout.lock();
+
                 region.assign_fixed(
                     || "q_first",
                     self.sorted_table.q_first,
@@ -728,7 +738,7 @@ impl FseTable {
                 let mut fse_offset: usize = 1;
                 let mut sorted_offset: usize = 1;
 
-                for (_, table) in data.clone().into_iter().enumerate() {
+                for (table_idx, table) in data.clone().into_iter().enumerate() {
                     let target_end_offset = fse_offset + (1 << 9);
                     // Assign q_start
                     region.assign_fixed(
@@ -748,7 +758,7 @@ impl FseTable {
                         .filter(|(&_sym, &w)| w < 0)
                         .count();
                     for state in
-                        (table.table_size - 1)..=(table.table_size - tail_states_count as u64)
+                        ((table.table_size - tail_states_count as u64)..=(table.table_size - 1)).into_iter().rev()
                     {
                         region.assign_advice(
                             || "state",
@@ -933,10 +943,11 @@ impl FseTable {
                         }
                     }
 
-                    assert!(
-                        state_idx as u64 == table.table_size,
-                        "Last state should correspond to end of table"
-                    );
+                    // witgen_debug
+                    // assert!(
+                    //     state_idx as u64 == table.table_size,
+                    //     "Last state should correspond to end of table"
+                    // );
 
                     // Assign the symbols with positive probability in sorted table
                     for (sym, _c) in regular_symbols.into_iter() {

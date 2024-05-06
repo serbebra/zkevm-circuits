@@ -4071,75 +4071,78 @@ impl DecoderConfig {
                     ///////// Assign Block Config  //////////
                     /////////////////////////////////////////
                     let block_idx = row.state.block_idx;
-                    if block_idx != curr_block_info.block_idx as u64 {
-                        curr_block_info = block_info_arr
-                            .iter()
-                            .find(|&b| b.block_idx == block_idx as usize)
-                            .expect("Block info should exist")
-                            .clone();
-                    }
-                    if block_idx != curr_sequence_info.block_idx as u64 {
-                        curr_sequence_info = sequence_info_arr
-                            .iter()
-                            .find(|&s| s.block_idx == block_idx as usize)
-                            .expect("Sequence info should exist")
-                            .clone();
-                    }
-                    region.assign_advice(
-                        || "block_config.block_len",
-                        self.block_config.block_len,
-                        i,
-                        || Value::known(Fr::from(curr_block_info.block_len as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "block_config.block_idx",
-                        self.block_config.block_idx,
-                        i,
-                        || Value::known(Fr::from(curr_block_info.block_idx as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "block_config.is_last_block",
-                        self.block_config.is_last_block,
-                        i,
-                        || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
-                    )?;
                     let is_not_block =
                         row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize;
-                    region.assign_advice(
-                        || "block_config.is_block",
-                        self.block_config.is_block,
-                        i,
-                        || Value::known(Fr::from(!is_not_block as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "block_config.num_sequences",
-                        self.block_config.num_sequences,
-                        i,
-                        || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                    )?;
-
-                    let table_names = ["LLT", "MOT", "MLT"];
-                    for idx in 0..3 {
+                    
+                    if !is_not_block {
+                        if block_idx != curr_block_info.block_idx as u64 {
+                            curr_block_info = block_info_arr
+                                .iter()
+                                .find(|&b| b.block_idx == block_idx as usize)
+                                .expect("Block info should exist")
+                                .clone();
+                        }
+                        if block_idx != curr_sequence_info.block_idx as u64 {
+                            curr_sequence_info = sequence_info_arr
+                                .iter()
+                                .find(|&s| s.block_idx == block_idx as usize)
+                                .expect("Sequence info should exist")
+                                .clone();
+                        }
                         region.assign_advice(
-                            || table_names[idx],
-                            self.block_config.compression_modes[idx],
+                            || "block_config.block_len",
+                            self.block_config.block_len,
                             i,
-                            || {
-                                Value::known(Fr::from(
-                                    curr_sequence_info.compression_mode[idx] as u64,
-                                ))
-                            },
+                            || Value::known(Fr::from(curr_block_info.block_len as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.block_idx",
+                            self.block_config.block_idx,
+                            i,
+                            || Value::known(Fr::from(curr_block_info.block_idx as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.is_last_block",
+                            self.block_config.is_last_block,
+                            i,
+                            || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.is_block",
+                            self.block_config.is_block,
+                            i,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.num_sequences",
+                            self.block_config.num_sequences,
+                            i,
+                            || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                        )?;
+    
+                        let table_names = ["LLT", "MOT", "MLT"];
+                        for idx in 0..3 {
+                            region.assign_advice(
+                                || table_names[idx],
+                                self.block_config.compression_modes[idx],
+                                i,
+                                || {
+                                    Value::known(Fr::from(
+                                        curr_sequence_info.compression_mode[idx] as u64,
+                                    ))
+                                },
+                            )?;
+                        }
+    
+                        let is_empty_sequences =
+                            IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
+                        is_empty_sequences.assign(
+                            &mut region,
+                            i,
+                            Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                            Value::known(Fr::from(0u64)),
                         )?;
                     }
-
-                    let is_empty_sequences =
-                        IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
-                    is_empty_sequences.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                        Value::known(Fr::from(0u64)),
-                    )?;
 
                     ////////////////////////////////////////////////////////////
                     ///////// Assign Extra Sequence Bitstream Fields  //////////
@@ -4327,9 +4330,6 @@ mod tests {
         ) -> Result<(), Error> {
             let (config, challenge) = config;
             let challenges = challenge.values(&layouter);
-
-            config.range8.load(&mut layouter)?;
-            config.range16.load(&mut layouter)?;
 
             let (
                 witness_rows,
