@@ -1050,13 +1050,11 @@ impl DecoderConfig {
         is_tag!(is_zb_literals_header, ZstdBlockLiteralsHeader);
         is_tag!(is_zb_raw_block, ZstdBlockLiteralsRawBytes);
         is_tag!(is_zb_sequence_header, ZstdBlockSequenceHeader);
-        is_tag!(is_zb_sequence_fse, ZstdBlockFseCode);
-        // TODO: update to ZstdBlockSequenceData once witgen code is merged.
+        is_tag!(is_zb_sequence_fse, ZstdBlockSequenceFseCode);
         is_tag!(is_zb_sequence_data, ZstdBlockSequenceData);
 
         is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
         is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
-        // TODO: update to ZstdBlockSequenceData once witgen code is merged.
         is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
 
         meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
@@ -1942,7 +1940,7 @@ impl DecoderConfig {
                 select::expr(
                     no_fse_tables,
                     ZstdTag::ZstdBlockSequenceData.expr(),
-                    ZstdTag::ZstdBlockFseCode.expr(),
+                    ZstdTag::ZstdBlockSequenceFseCode.expr(),
                 ),
             );
 
@@ -2355,7 +2353,7 @@ impl DecoderConfig {
                 cb.require_equal(
                     "tag=FseCode",
                     meta.query_advice(config.tag_config.tag, Rotation::cur()),
-                    ZstdTag::ZstdBlockFseCode.expr(),
+                    ZstdTag::ZstdBlockSequenceFseCode.expr(),
                 );
 
                 // 2. trailing bits only occur on the last row of the tag=FseCode section.
@@ -4031,7 +4029,7 @@ impl DecoderConfig {
                         || Value::known(Fr::from(is_block_header as u64)),
                     )?;
 
-                    let is_fse_code = row.state.tag == ZstdTag::ZstdBlockFseCode;
+                    let is_fse_code = row.state.tag == ZstdTag::ZstdBlockSequenceFseCode;
                     region.assign_advice(
                         || "tag_config.is_fse_code",
                         self.tag_config.is_fse_code,

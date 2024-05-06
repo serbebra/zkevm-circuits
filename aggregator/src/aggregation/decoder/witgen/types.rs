@@ -153,10 +153,10 @@ pub enum ZstdTag {
     ZstdBlockLiteralsHeader,
     /// Zstd blocks might contain raw bytes.
     ZstdBlockLiteralsRawBytes,
-    /// Zstd block's FSE code.
-    ZstdBlockFseCode,
     /// Beginning of sequence section.
     ZstdBlockSequenceHeader,
+    /// Zstd block's FSE code.
+    ZstdBlockSequenceFseCode,
     /// sequence bitstream for recovering instructions
     ZstdBlockSequenceData,
 }
@@ -171,8 +171,8 @@ impl ZstdTag {
             Self::BlockHeader => false,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
-            Self::ZstdBlockFseCode => false,
             Self::ZstdBlockSequenceHeader => false,
+            Self::ZstdBlockSequenceFseCode => false,
             Self::ZstdBlockSequenceData => true,
         }
     }
@@ -186,8 +186,8 @@ impl ZstdTag {
             Self::BlockHeader => false,
             Self::ZstdBlockLiteralsHeader => true,
             Self::ZstdBlockLiteralsRawBytes => true,
-            Self::ZstdBlockFseCode => true,
             Self::ZstdBlockSequenceHeader => true,
+            Self::ZstdBlockSequenceFseCode => true,
             Self::ZstdBlockSequenceData => true,
         }
     }
@@ -201,8 +201,8 @@ impl ZstdTag {
             Self::BlockHeader => true,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
-            Self::ZstdBlockFseCode => false,
             Self::ZstdBlockSequenceHeader => false,
+            Self::ZstdBlockSequenceFseCode => false,
             Self::ZstdBlockSequenceData => true,
         }
     }
@@ -239,8 +239,8 @@ impl ToString for ZstdTag {
             Self::BlockHeader => "BlockHeader",
             Self::ZstdBlockLiteralsHeader => "ZstdBlockLiteralsHeader",
             Self::ZstdBlockLiteralsRawBytes => "ZstdBlockLiteralsRawBytes",
-            Self::ZstdBlockFseCode => "ZstdBlockFseCode",
             Self::ZstdBlockSequenceHeader => "ZstdBlockSequenceHeader",
+            Self::ZstdBlockSequenceFseCode => "ZstdBlockSequenceFseCode",
             Self::ZstdBlockSequenceData => "ZstdBlockSequenceData",
         })
     }

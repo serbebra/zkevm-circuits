@@ -24,7 +24,7 @@ const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
     (ZstdBlockLiteralsHeader, 5),
     (ZstdBlockLiteralsRawBytes, 1048575), // (1 << 20) - 1
     (ZstdBlockSequenceHeader, 4),
-    (ZstdBlockFseCode, 128),
+    (ZstdBlockSequenceFseCode, 128),
     (ZstdBlockSequenceData, 1048575), // (1 << 20) - 1
 ];
 
@@ -642,7 +642,7 @@ fn process_sequences<F: Field>(
             |(i, ((&value_byte, tag_value_acc), tag_rlc_acc))| ZstdWitnessRow {
                 state: ZstdState {
                     tag: ZstdTag::ZstdBlockSequenceHeader,
-                    tag_next: ZstdTag::ZstdBlockFseCode,
+                    tag_next: ZstdTag::ZstdBlockSequenceFseCode,
                     block_idx,
                     max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceHeader),
                     tag_len: num_sequence_header_bytes as u64,
@@ -858,14 +858,14 @@ fn process_sequences<F: Field>(
         for row in bitstream_rows {
             witness_rows.push(ZstdWitnessRow {
                 state: ZstdState {
-                    tag: ZstdTag::ZstdBlockFseCode,
+                    tag: ZstdTag::ZstdBlockSequenceFseCode,
                     tag_next: if idx > 1 {
                         ZstdTag::ZstdBlockSequenceData
                     } else {
-                        ZstdTag::ZstdBlockFseCode
+                        ZstdTag::ZstdBlockSequenceFseCode
                     },
                     block_idx,
-                    max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockFseCode),
+                    max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceFseCode),
                     tag_len,
                     tag_idx: row.1 as u64,
                     tag_value,

@@ -464,7 +464,7 @@ impl BitstringTable {
                         .iter()
                         .find(|&r| {
                             r.state.block_idx == (block.block_idx as u64)
-                                && r.state.tag == ZstdTag::ZstdBlockFseCode
+                                && r.state.tag == ZstdTag::ZstdBlockSequenceFseCode
                         })
                         .unwrap()
                         .encoded_data
@@ -473,7 +473,7 @@ impl BitstringTable {
                         .iter()
                         .filter(|&r| {
                             r.state.block_idx == (block.block_idx as u64)
-                                && r.state.tag == ZstdTag::ZstdBlockFseCode
+                                && r.state.tag == ZstdTag::ZstdBlockSequenceFseCode
                         })
                         .map(|r| {
                             (
