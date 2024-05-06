@@ -913,30 +913,28 @@ mod tests {
         // for now only comparing state/baseline/nb for S1, i.e. weight == 1.
 
         assert_eq!(n_bytes, 4);
-        // witgen_debug
-        // assert_eq!(
-        //     table.sym_to_sorted_states.get(&1).cloned().unwrap(),
-        //     [
-        //         (0x03, 0x10, 3),
-        //         (0x0c, 0x18, 3),
-        //         (0x11, 0x00, 2),
-        //         (0x15, 0x04, 2),
-        //         (0x1a, 0x08, 2),
-        //         (0x1e, 0x0c, 2),
-        //     ]
-        //     .iter()
-        //     .enumerate()
-        //     .map(|(_i, &(state, baseline, num_bits))| FseTableRow {
-        //     .map(|(_i, &(state, baseline, num_bits))| FseTableRow {
-        //         state,
-        //         symbol: 1,
-        //         baseline,
-        //         num_bits,
-        //         num_emitted: 0,
-        //         is_state_skipped: false,
-        //     })
-        //     .collect::<Vec<FseTableRow>>(),
-        // );
+        assert_eq!(
+            table.sym_to_sorted_states.get(&1).cloned().unwrap(),
+            [
+                (0x03, 0x10, 3),
+                (0x0c, 0x18, 3),
+                (0x11, 0x00, 2),
+                (0x15, 0x04, 2),
+                (0x1a, 0x08, 2),
+                (0x1e, 0x0c, 2),
+            ]
+            .iter()
+            .enumerate()
+            .map(|(_i, &(state, baseline, num_bits))| FseTableRow {
+                state,
+                symbol: 1,
+                baseline,
+                num_bits,
+                num_emitted: 0,
+                is_state_skipped: false,
+            })
+            .collect::<Vec<FseTableRow>>(),
+        );
 
         Ok(())
     }
