@@ -739,7 +739,7 @@ impl FseTable {
                 let mut sorted_offset: usize = 1;
 
                 for (table_idx, table) in data.clone().into_iter().enumerate() {
-                    let target_end_offset = fse_offset + (1 << 9);
+                    let target_end_offset = fse_offset + (1 << 10); // reserve enough rows to accommodate skipped states
                     // Assign q_start
                     region.assign_fixed(
                         || "q_start",
