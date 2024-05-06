@@ -3,8 +3,9 @@ use gadgets::{
     util::{and, not, select, Expr},
 };
 use halo2_proofs::{
+    circuit::{Layouter, Value},
     halo2curves::bn256::Fr,
-    plonk::{Advice, Column, ConstraintSystem, Expression, Fixed, VirtualCells},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
 use itertools::Itertools;
@@ -15,7 +16,7 @@ use zkevm_circuits::{
 
 use crate::aggregation::decoder::{
     tables::{FixedLookupTag, FixedTable},
-    witgen::FseTableKind,
+    witgen::FseTableKind, FseAuxiliaryTableData, ZstdWitnessRow,
 };
 
 /// The FSE table verifies that given the symbols and the states allocated to those symbols, the
@@ -704,6 +705,25 @@ impl FseTable {
         debug_assert!(meta.degree() <= 9);
 
         config
+    }
+
+    /// Assign the FSE table.
+    pub fn assign(
+        &self,
+        layouter: &mut impl Layouter<Fr>,
+        data: Vec<FseAuxiliaryTableData>,
+    ) -> Result<(), Error> {
+        layouter.assign_region(
+            || "FseTable",
+            |mut region| {
+
+
+
+
+
+                Ok(())
+            }
+        )
     }
 }
 

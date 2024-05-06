@@ -717,46 +717,51 @@ fn process_sequences<F: Field>(
 
     // Literal Length Table (LLT)
     let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) =
-        // witgen_debug
-        // src: &[u8],
-        // block_idx: u64,
-        // table_kind: FseTableKind,
-        // byte_offset: usize,
-        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::LLT, byte_offset)
+        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::LLT, byte_offset, literal_lengths_mode < 2)
             .expect("Reconstructing FSE-packed Literl Length (LL) table should not fail.");
     let llt = table_llt.parse_state_table();
-    let al_llt = bit_boundaries_llt
+    let al_llt = if literal_lengths_mode > 0 {
+        bit_boundaries_llt
         .first()
         .expect("Accuracy Log should exist")
         .1
-        + 5;
-
+        + 5
+    } else {
+        6
+    };
+    
     // Cooked Match Offset Table (CMOT)
     let byte_offset = byte_offset + n_fse_bytes_llt;
     let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) =
-        // witgen_debug
-        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MOT, byte_offset)
+        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MOT, byte_offset, offsets_mode < 2)
             .expect("Reconstructing FSE-packed Cooked Match Offset (CMO) table should not fail.");
     let cmot = table_cmot.parse_state_table();
-    let al_cmot = bit_boundaries_cmot
+    let al_cmot = if offsets_mode > 0 {
+        bit_boundaries_cmot
         .first()
         .expect("Accuracy Log should exist")
         .1
-        + 5;
+        + 5
+    } else {
+        5
+    };
 
     // Match Length Table (MLT)
     let byte_offset = byte_offset + n_fse_bytes_cmot;
     let (n_fse_bytes_mlt, bit_boundaries_mlt, table_mlt) =
-        // witgen_debug
-        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MLT, byte_offset)
+        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MLT, byte_offset, match_lengths_mode < 2)
             .expect("Reconstructing FSE-packed Match Length (ML) table should not fail.");
     let mlt = table_mlt.parse_state_table();
-    let al_mlt = bit_boundaries_mlt
+    let al_mlt = if match_lengths_mode > 0 {
+        bit_boundaries_mlt
         .first()
         .expect("Accuracy Log should exist")
         .1
-        + 5;
-
+        + 5
+    } else {
+        6
+    };
+    
     // Add witness rows for the FSE tables
     for (idx, start_offset, end_offset, bit_boundaries, tag_len) in [
         (

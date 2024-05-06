@@ -11,6 +11,8 @@ use itertools::Itertools;
 use strum_macros::EnumIter;
 use std::collections::HashMap;
 
+use crate::aggregation::decoder::tables::FseTable;
+
 use super::{
     params::N_BITS_PER_BYTE,
     util::{read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
@@ -589,6 +591,9 @@ pub struct FseAuxiliaryTableData {
     pub table_kind: FseTableKind,
     /// The FSE table's size, i.e. 1 << AL (accuracy log).
     pub table_size: u64,
+    /// Normalized probability,
+    /// Used to indicate actual probability frequency of symbols, with 0 and -1 symbols present
+    pub normalised_probs: BTreeMap<u64, i32>,
     /// A map from FseSymbol (weight) to states, also including fields for that state, for
     /// instance, the baseline and the number of bits to read from the FSE bitstream.
     ///
@@ -619,6 +624,7 @@ impl FseAuxiliaryTableData {
         block_idx: u64,
         table_kind: FseTableKind,
         byte_offset: usize,
+        is_predefined: bool,
     ) -> std::io::Result<ReconstructedFse> {
         // construct little-endian bit-reader.
         let data = src.iter().skip(byte_offset).cloned().collect::<Vec<u8>>();
@@ -641,69 +647,98 @@ impl FseAuxiliaryTableData {
         let mut normalised_probs = BTreeMap::new();
         let mut R = table_size;
         let mut symbol = 0;
-        while R > 0 {
-            // number of bits and value read from the variable bit-packed data.
-            // And update the total number of bits read so far.
-            let (n_bits_read, value) = read_variable_bit_packing(&data, offset, R + 1)?;
-            reader.skip(n_bits_read)?;
-            offset += n_bits_read;
-            bit_boundaries.push((offset, value));
 
-            // Number of states allocated to this symbol.
-            // - prob=-1 => 1
-            // - prob=0  => 0
-            // - prob>=1 => prob
-            let N = match value {
-                0 => 1,
-                _ => value - 1,
+        if is_predefined {
+            let predefined_frequencies = match table_kind {
+                FseTableKind::LLT => {
+                    vec![4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1,
+                    2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
+                    -1,-1,-1,-1]
+                },
+                FseTableKind::MOT => {
+                    vec![1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1, 1, 1, 1,-1,-1,-1,-1,-1]
+                },
+                FseTableKind::MLT => {
+                    vec![1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,-1,-1,
+                    -1,-1,-1,-1,-1]
+                },
+                _ => unreachable!("Invalid table type."),
             };
-
-            // When a symbol has a value==0, it signifies a case of prob=-1 (or probability "less
-            // than 1"), where such symbols are allocated states from the end and retreating. In
-            // such cases, we reset the FSE state, i.e. read accuracy_log number of bits from the
-            // bitstream with a baseline==0x00.
-            if value == 0 {
-                normalised_probs.insert(symbol, -1);
-                symbol += 1;
+            for (symbol, freq) in predefined_frequencies.into_iter().enumerate() {
+                normalised_probs.insert(symbol as u64, freq);
             }
-
-            // When a symbol has a value==1 (prob==0), it is followed by a 2-bits repeat flag. This
-            // repeat flag tells how many probabilities of zeroes follow the current one. It
-            // provides a number ranging from 0 to 3. If it is a 3, another 2-bits repeat flag
-            // follows, and so on.
-            if value == 1 {
-                normalised_probs.insert(symbol, 0);
-                symbol += 1;
-                loop {
-                    let repeat_bits = reader.read::<u8>(2)?;
-                    offset += 2;
-                    bit_boundaries.push((offset, repeat_bits as u64));
-
-                    for k in 0..repeat_bits {
-                        normalised_probs.insert(symbol + (k as u64), 0);
-                    }
-                    symbol += repeat_bits as u64;
-
-                    if repeat_bits < 3 {
-                        break;
+        } else {
+            while R > 0 {
+                // number of bits and value read from the variable bit-packed data.
+                // And update the total number of bits read so far.
+                let (n_bits_read, value) = read_variable_bit_packing(&data, offset, R + 1)?;
+                reader.skip(n_bits_read)?;
+                offset += n_bits_read;
+                bit_boundaries.push((offset, value));
+    
+                // Number of states allocated to this symbol.
+                // - prob=-1 => 1
+                // - prob=0  => 0
+                // - prob>=1 => prob
+                let N = match value {
+                    0 => 1,
+                    _ => value - 1,
+                };
+    
+                // When a symbol has a value==0, it signifies a case of prob=-1 (or probability "less
+                // than 1"), where such symbols are allocated states from the end and retreating. In
+                // such cases, we reset the FSE state, i.e. read accuracy_log number of bits from the
+                // bitstream with a baseline==0x00.
+                if value == 0 {
+                    normalised_probs.insert(symbol, -1);
+                    symbol += 1;
+                }
+    
+                // When a symbol has a value==1 (prob==0), it is followed by a 2-bits repeat flag. This
+                // repeat flag tells how many probabilities of zeroes follow the current one. It
+                // provides a number ranging from 0 to 3. If it is a 3, another 2-bits repeat flag
+                // follows, and so on.
+                if value == 1 {
+                    normalised_probs.insert(symbol, 0);
+                    symbol += 1;
+                    loop {
+                        let repeat_bits = reader.read::<u8>(2)?;
+                        offset += 2;
+                        bit_boundaries.push((offset, repeat_bits as u64));
+    
+                        for k in 0..repeat_bits {
+                            normalised_probs.insert(symbol + (k as u64), 0);
+                        }
+                        symbol += repeat_bits as u64;
+    
+                        if repeat_bits < 3 {
+                            break;
+                        }
                     }
                 }
+    
+                // When a symbol has a value>1 (prob>=1), it is allocated that many number of states in
+                // the FSE table.
+                if value > 1 {
+                    normalised_probs.insert(symbol, N as i32);
+                    symbol += 1;
+                }
+    
+                // remove N slots from a total of R.
+                R -= N;
             }
-
-            // When a symbol has a value>1 (prob>=1), it is allocated that many number of states in
-            // the FSE table.
-            if value > 1 {
-                normalised_probs.insert(symbol, N as i32);
-                symbol += 1;
-            }
-
-            // remove N slots from a total of R.
-            R -= N;
         }
-
+        
         // ignore any bits left to be read until byte-aligned.
-        let t = (((offset as usize) - 1) / N_BITS_PER_BYTE) + 1;
-
+        let t = if is_predefined {
+            0
+        } else {
+            (((offset as usize) - 1) / N_BITS_PER_BYTE) + 1
+        };
+        
         // read the trailing section
         if t * N_BITS_PER_BYTE > (offset as usize) {
             let bits_remaining = t * N_BITS_PER_BYTE - offset as usize;
@@ -730,11 +765,12 @@ impl FseAuxiliaryTableData {
 
         Ok((
             t,
-            bit_boundaries,
+            if is_predefined { vec![] } else { bit_boundaries },
             Self {
                 block_idx,
                 table_kind,
                 table_size,
+                normalised_probs,
                 sym_to_states,
                 sym_to_sorted_states,
             },
@@ -928,7 +964,7 @@ mod tests {
         let src = vec![0xff, 0xff, 0xff, 0x30, 0x6f, 0x9b, 0x03, 0xff, 0xff, 0xff];
 
         let (n_bytes, _bit_boundaries, table) =
-            FseAuxiliaryTableData::reconstruct(&src, 1, FseTableKind::LLT, 3)?;
+            FseAuxiliaryTableData::reconstruct(&src, 1, FseTableKind::LLT, 3, false)?;
 
         // TODO: assert equality for the entire table.
         // for now only comparing state/baseline/nb for S1, i.e. weight == 1.
@@ -1049,7 +1085,7 @@ mod tests {
         ];
 
         // witgen_debug
-        let (_n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0, FseTableKind::LLT, 0)?;
+        let (_n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0, FseTableKind::LLT, 0, false)?;
         let _parsed_state_map = table.parse_state_table();
 
         // TODO: assertions
