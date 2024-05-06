@@ -4073,7 +4073,7 @@ impl DecoderConfig {
                     let block_idx = row.state.block_idx;
                     let is_not_block =
                         row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize;
-                    
+
                     if !is_not_block {
                         if block_idx != curr_block_info.block_idx as u64 {
                             curr_block_info = block_info_arr
@@ -4119,7 +4119,7 @@ impl DecoderConfig {
                             i,
                             || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
                         )?;
-    
+
                         let table_names = ["LLT", "MOT", "MLT"];
                         for idx in 0..3 {
                             region.assign_advice(
@@ -4133,7 +4133,7 @@ impl DecoderConfig {
                                 },
                             )?;
                         }
-    
+
                         let is_empty_sequences =
                             IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
                         is_empty_sequences.assign(

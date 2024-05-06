@@ -757,8 +757,10 @@ impl FseTable {
                         .iter()
                         .filter(|(&_sym, &w)| w < 0)
                         .count();
-                    for state in
-                        ((table.table_size - tail_states_count as u64)..=(table.table_size - 1)).into_iter().rev()
+                    for state in ((table.table_size - tail_states_count as u64)
+                        ..=(table.table_size - 1))
+                        .into_iter()
+                        .rev()
                     {
                         region.assign_advice(
                             || "state",
