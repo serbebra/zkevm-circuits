@@ -3,10 +3,7 @@
 
 use eth_types::Field;
 // use ethers_core::k256::pkcs8::der::Sequence;
-use halo2_proofs::{
-    circuit::Value,
-    halo2curves::bn256::Fr,
-};
+use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
 // use zkevm_circuits::witness;
 // use zstd::zstd_safe::WriteBuf;
 
@@ -237,22 +234,28 @@ fn process_block<F: Field>(
     // witgen_debug
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    write!(handle, "=> byte_offset after a block header: {:?}", byte_offset).unwrap();
+    write!(
+        handle,
+        "=> byte_offset after a block header: {:?}",
+        byte_offset
+    )
+    .unwrap();
     writeln!(handle).unwrap();
 
     let last_row = rows.last().expect("last row expected to exist");
-    let (_byte_offset, rows, literals, lstream_len, aux_data, sequence_info, fse_aux_tables) = match block_info.block_type {
-        BlockType::ZstdCompressedBlock => process_block_zstd(
-            src,
-            block_idx,
-            byte_offset,
-            last_row,
-            randomness,
-            block_info.block_len,
-            block_info.is_last_block,
-        ),
-        _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
-    };
+    let (_byte_offset, rows, literals, lstream_len, aux_data, sequence_info, fse_aux_tables) =
+        match block_info.block_type {
+            BlockType::ZstdCompressedBlock => process_block_zstd(
+                src,
+                block_idx,
+                byte_offset,
+                last_row,
+                randomness,
+                block_info.block_len,
+                block_info.is_last_block,
+            ),
+            _ => unreachable!("BlockType::ZstdCompressedBlock expected"),
+        };
     witness_rows.extend_from_slice(&rows);
 
     (
@@ -415,7 +418,12 @@ fn process_block_zstd<F: Field>(
     // witgen_debug
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    write!(handle, "=> byte_offset after literal header: {:?}", byte_offset).unwrap();
+    write!(
+        handle,
+        "=> byte_offset after literal header: {:?}",
+        byte_offset
+    )
+    .unwrap();
     writeln!(handle).unwrap();
 
     let literals_block_result: LiteralsBlockResult<F> = {
@@ -508,7 +516,12 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     // witgen_debug
-    write!(handle, "=> byte_offset after literal block processed: {:?}", byte_offset).unwrap();
+    write!(
+        handle,
+        "=> byte_offset after literal block processed: {:?}",
+        byte_offset
+    )
+    .unwrap();
     writeln!(handle).unwrap();
 
     let last_row = witness_rows.last().expect("last row expected to exist");
@@ -525,7 +538,12 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     // witgen_debug
-    write!(handle, "=> byte_offset after sequence_processing: {:?}", byte_offset).unwrap();
+    write!(
+        handle,
+        "=> byte_offset after sequence_processing: {:?}",
+        byte_offset
+    )
+    .unwrap();
     writeln!(handle).unwrap();
 
     (
@@ -580,7 +598,7 @@ fn process_sequences<F: Field>(
     // First, process the sequence header
     let mut sequence_info = SequenceInfo::default();
     sequence_info.block_idx = block_idx as usize;
-    
+
     let byte0 = src
         .get(byte_offset)
         .expect("First byte of sequence header must exist.")
@@ -609,16 +627,26 @@ fn process_sequences<F: Field>(
     // witgen_debug
     write!(handle, "=> num_of_sequences: {:?}", num_of_sequences).unwrap();
     writeln!(handle).unwrap();
-    write!(handle, "=> num_sequence_header_bytes: {:?}", num_sequence_header_bytes).unwrap();
+    write!(
+        handle,
+        "=> num_sequence_header_bytes: {:?}",
+        num_sequence_header_bytes
+    )
+    .unwrap();
     writeln!(handle).unwrap();
-    
+
     let compression_mode_byte = src
         .get(byte_offset + num_sequence_header_bytes - 1)
         .expect("Compression mode byte must exist.")
         .clone();
     let mode_bits = value_bits_le(compression_mode_byte);
 
-    write!(handle, "=> compression_mode_byte: {:?}", compression_mode_byte).unwrap();
+    write!(
+        handle,
+        "=> compression_mode_byte: {:?}",
+        compression_mode_byte
+    )
+    .unwrap();
     writeln!(handle).unwrap();
     write!(handle, "=> compression_mode_byte_bits: {:?}", mode_bits).unwrap();
     writeln!(handle).unwrap();
@@ -636,14 +664,18 @@ fn process_sequences<F: Field>(
         "Only FSE_Compressed_Mode is allowed"
     );
     assert!(
-        offsets_mode == 2 || offsets_mode == 0, 
+        offsets_mode == 2 || offsets_mode == 0,
         "Only FSE_Compressed_Mode is allowed"
     );
     assert!(
         match_lengths_mode == 2 || match_lengths_mode == 0,
         "Only FSE_Compressed_Mode is allowed"
     );
-    sequence_info.compression_mode = [literal_lengths_mode > 0, offsets_mode > 0, match_lengths_mode > 0];
+    sequence_info.compression_mode = [
+        literal_lengths_mode > 0,
+        offsets_mode > 0,
+        match_lengths_mode > 0,
+    ];
 
     let multiplier =
         (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
@@ -716,52 +748,67 @@ fn process_sequences<F: Field>(
     let fse_starting_byte_offset = byte_offset;
 
     // Literal Length Table (LLT)
-    let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) =
-        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::LLT, byte_offset, literal_lengths_mode < 2)
-            .expect("Reconstructing FSE-packed Literl Length (LL) table should not fail.");
+    let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) = FseAuxiliaryTableData::reconstruct(
+        src,
+        0,
+        FseTableKind::LLT,
+        byte_offset,
+        literal_lengths_mode < 2,
+    )
+    .expect("Reconstructing FSE-packed Literl Length (LL) table should not fail.");
     let llt = table_llt.parse_state_table();
     let al_llt = if literal_lengths_mode > 0 {
         bit_boundaries_llt
-        .first()
-        .expect("Accuracy Log should exist")
-        .1
-        + 5
+            .first()
+            .expect("Accuracy Log should exist")
+            .1
+            + 5
     } else {
         6
     };
-    
+
     // Cooked Match Offset Table (CMOT)
     let byte_offset = byte_offset + n_fse_bytes_llt;
-    let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) =
-        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MOT, byte_offset, offsets_mode < 2)
-            .expect("Reconstructing FSE-packed Cooked Match Offset (CMO) table should not fail.");
+    let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) = FseAuxiliaryTableData::reconstruct(
+        src,
+        0,
+        FseTableKind::MOT,
+        byte_offset,
+        offsets_mode < 2,
+    )
+    .expect("Reconstructing FSE-packed Cooked Match Offset (CMO) table should not fail.");
     let cmot = table_cmot.parse_state_table();
     let al_cmot = if offsets_mode > 0 {
         bit_boundaries_cmot
-        .first()
-        .expect("Accuracy Log should exist")
-        .1
-        + 5
+            .first()
+            .expect("Accuracy Log should exist")
+            .1
+            + 5
     } else {
         5
     };
 
     // Match Length Table (MLT)
     let byte_offset = byte_offset + n_fse_bytes_cmot;
-    let (n_fse_bytes_mlt, bit_boundaries_mlt, table_mlt) =
-        FseAuxiliaryTableData::reconstruct(src, 0, FseTableKind::MLT, byte_offset, match_lengths_mode < 2)
-            .expect("Reconstructing FSE-packed Match Length (ML) table should not fail.");
+    let (n_fse_bytes_mlt, bit_boundaries_mlt, table_mlt) = FseAuxiliaryTableData::reconstruct(
+        src,
+        0,
+        FseTableKind::MLT,
+        byte_offset,
+        match_lengths_mode < 2,
+    )
+    .expect("Reconstructing FSE-packed Match Length (ML) table should not fail.");
     let mlt = table_mlt.parse_state_table();
     let al_mlt = if match_lengths_mode > 0 {
         bit_boundaries_mlt
-        .first()
-        .expect("Accuracy Log should exist")
-        .1
-        + 5
+            .first()
+            .expect("Accuracy Log should exist")
+            .1
+            + 5
     } else {
         6
     };
-    
+
     // Add witness rows for the FSE tables
     for (idx, start_offset, end_offset, bit_boundaries, tag_len) in [
         (
@@ -1086,7 +1133,7 @@ fn process_sequences<F: Field>(
 
     let mut is_init = true;
     let mut nb = nb_switch[mode][order_idx];
-    
+
     while current_bit_idx + nb <= n_sequence_data_bytes * N_BITS_PER_BYTE {
         let bitstring_value =
             be_bits_to_value(&sequence_bitstream[current_bit_idx..(current_bit_idx + nb)]);
@@ -1216,9 +1263,10 @@ fn process_sequences<F: Field>(
                 baseline: curr_baseline as u64,
             },
             decoded_data: last_row.decoded_data.clone(),
-            fse_data: FseTableRow::default(), // TODO: Clarify alternating FSE/data segments
-            // TODO(ray): pls check where to get this field from.
-            // is_state_skipped: false,
+            fse_data: FseTableRow::default(), /* TODO: Clarify alternating FSE/data segments
+                                               * TODO(ray): pls check where to get this field
+                                               * from.
+                                               * is_state_skipped: false, */
         });
 
         for _ in 0..nb {
@@ -1245,7 +1293,9 @@ fn process_sequences<F: Field>(
     let mut repeated_offset: [usize; 3] = [1, 4, 8];
 
     for idx in 0..witness_rows.len() {
-        if witness_rows[idx].state.tag == ZstdTag::ZstdBlockSequenceData && !witness_rows[idx].bitstream_read_data.is_seq_init {
+        if witness_rows[idx].state.tag == ZstdTag::ZstdBlockSequenceData
+            && !witness_rows[idx].bitstream_read_data.is_seq_init
+        {
             let seq_idx = witness_rows[idx].bitstream_read_data.seq_idx;
             witness_rows[idx].bitstream_read_data.values = [
                 // literal length, match length and match offset.
@@ -1253,7 +1303,7 @@ fn process_sequences<F: Field>(
                 raw_sequence_instructions[seq_idx].1 as u64,
                 raw_sequence_instructions[seq_idx].0 as u64,
             ];
-        }   
+        }
     }
 
     for (idx, inst) in raw_sequence_instructions.iter().enumerate() {
@@ -1581,9 +1631,9 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
 
     for (idx, row) in witness_rows.iter().enumerate() {
         write!(
-            handle, 
+            handle,
             "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};", 
-            idx, 
+            idx,
             row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len, row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc, row.state.is_tag_change, row.state.tag_rlc_acc,
             row.encoded_data.byte_idx, row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse, row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1, row.encoded_data.aux_2, row.encoded_data.value_rlc,
             row.decoded_data.decoded_len, row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len, row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,
@@ -1594,7 +1644,14 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         writeln!(handle).unwrap();
     }
 
-    (witness_rows, literals, aux_data, fse_aux_tables, block_info_arr, sequence_info_arr)
+    (
+        witness_rows,
+        literals,
+        aux_data,
+        fse_aux_tables,
+        block_info_arr,
+        sequence_info_arr,
+    )
 }
 
 #[cfg(test)]
@@ -1740,8 +1797,14 @@ mod tests {
         // write!(handle, "=> compressed len: {:?}", compressed.len()).unwrap();
         // writeln!(handle).unwrap();
 
-        let (_witness_rows, _decoded_literals, _aux_data, _fse_aux_tables, block_info_arr, sequence_info_arr) =
-            process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
+        let (
+            _witness_rows,
+            _decoded_literals,
+            _aux_data,
+            _fse_aux_tables,
+            block_info_arr,
+            sequence_info_arr,
+        ) = process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
 
         Ok(())
     }

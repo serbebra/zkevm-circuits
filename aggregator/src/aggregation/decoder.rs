@@ -3,6 +3,7 @@ pub mod witgen;
 use ethers_core::k256::elliptic_curve::rand_core::block;
 use witgen::*;
 
+use crate::aggregation::decoder::tables::FixedLookupTag;
 use gadgets::{
     binary_number::{BinaryNumberChip, BinaryNumberConfig},
     comparator::{ComparatorChip, ComparatorConfig, ComparatorInstruction},
@@ -23,15 +24,17 @@ use itertools::Itertools;
 use zkevm_circuits::{
     evm_circuit::{BaseConstraintBuilder, ConstrainBuilderCommon},
     table::{BitwiseOpTable, LookupTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
-    util::Challenges, witness,
+    util::Challenges,
+    witness,
 };
-use crate::aggregation::decoder::tables::FixedLookupTag;
 
 use self::{
-    tables::{BitstringTable, FixedTable, FseTable, LiteralsHeaderTable}, util::value_bits_le, witgen::{
+    tables::{BitstringTable, FixedTable, FseTable, LiteralsHeaderTable},
+    util::value_bits_le,
+    witgen::{
         FseTableKind, ZstdTag, N_BITS_PER_BYTE, N_BITS_REPEAT_FLAG, N_BITS_ZSTD_TAG,
         N_BLOCK_HEADER_BYTES,
-    }
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -3124,7 +3127,6 @@ impl DecoderConfig {
                 .zip_eq(config.fse_table.table_exprs_by_state(meta))
                 .map(|(arg, table)| (condition.expr() * arg, table))
                 .collect()
-            
             },
         );
 
@@ -3682,8 +3684,8 @@ impl DecoderConfig {
         block_info_arr: Vec<BlockInfo>,
         sequence_info_arr: Vec<SequenceInfo>,
         challenges: &Challenges<Value<Fr>>,
-    // witgen_debug
-    // ) -> Result<AssignedDecoderConfigExports, Error> {
+        // witgen_debug
+        // ) -> Result<AssignedDecoderConfigExports, Error> {
     ) -> Result<(), Error> {
         let mut pow_of_rand: Vec<Value<Fr>> = vec![Value::known(Fr::ONE)];
 
@@ -3700,7 +3702,6 @@ impl DecoderConfig {
         self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
         self.pow2_table.load(layouter)?;
-
 
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
@@ -3719,7 +3720,12 @@ impl DecoderConfig {
             .filter(|r| r.state.tag == ZstdTag::ZstdBlockLiteralsHeader)
             .map(|r| r.clone())
             .collect::<Vec<ZstdWitnessRow<Fr>>>();
-        let max_block_idx = witness_rows.iter().last().expect("Last row of witness exists.").state.block_idx;
+        let max_block_idx = witness_rows
+            .iter()
+            .last()
+            .expect("Last row of witness exists.")
+            .state
+            .block_idx;
         for curr_block_idx in 1..=max_block_idx {
             let byte_idx = literal_header_rows
                 .iter()
@@ -3733,18 +3739,27 @@ impl DecoderConfig {
                 .filter(|&r| r.state.block_idx == curr_block_idx)
                 .map(|r| r.encoded_data.value_byte as u64)
                 .collect::<Vec<u64>>();
-            
+
             literal_headers.push((
-                curr_block_idx, 
-                byte_idx, 
+                curr_block_idx,
+                byte_idx,
                 (
-                    literal_bytes[0], 
-                    if literal_bytes.len() > 1 { literal_bytes[1] } else { 0 }, 
-                    if literal_bytes.len() > 2 { literal_bytes[2] } else { 0 },
+                    literal_bytes[0],
+                    if literal_bytes.len() > 1 {
+                        literal_bytes[1]
+                    } else {
+                        0
+                    },
+                    if literal_bytes.len() > 2 {
+                        literal_bytes[2]
+                    } else {
+                        0
+                    },
                 ),
             ));
         }
-        self.literals_header_table.assign(layouter, literal_headers)?;
+        self.literals_header_table
+            .assign(layouter, literal_headers)?;
 
         /////////////////////////////////////////
         ///// Assign Decompression Region  //////
@@ -3755,12 +3770,7 @@ impl DecoderConfig {
                 /////////////////////////////////////////
                 /////////// Assign First Row  ///////////
                 /////////////////////////////////////////
-                region.assign_fixed(
-                    || "q_first",
-                    self.q_first,
-                    0,
-                    || Value::known(Fr::one()),
-                )?;
+                region.assign_fixed(|| "q_first", self.q_first, 0, || Value::known(Fr::one()))?;
 
                 /////////////////////////////////////////
                 ///////// Assign Witness Rows  //////////
@@ -3799,7 +3809,7 @@ impl DecoderConfig {
                                         bits[N_BITS_PER_BYTE - idx - 1]
                                     }) as u64,
                                 ))
-                            }
+                            },
                         )?;
                     }
                     region.assign_advice(
@@ -3856,8 +3866,9 @@ impl DecoderConfig {
                         || Value::known(Fr::from(is_nil as u64)),
                     )?;
 
-                    let bit_index_end_cmp_7 =
-                        ComparatorChip::construct(self.bitstream_decoder.bit_index_end_cmp_7.clone());
+                    let bit_index_end_cmp_7 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_7.clone(),
+                    );
                     bit_index_end_cmp_7.assign(
                         &mut region,
                         i,
@@ -3865,8 +3876,9 @@ impl DecoderConfig {
                         Fr::from(7u64),
                     )?;
 
-                    let bit_index_end_cmp_15 =
-                        ComparatorChip::construct(self.bitstream_decoder.bit_index_end_cmp_15.clone());
+                    let bit_index_end_cmp_15 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_15.clone(),
+                    );
                     bit_index_end_cmp_15.assign(
                         &mut region,
                         i,
@@ -3874,8 +3886,9 @@ impl DecoderConfig {
                         Fr::from(15u64),
                     )?;
 
-                    let bit_index_end_cmp_23 =
-                        ComparatorChip::construct(self.bitstream_decoder.bit_index_end_cmp_23.clone());
+                    let bit_index_end_cmp_23 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_23.clone(),
+                    );
                     bit_index_end_cmp_23.assign(
                         &mut region,
                         i,
@@ -4026,7 +4039,10 @@ impl DecoderConfig {
 
                     let tag_len = row.state.tag_len as usize;
                     if tag_len >= pow_of_rand.len() {
-                        let mut last = pow_of_rand.last().expect("Last pow_of_rand exists.").clone();
+                        let mut last = pow_of_rand
+                            .last()
+                            .expect("Last pow_of_rand exists.")
+                            .clone();
                         for _ in pow_of_rand.len()..=tag_len {
                             last = last * challenges.keccak_input();
                             pow_of_rand.push(last.clone());
@@ -4056,10 +4072,18 @@ impl DecoderConfig {
                     /////////////////////////////////////////
                     let block_idx = row.state.block_idx;
                     if block_idx != curr_block_info.block_idx as u64 {
-                        curr_block_info = block_info_arr.iter().find(|&b| b.block_idx == block_idx as usize).expect("Block info should exist").clone();
+                        curr_block_info = block_info_arr
+                            .iter()
+                            .find(|&b| b.block_idx == block_idx as usize)
+                            .expect("Block info should exist")
+                            .clone();
                     }
                     if block_idx != curr_sequence_info.block_idx as u64 {
-                        curr_sequence_info = sequence_info_arr.iter().find(|&s| s.block_idx == block_idx as usize).expect("Sequence info should exist").clone();
+                        curr_sequence_info = sequence_info_arr
+                            .iter()
+                            .find(|&s| s.block_idx == block_idx as usize)
+                            .expect("Sequence info should exist")
+                            .clone();
                     }
                     region.assign_advice(
                         || "block_config.block_len",
@@ -4079,7 +4103,8 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
                     )?;
-                    let is_not_block = row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize;
+                    let is_not_block =
+                        row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize;
                     region.assign_advice(
                         || "block_config.is_block",
                         self.block_config.is_block,
@@ -4099,7 +4124,11 @@ impl DecoderConfig {
                             || table_names[idx],
                             self.block_config.compression_modes[idx],
                             i,
-                            || Value::known(Fr::from(curr_sequence_info.compression_mode[idx] as u64)),
+                            || {
+                                Value::known(Fr::from(
+                                    curr_sequence_info.compression_mode[idx] as u64,
+                                ))
+                            },
                         )?;
                     }
 
@@ -4164,14 +4193,16 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
                     )?;
-                    let byte0_lt_0x80 = LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
+                    let byte0_lt_0x80 =
+                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
                     byte0_lt_0x80.assign(
                         &mut region,
                         i,
                         Fr::from(row.encoded_data.value_byte as u64),
                         Fr::from(0x80 as u64),
                     )?;
-                    let byte0_lt_0xff = LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
+                    let byte0_lt_0xff =
+                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
                     byte0_lt_0xff.assign(
                         &mut region,
                         i,
@@ -4186,27 +4217,29 @@ impl DecoderConfig {
                     //     fse_decoder: FseDecoder,
 
                     //             pub struct FseDecoder {
-                    //                 /// The FSE table that is being decoded in this tag. Possible values are:
-                    //                 /// - LLT = 0, MOT = 1, MLT = 2
-                    //                 table_kind: Column<Advice>,
-                    //                 /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
-                    //                 /// of the FSE table.
-                    //                 table_size: Column<Advice>,
-                    //                 /// The incremental symbol for which probability is decoded.
-                    //                 symbol: Column<Advice>,
-                    //                 /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
-                    //                 /// This is the normalised probability for the symbol.
-                    //                 probability_acc: Column<Advice>,
-                    //                 /// Whether we are in the repeat bits loop.
-                    //                 is_repeat_bits_loop: Column<Advice>,
-                    //                 /// Whether this row represents the 0-7 trailing bits that should be ignored.
+                    //                 /// The FSE table that is being decoded in this tag. Possible
+                    // values are:                 /// - LLT = 0, MOT = 1, MLT =
+                    // 2                 table_kind: Column<Advice>,
+                    //                 /// The number of states in the FSE table. table_size == 1 <<
+                    // AL, where AL is the accuracy log                 /// of
+                    // the FSE table.                 table_size:
+                    // Column<Advice>,                 /// The incremental
+                    // symbol for which probability is decoded.
+                    // symbol: Column<Advice>,                 /// An
+                    // accumulator of the number of states allocated to each symbol as we decode the
+                    // FSE table.                 /// This is the normalised
+                    // probability for the symbol.
+                    // probability_acc: Column<Advice>,                 ///
+                    // Whether we are in the repeat bits loop.
+                    // is_repeat_bits_loop: Column<Advice>,                 ///
+                    // Whether this row represents the 0-7 trailing bits that should be ignored.
                     //                 is_trailing_bits: Column<Advice>,
                     //             }
                 }
 
-        //     /// Once all the encoded bytes are decoded, we append the layout with padded rows.
-        //     is_padding: Column<Advice>,
-        // }
+                //     /// Once all the encoded bytes are decoded, we append the layout with padded
+                // rows.     is_padding: Column<Advice>,
+                // }
 
                 Ok(())
             },
@@ -4228,25 +4261,23 @@ mod tests {
     use eth_types::Field;
     use std::marker::PhantomData;
 
+    use super::process;
     use crate::{DecoderConfig, DecoderConfigArgs};
+    use bitstream_io::write;
     use halo2_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
+        dev::MockProver,
         halo2curves::bn256::Fr,
         plonk::{Circuit, ConstraintSystem, Error},
-        dev::MockProver,
     };
-    use zkevm_circuits::{
-        table::{
-            BitwiseOpTable, Pow2Table, PowOfRandTable, RangeTable, U8Table
-        }, 
-        util::Challenges
-    };
-    use super::process;
     use std::{
         fs::{self, File},
         io::{self, Write},
     };
-    use bitstream_io::write;
+    use zkevm_circuits::{
+        table::{BitwiseOpTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
+        util::Challenges,
+    };
 
     #[derive(Clone, Debug, Default)]
     struct DecoderConfigTester {
@@ -4273,8 +4304,8 @@ mod tests {
             let bitwise_op_table = BitwiseOpTable::construct(meta);
 
             let config = DecoderConfig::configure(
-                meta, 
-                &challenges_expr, 
+                meta,
+                &challenges_expr,
                 DecoderConfigArgs {
                     pow_rand_table,
                     pow2_table,
@@ -4282,7 +4313,7 @@ mod tests {
                     range8,
                     range16,
                     bitwise_op_table,
-                }
+                },
             );
 
             (config, challenges)
@@ -4300,17 +4331,23 @@ mod tests {
             config.range8.load(&mut layouter)?;
             config.range16.load(&mut layouter)?;
 
-            let (witness_rows, _decoded_literals, aux_data, fse_aux_tables, block_info_arr, sequence_info_arr) = 
-                process(&self.compressed, challenges.keccak_input());
-
-            config.assign::<Fr>(
-                &mut layouter, 
-                witness_rows, 
-                aux_data, 
+            let (
+                witness_rows,
+                _decoded_literals,
+                aux_data,
                 fse_aux_tables,
                 block_info_arr,
                 sequence_info_arr,
-                &challenges
+            ) = process(&self.compressed, challenges.keccak_input());
+
+            config.assign::<Fr>(
+                &mut layouter,
+                witness_rows,
+                aux_data,
+                fse_aux_tables,
+                block_info_arr,
+                sequence_info_arr,
+                &challenges,
             )?;
 
             Ok(())
@@ -4323,33 +4360,45 @@ mod tests {
 
         let compressed = {
             // compression level = 0 defaults to using level=3, which is zstd's default.
-            let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0).expect("Encoder construction");
+            let mut encoder =
+                zstd::stream::write::Encoder::new(Vec::new(), 0).expect("Encoder construction");
 
             // disable compression of literals, i.e. literals will be raw bytes.
-            encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
-                zstd::zstd_safe::ParamSwitch::Disable,
-            )).expect("Encoder set_parameter: LiteralCompressionMode");
+            encoder
+                .set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
+                    zstd::zstd_safe::ParamSwitch::Disable,
+                ))
+                .expect("Encoder set_parameter: LiteralCompressionMode");
             // set target block size to fit within a single block.
-            encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024)).expect("Encoder set_parameter: TargetCBlockSize");
+            encoder
+                .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))
+                .expect("Encoder set_parameter: TargetCBlockSize");
             // do not include the checksum at the end of the encoded data.
-            encoder.include_checksum(false).expect("Encoder include_checksum: false");
+            encoder
+                .include_checksum(false)
+                .expect("Encoder include_checksum: false");
             // do not include magic bytes at the start of the frame since we will have a single
             // frame.
-            encoder.include_magicbytes(false).expect("Encoder include magicbytes: false");
+            encoder
+                .include_magicbytes(false)
+                .expect("Encoder include magicbytes: false");
             // set source length, which will be reflected in the frame header.
-            encoder.set_pledged_src_size(Some(raw.len() as u64)).expect("Encoder src_size: raw.len()");
+            encoder
+                .set_pledged_src_size(Some(raw.len() as u64))
+                .expect("Encoder src_size: raw.len()");
             // include the content size to know at decode time the expected size of decoded data.
-            encoder.include_contentsize(true).expect("Encoder include_contentsize: true");
+            encoder
+                .include_contentsize(true)
+                .expect("Encoder include_contentsize: true");
 
             encoder.write_all(&raw).expect("Encoder wirte_all");
             encoder.finish().expect("Encoder success")
         };
 
-        let decoder_config_tester = DecoderConfigTester { compressed, };
+        let decoder_config_tester = DecoderConfigTester { compressed };
 
         let k = 15;
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
     }
-
 }

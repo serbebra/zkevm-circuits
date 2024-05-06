@@ -1,15 +1,12 @@
-use std::{
-    collections::BTreeMap,
-    io::Cursor,
-};
+use std::{collections::BTreeMap, io::Cursor};
 
 use bitstream_io::{BitRead, BitReader, LittleEndian};
 use eth_types::Field;
 use gadgets::impl_expr;
 use halo2_proofs::{circuit::Value, plonk::Expression};
 use itertools::Itertools;
-use strum_macros::EnumIter;
 use std::collections::HashMap;
+use strum_macros::EnumIter;
 
 use crate::aggregation::decoder::tables::FseTable;
 
@@ -20,7 +17,7 @@ use super::{
 
 // witgen_debug
 // use std::{
-//     // io, 
+//     // io,
 //     // witgen_debug
 //     // io::Write
 // };
@@ -645,20 +642,24 @@ impl FseAuxiliaryTableData {
         if is_predefined {
             let predefined_frequencies = match table_kind {
                 FseTableKind::LLT => {
-                    vec![4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1,
-                    2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
-                    -1,-1,-1,-1]
-                },
+                    vec![
+                        4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                        3, 2, 1, 1, 1, 1, 1, -1, -1, -1, -1,
+                    ]
+                }
                 FseTableKind::MOT => {
-                    vec![1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
-                    1, 1, 1, 1, 1, 1, 1, 1,-1,-1,-1,-1,-1]
-                },
+                    vec![
+                        1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1,
+                        -1, -1, -1, -1,
+                    ]
+                }
                 FseTableKind::MLT => {
-                    vec![1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
-                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,-1,-1,
-                    -1,-1,-1,-1,-1]
-                },
+                    vec![
+                        1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1,
+                        -1, -1, -1, -1,
+                    ]
+                }
                 _ => unreachable!("Invalid table type."),
             };
             for (symbol, freq) in predefined_frequencies.into_iter().enumerate() {
@@ -672,7 +673,7 @@ impl FseAuxiliaryTableData {
                 reader.skip(n_bits_read)?;
                 offset += n_bits_read;
                 bit_boundaries.push((offset, value));
-    
+
                 // Number of states allocated to this symbol.
                 // - prob=-1 => 1
                 // - prob=0  => 0
@@ -681,20 +682,21 @@ impl FseAuxiliaryTableData {
                     0 => 1,
                     _ => value - 1,
                 };
-    
-                // When a symbol has a value==0, it signifies a case of prob=-1 (or probability "less
-                // than 1"), where such symbols are allocated states from the end and retreating. In
-                // such cases, we reset the FSE state, i.e. read accuracy_log number of bits from the
-                // bitstream with a baseline==0x00.
+
+                // When a symbol has a value==0, it signifies a case of prob=-1 (or probability
+                // "less than 1"), where such symbols are allocated states from the
+                // end and retreating. In such cases, we reset the FSE state, i.e.
+                // read accuracy_log number of bits from the bitstream with a
+                // baseline==0x00.
                 if value == 0 {
                     normalised_probs.insert(symbol, -1);
                     symbol += 1;
                 }
-    
-                // When a symbol has a value==1 (prob==0), it is followed by a 2-bits repeat flag. This
-                // repeat flag tells how many probabilities of zeroes follow the current one. It
-                // provides a number ranging from 0 to 3. If it is a 3, another 2-bits repeat flag
-                // follows, and so on.
+
+                // When a symbol has a value==1 (prob==0), it is followed by a 2-bits repeat flag.
+                // This repeat flag tells how many probabilities of zeroes follow
+                // the current one. It provides a number ranging from 0 to 3. If it
+                // is a 3, another 2-bits repeat flag follows, and so on.
                 if value == 1 {
                     normalised_probs.insert(symbol, 0);
                     symbol += 1;
@@ -702,37 +704,37 @@ impl FseAuxiliaryTableData {
                         let repeat_bits = reader.read::<u8>(2)?;
                         offset += 2;
                         bit_boundaries.push((offset, repeat_bits as u64));
-    
+
                         for k in 0..repeat_bits {
                             normalised_probs.insert(symbol + (k as u64), 0);
                         }
                         symbol += repeat_bits as u64;
-    
+
                         if repeat_bits < 3 {
                             break;
                         }
                     }
                 }
-    
-                // When a symbol has a value>1 (prob>=1), it is allocated that many number of states in
-                // the FSE table.
+
+                // When a symbol has a value>1 (prob>=1), it is allocated that many number of states
+                // in the FSE table.
                 if value > 1 {
                     normalised_probs.insert(symbol, N as i32);
                     symbol += 1;
                 }
-    
+
                 // remove N slots from a total of R.
                 R -= N;
             }
         }
-        
+
         // ignore any bits left to be read until byte-aligned.
         let t = if is_predefined {
             0
         } else {
             (((offset as usize) - 1) / N_BITS_PER_BYTE) + 1
         };
-        
+
         // read the trailing section
         if t * N_BITS_PER_BYTE > (offset as usize) {
             let bits_remaining = t * N_BITS_PER_BYTE - offset as usize;
@@ -759,7 +761,11 @@ impl FseAuxiliaryTableData {
 
         Ok((
             t,
-            if is_predefined { vec![] } else { bit_boundaries },
+            if is_predefined {
+                vec![]
+            } else {
+                bit_boundaries
+            },
             Self {
                 block_idx,
                 is_predefined,
@@ -1080,7 +1086,8 @@ mod tests {
         ];
 
         // witgen_debug
-        let (_n_bytes, _bit_boundaries, table) = FseAuxiliaryTableData::reconstruct(&src, 0, FseTableKind::LLT, 0, false)?;
+        let (_n_bytes, _bit_boundaries, table) =
+            FseAuxiliaryTableData::reconstruct(&src, 0, FseTableKind::LLT, 0, false)?;
         let _parsed_state_map = table.parse_state_table();
 
         // TODO: assertions

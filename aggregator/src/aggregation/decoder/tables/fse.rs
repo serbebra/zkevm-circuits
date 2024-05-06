@@ -16,7 +16,8 @@ use zkevm_circuits::{
 
 use crate::aggregation::decoder::{
     tables::{FixedLookupTag, FixedTable},
-    witgen::FseTableKind, FseAuxiliaryTableData, ZstdWitnessRow,
+    witgen::FseTableKind,
+    FseAuxiliaryTableData, ZstdWitnessRow,
 };
 
 /// The FSE table verifies that given the symbols and the states allocated to those symbols, the
@@ -741,8 +742,14 @@ impl FseTable {
                     let mut state_idx: usize = 1;
 
                     // Assign the symbols with negative normalised probability
-                    let tail_states_count = table.normalised_probs.iter().filter(|(&_sym, &w)| w < 0).count();
-                    for state in (table.table_size - 1)..=(table.table_size - tail_states_count as u64) {
+                    let tail_states_count = table
+                        .normalised_probs
+                        .iter()
+                        .filter(|(&_sym, &w)| w < 0)
+                        .count();
+                    for state in
+                        (table.table_size - 1)..=(table.table_size - tail_states_count as u64)
+                    {
                         region.assign_advice(
                             || "state",
                             self.state,
@@ -759,19 +766,31 @@ impl FseTable {
                             || "symbol",
                             self.symbol,
                             fse_offset,
-                            || Value::known(Fr::from(states_to_symbol.get(&state).expect("state exists").0)),
+                            || {
+                                Value::known(Fr::from(
+                                    states_to_symbol.get(&state).expect("state exists").0,
+                                ))
+                            },
                         )?;
                         region.assign_advice(
                             || "baseline",
                             self.baseline,
                             fse_offset,
-                            || Value::known(Fr::from(states_to_symbol.get(&state).expect("state exists").1)),
+                            || {
+                                Value::known(Fr::from(
+                                    states_to_symbol.get(&state).expect("state exists").1,
+                                ))
+                            },
                         )?;
                         region.assign_advice(
                             || "nb",
                             self.nb,
                             fse_offset,
-                            || Value::known(Fr::from(states_to_symbol.get(&state).expect("state exists").2)),
+                            || {
+                                Value::known(Fr::from(
+                                    states_to_symbol.get(&state).expect("state exists").2,
+                                ))
+                            },
                         )?;
                         region.assign_advice(
                             || "is_new_symbol",
@@ -821,7 +840,12 @@ impl FseTable {
                     }
 
                     // Assign the symbols with positive probability in fse table
-                    let regular_symbols = table.normalised_probs.clone().into_iter().filter(|(_sym, w)| *w > 0).collect::<Vec<(u64, i32)>>();
+                    let regular_symbols = table
+                        .normalised_probs
+                        .clone()
+                        .into_iter()
+                        .filter(|(_sym, w)| *w > 0)
+                        .collect::<Vec<(u64, i32)>>();
                     for (sym, _c) in regular_symbols.clone().into_iter() {
                         let mut sym_acc: usize = 1;
                         let sym_rows = table.sym_to_states.get(&sym).expect("symbol exists.");
@@ -905,20 +929,33 @@ impl FseTable {
                             if !fse_row.is_state_skipped {
                                 state_idx += 1;
                                 sym_acc += 1;
-                            }   
+                            }
                         }
                     }
 
-                    assert!(state_idx as u64 == table.table_size, "Last state should correspond to end of table");
+                    assert!(
+                        state_idx as u64 == table.table_size,
+                        "Last state should correspond to end of table"
+                    );
 
                     // Assign the symbols with positive probability in sorted table
                     for (sym, _c) in regular_symbols.into_iter() {
                         let mut sym_acc: usize = 1;
-                        let sym_rows = table.sym_to_sorted_states.get(&sym).expect("symbol exists.");
+                        let sym_rows = table
+                            .sym_to_sorted_states
+                            .get(&sym)
+                            .expect("symbol exists.");
                         let sym_count = sym_rows.iter().filter(|r| !r.is_state_skipped).count();
                         let mut last_baseline = 0u64;
                         let mut spot_acc = 0u64;
-                        let smallest_spot = (1 << sym_rows.iter().filter(|r| !r.is_state_skipped).map(|r| r.num_bits).min().expect("Minimum bits read should exist.")) as u64;
+                        let smallest_spot = (1
+                            << sym_rows
+                                .iter()
+                                .filter(|r| !r.is_state_skipped)
+                                .map(|r| r.num_bits)
+                                .min()
+                                .expect("Minimum bits read should exist."))
+                            as u64;
 
                         for fse_row in sym_rows {
                             if !fse_row.is_state_skipped {
@@ -1030,7 +1067,7 @@ impl FseTable {
                                     || Value::known(Fr::from(spot_acc)),
                                 )?;
 
-                                let baseline_0x00 = 
+                                let baseline_0x00 =
                                     IsEqualChip::construct(self.sorted_table.baseline_0x00.clone());
                                 baseline_0x00.assign(
                                     &mut region,
@@ -1038,14 +1075,14 @@ impl FseTable {
                                     Value::known(Fr::from(curr_baseline)),
                                     Value::known(Fr::zero()),
                                 )?;
-                                
+
                                 last_baseline = curr_baseline;
                                 sorted_offset += 1;
                                 sym_acc += 1;
-                            } 
+                            }
                         }
                     }
-                
+
                     for offset in fse_offset..target_end_offset {
                         region.assign_advice(
                             || "sorted_table.is_padding",
@@ -1065,7 +1102,7 @@ impl FseTable {
                 }
 
                 Ok(())
-            }
+            },
         )
     }
 }
