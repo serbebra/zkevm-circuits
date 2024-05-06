@@ -1,6 +1,7 @@
 //! Error module for the eth-types crate
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
+use ethers_providers::ProviderError;
 use std::error::Error as StdError;
 
 /// Error type for any BusMapping related failure.
@@ -37,6 +38,8 @@ pub enum Error {
     WordToMemAddr,
     /// Signature parsing error.
     Signature,
+    /// JSON-RPC related error.
+    JSONRpcError(ProviderError),
 }
 
 impl Display for Error {
@@ -54,4 +57,10 @@ pub enum EthAddressParsingError {
     BadLength,
     /// Hex decoding error
     Hex(hex::FromHexError),
+}
+
+impl From<ProviderError> for Error {
+    fn from(err: ProviderError) -> Self {
+        Error::JSONRpcError(err)
+    }
 }

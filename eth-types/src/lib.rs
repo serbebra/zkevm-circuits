@@ -27,6 +27,7 @@ pub mod bytecode;
 pub mod evm_types;
 pub mod geth_types;
 pub mod l2_types;
+pub mod rpc;
 pub mod sign_types;
 pub mod state_db;
 pub mod utils;

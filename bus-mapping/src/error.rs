@@ -2,7 +2,6 @@
 
 use core::fmt::{Display, Formatter, Result as FmtResult};
 use eth_types::{evm_types::OpcodeId, Address, GethExecError, GethExecStep, Word, H256};
-use ethers_providers::ProviderError;
 use std::error::Error as StdError;
 
 /// Error type for any BusMapping related failure.
@@ -14,8 +13,6 @@ pub enum Error {
     IoError(std::io::Error),
     /// hex parsing error
     HexError(hex::FromHexError),
-    /// JSON-RPC related error.
-    JSONRpcError(ProviderError),
     /// OpcodeId is not a call type.
     OpcodeIdNotCallType,
     /// Account not found in the StateDB
@@ -44,12 +41,6 @@ pub enum Error {
 impl From<eth_types::Error> for Error {
     fn from(err: eth_types::Error) -> Self {
         Error::EthTypeError(err)
-    }
-}
-
-impl From<ProviderError> for Error {
-    fn from(err: ProviderError) -> Self {
-        Error::JSONRpcError(err)
     }
 }
 
