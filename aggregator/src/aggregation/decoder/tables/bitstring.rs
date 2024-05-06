@@ -237,8 +237,6 @@ impl BitstringTable {
 
         meta.create_gate("BitstringTable: bit_index > 0", |meta| {
             let condition = and::expr([
-                // witgen_debug
-                false.expr(),
                 not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);

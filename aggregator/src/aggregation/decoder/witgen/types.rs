@@ -15,13 +15,6 @@ use super::{
     util::{read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
 };
 
-// witgen_debug
-// use std::{
-//     // io,
-//     // witgen_debug
-//     // io::Write
-// };
-
 /// A read-only memory table (fixed table) for decompression circuit to verify that the next tag
 /// fields are assigned correctly.
 #[derive(Clone, Debug)]
@@ -1085,11 +1078,11 @@ mod tests {
             0x21, 0x9d, 0x51, 0xcc, 0x18, 0x42, 0x44, 0x81, 0x8c, 0x94, 0xb4, 0x50, 0x1e,
         ];
 
-        // witgen_debug
         let (_n_bytes, _bit_boundaries, table) =
             FseAuxiliaryTableData::reconstruct(&src, 0, FseTableKind::LLT, 0, false)?;
         let _parsed_state_map = table.parse_state_table();
 
+        // witgen_debug
         // TODO: assertions
 
         Ok(())

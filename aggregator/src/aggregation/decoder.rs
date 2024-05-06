@@ -3706,10 +3706,10 @@ impl DecoderConfig {
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
-        // self.bitstring_table._assign(layouter, witness_rows);
+        
         self.fse_table.assign(layouter, fse_aux_tables)?;
-        //     // bitstring_table: BitstringTable,
-        //     // witgen_debug
+        // witgen_debug
+        // self.bitstring_table._assign(layouter, witness_rows);
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
