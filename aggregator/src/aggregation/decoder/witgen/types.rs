@@ -385,14 +385,6 @@ pub struct DecodedData<F> {
     pub decoded_value_rlc: Value<F>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct HuffmanData {
-    pub byte_offset: u64,
-    pub bit_value: u8,
-    pub stream_idx: usize,
-    pub k: (u8, u8),
-}
-
 /// A single row in the FSE table.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FseTableRow {
@@ -587,6 +579,8 @@ pub struct FseTableData {
 pub struct FseAuxiliaryTableData {
     /// The block index in which this FSE table appears.
     pub block_idx: u64,
+    /// Indicates whether the table is pre-defined.
+    pub is_predefined: bool,
     /// The FSE table kind, variants are: LLT=1, MOT=2, MLT=3.
     pub table_kind: FseTableKind,
     /// The FSE table's size, i.e. 1 << AL (accuracy log).
@@ -768,6 +762,7 @@ impl FseAuxiliaryTableData {
             if is_predefined { vec![] } else { bit_boundaries },
             Self {
                 block_idx,
+                is_predefined,
                 table_kind,
                 table_size,
                 normalised_probs,

@@ -1,5 +1,5 @@
 use gadgets::{
-    is_equal::{IsEqualChip, IsEqualConfig},
+    is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
     util::{and, not, select, Expr},
 };
 use halo2_proofs::{
@@ -716,10 +716,353 @@ impl FseTable {
         layouter.assign_region(
             || "FseTable",
             |mut region| {
+                region.assign_fixed(
+                    || "q_first",
+                    self.sorted_table.q_first,
+                    0,
+                    || Value::known(Fr::one()),
+                )?;
 
+                // Both tables should skip the first row
+                let mut fse_offset: usize = 1;
+                let mut sorted_offset: usize = 1;
 
+                for (_, table) in data.clone().into_iter().enumerate() {
+                    let target_end_offset = fse_offset + (1 << 9);
+                    // Assign q_start
+                    region.assign_fixed(
+                        || "q_start",
+                        self.sorted_table.q_start,
+                        fse_offset,
+                        || Value::known(Fr::one()),
+                    )?;
 
+                    let states_to_symbol = table.parse_state_table();
+                    let mut state_idx: usize = 1;
 
+                    // Assign the symbols with negative normalised probability
+                    let tail_states_count = table.normalised_probs.iter().filter(|(&_sym, &w)| w < 0).count();
+                    for state in (table.table_size - 1)..=(table.table_size - tail_states_count as u64) {
+                        region.assign_advice(
+                            || "state",
+                            self.state,
+                            fse_offset,
+                            || Value::known(Fr::from(state)),
+                        )?;
+                        region.assign_advice(
+                            || "idx",
+                            self.idx,
+                            fse_offset,
+                            || Value::known(Fr::from(state_idx as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "symbol",
+                            self.symbol,
+                            fse_offset,
+                            || Value::known(Fr::from(states_to_symbol.get(&state).expect("state exists").0)),
+                        )?;
+                        region.assign_advice(
+                            || "baseline",
+                            self.baseline,
+                            fse_offset,
+                            || Value::known(Fr::from(states_to_symbol.get(&state).expect("state exists").1)),
+                        )?;
+                        region.assign_advice(
+                            || "nb",
+                            self.nb,
+                            fse_offset,
+                            || Value::known(Fr::from(states_to_symbol.get(&state).expect("state exists").2)),
+                        )?;
+                        region.assign_advice(
+                            || "is_new_symbol",
+                            self.is_new_symbol,
+                            fse_offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "is_prob_less_than1",
+                            self.is_prob_less_than1,
+                            fse_offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "is_skipped_state",
+                            self.is_skipped_state,
+                            fse_offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "symbol_count",
+                            self.symbol_count,
+                            fse_offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "symbol_count_acc",
+                            self.symbol_count_acc,
+                            fse_offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "table_size_rs_1",
+                            self.table_size_rs_1,
+                            fse_offset,
+                            || Value::known(Fr::from(table.table_size >> 1)),
+                        )?;
+                        region.assign_advice(
+                            || "table_size_rs_3",
+                            self.table_size_rs_3,
+                            fse_offset,
+                            || Value::known(Fr::from(table.table_size >> 3)),
+                        )?;
+
+                        state_idx += 1;
+                        fse_offset += 1;
+                    }
+
+                    // Assign the symbols with positive probability in fse table
+                    let regular_symbols = table.normalised_probs.clone().into_iter().filter(|(_sym, w)| *w > 0).collect::<Vec<(u64, i32)>>();
+                    for (sym, _c) in regular_symbols.clone().into_iter() {
+                        let mut sym_acc: usize = 1;
+                        let sym_rows = table.sym_to_states.get(&sym).expect("symbol exists.");
+                        let sym_count = sym_rows.iter().filter(|r| !r.is_state_skipped).count();
+
+                        for fse_row in sym_rows {
+                            region.assign_advice(
+                                || "state",
+                                self.state,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.state)),
+                            )?;
+                            region.assign_advice(
+                                || "idx",
+                                self.idx,
+                                fse_offset,
+                                || Value::known(Fr::from(state_idx as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol",
+                                self.symbol,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.symbol)),
+                            )?;
+                            region.assign_advice(
+                                || "baseline",
+                                self.baseline,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.baseline)),
+                            )?;
+                            region.assign_advice(
+                                || "nb",
+                                self.nb,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.num_bits)),
+                            )?;
+                            region.assign_advice(
+                                || "is_new_symbol",
+                                self.is_new_symbol,
+                                fse_offset,
+                                || Value::known(Fr::from((sym_acc == 1) as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "is_prob_less_than1",
+                                self.is_prob_less_than1,
+                                fse_offset,
+                                || Value::known(Fr::zero()),
+                            )?;
+                            region.assign_advice(
+                                || "is_skipped_state",
+                                self.is_skipped_state,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.is_state_skipped as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count",
+                                self.symbol_count,
+                                fse_offset,
+                                || Value::known(Fr::from(sym_count as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count_acc",
+                                self.symbol_count_acc,
+                                fse_offset,
+                                || Value::known(Fr::from(sym_acc as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_1",
+                                self.table_size_rs_1,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 1)),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_3",
+                                self.table_size_rs_3,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 3)),
+                            )?;
+
+                            fse_offset += 1;
+                            if !fse_row.is_state_skipped {
+                                state_idx += 1;
+                                sym_acc += 1;
+                            }   
+                        }
+                    }
+
+                    assert!(state_idx as u64 == table.table_size, "Last state should correspond to end of table");
+
+                    // Assign the symbols with positive probability in sorted table
+                    for (sym, _c) in regular_symbols.into_iter() {
+                        let mut sym_acc: usize = 1;
+                        let sym_rows = table.sym_to_sorted_states.get(&sym).expect("symbol exists.");
+                        let sym_count = sym_rows.iter().filter(|r| !r.is_state_skipped).count();
+                        let mut last_baseline = 0u64;
+                        let mut spot_acc = 0u64;
+                        let smallest_spot = (1 << sym_rows.iter().filter(|r| !r.is_state_skipped).map(|r| r.num_bits).min().expect("Minimum bits read should exist.")) as u64;
+
+                        for fse_row in sym_rows {
+                            if !fse_row.is_state_skipped {
+                                region.assign_advice(
+                                    || "sorted_table.block_idx",
+                                    self.sorted_table.block_idx,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.block_idx)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.table_kind",
+                                    self.sorted_table.table_kind,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.table_kind as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.table_size",
+                                    self.sorted_table.table_size,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.table_size)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.is_predefined",
+                                    self.sorted_table.is_predefined,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.is_predefined as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.table_size",
+                                    self.sorted_table.table_size,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.table_size)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.symbol",
+                                    self.sorted_table.symbol,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(fse_row.symbol)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.is_new_symbol",
+                                    self.sorted_table.is_new_symbol,
+                                    sorted_offset,
+                                    || Value::known(Fr::from((sym_acc == 1) as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.symbol_count",
+                                    self.sorted_table.symbol_count,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(sym_count as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.symbol_count_acc",
+                                    self.sorted_table.symbol_count_acc,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(sym_acc as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.state",
+                                    self.sorted_table.state,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(fse_row.state)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.nb",
+                                    self.sorted_table.nb,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(fse_row.num_bits)),
+                                )?;
+
+                                let curr_baseline = fse_row.baseline;
+                                region.assign_advice(
+                                    || "sorted_table.baseline",
+                                    self.sorted_table.baseline,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(curr_baseline)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.last_baseline",
+                                    self.sorted_table.last_baseline,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(last_baseline)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.baseline_mark",
+                                    self.sorted_table.baseline_mark,
+                                    sorted_offset,
+                                    || Value::known(Fr::from((curr_baseline == 0) as u64)),
+                                )?;
+
+                                region.assign_advice(
+                                    || "sorted_table.spot",
+                                    self.sorted_table.spot,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(1 << fse_row.num_bits)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.smallest_spot",
+                                    self.sorted_table.smallest_spot,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(smallest_spot)),
+                                )?;
+
+                                spot_acc += 1 << fse_row.num_bits;
+                                region.assign_advice(
+                                    || "sorted_table.spot_acc",
+                                    self.sorted_table.spot_acc,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(spot_acc)),
+                                )?;
+
+                                let baseline_0x00 = 
+                                    IsEqualChip::construct(self.sorted_table.baseline_0x00.clone());
+                                baseline_0x00.assign(
+                                    &mut region,
+                                    sorted_offset,
+                                    Value::known(Fr::from(curr_baseline)),
+                                    Value::known(Fr::zero()),
+                                )?;
+                                
+                                last_baseline = curr_baseline;
+                                sorted_offset += 1;
+                                sym_acc += 1;
+                            } 
+                        }
+                    }
+                
+                    for offset in fse_offset..target_end_offset {
+                        region.assign_advice(
+                            || "sorted_table.is_padding",
+                            self.is_padding,
+                            offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                    }
+                    for offset in sorted_offset..target_end_offset {
+                        region.assign_advice(
+                            || "sorted_table.sorted_table.is_padding",
+                            self.sorted_table.is_padding,
+                            offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                    }
+                }
 
                 Ok(())
             }
