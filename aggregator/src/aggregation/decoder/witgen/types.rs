@@ -70,57 +70,6 @@ impl RomTagTableRow {
     }
 }
 
-/// The symbol emitted by FSE table. This is also the weight in the canonical Huffman code.
-#[derive(Clone, Copy, Debug, EnumIter, PartialEq, Eq, PartialOrd, Ord)]
-pub enum FseSymbol {
-    ///
-    S0 = 0,
-    ///
-    S1,
-    ///
-    S2,
-    ///
-    S3,
-    ///
-    S4,
-    ///
-    S5,
-    ///
-    S6,
-    ///
-    S7,
-}
-
-impl_expr!(FseSymbol);
-
-impl From<FseSymbol> for usize {
-    fn from(value: FseSymbol) -> Self {
-        value as usize
-    }
-}
-
-impl From<FseSymbol> for u64 {
-    fn from(value: FseSymbol) -> Self {
-        value as u64
-    }
-}
-
-impl From<usize> for FseSymbol {
-    fn from(value: usize) -> Self {
-        match value {
-            0 => Self::S0,
-            1 => Self::S1,
-            2 => Self::S2,
-            3 => Self::S3,
-            4 => Self::S4,
-            5 => Self::S5,
-            6 => Self::S6,
-            7 => Self::S7,
-            _ => unreachable!("FseSymbol in [0, 8)"),
-        }
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy)]
 pub enum BlockType {
     #[default]
