@@ -471,7 +471,7 @@ pub enum RwTableTag {
     /// Account Storage operation
     AccountStorage,
     /// Account Transient Storage operation
-    TransientStorage,
+    AccountTransientStorage,
     /// Call Context operation
     CallContext,
     /// Tx Log operation
@@ -491,7 +491,7 @@ impl RwTableTag {
                 | RwTableTag::TxRefund
                 | RwTableTag::Account
                 | RwTableTag::AccountStorage
-                | RwTableTag::TransientStorage
+                | RwTableTag::AccountTransientStorage
         )
     }
 }
@@ -762,7 +762,7 @@ impl RwTable {
     }
 }
 
-pub use mpt_zktrie::mpt_circuits::MPTProofType;
+pub use mpt_circuits::MPTProofType;
 
 impl From<AccountFieldTag> for MPTProofType {
     fn from(tag: AccountFieldTag) -> Self {
