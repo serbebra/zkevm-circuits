@@ -10,7 +10,11 @@ use zkevm_circuits::{
     table::{LookupTable, RangeTable, U8Table},
 };
 
-use crate::aggregation::decoder::{util::value_bits_le, witgen::{ZstdTag, ZstdWitnessRow}, BlockInfo};
+use crate::aggregation::decoder::{
+    util::value_bits_le,
+    witgen::{ZstdTag, ZstdWitnessRow},
+    BlockInfo,
+};
 
 /// In the process of decoding zstd encoded data, there are several scenarios in which we process
 /// bits instead of bytes, for instance:
@@ -451,26 +455,25 @@ impl BitstringTable {
         layouter.assign_region(
             || "Bitstring Accumulation Table",
             |mut region| {
-                region.assign_fixed(
-                    || "q_first",
-                    self.q_first,
-                    0,
-                    || Value::known(Fr::one()),
-                )?;
-        
+                region.assign_fixed(|| "q_first", self.q_first, 0, || Value::known(Fr::one()))?;
+
                 // Multi-block assignment
                 for block in block_info_arr {
                     // Fse decoding rows
                     let fse_offset = witness_rows
                         .iter()
-                        .find(|&r| r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockFseCode)
+                        .find(|&r| {
+                            r.state.block_idx == (block.block_idx as u64)
+                                && r.state.tag == ZstdTag::ZstdBlockFseCode
+                        })
                         .unwrap()
                         .encoded_data
                         .byte_idx;
                     let fse_rows = witness_rows
                         .iter()
                         .filter(|&r| {
-                            r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockFseCode
+                            r.state.block_idx == (block.block_idx as u64)
+                                && r.state.tag == ZstdTag::ZstdBlockFseCode
                         })
                         .map(|r| {
                             (
@@ -483,18 +486,22 @@ impl BitstringTable {
                             )
                         })
                         .collect::<Vec<(usize, u64, usize, usize, u64, u64)>>();
-        
+
                     // Sequence data rows
                     let sequence_data_offset = witness_rows
                         .iter()
-                        .find(|&r| r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockSequenceData)
+                        .find(|&r| {
+                            r.state.block_idx == (block.block_idx as u64)
+                                && r.state.tag == ZstdTag::ZstdBlockSequenceData
+                        })
                         .unwrap()
                         .encoded_data
                         .byte_idx;
                     let sequence_data_rows = witness_rows
                         .iter()
                         .filter(|&r| {
-                            r.state.block_idx == (block.block_idx as u64) && r.state.tag == ZstdTag::ZstdBlockSequenceData
+                            r.state.block_idx == (block.block_idx as u64)
+                                && r.state.tag == ZstdTag::ZstdBlockSequenceData
                         })
                         .map(|r| {
                             (
@@ -507,11 +514,13 @@ impl BitstringTable {
                             )
                         })
                         .collect::<Vec<(usize, u64, usize, usize, u64, u64)>>();
-        
+
                     for (byte_offset, rows) in [
                         (fse_offset, fse_rows),
                         (sequence_data_offset, sequence_data_rows),
-                    ].into_iter() {
+                    ]
+                    .into_iter()
+                    {
                         for grouped_rows in rows.windows(3) {
                             let curr_row = grouped_rows[0].clone();
 
@@ -525,7 +534,7 @@ impl BitstringTable {
                             let byte_1_bits = value_bits_le(byte_1 as u8);
                             let byte_2_bits = value_bits_le(byte_2 as u8);
                             let byte_3_bits = value_bits_le(byte_3 as u8);
-        
+
                             let bits = if curr_row.5 > 0 {
                                 // reversed
                                 [
@@ -652,11 +661,10 @@ impl BitstringTable {
         )?;
 
         // witgen_debug
-        //     /// After all rows of meaningful bytes are done, we mark the remaining rows by a padding
-        //     /// boolean where our constraints are skipped.
+        //     /// After all rows of meaningful bytes are done, we mark the remaining rows by a
+        // padding     /// boolean where our constraints are skipped.
         //     pub is_padding: Column<Advice>,
         // }
-
 
         Ok(())
     }
