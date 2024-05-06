@@ -1,7 +1,7 @@
 use bus_mapping::{
     circuit_input_builder::{keccak_inputs, BuilderClient, CircuitsParams, PrecompileEcParams},
     util::read_env_var,
-    Error::JSONRpcError,
+    Error::EthTypeError,
 };
 use eth_types::H256;
 use halo2_proofs::{
@@ -177,7 +177,7 @@ async fn test_circuit_all_block() {
             let err = builder.err().unwrap();
             println!("{err:?}");
             let err_msg = match err {
-                JSONRpcError(_json_rpc_err) => "JSONRpcError".to_string(), // too long...
+                EthTypeError(eth_types::Error::JSONRpcError(_)) => "JSONRpcError".to_string(), /* too long... */
                 _ => format!("{err:?}"),
             };
             log::error!("invalid builder {} {:?}, err num NA", block_num, err_msg);
