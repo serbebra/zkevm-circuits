@@ -324,6 +324,30 @@ pub struct DecodedData<F> {
     pub decoded_value_rlc: Value<F>,
 }
 
+/// FSE decoding data from witness generation
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FseDecodingRow {
+    /// The FSE table that is being decoded. Possible values are:
+    /// - LLT = 1, MOT = 2, MLT = 3
+    pub table_kind: u64,
+    /// The number of states in the FSE table. table_size == 1 << AL, where AL is the accuracy log
+    /// of the FSE table.
+    pub table_size: u64,
+    /// The symbol emitted by the FSE table at this state.
+    pub symbol: u64,
+    /// During FSE table decoding, keep track of the number of symbol emitted
+    pub num_emitted: u64,
+    /// The value decoded as per variable bit-packing.
+    pub value_decoded: u64,
+    /// An accumulator of the number of states allocated to each symbol as we decode the FSE table.
+    /// This is the normalised probability for the symbol.
+    pub probability_acc: u64,
+    /// Whether we are in the repeat bits loop.
+    pub is_repeat_bits_loop: bool,
+    /// Whether this row represents the 0-7 trailing bits that should be ignored.
+    pub is_trailing_bits: bool,
+}
+
 /// A single row in the FSE table.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FseTableRow {
@@ -870,7 +894,7 @@ pub struct ZstdWitnessRow<F> {
     /// Data on decompressed data
     pub decoded_data: DecodedData<F>,
     /// Fse decoding state transition data
-    pub fse_data: FseTableRow,
+    pub fse_data: FseDecodingRow,
     /// Bitstream reader
     pub bitstream_read_data: BitstreamReadRow,
 }
@@ -885,7 +909,7 @@ impl<F: Field> ZstdWitnessRow<F> {
                 ..Default::default()
             },
             decoded_data: DecodedData::default(),
-            fse_data: FseTableRow::default(),
+            fse_data: FseDecodingRow::default(),
             bitstream_read_data: BitstreamReadRow::default(),
         }
     }

@@ -4270,49 +4270,73 @@ impl DecoderConfig {
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
                     ////////////////////////////////////////////////
+                    region.assign_advice(
+                        || "fse_decoder.table_kind",
+                        self.fse_decoder.table_kind,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.table_kind)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.table_size",
+                        self.fse_decoder.table_size,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.table_size)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.symbol",
+                        self.fse_decoder.symbol,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.symbol)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.value_decoded",
+                        self.fse_decoder.value_decoded,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.value_decoded)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.probability_acc",
+                        self.fse_decoder.probability_acc,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.probability_acc)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.is_repeat_bits_loop",
+                        self.fse_decoder.is_repeat_bits_loop,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.is_repeat_bits_loop)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.is_trailing_bits",
+                        self.fse_decoder.is_trailing_bits,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.is_trailing_bits)),
+                    )?;
 
-                    // #[derive(Clone, Debug)]
-                    // pub struct FseDecoder {
-                    //     /// The FSE table that is being decoded in this tag. Possible values are:
-                    //     /// - LLT = 1, MOT = 2, MLT = 3
-                    //     table_kind: Column<Advice>,
-                    //     /// The number of states in the FSE table. table_size == 1 << AL, where
-                    // AL is the accuracy log     /// of the FSE table.
-                    //     table_size: Column<Advice>,
-                    //     /// The incremental symbol for which probability is decoded.
-                    //     symbol: Column<Advice>,
-                    //     /// The value decoded as per variable bit-packing.
-                    //     value_decoded: Column<Advice>,
-                    //     /// An accumulator of the number of states allocated to each symbol as we
-                    // decode the FSE table.     /// This is the normalised
-                    // probability for the symbol.     probability_acc:
-                    // Column<Advice>,     /// Whether we are in the repeat bits
-                    // loop.     is_repeat_bits_loop: Column<Advice>,
-                    //     /// Whether this row represents the 0-7 trailing bits that should be
-                    // ignored.     is_trailing_bits: Column<Advice>,
-                    //     /// Helper gadget to know when the decoded value is 0. This contributes
-                    // to an edge-case in     /// decoding and reconstructing
-                    // the FSE table from normalised distributions, where a value=0
-                    //     /// implies prob=-1 ("less than 1" probability). In this case, the symbol
-                    // is allocated a state     /// at the end of the FSE table,
-                    // with baseline=0x00 and nb=AL, i.e. reset state.
-                    //     value_decoded_eq_0: IsEqualConfig<Fr>,
-                    //     /// Helper gadget to know when the decoded value is 1. This is useful in
-                    // the edge-case in     /// decoding and reconstructing the
-                    // FSE table, where a value=1 implies a special case of
-                    //     /// prob=0, where the symbol is instead followed by a 2-bit repeat flag.
-                    //     value_decoded_eq_1: IsEqualConfig<Fr>,
-                    // }
+                    let value_decoded_eq_0 = IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
+                    value_decoded_eq_0.assign(
+                        &mut region, 
+                        i,
+                        Value::known(Fr::from(row.fse_data.value_decoded)),
+                        Value::known(Fr::zero()),
+                    )?;
+                    let value_decoded_eq_1 = IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
+                    value_decoded_eq_1.assign(
+                        &mut region, 
+                        i,
+                        Value::known(Fr::from(row.fse_data.value_decoded)),
+                        Value::known(Fr::one()),
+                    )?;
                 }
 
-                //     /// Once all the encoded bytes are decoded, we append the layout with padded
-                // rows.     is_padding: Column<Advice>,
-                // }
+                // witgen_debug
+                // Assign is_padding: Column<Advice>,
 
                 Ok(())
             },
         )?;
 
+        // witgen_debug
         // pub struct AssignedDecoderConfigExports {
         //     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
         //     pub encoded_rlc: AssignedCell<Fr, Fr>,
@@ -4462,7 +4486,7 @@ mod tests {
 
         let decoder_config_tester = DecoderConfigTester { compressed };
 
-        let k = 15;
+        let k = 18;
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
     }

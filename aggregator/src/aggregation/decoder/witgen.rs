@@ -1,6 +1,7 @@
 use eth_types::Field;
 // use ethers_core::k256::pkcs8::der::Sequence;
 use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
+use revm_precompile::HashMap;
 use revm_primitives::bitvec::ptr::write;
 // use zkevm_circuits::witness;
 // use zstd::zstd_safe::WriteBuf;
@@ -153,7 +154,7 @@ fn process_frame_header<F: Field>(
                 decoded_value_rlc: Value::known(F::zero()),
             },
             bitstream_read_data: BitstreamReadRow::default(),
-            fse_data: FseTableRow::default(),
+            fse_data: FseDecodingRow::default(),
         })
         .chain(
             fcs_bytes_rev
@@ -197,7 +198,7 @@ fn process_frame_header<F: Field>(
                                 decoded_value_rlc: Value::known(F::zero()),
                             },
                             bitstream_read_data: BitstreamReadRow::default(),
-                            fse_data: FseTableRow::default(),
+                            fse_data: FseDecodingRow::default(),
                         }
                     },
                 ),
@@ -354,7 +355,7 @@ fn process_block_header<F: Field>(
                     },
                     bitstream_read_data: BitstreamReadRow::default(),
                     decoded_data: last_row.decoded_data.clone(),
-                    fse_data: FseTableRow::default(),
+                    fse_data: FseDecodingRow::default(),
                 },
             )
             .collect::<Vec<_>>(),
@@ -477,7 +478,7 @@ fn process_block_zstd<F: Field>(
                                 decoded_value_rlc,
                             },
                             bitstream_read_data: BitstreamReadRow::default(),
-                            fse_data: FseTableRow::default(),
+                            fse_data: FseDecodingRow::default(),
                         }
                     },
                 )
@@ -669,7 +670,7 @@ fn process_sequences<F: Field>(
                     decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
                 },
                 bitstream_read_data: BitstreamReadRow::default(),
-                fse_data: FseTableRow::default(),
+                fse_data: FseDecodingRow::default(),
             },
         )
         .collect::<Vec<_>>();
@@ -743,13 +744,14 @@ fn process_sequences<F: Field>(
     };
 
     // Add witness rows for the FSE tables
-    for (idx, start_offset, end_offset, bit_boundaries, tag_len) in [
+    for (idx, start_offset, end_offset, bit_boundaries, tag_len, table) in [
         (
             0usize,
             fse_starting_byte_offset,
             fse_starting_byte_offset + n_fse_bytes_llt,
             bit_boundaries_llt,
             n_fse_bytes_llt as u64,
+            &table_llt,
         ),
         (
             1usize,
@@ -757,6 +759,7 @@ fn process_sequences<F: Field>(
             fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot,
             bit_boundaries_cmot,
             n_fse_bytes_cmot as u64,
+            &table_cmot
         ),
         (
             2usize,
@@ -764,6 +767,7 @@ fn process_sequences<F: Field>(
             fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot + n_fse_bytes_mlt,
             bit_boundaries_mlt,
             n_fse_bytes_mlt as u64,
+            &table_mlt,
         ),
     ] {
         let mut tag_value_iter =
@@ -784,20 +788,25 @@ fn process_sequences<F: Field>(
                 });
         let tag_rlc = tag_rlc_iter.clone().last().expect("Tag RLC must exist");
 
-        let mut decoded: u8 = 0;
+        let mut decoded: u64 = 0;
         let mut n_acc: usize = 0;
+        let mut n_emitted: usize = 0;
         let mut current_tag_value_acc = Value::known(F::zero());
         let mut current_tag_rlc_acc = Value::known(F::zero());
         let mut last_byte_idx: i64 = 0;
         let mut from_pos: (i64, i64) = (1, 0);
         let mut to_pos: (i64, i64) = (0, 0);
+        let kind = table.table_kind;
         let accuracy_log = bit_boundaries[0].1 + 5;
+        let mut next_symbol: u64 = 0;
+        let mut is_repeating_bit_boundary: HashMap<usize, bool> = HashMap::new();
 
         let bitstream_rows = bit_boundaries
             .iter()
             .enumerate()
-            .map(|(sym, (bit_idx, value))| {
-                from_pos = if sym == 0 { (1, -1) } else { to_pos };
+            .map(|(bit_boundary_idx, (bit_idx, value))| {
+                // Calculate byte and bit positions. Increment allocators.
+                from_pos = if next_symbol == 0 { (1, -1) } else { to_pos };
 
                 from_pos.1 += 1;
                 if from_pos.1 == 8 {
@@ -821,28 +830,103 @@ fn process_sequences<F: Field>(
 
                 to_pos = ((to_byte_idx + 1) as i64, to_bit_idx as i64);
 
-                if sym > 0 && n_acc < (1 << accuracy_log) {
-                    decoded = (sym - 1) as u8;
-                    if *value > 1u64 {
-                        n_acc += (*value - 1) as usize;
-                    }
-                }
+                // Decide Fse decoding results
+                if !is_repeating_bit_boundary.contains_key(&bit_boundary_idx) {
+                    if n_acc >= (table.table_size as usize) {
+                        // Trailing bits
+                        (
+                            0,
+                            n_emitted,
+                            from_pos.0 as usize,
+                            from_pos.1 as usize,
+                            to_pos.0 as usize,
+                            to_pos.1 as usize,
+                            *value,
+                            current_tag_value_acc,
+                            current_tag_rlc_acc,
+                            n_acc,
 
-                (
-                    decoded,
-                    from_pos.0 as usize,
-                    from_pos.1 as usize,
-                    to_pos.0 as usize,
-                    to_pos.1 as usize,
-                    *value,
-                    current_tag_value_acc,
-                    current_tag_rlc_acc,
-                    0,
-                    n_acc,
-                )
+                            // FseDecoder-specific witness values
+                            kind as u64,
+                            table.table_size as u64,
+                            false,
+                            true,
+                        )
+                    } else {
+                        // Regular decoding state
+                        decoded = next_symbol;
+                        n_emitted += 1;
+                        next_symbol += 1;
+                        match *value {
+                            0 => {
+                                // When a symbol has a value==0, it signifies a case of prob=-1 (or probability
+                                // "less than 1"), where such symbols are allocated states from the
+                                // end and retreating. Exactly 1 state is allocated in this case.
+                                n_acc += 1;
+                            },
+                            1 => {
+                                let mut repeating_bit_boundary_idx = bit_boundary_idx + 1;
+                                loop {
+                                    let repeating_bits = bit_boundaries[repeating_bit_boundary_idx].1;
+                                    next_symbol += repeating_bits; // skip symbols
+                                    is_repeating_bit_boundary.insert(repeating_bit_boundary_idx, true);
+
+                                    if repeating_bits < 3 {
+                                        break;
+                                    } else {
+                                        repeating_bit_boundary_idx += 1;
+                                    }
+                                }
+                            },
+                            _ => {
+                                n_acc += (*value - 1) as usize;
+                            }
+                        }
+
+                        (
+                            decoded,
+                            n_emitted,
+                            from_pos.0 as usize,
+                            from_pos.1 as usize,
+                            to_pos.0 as usize,
+                            to_pos.1 as usize,
+                            *value,
+                            current_tag_value_acc,
+                            current_tag_rlc_acc,
+                            n_acc,
+
+                            // FseDecoder-specific witness values
+                            kind as u64,
+                            table.table_size as u64,
+                            false, // repeating bits
+                            false, // trailing bits
+                        )
+                    }
+                } else {
+                    // Repeating bits
+                    (
+                        0,
+                        n_emitted,
+                        from_pos.0 as usize,
+                        from_pos.1 as usize,
+                        to_pos.0 as usize,
+                        to_pos.1 as usize,
+                        *value,
+                        current_tag_value_acc,
+                        current_tag_rlc_acc,
+                        n_acc,
+
+                        // FseDecoder-specific witness values
+                        kind as u64,
+                        table.table_size as u64,
+                        true,
+                        false,
+                    )
+                }
             })
             .collect::<Vec<(
-                u8,
+                u64,
+                usize,
                 usize,
                 usize,
                 usize,
@@ -851,7 +935,10 @@ fn process_sequences<F: Field>(
                 Value<F>,
                 Value<F>,
                 usize,
-                usize,
+                u64,
+                u64,
+                bool,
+                bool,
             )>>();
 
         // Transform bitstream rows into witness rows
@@ -867,25 +954,25 @@ fn process_sequences<F: Field>(
                     block_idx,
                     max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceFseCode),
                     tag_len,
-                    tag_idx: row.1 as u64,
+                    tag_idx: row.2 as u64,
                     tag_value,
-                    tag_value_acc: row.6,
+                    tag_value_acc: row.7,
                     is_tag_change: false,
                     tag_rlc,
-                    tag_rlc_acc: row.7,
+                    tag_rlc_acc: row.8,
                 },
                 encoded_data: EncodedData {
-                    byte_idx: (start_offset + row.1) as u64,
+                    byte_idx: (start_offset + row.2) as u64,
                     encoded_len,
-                    value_byte: src[start_offset + row.1],
+                    value_byte: src[start_offset + row.2],
                     value_rlc,
                     reverse: false,
                     ..Default::default()
                 },
                 bitstream_read_data: BitstreamReadRow {
-                    bit_start_idx: row.2,
-                    bit_end_idx: row.4,
-                    bit_value: row.5,
+                    bit_start_idx: row.3,
+                    bit_end_idx: row.5,
+                    bit_value: row.6,
                     is_zero_bit_read: false,
                     ..Default::default()
                 },
@@ -893,10 +980,19 @@ fn process_sequences<F: Field>(
                     decoded_len: last_row.decoded_data.decoded_len,
                     decoded_len_acc: last_row.decoded_data.decoded_len_acc,
                     total_decoded_len: last_row.decoded_data.total_decoded_len,
-                    decoded_byte: row.0,
+                    decoded_byte: 0u8,
                     decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
                 },
-                fse_data: FseTableRow::default(),
+                fse_data: FseDecodingRow { 
+                    table_kind: row.10, 
+                    table_size: row.11, 
+                    symbol: row.0, 
+                    num_emitted: row.1 as u64, 
+                    value_decoded: row.6, 
+                    probability_acc: row.9 as u64, 
+                    is_repeat_bits_loop: row.12, 
+                    is_trailing_bits: row.13, 
+                },
             });
         }
     }
@@ -1017,7 +1113,7 @@ fn process_sequences<F: Field>(
             ..Default::default()
         },
         decoded_data: last_row.decoded_data.clone(),
-        fse_data: FseTableRow::default(),
+        fse_data: FseDecodingRow::default(),
     });
 
     // Exclude the leading zero section
@@ -1196,7 +1292,7 @@ fn process_sequences<F: Field>(
                 baseline: curr_baseline as u64,
             },
             decoded_data: last_row.decoded_data.clone(),
-            fse_data: FseTableRow::default(), /* TODO: Clarify alternating FSE/data segments
+            fse_data: FseDecodingRow::default(), /* TODO: Clarify alternating FSE/data segments
                                                * TODO(ray): pls check where to get this field
                                                * from.
                                                * is_state_skipped: false, */
@@ -1473,7 +1569,7 @@ fn process_block_zstd_literals_header<F: Field>(
                     },
                     bitstream_read_data: BitstreamReadRow::default(),
                     decoded_data: last_row.decoded_data.clone(),
-                    fse_data: FseTableRow::default(),
+                    fse_data: FseDecodingRow::default(),
                 },
             )
             .collect::<Vec<_>>(),
