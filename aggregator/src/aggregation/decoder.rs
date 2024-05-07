@@ -4124,8 +4124,9 @@ impl DecoderConfig {
                     ///////// Assign Block Config  //////////
                     /////////////////////////////////////////
                     let block_idx = row.state.block_idx;
-                    let is_not_block =
-                        row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize || row.state.tag == BlockHeader;
+                    let is_not_block = row.state.tag == FrameHeaderDescriptor
+                        || row.state.tag == FrameContentSize
+                        || row.state.tag == BlockHeader;
                     let is_block_header = row.state.tag == BlockHeader;
 
                     if !is_not_block || is_block_header {
@@ -4313,16 +4314,18 @@ impl DecoderConfig {
                         || Value::known(Fr::from(row.fse_data.is_trailing_bits)),
                     )?;
 
-                    let value_decoded_eq_0 = IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
+                    let value_decoded_eq_0 =
+                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
                     value_decoded_eq_0.assign(
-                        &mut region, 
+                        &mut region,
                         i,
                         Value::known(Fr::from(row.fse_data.value_decoded)),
                         Value::known(Fr::zero()),
                     )?;
-                    let value_decoded_eq_1 = IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
+                    let value_decoded_eq_1 =
+                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
                     value_decoded_eq_1.assign(
-                        &mut region, 
+                        &mut region,
                         i,
                         Value::known(Fr::from(row.fse_data.value_decoded)),
                         Value::known(Fr::one()),

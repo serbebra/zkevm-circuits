@@ -759,7 +759,7 @@ fn process_sequences<F: Field>(
             fse_starting_byte_offset + n_fse_bytes_llt + n_fse_bytes_cmot,
             bit_boundaries_cmot,
             n_fse_bytes_cmot as u64,
-            &table_cmot
+            &table_cmot,
         ),
         (
             2usize,
@@ -845,7 +845,6 @@ fn process_sequences<F: Field>(
                             current_tag_value_acc,
                             current_tag_rlc_acc,
                             n_acc,
-
                             // FseDecoder-specific witness values
                             kind as u64,
                             table.table_size as u64,
@@ -859,17 +858,20 @@ fn process_sequences<F: Field>(
                         next_symbol += 1;
                         match *value {
                             0 => {
-                                // When a symbol has a value==0, it signifies a case of prob=-1 (or probability
-                                // "less than 1"), where such symbols are allocated states from the
+                                // When a symbol has a value==0, it signifies a case of prob=-1 (or
+                                // probability "less than 1"), where
+                                // such symbols are allocated states from the
                                 // end and retreating. Exactly 1 state is allocated in this case.
                                 n_acc += 1;
-                            },
+                            }
                             1 => {
                                 let mut repeating_bit_boundary_idx = bit_boundary_idx + 1;
                                 loop {
-                                    let repeating_bits = bit_boundaries[repeating_bit_boundary_idx].1;
+                                    let repeating_bits =
+                                        bit_boundaries[repeating_bit_boundary_idx].1;
                                     next_symbol += repeating_bits; // skip symbols
-                                    is_repeating_bit_boundary.insert(repeating_bit_boundary_idx, true);
+                                    is_repeating_bit_boundary
+                                        .insert(repeating_bit_boundary_idx, true);
 
                                     if repeating_bits < 3 {
                                         break;
@@ -877,7 +879,7 @@ fn process_sequences<F: Field>(
                                         repeating_bit_boundary_idx += 1;
                                     }
                                 }
-                            },
+                            }
                             _ => {
                                 n_acc += (*value - 1) as usize;
                             }
@@ -894,7 +896,6 @@ fn process_sequences<F: Field>(
                             current_tag_value_acc,
                             current_tag_rlc_acc,
                             n_acc,
-
                             // FseDecoder-specific witness values
                             kind as u64,
                             table.table_size as u64,
@@ -915,7 +916,6 @@ fn process_sequences<F: Field>(
                         current_tag_value_acc,
                         current_tag_rlc_acc,
                         n_acc,
-
                         // FseDecoder-specific witness values
                         kind as u64,
                         table.table_size as u64,
@@ -983,15 +983,15 @@ fn process_sequences<F: Field>(
                     decoded_byte: 0u8,
                     decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
                 },
-                fse_data: FseDecodingRow { 
-                    table_kind: row.10, 
-                    table_size: row.11, 
-                    symbol: row.0, 
-                    num_emitted: row.1 as u64, 
-                    value_decoded: row.6, 
-                    probability_acc: row.9 as u64, 
-                    is_repeat_bits_loop: row.12, 
-                    is_trailing_bits: row.13, 
+                fse_data: FseDecodingRow {
+                    table_kind: row.10,
+                    table_size: row.11,
+                    symbol: row.0,
+                    num_emitted: row.1 as u64,
+                    value_decoded: row.6,
+                    probability_acc: row.9 as u64,
+                    is_repeat_bits_loop: row.12,
+                    is_trailing_bits: row.13,
                 },
             });
         }
@@ -1293,9 +1293,9 @@ fn process_sequences<F: Field>(
             },
             decoded_data: last_row.decoded_data.clone(),
             fse_data: FseDecodingRow::default(), /* TODO: Clarify alternating FSE/data segments
-                                               * TODO(ray): pls check where to get this field
-                                               * from.
-                                               * is_state_skipped: false, */
+                                                  * TODO(ray): pls check where to get this field
+                                                  * from.
+                                                  * is_state_skipped: false, */
         });
 
         for _ in 0..nb {
