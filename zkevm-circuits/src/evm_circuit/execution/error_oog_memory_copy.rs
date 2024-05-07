@@ -264,9 +264,9 @@ mod tests {
     };
 
     const TESTING_COMMON_OPCODES: &[OpcodeId] = &[
-        //OpcodeId::CALLDATACOPY,
+        OpcodeId::CALLDATACOPY,
         OpcodeId::CODECOPY,
-        //OpcodeId::RETURNDATACOPY,
+        OpcodeId::RETURNDATACOPY,
     ];
 
     const TESTING_DST_OFFSET_COPY_SIZE_PAIRS: &[(u64, u64)] =
