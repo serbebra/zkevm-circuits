@@ -31,7 +31,7 @@ pub(crate) struct MCopyGadget<F> {
     memory_src_address: MemoryAddressGadget<F>,
     memory_dest_address: MemoryAddressGadget<F>,
     copy_rwc_inc: Cell<F>,
-    // two address(src and dest) expansion, then select greater one to calculate memory word size
+    // two addresses(src and dest) expansion, then select greater one to calculate memory word size
     // and gas cost
     memory_expansion: MemoryExpansionGadget<F, 2, N_BYTES_MEMORY_WORD_SIZE>,
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
@@ -159,7 +159,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             region,
             offset,
             step.memory_word_size(),
-            //[memory_expand_address],
             [src_addr, dest_addr],
         )?;
 
@@ -245,6 +244,8 @@ mod test {
         test_ok(Word::from("0x30"), Word::from("0x30"), 0xA0);
         test_ok(Word::from("0x40"), Word::from("0x40"), 0xE4);
         test_ok(Word::from("0x0"), Word::from("0x100"), 0x20);
+
+        // TODO: add src and dest overlap case later, test tool found that case failed.
     }
 
     // mcopy OOG cases added in ./execution/error_oog_memory_copy.rs
