@@ -97,6 +97,8 @@ pub struct CopyCircuitConfig<F> {
     pub is_bytecode: Column<Advice>,
     /// Booleans to indicate what copy data type exists at the current row.
     pub is_memory: Column<Advice>,
+    /// Booleans to indicate if mcopy data type exists at the current row.
+    pub is_memory_copy: Column<Advice>,
     /// Booleans to indicate what copy data type exists at the current row.
     pub is_tx_log: Column<Advice>,
     /// Booleans to indicate if `CopyDataType::AccessListAddresses` exists at
@@ -167,7 +169,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         let value_word_rlc_prev = meta.advice_column_in(SecondPhase);
         let value_acc = meta.advice_column_in(SecondPhase);
 
-        let [is_pad, is_tx_calldata, is_bytecode, is_memory, is_tx_log, is_access_list_address, is_access_list_storage_key] =
+        let [is_pad, is_tx_calldata, is_bytecode, is_memory, is_memory_copy, is_tx_log, is_access_list_address, is_access_list_storage_key] =
             array_init(|_| meta.advice_column());
         let is_first = copy_table.is_first;
         let id = copy_table.id;
@@ -212,6 +214,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             is_tx_calldata,
             is_bytecode,
             is_memory,
+            // TODO: add is_memory_copy
             is_tx_log,
             is_access_list_address,
             is_access_list_storage_key,
@@ -363,6 +366,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
         // memory word lookup
         meta.lookup_any("rw lookup", |meta| {
+            //TODO: consider is_memory_copy ?
             let cond = meta.query_fixed(q_enable, CURRENT)
                 * meta.query_advice(is_memory, CURRENT)
                 * is_word_end.is_equal_expression.expr();
@@ -566,6 +570,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             is_tx_calldata,
             is_bytecode,
             is_memory,
+            is_memory_copy,
             is_tx_log,
             is_access_list_address,
             is_access_list_storage_key,
@@ -698,6 +703,13 @@ impl<F: Field> CopyCircuitConfig<F> {
                 || format!("is_memory at row: {}", *offset),
                 self.is_memory,
                 *offset,
+                || Value::known(F::from(tag.eq(&CopyDataType::Memory))),
+            )?;
+            region.assign_advice(
+                || format!("is_memory at row: {}", *offset),
+                self.is_memory_copy,
+                *offset,
+                //TODO: change this value after copy table assignment done.
                 || Value::known(F::from(tag.eq(&CopyDataType::Memory))),
             )?;
             region.assign_advice(
