@@ -4105,9 +4105,10 @@ impl DecoderConfig {
                     /////////////////////////////////////////
                     let block_idx = row.state.block_idx;
                     let is_not_block =
-                        row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize;
+                        row.state.tag == FrameHeaderDescriptor || row.state.tag == FrameContentSize || row.state.tag == BlockHeader;
+                    let is_block_header = row.state.tag == BlockHeader;
 
-                    if !is_not_block {
+                    if !is_not_block || is_block_header {
                         if block_idx != curr_block_info.block_idx as u64 {
                             curr_block_info = block_info_arr
                                 .iter()
