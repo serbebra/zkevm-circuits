@@ -36,7 +36,7 @@ pub(crate) struct ErrorOOGMemoryCopyGadget<F> {
     tx_id: Cell<F>,
     /// Extra stack pop for `EXTCODECOPY`
     external_address: Word<F>,
-    /// Source offset
+    /// Source offset and size to copy
     src_memory_addr: MemoryExpandedAddressGadget<F>,
     /// Destination offset and size to copy
     dst_memory_addr: MemoryExpandedAddressGadget<F>,
@@ -88,10 +88,10 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGMemoryCopyGadget<F> {
         });
 
         let dst_memory_addr = MemoryExpandedAddressGadget::construct_self(cb);
+        // src can also be possible to overflow for mcopy.
         let src_memory_addr = MemoryExpandedAddressGadget::construct_self(cb);
 
         cb.stack_pop(dst_memory_addr.offset_rlc());
-        //cb.stack_pop(src_offset.expr());
         cb.stack_pop(src_memory_addr.offset_rlc());
         cb.stack_pop(dst_memory_addr.length_rlc());
 
@@ -145,7 +145,6 @@ impl<F: Field> ExecutionGadget<F> for ErrorOOGMemoryCopyGadget<F> {
             is_warm,
             tx_id,
             external_address,
-            //src_offset,
             src_memory_addr,
             dst_memory_addr,
             memory_expansion,
@@ -539,19 +538,19 @@ mod tests {
             );
 
             test_root(&testing_data);
-            //test_internal(&testing_data);
+            test_internal(&testing_data);
         });
 
-        // [false, true].into_iter().for_each(|is_warm| {
-        //     let testing_data = TestingData::new_for_extcodecopy(
-        //         is_warm,
-        //         dst_offset,
-        //         copy_size,
-        //         Some(MOCK_BLOCK_GAS_LIMIT),
-        //     );
+        [false, true].into_iter().for_each(|is_warm| {
+            let testing_data = TestingData::new_for_extcodecopy(
+                is_warm,
+                dst_offset,
+                copy_size,
+                Some(MOCK_BLOCK_GAS_LIMIT),
+            );
 
-        //     test_root(&testing_data);
-        //     test_internal(&testing_data);
-        // });
+            test_root(&testing_data);
+            test_internal(&testing_data);
+        });
     }
 }

@@ -2426,20 +2426,12 @@ fn combine_copy_slot_bytes(
     src_range.ensure_equal_length(&mut dst_range);
 
     // Extend call memory.
-    // TODO: check if dst_addr > src_addr for mcopy ?
-    // dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
+    // if is_memory_copy=true, both dst_addr and src_addr are memory address
     if is_memory_copy && dst_addr < src_addr {
         dst_memory.extend_for_range(src_addr.into(), copy_length.into());
     } else {
         dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
     }
-
-    println!(
-        "combine_copy_slot_bytes: dst_memory len {}, dest_addr {:?} copy_length {:?}",
-        dst_memory.len(),
-        dst_addr,
-        copy_length
-    );
 
     let dst_begin_slot = dst_range.start_slot().0;
     let dst_end_slot = dst_range.end_slot().0;

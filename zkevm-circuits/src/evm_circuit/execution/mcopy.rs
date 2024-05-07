@@ -31,7 +31,7 @@ pub(crate) struct MCopyGadget<F> {
     memory_src_address: MemoryAddressGadget<F>,
     memory_dest_address: MemoryAddressGadget<F>,
     copy_rwc_inc: Cell<F>,
-    // two address expansion, then select greater one to calculate memory word size
+    // two address(src and dest) expansion, then select greater one to calculate memory word size
     // and gas cost
     memory_expansion: MemoryExpansionGadget<F, 2, N_BYTES_MEMORY_WORD_SIZE>,
     memory_copier_gas: MemoryCopierGasGadget<F, { GasCost::COPY }>,
@@ -169,20 +169,6 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             length.as_u64(),
             memory_expansion_gas_cost,
         )?;
-
-        // todo: will remove later
-        println!(
-            "next_memory_word_size {}, memory_expansion_gas_cost {}",
-            next_memory_word_size, memory_expansion_gas_cost
-        );
-        for _step in _transaction.steps.clone() {
-            println!(
-                "step {}, memory_word_size {}, memory_size {}",
-                _step.execution_state,
-                _step.memory_word_size(),
-                _step.memory_size,
-            )
-        }
 
         Ok(())
     }
