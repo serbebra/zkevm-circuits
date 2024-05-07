@@ -155,7 +155,7 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
             ),
         )?;
 
-        let (next_memory_word_size, memory_expansion_gas_cost) = self.memory_expansion.assign(
+        let (_, memory_expansion_gas_cost) = self.memory_expansion.assign(
             region,
             offset,
             step.memory_word_size(),
