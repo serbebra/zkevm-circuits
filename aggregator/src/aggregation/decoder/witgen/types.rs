@@ -197,8 +197,8 @@ impl ZstdTag {
         match self {
             Self::Null => false,
             Self::FrameHeaderDescriptor => false,
-            Self::FrameContentSize => true,
-            Self::BlockHeader => true,
+            Self::FrameContentSize => false,
+            Self::BlockHeader => false,
             Self::ZstdBlockLiteralsHeader => false,
             Self::ZstdBlockLiteralsRawBytes => false,
             Self::ZstdBlockSequenceHeader => false,

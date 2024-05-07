@@ -723,10 +723,6 @@ impl FseTable {
         layouter.assign_region(
             || "FseTable",
             |mut region| {
-                // witgen_debug
-                let stdout = io::stdout();
-                let mut handle = stdout.lock();
-
                 region.assign_fixed(
                     || "q_first",
                     self.sorted_table.q_first,
