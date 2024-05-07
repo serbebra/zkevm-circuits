@@ -1654,6 +1654,28 @@ impl DecoderConfig {
                 meta.query_advice(config.block_config.block_idx, Rotation::prev()) + 1.expr(),
             );
 
+            // block_len, block_idx and is_last_block fields do not change in the BlockHeader. We
+            // explicitly do this check since tag=BlockHeader has is_block=false, to facilitate the
+            // change of these parameters between blocks (at the tag=BlockHeader boundary). For the
+            // subsequent tags, these fields remain the same and is checked via the gate for
+            // is_block=true.
+            for column in [
+                config.block_config.block_len,
+                config.block_config.block_idx,
+                config.block_config.is_last_block,
+            ] {
+                cb.require_equal(
+                    "BlockHeader: block_idx/block_len/is_last_block",
+                    meta.query_advice(column, Rotation(0)),
+                    meta.query_advice(column, Rotation(1)),
+                );
+                cb.require_equal(
+                    "BlockHeader: block_idx/block_len/is_last_block",
+                    meta.query_advice(column, Rotation(0)),
+                    meta.query_advice(column, Rotation(2)),
+                );
+            }
+
             // We now validate the end of the previous block.
             // - tag=BlockHeader is preceded by tag in [FrameContentSize, SeqHeader, SeqData].
             // - if prev_tag=SequenceHeader: prev block had no sequences.
@@ -1686,8 +1708,6 @@ impl DecoderConfig {
 
             cb.gate(condition)
         });
-
-        debug_assert!(meta.degree() <= 9);
 
         meta.lookup("DecoderConfig: tag BlockHeader (Block_Size)", |meta| {
             let condition = and::expr([
