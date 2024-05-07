@@ -19,8 +19,7 @@ use crate::{
         StackOp, Target, TxAccessListAccountOp, TxAccessListAccountStorageOp, TxLogField, TxLogOp,
         TxReceiptField, TxReceiptOp, RW,
     },
-    precompile::{is_precompiled, PrecompileCalls},
-    state_db::{CodeDB, StateDB},
+    precompile::PrecompileCalls,
     Error,
 };
 use eth_types::{
@@ -30,6 +29,8 @@ use eth_types::{
         memory::{MemoryRange, MemoryWordRange},
         Gas, GasCost, Memory, MemoryAddress, MemoryRef, OpcodeId, StackAddress, MAX_CODE_SIZE,
     },
+    state_db::{CodeDB, StateDB},
+    utils::is_precompiled,
     Address, Bytecode, GethExecStep, ToAddress, ToBigEndian, ToWord, Word, H256, U256,
 };
 use ethers_core::utils::{get_contract_address, get_create2_address};
@@ -57,14 +58,27 @@ impl<'a> CircuitInputStateRef<'a> {
     /// Create a new step from a `GethExecStep`
     pub fn new_step(&self, geth_step: &GethExecStep) -> Result<ExecStep, Error> {
         let call_ctx = self.tx_ctx.call_ctx()?;
-
-        Ok(ExecStep::new(
+        let step = ExecStep::new(
             geth_step,
             call_ctx,
             self.block_ctx.rwc,
             call_ctx.reversible_write_counter,
             self.tx_ctx.log_id,
-        ))
+        );
+        #[cfg(feature = "fix-refund")]
+        let step = {
+            let mut step = step;
+            if geth_step.refund.0 != self.sdb.refund() {
+                log::trace!(
+                    "correct op refund to {} trace: {}",
+                    self.sdb.refund(),
+                    geth_step.refund.0
+                );
+                step.gas_refund = Gas(self.sdb.refund());
+            }
+            step
+        };
+        Ok(step)
     }
 
     /// Create a new BeginTx step
@@ -1147,7 +1161,7 @@ impl<'a> CircuitInputStateRef<'a> {
             .tx_ctx
             .call_is_success
             .get(self.tx.calls().len() - self.tx_ctx.call_is_success_offset)
-            .unwrap();
+            .expect("fail to get call_is_success");
         let mut call = self.parse_call_partial(step)?;
         call.is_success = is_success;
         call.is_persistent = self.call()?.is_persistent && is_success;
@@ -1162,6 +1176,14 @@ impl<'a> CircuitInputStateRef<'a> {
                 let operation = &self.block.container.storage[*idx];
                 if operation.rw().is_write() && operation.reversible() {
                     Some(OpEnum::Storage(operation.op().reverse()))
+                } else {
+                    None
+                }
+            }
+            OperationRef(Target::TransientStorage, idx) => {
+                let operation = &self.block.container.transient_storage[*idx];
+                if operation.rw().is_write() && operation.reversible() {
+                    Some(OpEnum::TransientStorage(operation.op().reverse()))
                 } else {
                     None
                 }
@@ -1207,6 +1229,10 @@ impl<'a> CircuitInputStateRef<'a> {
         match &op {
             OpEnum::Storage(op) => {
                 self.sdb.set_storage(&op.address, &op.key, &op.value);
+            }
+            OpEnum::TransientStorage(op) => {
+                self.sdb
+                    .set_transient_storage(&op.address, &op.key, &op.value)
             }
             OpEnum::TxAccessListAccount(op) => {
                 if !op.is_warm_prev && op.is_warm {
@@ -1339,13 +1365,15 @@ impl<'a> CircuitInputStateRef<'a> {
 
             #[cfg(feature = "scroll")]
             let keccak_code_hash = H256(ethers_core::utils::keccak256(&code));
+            let code_len = code.len();
             let code_hash = self.code_db.insert(code);
+            log::debug!("call_success_create with code len {code_len} codehash {code_hash:?}");
 
             let (found, callee_account) = self.sdb.get_account_mut(&call.address);
             if !found {
                 return Err(Error::AccountNotFound(call.address));
             }
-
+            //callee_account.storage.clear();
             // already updated in return_revert.rs with check_update_sdb_account
             debug_assert_eq!(callee_account.code_hash, code_hash);
             #[cfg(feature = "scroll")]
@@ -1679,6 +1707,7 @@ impl<'a> CircuitInputStateRef<'a> {
                     OpcodeId::RETURNDATACOPY => Some(ExecError::ReturnDataOutOfBounds),
                     // Break write protection (CALL with value will be handled below)
                     OpcodeId::SSTORE
+                    | OpcodeId::TSTORE
                     | OpcodeId::CREATE
                     | OpcodeId::CREATE2
                     | OpcodeId::SELFDESTRUCT

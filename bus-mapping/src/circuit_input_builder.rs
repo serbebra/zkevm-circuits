@@ -18,8 +18,7 @@ use crate::{
     evm::opcodes::{gen_associated_ops, gen_associated_steps},
     operation::{self, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
     rpc::GethClient,
-    state_db::{self, CodeDB, StateDB},
-    util::{hash_code_keccak, KECCAK_CODE_HASH_EMPTY},
+    util::KECCAK_CODE_HASH_EMPTY,
 };
 pub use access::{Access, AccessSet, AccessValue, CodeSource};
 pub use block::{Block, BlockContext};
@@ -27,10 +26,10 @@ pub use call::{Call, CallContext, CallKind};
 use core::fmt::Debug;
 use eth_types::{
     self,
-    evm_types::GasCost,
-    geth_types,
-    geth_types::TxType,
+    evm_types::{GasCost, OpcodeId},
+    geth_types::{self, TxType},
     sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
+    state_db::{self, CodeDB, StateDB},
     Address, GethExecTrace, ToBigEndian, ToWord, Word, H256,
 };
 use ethers_providers::JsonRpcClient;
@@ -41,7 +40,7 @@ pub use execution::{
 };
 use hex::decode_to_slice;
 
-use eth_types::sign_types::get_dummy_tx;
+use eth_types::{sign_types::get_dummy_tx, utils::hash_code_keccak};
 use ethers_core::utils::keccak256;
 pub use input_state_ref::CircuitInputStateRef;
 use itertools::Itertools;
@@ -55,9 +54,6 @@ use std::{
 pub use transaction::{
     Transaction, TransactionContext, TxL1Fee, TX_L1_COMMIT_EXTRA_COST, TX_L1_FEE_PRECISION,
 };
-
-#[cfg(feature = "enable-stack")]
-use eth_types::evm_types::OpcodeId;
 
 /// Setup parameters for ECC-related precompile calls.
 #[derive(Debug, Clone, Copy)]
@@ -623,38 +619,45 @@ impl<'a> CircuitInputBuilder {
                 state_ref.call_ctx()?.memory.len(),
                 geth_step.refund.0,
                 {
-                    #[cfg(feature = "enable-stack")]
+                    let stack = &state_ref.call_ctx()?.stack;
                     if geth_step.op.is_push_with_data() {
-                        format!("{:?}", geth_trace.struct_logs.get(index + 1).map(|step| step.stack.last()))
+                        #[cfg(feature = "enable-stack")]
+                        {
+                            format!("{:?}", geth_trace.struct_logs.get(index + 1).map(|step| step.stack.last()))
+                        }
+                        #[cfg(not(feature = "enable-stack"))]
+                        {
+                            "N/A".to_string()
+                        }
                     } else if geth_step.op.is_call_without_value() {
                         format!(
                             "{:?} {:40x} {:?} {:?} {:?} {:?}",
-                            geth_step.stack.last(),
-                            geth_step.stack.nth_last(1).unwrap_or_default(),
-                            geth_step.stack.nth_last(2),
-                            geth_step.stack.nth_last(3),
-                            geth_step.stack.nth_last(4),
-                            geth_step.stack.nth_last(5)
+                            stack.last(),
+                            stack.nth_last(1).unwrap_or_default(),
+                            stack.nth_last(2),
+                            stack.nth_last(3),
+                            stack.nth_last(4),
+                            stack.nth_last(5)
                         )
                     } else if geth_step.op.is_call_with_value() {
                         format!(
                             "{:?} {:40x} {:?} {:?} {:?} {:?} {:?}",
-                            geth_step.stack.last(),
-                            geth_step.stack.nth_last(1).unwrap_or_default(),
-                            geth_step.stack.nth_last(2),
-                            geth_step.stack.nth_last(3),
-                            geth_step.stack.nth_last(4),
-                            geth_step.stack.nth_last(5),
-                            geth_step.stack.nth_last(6),
+                            stack.last(),
+                            stack.nth_last(1).unwrap_or_default(),
+                            stack.nth_last(2),
+                            stack.nth_last(3),
+                            stack.nth_last(4),
+                            stack.nth_last(5),
+                            stack.nth_last(6),
                         )
                     } else if geth_step.op.is_create() {
                         format!(
                             "value {:?} offset {:?} size {:?} {}",
-                            geth_step.stack.last(),
-                            geth_step.stack.nth_last(1),
-                            geth_step.stack.nth_last(2),
+                            stack.last(),
+                            stack.nth_last(1),
+                            stack.nth_last(2),
                             if geth_step.op == OpcodeId::CREATE2 {
-                                format!("salt {:?}", geth_step.stack.nth_last(3))
+                                format!("salt {:?}", stack.nth_last(3))
                             } else {
                                 "".to_string()
                             }
@@ -663,17 +666,15 @@ impl<'a> CircuitInputBuilder {
                         format!(
                             "{:?} {:?} {:?}",
                             state_ref.call().map(|c| c.address),
-                            geth_step.stack.last(),
-                            geth_step.stack.nth_last(1),
+                            stack.last(),
+                            stack.nth_last(1),
                         )
                     } else {
                         let stack_input_num = 1024 - geth_step.op.valid_stack_ptr_range().1 as usize;
                         (0..stack_input_num).map(|i|
-                            format!("{:?}",  geth_step.stack.nth_last(i))
+                            format!("{:?}",  stack.nth_last(i))
                         ).collect_vec().join(" ")
                     }
-                    #[cfg(not(feature = "enable-stack"))]
-                    "N/A".to_string()
                 }
             );
             debug_assert_eq!(
@@ -695,7 +696,13 @@ impl<'a> CircuitInputBuilder {
         log::trace!("gen_end_tx_ops");
         let end_tx_steps =
             gen_associated_steps(&mut self.state_ref(&mut tx, &mut tx_ctx), ExecState::EndTx)?;
+        self.sdb.clear_transient_storage();
         tx.steps_mut().extend(end_tx_steps);
+
+        debug_assert_eq!(
+            tx.calls.len(),
+            tx_ctx.call_is_success_offset + tx_ctx.call_is_success.len()
+        );
 
         self.sdb.commit_tx();
         self.block.txs.push(tx);
@@ -1134,14 +1141,15 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         Ok((proofs, codes))
     }
 
-    /// Yet-another Step 3. Get the account state and codes from pre-state tracing
+    /// Yet-another Step 3. Build account state and codes from geth tracing
+    /// (of which has include the prestate tracing inside)
     /// the account state is limited since proof is not included,
     /// but it is enough to build the sdb/cdb
-    /// if a hash for tx is provided, would return the prestate for this tx
-    pub async fn get_pre_state(
+    /// for a block, it would handle exec traces of every tx in sequence
+    #[allow(clippy::type_complexity)]
+    pub fn get_pre_state<'a>(
         &self,
-        eth_block: &EthBlock,
-        tx_hash: Option<H256>,
+        traces: impl Iterator<Item = &'a GethExecTrace>,
     ) -> Result<
         (
             Vec<eth_types::EIP1186ProofResponse>,
@@ -1149,23 +1157,11 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         ),
         Error,
     > {
-        let traces = if let Some(tx_hash) = tx_hash {
-            vec![self.cli.trace_tx_prestate_by_hash(tx_hash).await?]
-        } else {
-            self.cli
-                .trace_block_prestate_by_hash(
-                    eth_block
-                        .hash
-                        .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?,
-                )
-                .await?
-        };
-
         let mut account_set =
             HashMap::<Address, (eth_types::EIP1186ProofResponse, HashMap<Word, Word>)>::new();
         let mut code_set = HashMap::new();
 
-        for trace in traces.into_iter() {
+        for trace in traces.map(|tr| tr.prestate.clone()) {
             for (addr, prestate) in trace.into_iter() {
                 let (_, storages) = account_set.entry(addr).or_insert_with(|| {
                     let code_size =
@@ -1206,26 +1202,6 @@ impl<P: JsonRpcClient> BuilderClient<P> {
             }
         }
 
-        // a hacking? since the coinbase address is not touch in prestate
-        let coinbase_addr = eth_block
-            .author
-            .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?;
-        let block_num = eth_block
-            .number
-            .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?;
-        assert_ne!(
-            block_num.as_u64(),
-            0,
-            "is not expected to access genesis block"
-        );
-        if let std::collections::hash_map::Entry::Vacant(e) = account_set.entry(coinbase_addr) {
-            let coinbase_proof = self
-                .cli
-                .get_proof(coinbase_addr, Vec::new(), (block_num - 1).into())
-                .await?;
-            e.insert((coinbase_proof, HashMap::new()));
-        }
-
         Ok((
             account_set
                 .into_iter()
@@ -1243,6 +1219,37 @@ impl<P: JsonRpcClient> BuilderClient<P> {
                 .collect::<Vec<_>>(),
             code_set,
         ))
+    }
+
+    /// Yet-another Step 3-1. (hacking?) replenish the pre state proof
+    /// with coinbase account
+    /// since current the coibase is not touched in prestate tracing
+    pub async fn complete_prestate(
+        &self,
+        eth_block: &EthBlock,
+        mut proofs: Vec<eth_types::EIP1186ProofResponse>,
+    ) -> Result<Vec<eth_types::EIP1186ProofResponse>, Error> {
+        // a hacking? since the coinbase address is not touch in prestate
+        let coinbase_addr = eth_block
+            .author
+            .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?;
+        let block_num = eth_block
+            .number
+            .ok_or(Error::EthTypeError(eth_types::Error::IncompleteBlock))?;
+        assert_ne!(
+            block_num.as_u64(),
+            0,
+            "is not expected to access genesis block"
+        );
+
+        if !proofs.iter().any(|pr| pr.address == coinbase_addr) {
+            let coinbase_proof = self
+                .cli
+                .get_proof(coinbase_addr, Vec::new(), (block_num - 1).into())
+                .await?;
+            proofs.push(coinbase_proof);
+        }
+        Ok(proofs)
     }
 
     /// Step 4. Build a partial StateDB from step 3
@@ -1312,7 +1319,8 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         let (mut eth_block, mut geth_traces, history_hashes, prev_state_root) =
             self.get_block(block_num).await?;
         //let access_set = Self::get_state_accesses(&eth_block, &geth_traces)?;
-        let (proofs, codes) = self.get_pre_state(&eth_block, None).await?;
+        let (proofs, codes) = self.get_pre_state(geth_traces.iter())?;
+        let proofs = self.complete_prestate(&eth_block, proofs).await?;
         let (state_db, code_db) = Self::build_state_code_db(proofs, codes);
         if eth_block.transactions.len() > self.circuits_params.max_txs {
             log::error!(
@@ -1370,7 +1378,11 @@ impl<P: JsonRpcClient> BuilderClient<P> {
 
         let mut tx: eth_types::Transaction = self.cli.get_tx_by_hash(tx_hash).await?;
         tx.transaction_index = Some(0.into());
-        let geth_trace = self.cli.trace_tx_by_hash(tx_hash).await?;
+        let geth_trace = if cfg!(features = "rpc-legacy-tracer") {
+            self.cli.trace_tx_by_hash_legacy(tx_hash).await
+        } else {
+            self.cli.trace_tx_by_hash(tx_hash).await
+        }?;
         let mut eth_block = self
             .cli
             .get_block_by_number(tx.block_number.unwrap().into())
@@ -1378,7 +1390,8 @@ impl<P: JsonRpcClient> BuilderClient<P> {
 
         eth_block.transactions = vec![tx.clone()];
 
-        let (proofs, codes) = self.get_pre_state(&eth_block, Some(tx_hash)).await?;
+        let (proofs, codes) = self.get_pre_state(std::iter::once(&geth_trace))?;
+        let proofs = self.complete_prestate(&eth_block, proofs).await?;
         let (state_db, code_db) = Self::build_state_code_db(proofs, codes);
         let builder = self.gen_inputs_from_state(
             state_db,
