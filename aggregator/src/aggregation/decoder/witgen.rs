@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use eth_types::Field;
 // use ethers_core::k256::pkcs8::der::Sequence;
 use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
@@ -29,7 +31,7 @@ const TAG_MAX_LEN: [(ZstdTag, u64); 8] = [
     (ZstdBlockSequenceData, 1048575), // (1 << 20) - 1
 ];
 
-fn lookup_max_tag_len(tag: ZstdTag) -> u64 {
+pub fn lookup_max_tag_len(tag: ZstdTag) -> u64 {
     TAG_MAX_LEN.iter().find(|record| record.0 == tag).unwrap().1
 }
 
@@ -66,23 +68,14 @@ fn process_frame_header<F: Field>(
         _ => unreachable!("2-bit value"),
     };
 
-    // FrameContentSize bytes are read in little-endian, hence its in reverse mode.
     let fcs_bytes = src
         .iter()
         .skip(byte_offset + 1)
         .take(fcs_tag_len)
-        // .rev()
-        .cloned()
-        .collect::<Vec<u8>>();
-    let fcs_bytes_rev = src
-        .iter()
-        .skip(byte_offset + 1)
-        .take(fcs_tag_len)
-        .rev()
         .cloned()
         .collect::<Vec<u8>>();
     let fcs = {
-        let fcs = fcs_bytes_rev
+        let fcs = fcs_bytes
             .iter()
             .fold(0u64, |acc, &byte| acc * 256u64 + (byte as u64));
         match fcs_tag_len {
@@ -92,7 +85,6 @@ fn process_frame_header<F: Field>(
     };
     let fcs_tag_value_iter = fcs_bytes
         .iter()
-        .rev()
         .scan(Value::known(F::zero()), |acc, &byte| {
             *acc = *acc * Value::known(F::from(256u64)) + Value::known(F::from(byte as u64));
             Some(*acc)
@@ -157,11 +149,11 @@ fn process_frame_header<F: Field>(
             fse_data: FseDecodingRow::default(),
         })
         .chain(
-            fcs_bytes_rev
+            fcs_bytes
                 .iter()
                 .zip(fcs_tag_value_iter)
-                .zip(fcs_value_rlcs.iter().rev())
-                .zip(tag_rlc_iter.iter().rev())
+                .zip(fcs_value_rlcs.iter())
+                .zip(tag_rlc_iter.iter())
                 .enumerate()
                 .map(
                     |(i, (((&value_byte, tag_value_acc), _value_rlc), &tag_rlc_acc))| {
@@ -183,7 +175,7 @@ fn process_frame_header<F: Field>(
                                 byte_idx: (byte_offset + 2 + i) as u64,
                                 encoded_len: last_row.encoded_data.encoded_len,
                                 value_byte,
-                                reverse: true,
+                                reverse: false,
                                 reverse_idx: (fcs_tag_len - i) as u64,
                                 reverse_len: fcs_tag_len as u64,
                                 aux_1: *aux_1,
@@ -285,7 +277,6 @@ fn process_block_header<F: Field>(
 
     let tag_value_iter = bh_bytes
         .iter()
-        .rev()
         .scan(Value::known(F::zero()), |acc, &byte| {
             *acc = *acc * Value::known(F::from(256u64)) + Value::known(F::from(byte as u64));
             Some(*acc)
@@ -326,7 +317,6 @@ fn process_block_header<F: Field>(
         byte_offset + N_BLOCK_HEADER_BYTES,
         bh_bytes
             .iter()
-            .rev()
             .zip(tag_value_iter)
             .zip(tag_rlc_iter.iter().rev())
             .enumerate()
@@ -349,7 +339,7 @@ fn process_block_header<F: Field>(
                         byte_idx: (byte_offset + i + 1) as u64,
                         encoded_len: last_row.encoded_data.encoded_len,
                         value_byte,
-                        reverse: true,
+                        reverse: false,
                         value_rlc,
                         ..Default::default()
                     },
@@ -501,6 +491,7 @@ fn process_block_zstd<F: Field>(
             end_offset,
             literals.clone(),
             last_row,
+            last_block,
             randomness,
         );
     witness_rows.extend_from_slice(&rows);
@@ -541,6 +532,7 @@ fn process_sequences<F: Field>(
     end_offset: usize,
     literals: Vec<u64>,
     last_row: &ZstdWitnessRow<F>,
+    last_block: bool,
     randomness: Value<F>,
 ) -> SequencesProcessingResult<F> {
     // Initialize witness rows
@@ -1101,7 +1093,7 @@ fn process_sequences<F: Field>(
     witness_rows.push(ZstdWitnessRow {
         state: ZstdState {
             tag: ZstdTag::ZstdBlockSequenceData,
-            tag_next: ZstdTag::ZstdBlockSequenceData,
+            tag_next: if last_block { ZstdTag::Null } else { ZstdTag::BlockHeader },
             block_idx,
             max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
             tag_len: n_sequence_data_bytes as u64,
@@ -1266,7 +1258,7 @@ fn process_sequences<F: Field>(
         witness_rows.push(ZstdWitnessRow {
             state: ZstdState {
                 tag: ZstdTag::ZstdBlockSequenceData,
-                tag_next: ZstdTag::ZstdBlockSequenceData,
+                tag_next: if last_block { ZstdTag::Null } else { ZstdTag::BlockHeader },
                 block_idx,
                 max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
                 tag_len: n_sequence_data_bytes as u64,
