@@ -79,8 +79,8 @@ pub struct DecoderConfig {
     sequences_data_decoder: SequencesDataDecoder,
 
     // witgen_debug
-    // /// Range Table for [0, 8).
-    // range8: RangeTable<8>,
+    /// Range Table for [0, 8).
+    range8: RangeTable<8>,
     // /// Range Table for [0, 16).
     // range16: RangeTable<16>,
     // /// Power of 2 lookup table.
@@ -1044,7 +1044,7 @@ impl DecoderConfig {
             sequences_data_decoder,
 
             // witgen_debug
-            // range8,
+            range8,
             // range16,
             // pow2_table,
 
@@ -1779,23 +1779,23 @@ impl DecoderConfig {
         });
 
         // witgen_debug
-        // meta.lookup("DecoderConfig: tag BlockHeader (Block_Size)", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_advice(config.tag_config.is_block_header, Rotation::cur()),
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //     ]);
+        meta.lookup("DecoderConfig: tag BlockHeader (Block_Size)", |meta| {
+            let condition = and::expr([
+                meta.query_advice(config.tag_config.is_block_header, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+            ]);
 
-        //     // block_size == block_header >> 3
-        //     //
-        //     // i.e. block_header - (block_size * (2^3)) < 8
-        //     let block_header_lc = meta.query_advice(config.byte, Rotation(2)) * 65536.expr()
-        //         + meta.query_advice(config.byte, Rotation(1)) * 256.expr()
-        //         + meta.query_advice(config.byte, Rotation(0));
-        //     let block_size = meta.query_advice(config.block_config.block_len, Rotation::cur());
-        //     let diff = block_header_lc - (block_size * 8.expr());
+            // block_size == block_header >> 3
+            //
+            // i.e. block_header - (block_size * (2^3)) < 8
+            let block_header_lc = meta.query_advice(config.byte, Rotation(2)) * 65536.expr()
+                + meta.query_advice(config.byte, Rotation(1)) * 256.expr()
+                + meta.query_advice(config.byte, Rotation(0));
+            let block_size = meta.query_advice(config.block_config.block_len, Rotation::cur());
+            let diff = block_header_lc - (block_size * 8.expr());
 
-        //     vec![(condition * diff, config.range8.into())]
-        // });
+            vec![(condition * diff, config.range8.into())]
+        });
 
         // witgen_debug
         // meta.create_gate("DecoderConfig: processing block content", |meta| {
@@ -3871,7 +3871,7 @@ impl DecoderConfig {
         /////////////////////////////////////////
 
         // witgen_debug
-        // self.range8.load(layouter)?;
+        self.range8.load(layouter)?;
         // self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
         // self.pow2_table.load(layouter)?;
