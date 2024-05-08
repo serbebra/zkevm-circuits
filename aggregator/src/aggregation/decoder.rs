@@ -1670,7 +1670,6 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////// ZstdTag::BlockHeader ///////////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
         meta.create_gate("DecoderConfig: tag BlockHeader", |meta| {
             let condition = and::expr([
                 meta.query_fixed(config.q_enable, Rotation::cur()),
@@ -1778,7 +1777,6 @@ impl DecoderConfig {
             cb.gate(condition)
         });
 
-        // witgen_debug
         meta.lookup("DecoderConfig: tag BlockHeader (Block_Size)", |meta| {
             let condition = and::expr([
                 meta.query_advice(config.tag_config.is_block_header, Rotation::cur()),
@@ -1797,51 +1795,53 @@ impl DecoderConfig {
             vec![(condition * diff, config.range8.into())]
         });
 
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: processing block content", |meta| {
-        //     let condition = meta.query_advice(config.block_config.is_block, Rotation::cur());
+        meta.create_gate("DecoderConfig: processing block content", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.block_config.is_block, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // is_last_block remains unchanged.
-        //     cb.require_equal(
-        //         "is_last_block::cur == is_last_block::prev",
-        //         meta.query_advice(config.block_config.is_last_block, Rotation::cur()),
-        //         meta.query_advice(config.block_config.is_last_block, Rotation::prev()),
-        //     );
+            // is_last_block remains unchanged.
+            cb.require_equal(
+                "is_last_block::cur == is_last_block::prev",
+                meta.query_advice(config.block_config.is_last_block, Rotation::cur()),
+                meta.query_advice(config.block_config.is_last_block, Rotation::prev()),
+            );
 
-        //     // block_len remains unchanged.
-        //     cb.require_equal(
-        //         "block_len::cur == block_len::prev",
-        //         meta.query_advice(config.block_config.block_len, Rotation::cur()),
-        //         meta.query_advice(config.block_config.block_len, Rotation::prev()),
-        //     );
+            // block_len remains unchanged.
+            cb.require_equal(
+                "block_len::cur == block_len::prev",
+                meta.query_advice(config.block_config.block_len, Rotation::cur()),
+                meta.query_advice(config.block_config.block_len, Rotation::prev()),
+            );
 
-        //     // block_idx remains unchanged.
-        //     cb.require_equal(
-        //         "block_idx::cur == block_len::idx",
-        //         meta.query_advice(config.block_config.block_idx, Rotation::cur()),
-        //         meta.query_advice(config.block_config.block_idx, Rotation::prev()),
-        //     );
+            // block_idx remains unchanged.
+            cb.require_equal(
+                "block_idx::cur == block_len::idx",
+                meta.query_advice(config.block_config.block_idx, Rotation::cur()),
+                meta.query_advice(config.block_config.block_idx, Rotation::prev()),
+            );
 
-        //     // the number of sequences in the block remains the same.
-        //     cb.require_equal(
-        //         "num_sequences::cur == num_sequences::prev",
-        //         meta.query_advice(config.block_config.num_sequences, Rotation::cur()),
-        //         meta.query_advice(config.block_config.num_sequences, Rotation::prev()),
-        //     );
+            // the number of sequences in the block remains the same.
+            cb.require_equal(
+                "num_sequences::cur == num_sequences::prev",
+                meta.query_advice(config.block_config.num_sequences, Rotation::cur()),
+                meta.query_advice(config.block_config.num_sequences, Rotation::prev()),
+            );
 
-        //     // the compression modes are remembered throughout the block's context.
-        //     for column in config.block_config.compression_modes {
-        //         cb.require_equal(
-        //             "compression_modes::cur == compression_modes::prev (during block)",
-        //             meta.query_advice(column, Rotation::cur()),
-        //             meta.query_advice(column, Rotation::prev()),
-        //         );
-        //     }
+            // the compression modes are remembered throughout the block's context.
+            for column in config.block_config.compression_modes {
+                cb.require_equal(
+                    "compression_modes::cur == compression_modes::prev (during block)",
+                    meta.query_advice(column, Rotation::cur()),
+                    meta.query_advice(column, Rotation::prev()),
+                );
+            }
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         debug_assert!(meta.degree() <= 9);
 
