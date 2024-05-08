@@ -77,6 +77,8 @@ pub struct DecoderConfig {
     // sequences_data_decoder: SequencesDataDecoder,
 
     // witgen_debug
+    // /// Range Table for [0, 255]
+    u8_table: U8Table,
     // /// Range Table for [0, 8).
     // range8: RangeTable<8>,
     // /// Range Table for [0, 16).
@@ -1044,6 +1046,7 @@ impl DecoderConfig {
             // sequences_data_decoder,
 
             // witgen_debug
+            u8_table,
             // range8,
             // range16,
             // pow2_table,
@@ -1097,74 +1100,72 @@ impl DecoderConfig {
         is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
         is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
 
-        // witgen_debug
-        // meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
-        //     vec![(
-        //         meta.query_advice(config.byte, Rotation::cur()),
-        //         u8_table.into(),
-        //     )]
-        // });
+        meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
+            vec![(
+                meta.query_advice(config.byte, Rotation::cur()),
+                u8_table.into(),
+            )]
+        });
+
+        meta.create_gate("DecoderConfig: first row", |meta| {
+            let condition = meta.query_fixed(config.q_first, Rotation::cur());
+
+            let mut cb = BaseConstraintBuilder::default();
+
+            // The first row is not padded row.
+            cb.require_zero(
+                "is_padding is False on the first row",
+                meta.query_advice(config.is_padding, Rotation::cur()),
+            );
+
+            // byte_idx initialises at 1.
+            cb.require_equal(
+                "byte_idx == 1",
+                meta.query_advice(config.byte_idx, Rotation::cur()),
+                1.expr(),
+            );
+
+            // tag_idx is initialised correctly.
+            cb.require_equal(
+                "tag_idx == 1",
+                meta.query_advice(config.tag_config.tag_idx, Rotation::cur()),
+                1.expr(),
+            );
+
+            // The first tag we process is the FrameHeaderDescriptor.
+            cb.require_equal(
+                "tag == FrameHeaderDescriptor",
+                meta.query_advice(config.tag_config.tag, Rotation::cur()),
+                ZstdTag::FrameHeaderDescriptor.expr(),
+            );
+
+            // encoded_rlc initialises at 0.
+            cb.require_zero(
+                "encoded_rlc == 0",
+                meta.query_advice(config.encoded_rlc, Rotation::cur()),
+            );
+
+            cb.gate(condition)
+        });
 
         // witgen_debug
-        // meta.create_gate("DecoderConfig: first row", |meta| {
-        //     let condition = meta.query_fixed(config.q_first, Rotation::cur());
+        meta.create_gate("DecoderConfig: all rows except the first row", |meta| {
+            let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // The first row is not padded row.
-        //     cb.require_zero(
-        //         "is_padding is False on the first row",
-        //         meta.query_advice(config.is_padding, Rotation::cur()),
-        //     );
+            let is_padding_curr = meta.query_advice(config.is_padding, Rotation::cur());
+            let is_padding_prev = meta.query_advice(config.is_padding, Rotation::prev());
 
-        //     // byte_idx initialises at 1.
-        //     cb.require_equal(
-        //         "byte_idx == 1",
-        //         meta.query_advice(config.byte_idx, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // is_padding is boolean.
+            cb.require_boolean("is_padding is boolean", is_padding_curr.expr());
 
-        //     // tag_idx is initialised correctly.
-        //     cb.require_equal(
-        //         "tag_idx == 1",
-        //         meta.query_advice(config.tag_config.tag_idx, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // is_padding transitions from 0 -> 1 only once, i.e. is_padding_delta is boolean.
+            let is_padding_delta = is_padding_curr - is_padding_prev;
+            cb.require_boolean("is_padding_delta is boolean", is_padding_delta);
 
-        //     // The first tag we process is the FrameHeaderDescriptor.
-        //     cb.require_equal(
-        //         "tag == FrameHeaderDescriptor",
-        //         meta.query_advice(config.tag_config.tag, Rotation::cur()),
-        //         ZstdTag::FrameHeaderDescriptor.expr(),
-        //     );
-
-        //     // encoded_rlc initialises at 0.
-        //     cb.require_zero(
-        //         "encoded_rlc == 0",
-        //         meta.query_advice(config.encoded_rlc, Rotation::cur()),
-        //     );
-
-        //     cb.gate(condition)
-        // });
-
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: all rows except the first row", |meta| {
-        //     let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
-
-        //     let mut cb = BaseConstraintBuilder::default();
-
-        //     let is_padding_curr = meta.query_advice(config.is_padding, Rotation::cur());
-        //     let is_padding_prev = meta.query_advice(config.is_padding, Rotation::prev());
-
-        //     // is_padding is boolean.
-        //     cb.require_boolean("is_padding is boolean", is_padding_curr.expr());
-
-        //     // is_padding transitions from 0 -> 1 only once, i.e. is_padding_delta is boolean.
-        //     let is_padding_delta = is_padding_curr - is_padding_prev;
-        //     cb.require_boolean("is_padding_delta is boolean", is_padding_delta);
-
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         // witgen_debug
         // meta.create_gate("DecoderConfig: all non-padded rows", |meta| {
@@ -3857,6 +3858,7 @@ impl DecoderConfig {
         /////////////////////////////////////////
 
         // witgen_debug
+        self.u8_table.load(layouter)?;
         // self.range8.load(layouter)?;
         // self.range16.load(layouter)?;
         // self.fixed_table.load(layouter)?;
@@ -4439,7 +4441,7 @@ impl DecoderConfig {
                 }
 
                 // witgen_debug
-                for idx in (witness_rows.len())..(2u64.pow(k - 1) as usize) {
+                for idx in (witness_rows.len())..(2u64.pow(k) as usize - self.unusable_rows()) {
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,
@@ -4461,6 +4463,10 @@ impl DecoderConfig {
         // }
 
         Ok(())
+    }
+
+    pub fn unusable_rows (&self) -> usize {
+        6
     }
 }
 
@@ -4602,12 +4608,10 @@ mod tests {
             encoder.finish().expect("Encoder success")
         };
 
-        let k = 18;
+        let k = 11;
         let decoder_config_tester = DecoderConfigTester { 
             compressed, 
             k,
-            // witgen_debug
-            // k: k - 1,
         };
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
