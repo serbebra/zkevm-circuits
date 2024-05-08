@@ -39,6 +39,8 @@ use self::{
 
 #[derive(Clone, Debug)]
 pub struct DecoderConfig {
+    /// Fixed column to mark all the usable rows.
+    q_enable: Column<Fixed>,
     /// Fixed column to mark the first row in the layout.
     q_first: Column<Fixed>,
     /// The byte index in the encoded data. At the first byte, byte_idx = 1.
@@ -112,8 +114,6 @@ pub struct DecoderConfig {
 
 #[derive(Clone, Debug)]
 struct TagConfig {
-    /// Marks all enabled rows.
-    q_enable: Column<Fixed>,
     /// The ZstdTag being processed at the current row.
     tag: Column<Advice>,
     /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
@@ -159,14 +159,12 @@ struct TagConfig {
 }
 
 impl TagConfig {
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self {
-        let q_enable = meta.fixed_column();
+    fn configure(meta: &mut ConstraintSystem<Fr>, q_enable: Column<Fixed>) -> Self {
         let tag = meta.advice_column();
         let tag_idx = meta.advice_column();
         let tag_len = meta.advice_column();
 
         Self {
-            q_enable,
             tag,
             tag_bits: BinaryNumberChip::configure(meta, q_enable, Some(tag.into())),
             tag_next: meta.advice_column(),
@@ -992,13 +990,14 @@ impl DecoderConfig {
         // TODO(enable): let sequence_instruction_table = SequenceInstructionTable::configure(meta);
 
         // Peripheral configs
-        let (byte_idx, byte, is_padding) = (
+        let (q_enable, byte_idx, byte, is_padding) = (
+            meta.fixed_column(),
             meta.advice_column(),
             meta.advice_column(),
             meta.advice_column(),
         );
 
-        let tag_config = TagConfig::configure(meta);
+        let tag_config = TagConfig::configure(meta, q_enable);
         let block_config = BlockConfig::configure(meta, is_padding);
 
         // witgen_debug
@@ -1025,6 +1024,7 @@ impl DecoderConfig {
 
         // Main config
         let config = Self {
+            q_enable,
             q_first: meta.fixed_column(),
             byte_idx,
             byte,
@@ -1150,7 +1150,10 @@ impl DecoderConfig {
 
         // witgen_debug
         meta.create_gate("DecoderConfig: all rows except the first row", |meta| {
-            let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+            ]);
 
             let mut cb = BaseConstraintBuilder::default();
 
@@ -3934,6 +3937,10 @@ impl DecoderConfig {
                 /////////// Assign First Row  ///////////
                 /////////////////////////////////////////
                 region.assign_fixed(|| "q_first", self.q_first, 0, || Value::known(Fr::one()))?;
+                // TODO(ray): k==11 and 10 unusable rows.
+                for i in 0..((1 << 11) - 10) {
+                    region.assign_fixed(|| "q_enable", self.q_enable, i, || Value::known(Fr::one()))?;
+                }
 
                 /////////////////////////////////////////
                 ///////// Assign Witness Rows  //////////
@@ -4087,12 +4094,6 @@ impl DecoderConfig {
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
                     /////////////////////////////////////////
-                    region.assign_fixed(
-                        || "tag_config.q_enable",
-                        self.tag_config.q_enable,
-                        i,
-                        || Value::known(Fr::one()),
-                    )?;
                     region.assign_advice(
                         || "tag_config.tag",
                         self.tag_config.tag,
