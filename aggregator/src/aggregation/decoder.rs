@@ -4524,7 +4524,7 @@ mod tests {
     }
 
     impl Circuit<Fr> for DecoderConfigTester {
-        type Config = (DecoderConfig, U8Table, PowOfRandTable, Challenges);
+        type Config = (DecoderConfig, U8Table, BitwiseOpTable, PowOfRandTable, Challenges);
         type FloorPlanner = SimpleFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
@@ -4555,7 +4555,7 @@ mod tests {
                 },
             );
 
-            (config, u8_table, pow_rand_table, challenges)
+            (config, u8_table, bitwise_op_table, pow_rand_table, challenges)
         }
 
         #[allow(clippy::type_complexity)]
@@ -4564,7 +4564,7 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let (config, u8_table, pow_rand_table, challenge) = config;
+            let (config, u8_table, bitwise_op_table, pow_rand_table, challenge) = config;
             let challenges = challenge.values(&layouter);
 
             let (
@@ -4577,6 +4577,7 @@ mod tests {
             ) = process(&self.compressed, challenges.keccak_input());
 
             u8_table.load(&mut layouter)?;
+            bitwise_op_table.load(&mut layouter)?;
             pow_rand_table.assign(&mut layouter, &challenges, 1 << (self.k - 1))?;
             config.assign::<Fr>(
                 &mut layouter,
@@ -4634,7 +4635,7 @@ mod tests {
             encoder.finish().expect("Encoder success")
         };
 
-        let k = 13;
+        let k = 17;
         let decoder_config_tester = DecoderConfigTester { 
             compressed, 
             k,

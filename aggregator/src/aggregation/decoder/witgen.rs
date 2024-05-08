@@ -1465,7 +1465,7 @@ fn process_sequences<F: Field>(
     (
         end_offset,
         witness_rows,
-        [table_llt, table_mlt, table_cmot],
+        [table_llt, table_cmot, table_mlt],
         address_table_rows,
         recovered_inputs,
         sequence_info,
