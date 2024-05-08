@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
 
 use eth_types::Field;
 // use ethers_core::k256::pkcs8::der::Sequence;
@@ -318,7 +319,7 @@ fn process_block_header<F: Field>(
         bh_bytes
             .iter()
             .zip(tag_value_iter)
-            .zip(tag_rlc_iter.iter().rev())
+            .zip(tag_rlc_iter.iter())
             .enumerate()
             .map(
                 |(i, ((&value_byte, tag_value_acc), tag_rlc_acc))| ZstdWitnessRow {
@@ -394,6 +395,10 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let literals_block_result: LiteralsBlockResult<F> = {
+        let last_row = rows.last().cloned().unwrap();
+        let multiplier =
+            (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
+        let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
         let tag = ZstdTag::ZstdBlockLiteralsRawBytes;
         let tag_next = ZstdTag::ZstdBlockSequenceHeader;
         let literals = src[byte_offset..(byte_offset + regen_size)].to_vec();
@@ -426,15 +431,13 @@ fn process_block_zstd<F: Field>(
             literals
                 .iter()
                 .zip(tag_value_iter)
-                .zip(value_rlc_iter)
                 .zip(decoded_value_rlc_iter)
                 .zip(tag_rlc_iter)
                 .enumerate()
                 .map(
                     |(
                         i,
-                        (
-                            (((&value_byte, tag_value_acc), value_rlc), decoded_value_rlc),
+                        (((&value_byte, tag_value_acc), decoded_value_rlc),
                             tag_rlc_acc,
                         ),
                     )| {
@@ -736,6 +739,7 @@ fn process_sequences<F: Field>(
     };
 
     // Add witness rows for the FSE tables
+    let mut last_row = header_rows.last().cloned().unwrap();
     for (idx, start_offset, end_offset, bit_boundaries, tag_len, table) in [
         (
             0usize,
@@ -791,6 +795,10 @@ fn process_sequences<F: Field>(
         let kind = table.table_kind;
         let mut next_symbol: u64 = 0;
         let mut is_repeating_bit_boundary: HashMap<usize, bool> = HashMap::new();
+
+        let multiplier =
+            (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
+        let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
 
         let bitstream_rows = bit_boundaries
             .iter()
@@ -974,7 +982,7 @@ fn process_sequences<F: Field>(
                 encoded_data: EncodedData {
                     byte_idx: (start_offset + row.2) as u64,
                     encoded_len,
-                    value_byte: src[start_offset + row.2],
+                    value_byte: src[start_offset + row.2 - 1],
                     value_rlc,
                     reverse: false,
                     ..Default::default()
@@ -1005,6 +1013,7 @@ fn process_sequences<F: Field>(
                 },
             });
         }
+        last_row = witness_rows.last().cloned().unwrap();
     }
 
     // Reconstruct LLTV, CMOTV, and MLTV which specifies bit actions for a specific state

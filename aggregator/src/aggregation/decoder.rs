@@ -1324,8 +1324,13 @@ impl DecoderConfig {
 
         // witgen_debug
         meta.lookup_any("DecoderConfig: fixed lookup (tag transition)", |meta| {
-            let condition = meta.query_fixed(config.q_first, Rotation::cur())
-                + meta.query_advice(config.tag_config.is_change, Rotation::cur());
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                sum::expr([
+                    meta.query_fixed(config.q_first, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                ]),
+            ]);
 
             [
                 FixedLookupTag::TagTransition.expr(),
@@ -1343,73 +1348,76 @@ impl DecoderConfig {
         });
 
         // witgen_debug
-        // meta.create_gate("DecoderConfig: new tag", |meta| {
-        //     let condition = meta.query_advice(config.tag_config.is_change, Rotation::cur());
+        meta.create_gate("DecoderConfig: new tag", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // The previous tag was processed completely.
-        //     cb.require_equal(
-        //         "tag_idx::prev == tag_len::prev",
-        //         meta.query_advice(config.tag_config.tag_idx, Rotation::prev()),
-        //         meta.query_advice(config.tag_config.tag_len, Rotation::prev()),
-        //     );
+            // The previous tag was processed completely.
+            cb.require_equal(
+                "tag_idx::prev == tag_len::prev",
+                meta.query_advice(config.tag_config.tag_idx, Rotation::prev()),
+                meta.query_advice(config.tag_config.tag_len, Rotation::prev()),
+            );
 
-        //     // Tag change also implies that the byte_idx transition did happen.
-        //     cb.require_equal(
-        //         "byte_idx::prev + 1 == byte_idx::cur",
-        //         meta.query_advice(config.byte_idx, Rotation::prev()) + 1.expr(),
-        //         meta.query_advice(config.byte_idx, Rotation::cur()),
-        //     );
+            // Tag change also implies that the byte_idx transition did happen.
+            cb.require_equal(
+                "byte_idx::prev + 1 == byte_idx::cur",
+                meta.query_advice(config.byte_idx, Rotation::prev()) + 1.expr(),
+                meta.query_advice(config.byte_idx, Rotation::cur()),
+            );
 
-        //     // The current tag is in fact the tag_next promised while processing the previous tag.
-        //     cb.require_equal(
-        //         "tag_next::prev == tag::cur",
-        //         meta.query_advice(config.tag_config.tag_next, Rotation::prev()),
-        //         meta.query_advice(config.tag_config.tag, Rotation::cur()),
-        //     );
+            // The current tag is in fact the tag_next promised while processing the previous tag.
+            cb.require_equal(
+                "tag_next::prev == tag::cur",
+                meta.query_advice(config.tag_config.tag_next, Rotation::prev()),
+                meta.query_advice(config.tag_config.tag, Rotation::cur()),
+            );
 
-        //     // If the previous tag was processed from back-to-front, the RLC of the tag bytes had
-        //     // initialised at the last byte.
-        //     let prev_tag_reverse =
-        //         meta.query_advice(config.tag_config.is_reverse, Rotation::prev());
-        //     cb.condition(prev_tag_reverse, |cb| {
-        //         cb.require_equal(
-        //             "tag_rlc::prev == byte::prev",
-        //             meta.query_advice(config.tag_config.tag_rlc, Rotation::prev()),
-        //             meta.query_advice(config.byte, Rotation::prev()),
-        //         );
-        //     });
+            // If the previous tag was processed from back-to-front, the RLC of the tag bytes had
+            // initialised at the last byte.
+            let prev_tag_reverse =
+                meta.query_advice(config.tag_config.is_reverse, Rotation::prev());
+            cb.condition(prev_tag_reverse, |cb| {
+                cb.require_equal(
+                    "tag_rlc::prev == byte::prev",
+                    meta.query_advice(config.tag_config.tag_rlc, Rotation::prev()),
+                    meta.query_advice(config.byte, Rotation::prev()),
+                );
+            });
 
-        //     // The tag_idx is initialised correctly.
-        //     cb.require_equal(
-        //         "tag_idx::cur == 1",
-        //         meta.query_advice(config.tag_config.tag_idx, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // The tag_idx is initialised correctly.
+            cb.require_equal(
+                "tag_idx::cur == 1",
+                meta.query_advice(config.tag_config.tag_idx, Rotation::cur()),
+                1.expr(),
+            );
 
-        //     // If the new tag is not processed from back-to-front, the RLC of the tag bytes
-        //     // initialises at the first byte.
-        //     let curr_tag_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
-        //     cb.condition(not::expr(curr_tag_reverse), |cb| {
-        //         cb.require_equal(
-        //             "tag_rlc::cur == byte::cur",
-        //             meta.query_advice(config.tag_config.tag_rlc, Rotation::cur()),
-        //             meta.query_advice(config.byte, Rotation::cur()),
-        //         );
-        //     });
+            // If the new tag is not processed from back-to-front, the RLC of the tag bytes
+            // initialises at the first byte.
+            let curr_tag_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
+            cb.condition(not::expr(curr_tag_reverse), |cb| {
+                cb.require_equal(
+                    "tag_rlc::cur == byte::cur",
+                    meta.query_advice(config.tag_config.tag_rlc, Rotation::cur()),
+                    meta.query_advice(config.byte, Rotation::cur()),
+                );
+            });
 
-        //     // The RLC of encoded bytes is computed correctly.
-        //     cb.require_equal(
-        //         "encoded_rlc::cur == encoded_rlc::prev * (r ^ tag_len::prev) + tag_rlc::prev",
-        //         meta.query_advice(config.encoded_rlc, Rotation::cur()),
-        //         meta.query_advice(config.encoded_rlc, Rotation::prev())
-        //             * meta.query_advice(config.tag_config.rpow_tag_len, Rotation::prev())
-        //             + meta.query_advice(config.tag_config.tag_rlc, Rotation::prev()),
-        //     );
+            // The RLC of encoded bytes is computed correctly.
+            cb.require_equal(
+                "encoded_rlc::cur == encoded_rlc::prev * (r ^ tag_len::prev) + tag_rlc::prev",
+                meta.query_advice(config.encoded_rlc, Rotation::cur()),
+                meta.query_advice(config.encoded_rlc, Rotation::prev())
+                    * meta.query_advice(config.tag_config.rpow_tag_len, Rotation::prev())
+                    + meta.query_advice(config.tag_config.tag_rlc, Rotation::prev()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         // witgen_debug
         // meta.create_gate("DecoderConfig: continue same tag", |meta| {
