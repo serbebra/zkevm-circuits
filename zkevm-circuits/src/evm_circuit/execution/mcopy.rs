@@ -179,7 +179,7 @@ mod test {
     use bus_mapping::circuit_input_builder::CircuitsParams;
     use eth_types::{address, bytecode, word, Address, Bytecode, Word};
     use mock::TestContext;
-    use std::{str::FromStr, sync::LazyLock};
+    use std::sync::LazyLock;
 
     static EXTERNAL_ADDRESS: LazyLock<Address> =
         LazyLock::new(|| address!("0xaabbccddee000000000000000000000000000000"));

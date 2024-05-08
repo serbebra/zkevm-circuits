@@ -2276,7 +2276,7 @@ impl<'a> CircuitInputStateRef<'a> {
             &mut call_ctx.memory,
             true,
         );
-        let mut read_slot_bytes = memory.read_chunk(src_range);
+        let read_slot_bytes = memory.read_chunk(src_range);
         // adjust bytes in [dst_addr..dst_range.start_slot()+32] for src_data
         println!(
             "start_slot {}, shift {} read_slot_bytes: {:?}",
