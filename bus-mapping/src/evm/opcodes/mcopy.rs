@@ -109,7 +109,7 @@ mod mcopy_tests {
     #[test]
     fn mcopy_opcode_impl() {
         test_ok(0x40, 0x50, 0x0);
-        test_ok(0x40, 0x50, 0x02);
+        test_ok(0x40, 0x60, 0x02);
         test_ok(0x60, 0x80, 0xA0);
         test_ok(0x90, 0x200, 0xE9);
     }
@@ -173,25 +173,33 @@ mod mcopy_tests {
         // add RW table memory word reads.
         let read_end = src_offset + copy_size;
         let read_slot_start = src_offset - src_offset % 32;
-        let read_slot_end = read_end - read_end % 32;
-        let read_word_ops = if read_slot_end == read_slot_start && copy_size != 0 {
-            // read within one slot.
-            1
+        let read_slot_end = if read_end % 32 == 0 {
+            read_end - read_end % 32
         } else {
+            read_end - read_end % 32 + 32
+        };
+
+        let read_word_ops = if copy_size != 0 {
             (read_slot_end - read_slot_start) / 32
+        } else {
+            0
         };
 
         let write_end = dest_offset + copy_size;
         let write_slot_start = dest_offset - dest_offset % 32;
-        let write_slot_end = write_end - write_end % 32;
-        let write_word_ops = if write_slot_end == write_slot_start && copy_size != 0 {
-            // write within one slot
-            1
+        let write_slot_end = if write_end % 32 == 0 {
+            write_end - write_end % 32
         } else {
-            (write_slot_end - write_slot_start) / 32
+            write_end - write_end % 32 + 32
         };
 
-        let word_ops = read_word_ops + write_word_ops;
+        let write_word_ops = if copy_size != 0 {
+            (write_slot_end - write_slot_start) / 32
+        } else {
+            0
+        };
+
+        let word_ops = read_word_ops.max(write_word_ops) * 2;
 
         let read_bytes = builder.block.copy_events[0]
             .copy_bytes
@@ -222,30 +230,36 @@ mod mcopy_tests {
                 .collect::<Vec<(RW, MemoryOp)>>(),
             (0..word_ops)
                 .map(|idx| {
-                    // rw_index as read or write operation's index.
-                    let rw_index = idx / 2 + idx % 2;
-                    if idx % 2 == 0 {
-                        // first read op
+                    // index that write op starts
+                    let write_index = word_ops / 2;
+                    if idx < write_index {
+                        // first all read ops
                         (
                             RW::READ,
                             MemoryOp::new_write(
                                 expected_call_id,
-                                MemoryAddress(read_slot_start + rw_index * 32),
-                                Word::from(&read_bytes[rw_index * 32..(rw_index + 1) * 32]),
+                                MemoryAddress(read_slot_start + idx * 32),
+                                Word::from(&read_bytes[idx * 32..(idx + 1) * 32]),
                                 // previous value is same to value for reading operation
-                                Word::from(&read_bytes[rw_index * 32..(rw_index + 1) * 32]),
+                                Word::from(&read_bytes[idx * 32..(idx + 1) * 32]),
                             ),
                         )
                     } else {
-                        // second write op
+                        // then all write ops
                         (
                             RW::WRITE,
                             MemoryOp::new_write(
                                 expected_call_id,
-                                MemoryAddress(write_slot_start + (rw_index - 1) * 32),
-                                Word::from(&write_bytes[(rw_index - 1) * 32..rw_index * 32]),
+                                MemoryAddress(write_slot_start + (idx - write_index) * 32),
+                                Word::from(
+                                    &write_bytes
+                                        [(idx - write_index) * 32..(idx - write_index + 1) * 32],
+                                ),
                                 // get previous value
-                                Word::from(&prev_bytes[(rw_index - 1) * 32..rw_index * 32]),
+                                Word::from(
+                                    &prev_bytes
+                                        [(idx - write_index) * 32..(idx - write_index + 1) * 32],
+                                ),
                             ),
                         )
                     }
