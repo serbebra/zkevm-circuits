@@ -91,7 +91,7 @@ pub struct DecoderConfig {
 
     // witgen_debug
     // /// Helper table for decoding bitstreams.
-    // bitstring_table: BitstringTable,
+    bitstring_table: BitstringTable,
 
     // witgen_debug
     /// Helper table for decoding FSE tables.
@@ -982,7 +982,7 @@ impl DecoderConfig {
         // witgen_debug
         // Helper tables
         let literals_header_table = LiteralsHeaderTable::configure(meta, q_enable, range8, range16);
-        // let bitstring_table = BitstringTable::configure(meta, u8_table);
+        let bitstring_table = BitstringTable::configure(meta, q_enable, u8_table);
         let fse_table = FseTable::configure(
             meta,
             q_enable,
@@ -1050,7 +1050,7 @@ impl DecoderConfig {
 
             // witgen_debug
             literals_header_table,
-            // bitstring_table,
+            bitstring_table,
             fse_table,
 
 
@@ -3882,8 +3882,8 @@ impl DecoderConfig {
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
         self.fse_table.assign(layouter, fse_aux_tables, k)?;
-        // self.bitstring_table
-        //     .assign(layouter, &block_info_arr, &witness_rows, k)?;
+        self.bitstring_table
+            .assign(layouter, &block_info_arr, &witness_rows, k)?;
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
@@ -4490,7 +4490,7 @@ impl DecoderConfig {
     }
 
     pub fn unusable_rows (&self) -> usize {
-        14
+        30
     }
 }
 
