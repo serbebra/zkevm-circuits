@@ -55,36 +55,61 @@ pub struct DecoderConfig {
     decoded_len: Column<Advice>,
     /// Once all the encoded bytes are decoded, we append the layout with padded rows.
     is_padding: Column<Advice>,
-    /// Zstd tag related config.
-    tag_config: TagConfig,
-    /// Block related config.
-    block_config: BlockConfig,
-    /// Decoding helpers for the sequences section header.
-    sequences_header_decoder: SequencesHeaderDecoder,
-    /// Config for reading and decoding bitstreams.
-    bitstream_decoder: BitstreamDecoder,
-    /// Config established while recovering the FSE table.
-    fse_decoder: FseDecoder,
-    /// Config required while applying the FSE tables on the Sequences data.
-    sequences_data_decoder: SequencesDataDecoder,
-    /// Range Table for [0, 8).
-    range8: RangeTable<8>,
-    /// Range Table for [0, 16).
-    range16: RangeTable<16>,
-    /// Power of 2 lookup table.
-    pow2_table: Pow2Table<20>,
-    /// Helper table for decoding the regenerated size from LiteralsHeader.
-    literals_header_table: LiteralsHeaderTable,
-    /// Helper table for decoding bitstreams.
-    bitstring_table: BitstringTable,
-    /// Helper table for decoding FSE tables.
-    fse_table: FseTable,
-    /// Helper table for sequences as instructions.
-    /// TODO(enable): sequence_instruction_table: SequenceInstructionTable,
-    /// Helper table in the "output" region for accumulating the result of executing sequences.
-    /// TODO(enable): sequence_execution_table: SequenceExecutionTable,
-    /// Fixed lookups table.
-    fixed_table: FixedTable,
+
+    // witgen_debug
+    // /// Zstd tag related config.
+    // tag_config: TagConfig,
+
+    // witgen_debug
+    // /// Block related config.
+    // block_config: BlockConfig,
+
+    // witgen_debug
+    // /// Decoding helpers for the sequences section header.
+    // sequences_header_decoder: SequencesHeaderDecoder,
+
+    // witgen_debug
+    // /// Config for reading and decoding bitstreams.
+    // bitstream_decoder: BitstreamDecoder,
+
+    // witgen_debug
+    // /// Config established while recovering the FSE table.
+    // fse_decoder: FseDecoder,
+
+    // witgen_debug
+    // /// Config required while applying the FSE tables on the Sequences data.
+    // sequences_data_decoder: SequencesDataDecoder,
+
+    // witgen_debug
+    // /// Range Table for [0, 8).
+    // range8: RangeTable<8>,
+    // /// Range Table for [0, 16).
+    // range16: RangeTable<16>,
+    // /// Power of 2 lookup table.
+    // pow2_table: Pow2Table<20>,
+
+    // witgen_debug
+    // /// Helper table for decoding the regenerated size from LiteralsHeader.
+    // literals_header_table: LiteralsHeaderTable,
+
+    // witgen_debug
+    // /// Helper table for decoding bitstreams.
+    // bitstring_table: BitstringTable,
+
+    // witgen_debug
+    // /// Helper table for decoding FSE tables.
+    // fse_table: FseTable,
+
+
+    // witgen_debug
+    // /// Helper table for sequences as instructions.
+    // /// TODO(enable): sequence_instruction_table: SequenceInstructionTable,
+    // /// Helper table in the "output" region for accumulating the result of executing sequences.
+    // /// TODO(enable): sequence_execution_table: SequenceExecutionTable,
+
+    // witgen_debug
+    // /// Fixed lookups table.
+    // fixed_table: FixedTable,
 }
 
 #[derive(Clone, Debug)]
@@ -93,17 +118,25 @@ struct TagConfig {
     q_enable: Column<Fixed>,
     /// The ZstdTag being processed at the current row.
     tag: Column<Advice>,
+
+    // witgen_debug
     /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
     /// value.
-    tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
+    // tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
+
+
     /// The Zstd tag that will be processed after processing the current tag.
     tag_next: Column<Advice>,
     /// The number of bytes in the current tag.
     tag_len: Column<Advice>,
     /// The byte index within the current tag. At the first tag byte, tag_idx = 1.
     tag_idx: Column<Advice>,
+
+    // witgen_debug
     /// A utility gadget to identify the row where tag_idx == tag_len.
-    tag_idx_eq_tag_len: IsEqualConfig<Fr>,
+    // tag_idx_eq_tag_len: IsEqualConfig<Fr>,
+
+
     /// The maximum number bytes that the current tag may occupy. This is an upper bound on the
     /// number of bytes required to encode this tag. For instance, the LiteralsHeader is variable
     /// sized, ranging from 1-5 bytes. The max_len for LiteralsHeader would be 5.
@@ -145,16 +178,18 @@ impl TagConfig {
         Self {
             q_enable,
             tag,
-            tag_bits: BinaryNumberChip::configure(meta, q_enable, Some(tag.into())),
+            // witgen_debug
+            // tag_bits: BinaryNumberChip::configure(meta, q_enable, Some(tag.into())),
             tag_next: meta.advice_column(),
             tag_len,
             tag_idx,
-            tag_idx_eq_tag_len: IsEqualChip::configure(
-                meta,
-                |meta| meta.query_fixed(q_enable, Rotation::cur()),
-                |meta| meta.query_advice(tag_idx, Rotation::cur()),
-                |meta| meta.query_advice(tag_len, Rotation::cur()),
-            ),
+            // witgen_debug
+            // tag_idx_eq_tag_len: IsEqualChip::configure(
+            //     meta,
+            //     |meta| meta.query_fixed(q_enable, Rotation::cur()),
+            //     |meta| meta.query_advice(tag_idx, Rotation::cur()),
+            //     |meta| meta.query_advice(tag_len, Rotation::cur()),
+            // ),
             max_len: meta.advice_column(),
             tag_rlc: meta.advice_column_in(SecondPhase),
             rpow_tag_len: meta.advice_column_in(SecondPhase),
@@ -949,17 +984,18 @@ impl DecoderConfig {
         // Fixed table
         let fixed_table = FixedTable::construct(meta);
 
+        // witgen_debug
         // Helper tables
-        let literals_header_table = LiteralsHeaderTable::configure(meta, range8, range16);
-        let bitstring_table = BitstringTable::configure(meta, u8_table);
-        let fse_table = FseTable::configure(
-            meta,
-            &fixed_table,
-            u8_table,
-            range8,
-            pow2_table,
-            bitwise_op_table,
-        );
+        // let literals_header_table = LiteralsHeaderTable::configure(meta, range8, range16);
+        // let bitstring_table = BitstringTable::configure(meta, u8_table);
+        // let fse_table = FseTable::configure(
+        //     meta,
+        //     &fixed_table,
+        //     u8_table,
+        //     range8,
+        //     pow2_table,
+        //     bitwise_op_table,
+        // );
         // TODO(enable): let sequence_instruction_table = SequenceInstructionTable::configure(meta);
 
         // Peripheral configs
@@ -968,13 +1004,15 @@ impl DecoderConfig {
             meta.advice_column(),
             meta.advice_column(),
         );
-        let tag_config = TagConfig::configure(meta);
-        let block_config = BlockConfig::configure(meta, is_padding);
-        let sequences_header_decoder =
-            SequencesHeaderDecoder::configure(meta, byte, is_padding, u8_table);
-        let bitstream_decoder = BitstreamDecoder::configure(meta, is_padding, u8_table);
-        let fse_decoder = FseDecoder::configure(meta, is_padding);
-        let sequences_data_decoder = SequencesDataDecoder::configure(meta);
+
+        // witgen_debug
+        // let tag_config = TagConfig::configure(meta);
+        // let block_config = BlockConfig::configure(meta, is_padding);
+        // let sequences_header_decoder =
+        //     SequencesHeaderDecoder::configure(meta, byte, is_padding, u8_table);
+        // let bitstream_decoder = BitstreamDecoder::configure(meta, is_padding, u8_table);
+        // let fse_decoder = FseDecoder::configure(meta, is_padding);
+        // let sequences_data_decoder = SequencesDataDecoder::configure(meta);
 
         // TODO(enable):
         // let literals_table = [
@@ -1004,58 +1042,73 @@ impl DecoderConfig {
             encoded_rlc: meta.advice_column_in(SecondPhase),
             decoded_len: meta.advice_column(),
             is_padding,
-            tag_config,
-            block_config,
-            sequences_header_decoder,
-            bitstream_decoder,
-            fse_decoder,
-            sequences_data_decoder,
-            range8,
-            range16,
-            pow2_table,
-            literals_header_table,
-            bitstring_table,
-            fse_table,
+
+            // witgen_debug
+            // tag_config,
+
+            // witgen_debug
+            // block_config,
+            // sequences_header_decoder,
+            // bitstream_decoder,
+            // fse_decoder,
+            // sequences_data_decoder,
+
+            // witgen_debug
+            // range8,
+            // range16,
+            // pow2_table,
+
+            // witgen_debug
+            // literals_header_table,
+            // bitstring_table,
+            // fse_table,
+
+
             // TODO(enable): sequence_instruction_table,
             // TODO(enable): sequence_execution_table,
-            fixed_table,
+
+            // witgen_debug
+            // fixed_table,
         };
 
-        macro_rules! is_tag {
-            ($var:ident, $tag_variant:ident) => {
-                let $var = |meta: &mut VirtualCells<Fr>| {
-                    config
-                        .tag_config
-                        .tag_bits
-                        .value_equals(ZstdTag::$tag_variant, Rotation::cur())(meta)
-                };
-            };
-        }
 
-        macro_rules! is_prev_tag {
-            ($var:ident, $tag_variant:ident) => {
-                let $var = |meta: &mut VirtualCells<Fr>| {
-                    config
-                        .tag_config
-                        .tag_bits
-                        .value_equals(ZstdTag::$tag_variant, Rotation::prev())(meta)
-                };
-            };
-        }
+        // witgen_debug
+        // macro_rules! is_tag {
+        //     ($var:ident, $tag_variant:ident) => {
+        //         let $var = |meta: &mut VirtualCells<Fr>| {
+        //             config
+        //                 .tag_config
+        //                 .tag_bits
+        //                 .value_equals(ZstdTag::$tag_variant, Rotation::cur())(meta)
+        //         };
+        //     };
+        // }
 
-        is_tag!(is_null, Null);
-        is_tag!(is_frame_header_descriptor, FrameHeaderDescriptor);
-        is_tag!(is_frame_content_size, FrameContentSize);
-        is_tag!(is_block_header, BlockHeader);
-        is_tag!(is_zb_literals_header, ZstdBlockLiteralsHeader);
-        is_tag!(is_zb_raw_block, ZstdBlockLiteralsRawBytes);
-        is_tag!(is_zb_sequence_header, ZstdBlockSequenceHeader);
-        is_tag!(is_zb_sequence_fse, ZstdBlockSequenceFseCode);
-        is_tag!(is_zb_sequence_data, ZstdBlockSequenceData);
+        // macro_rules! is_prev_tag {
+        //     ($var:ident, $tag_variant:ident) => {
+        //         let $var = |meta: &mut VirtualCells<Fr>| {
+        //             config
+        //                 .tag_config
+        //                 .tag_bits
+        //                 .value_equals(ZstdTag::$tag_variant, Rotation::prev())(meta)
+        //         };
+        //     };
+        // }
 
-        is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
-        is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
-        is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
+        // witgen_debug
+        // is_tag!(is_null, Null);
+        // is_tag!(is_frame_header_descriptor, FrameHeaderDescriptor);
+        // is_tag!(is_frame_content_size, FrameContentSize);
+        // is_tag!(is_block_header, BlockHeader);
+        // is_tag!(is_zb_literals_header, ZstdBlockLiteralsHeader);
+        // is_tag!(is_zb_raw_block, ZstdBlockLiteralsRawBytes);
+        // is_tag!(is_zb_sequence_header, ZstdBlockSequenceHeader);
+        // is_tag!(is_zb_sequence_fse, ZstdBlockSequenceFseCode);
+        // is_tag!(is_zb_sequence_data, ZstdBlockSequenceData);
+
+        // is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
+        // is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
+        // is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
 
         // witgen_debug
         // meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
@@ -3815,17 +3868,20 @@ impl DecoderConfig {
         /////////////////////////////////////////
         //////// Load Auxiliary Tables  /////////
         /////////////////////////////////////////
-        self.range8.load(layouter)?;
-        self.range16.load(layouter)?;
-        self.fixed_table.load(layouter)?;
-        self.pow2_table.load(layouter)?;
 
+        // witgen_debug
+        // self.range8.load(layouter)?;
+        // self.range16.load(layouter)?;
+        // self.fixed_table.load(layouter)?;
+        // self.pow2_table.load(layouter)?;
+
+        // witgen_debug
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
-        self.fse_table.assign(layouter, fse_aux_tables, k)?;
-        self.bitstring_table
-            .assign(layouter, &block_info_arr, &witness_rows, k)?;
+        // self.fse_table.assign(layouter, fse_aux_tables, k)?;
+        // self.bitstring_table
+        //     .assign(layouter, &block_info_arr, &witness_rows, k)?;
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
@@ -3874,8 +3930,10 @@ impl DecoderConfig {
                 ),
             ));
         }
-        self.literals_header_table
-            .assign(layouter, literal_headers)?;
+
+        // witgen_debug
+        // self.literals_header_table
+        //     .assign(layouter, literal_headers)?;
 
         /////////////////////////////////////////
         ///// Assign Decompression Region  //////
@@ -3945,225 +4003,236 @@ impl DecoderConfig {
                     ///// Assign Bitstream Decoder  /////////
                     /////////////////////////////////////////
 
-                    region.assign_advice(
-                        || "bit_index_start",
-                        self.bitstream_decoder.bit_index_start,
-                        i,
-                        || Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "bit_index_end",
-                        self.bitstream_decoder.bit_index_end,
-                        i,
-                        || Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "bitstring_value",
-                        self.bitstream_decoder.bitstring_value,
-                        i,
-                        || Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "is_nb0",
-                        self.bitstream_decoder.is_nb0,
-                        i,
-                        || Value::known(Fr::from(row.bitstream_read_data.is_zero_bit_read as u64)),
-                    )?;
+                    // witgen_debug
+                    // region.assign_advice(
+                    //     || "bit_index_start",
+                    //     self.bitstream_decoder.bit_index_start,
+                    //     i,
+                    //     || Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "bit_index_end",
+                    //     self.bitstream_decoder.bit_index_end,
+                    //     i,
+                    //     || Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "bitstring_value",
+                    //     self.bitstream_decoder.bitstring_value,
+                    //     i,
+                    //     || Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "is_nb0",
+                    //     self.bitstream_decoder.is_nb0,
+                    //     i,
+                    //     || Value::known(Fr::from(row.bitstream_read_data.is_zero_bit_read as u64)),
+                    // )?;
 
                     let bit_end_idx = row.bitstream_read_data.bit_end_idx;
                     let is_end_aligned = bit_end_idx == 7 || bit_end_idx == 15 || bit_end_idx == 23;
                     let is_start_aligned = row.bitstream_read_data.bit_start_idx == 0;
                     let is_nil = is_start_aligned || is_end_aligned;
 
-                    region.assign_advice(
-                        || "is_nil",
-                        self.bitstream_decoder.is_nil,
-                        i,
-                        || Value::known(Fr::from(is_nil as u64)),
-                    )?;
+                    // witgen_debug
+                    // region.assign_advice(
+                    //     || "is_nil",
+                    //     self.bitstream_decoder.is_nil,
+                    //     i,
+                    //     || Value::known(Fr::from(is_nil as u64)),
+                    // )?;
 
-                    let bit_index_end_cmp_7 = ComparatorChip::construct(
-                        self.bitstream_decoder.bit_index_end_cmp_7.clone(),
-                    );
-                    bit_index_end_cmp_7.assign(
-                        &mut region,
-                        i,
-                        Fr::from(bit_end_idx as u64),
-                        Fr::from(7u64),
-                    )?;
+                    // witgen_debug
+                    // let bit_index_end_cmp_7 = ComparatorChip::construct(
+                    //     self.bitstream_decoder.bit_index_end_cmp_7.clone(),
+                    // );
+                    // bit_index_end_cmp_7.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Fr::from(bit_end_idx as u64),
+                    //     Fr::from(7u64),
+                    // )?;
 
-                    let bit_index_end_cmp_15 = ComparatorChip::construct(
-                        self.bitstream_decoder.bit_index_end_cmp_15.clone(),
-                    );
-                    bit_index_end_cmp_15.assign(
-                        &mut region,
-                        i,
-                        Fr::from(bit_end_idx as u64),
-                        Fr::from(15u64),
-                    )?;
+                    // witgen_debug
+                    // let bit_index_end_cmp_15 = ComparatorChip::construct(
+                    //     self.bitstream_decoder.bit_index_end_cmp_15.clone(),
+                    // );
+                    // bit_index_end_cmp_15.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Fr::from(bit_end_idx as u64),
+                    //     Fr::from(15u64),
+                    // )?;
 
-                    let bit_index_end_cmp_23 = ComparatorChip::construct(
-                        self.bitstream_decoder.bit_index_end_cmp_23.clone(),
-                    );
-                    bit_index_end_cmp_23.assign(
-                        &mut region,
-                        i,
-                        Fr::from(bit_end_idx as u64),
-                        Fr::from(23u64),
-                    )?;
+                    // witgen_debug
+                    // let bit_index_end_cmp_23 = ComparatorChip::construct(
+                    //     self.bitstream_decoder.bit_index_end_cmp_23.clone(),
+                    // );
+                    // bit_index_end_cmp_23.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Fr::from(bit_end_idx as u64),
+                    //     Fr::from(23u64),
+                    // )?;
 
-                    let bitstring_value_eq_3 =
-                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
-                    bitstring_value_eq_3.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
-                        Value::known(Fr::from(3u64)),
-                    )?;
+                    // witgen_debug
+                    // let bitstring_value_eq_3 =
+                    //     IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
+                    // bitstring_value_eq_3.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                    //     Value::known(Fr::from(3u64)),
+                    // )?;
 
-                    let start_unchanged =
-                        IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
-                    start_unchanged.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
-                        Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
-                    )?;
+                    // witgen_debug
+                    // let start_unchanged =
+                    //     IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
+                    // start_unchanged.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
+                    //     Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
+                    // )?;
 
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
                     /////////////////////////////////////////
-                    region.assign_fixed(
-                        || "tag_config.q_enable",
-                        self.tag_config.q_enable,
-                        i,
-                        || Value::known(Fr::one()),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.tag",
-                        self.tag_config.tag,
-                        i,
-                        || Value::known(Fr::from(row.state.tag as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.tag_next",
-                        self.tag_config.tag_next,
-                        i,
-                        || Value::known(Fr::from(row.state.tag_next as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.tag_len",
-                        self.tag_config.tag_len,
-                        i,
-                        || Value::known(Fr::from(row.state.tag_len as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.max_len",
-                        self.tag_config.max_len,
-                        i,
-                        || Value::known(Fr::from(row.state.max_tag_len as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.tag_idx",
-                        self.tag_config.tag_idx,
-                        i,
-                        || Value::known(Fr::from(row.state.tag_idx as u64)),
-                    )?;
 
-                    let is_sequence_data = row.state.tag == ZstdTag::ZstdBlockSequenceData;
-                    region.assign_advice(
-                        || "tag_config.is_sequence_data",
-                        self.tag_config.is_sequence_data,
-                        i,
-                        || Value::known(Fr::from(is_sequence_data as u64)),
-                    )?;
+                    // witgen_debug
+                    // region.assign_fixed(
+                    //     || "tag_config.q_enable",
+                    //     self.tag_config.q_enable,
+                    //     i,
+                    //     || Value::known(Fr::one()),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.tag",
+                    //     self.tag_config.tag,
+                    //     i,
+                    //     || Value::known(Fr::from(row.state.tag as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.tag_next",
+                    //     self.tag_config.tag_next,
+                    //     i,
+                    //     || Value::known(Fr::from(row.state.tag_next as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.tag_len",
+                    //     self.tag_config.tag_len,
+                    //     i,
+                    //     || Value::known(Fr::from(row.state.tag_len as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.max_len",
+                    //     self.tag_config.max_len,
+                    //     i,
+                    //     || Value::known(Fr::from(row.state.max_tag_len as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.tag_idx",
+                    //     self.tag_config.tag_idx,
+                    //     i,
+                    //     || Value::known(Fr::from(row.state.tag_idx as u64)),
+                    // )?;
 
-                    let is_frame_content_size = row.state.tag == ZstdTag::FrameContentSize;
-                    region.assign_advice(
-                        || "tag_config.is_frame_content_size",
-                        self.tag_config.is_frame_content_size,
-                        i,
-                        || Value::known(Fr::from(is_frame_content_size as u64)),
-                    )?;
+                    // let is_sequence_data = row.state.tag == ZstdTag::ZstdBlockSequenceData;
+                    // region.assign_advice(
+                    //     || "tag_config.is_sequence_data",
+                    //     self.tag_config.is_sequence_data,
+                    //     i,
+                    //     || Value::known(Fr::from(is_sequence_data as u64)),
+                    // )?;
 
-                    let is_block_header = row.state.tag == ZstdTag::BlockHeader;
-                    region.assign_advice(
-                        || "tag_config.is_block_header",
-                        self.tag_config.is_block_header,
-                        i,
-                        || Value::known(Fr::from(is_block_header as u64)),
-                    )?;
+                    // let is_frame_content_size = row.state.tag == ZstdTag::FrameContentSize;
+                    // region.assign_advice(
+                    //     || "tag_config.is_frame_content_size",
+                    //     self.tag_config.is_frame_content_size,
+                    //     i,
+                    //     || Value::known(Fr::from(is_frame_content_size as u64)),
+                    // )?;
 
-                    let is_fse_code = row.state.tag == ZstdTag::ZstdBlockSequenceFseCode;
-                    region.assign_advice(
-                        || "tag_config.is_fse_code",
-                        self.tag_config.is_fse_code,
-                        i,
-                        || Value::known(Fr::from(is_fse_code as u64)),
-                    )?;
+                    // let is_block_header = row.state.tag == ZstdTag::BlockHeader;
+                    // region.assign_advice(
+                    //     || "tag_config.is_block_header",
+                    //     self.tag_config.is_block_header,
+                    //     i,
+                    //     || Value::known(Fr::from(is_block_header as u64)),
+                    // )?;
 
-                    let is_null = row.state.tag == ZstdTag::Null;
-                    region.assign_advice(
-                        || "tag_config.is_null",
-                        self.tag_config.is_null,
-                        i,
-                        || Value::known(Fr::from(is_null as u64)),
-                    )?;
+                    // let is_fse_code = row.state.tag == ZstdTag::ZstdBlockSequenceFseCode;
+                    // region.assign_advice(
+                    //     || "tag_config.is_fse_code",
+                    //     self.tag_config.is_fse_code,
+                    //     i,
+                    //     || Value::known(Fr::from(is_fse_code as u64)),
+                    // )?;
 
-                    region.assign_advice(
-                        || "tag_config.is_change",
-                        self.tag_config.is_change,
-                        i,
-                        || Value::known(Fr::from((row.state.is_tag_change && i > 0) as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.is_reverse",
-                        self.tag_config.is_reverse,
-                        i,
-                        || Value::known(Fr::from(row.encoded_data.reverse as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.tag_rlc",
-                        self.tag_config.tag_rlc,
-                        i,
-                        || row.state.tag_rlc_acc,
-                    )?;
-                    region.assign_advice(
-                        || "tag_config.is_output",
-                        self.tag_config.is_output,
-                        i,
-                        || Value::known(Fr::from(row.state.tag.is_output() as u64)),
-                    )?;
+                    // let is_null = row.state.tag == ZstdTag::Null;
+                    // region.assign_advice(
+                    //     || "tag_config.is_null",
+                    //     self.tag_config.is_null,
+                    //     i,
+                    //     || Value::known(Fr::from(is_null as u64)),
+                    // )?;
 
-                    let tag_len = row.state.tag_len as usize;
-                    if tag_len >= pow_of_rand.len() {
-                        let mut last = pow_of_rand
-                            .last()
-                            .expect("Last pow_of_rand exists.")
-                            .clone();
-                        for _ in pow_of_rand.len()..=tag_len {
-                            last = last * challenges.keccak_input();
-                            pow_of_rand.push(last.clone());
-                        }
-                    }
-                    region.assign_advice(
-                        || "tag_config.rpow_tag_len",
-                        self.tag_config.rpow_tag_len,
-                        i,
-                        || pow_of_rand[tag_len],
-                    )?;
+                    // region.assign_advice(
+                    //     || "tag_config.is_change",
+                    //     self.tag_config.is_change,
+                    //     i,
+                    //     || Value::known(Fr::from((row.state.is_tag_change && i > 0) as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.is_reverse",
+                    //     self.tag_config.is_reverse,
+                    //     i,
+                    //     || Value::known(Fr::from(row.encoded_data.reverse as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.tag_rlc",
+                    //     self.tag_config.tag_rlc,
+                    //     i,
+                    //     || row.state.tag_rlc_acc,
+                    // )?;
+                    // region.assign_advice(
+                    //     || "tag_config.is_output",
+                    //     self.tag_config.is_output,
+                    //     i,
+                    //     || Value::known(Fr::from(row.state.tag.is_output() as u64)),
+                    // )?;
 
-                    let tag_idx_eq_tag_len =
-                        IsEqualChip::construct(self.tag_config.tag_idx_eq_tag_len.clone());
-                    tag_idx_eq_tag_len.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.state.tag_idx as u64)),
-                        Value::known(Fr::from(row.state.tag_len as u64)),
-                    )?;
+                    // let tag_len = row.state.tag_len as usize;
+                    // if tag_len >= pow_of_rand.len() {
+                    //     let mut last = pow_of_rand
+                    //         .last()
+                    //         .expect("Last pow_of_rand exists.")
+                    //         .clone();
+                    //     for _ in pow_of_rand.len()..=tag_len {
+                    //         last = last * challenges.keccak_input();
+                    //         pow_of_rand.push(last.clone());
+                    //     }
+                    // }
+                    // region.assign_advice(
+                    //     || "tag_config.rpow_tag_len",
+                    //     self.tag_config.rpow_tag_len,
+                    //     i,
+                    //     || pow_of_rand[tag_len],
+                    // )?;
 
-                    let tag_chip = BinaryNumberChip::construct(self.tag_config.tag_bits);
-                    tag_chip.assign(&mut region, i, &row.state.tag)?;
+                    // witgen_debug
+                    // let tag_idx_eq_tag_len =
+                    //     IsEqualChip::construct(self.tag_config.tag_idx_eq_tag_len.clone());
+                    // tag_idx_eq_tag_len.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Value::known(Fr::from(row.state.tag_idx as u64)),
+                    //     Value::known(Fr::from(row.state.tag_len as u64)),
+                    // )?;
+
+                    // witgen_debug
+                    // let tag_chip = BinaryNumberChip::construct(self.tag_config.tag_bits);
+                    // tag_chip.assign(&mut region, i, &row.state.tag)?;
 
                     /////////////////////////////////////////
                     ///////// Assign Block Config  //////////
@@ -4174,207 +4243,216 @@ impl DecoderConfig {
                         || row.state.tag == BlockHeader;
                     let is_block_header = row.state.tag == BlockHeader;
 
-                    if !is_not_block || is_block_header {
-                        if block_idx != curr_block_info.block_idx as u64 {
-                            curr_block_info = block_info_arr
-                                .iter()
-                                .find(|&b| b.block_idx == block_idx as usize)
-                                .expect("Block info should exist")
-                                .clone();
-                        }
-                        if block_idx != curr_sequence_info.block_idx as u64 {
-                            curr_sequence_info = sequence_info_arr
-                                .iter()
-                                .find(|&s| s.block_idx == block_idx as usize)
-                                .expect("Sequence info should exist")
-                                .clone();
-                        }
-                        region.assign_advice(
-                            || "block_config.block_len",
-                            self.block_config.block_len,
-                            i,
-                            || Value::known(Fr::from(curr_block_info.block_len as u64)),
-                        )?;
-                        region.assign_advice(
-                            || "block_config.block_idx",
-                            self.block_config.block_idx,
-                            i,
-                            || Value::known(Fr::from(curr_block_info.block_idx as u64)),
-                        )?;
-                        region.assign_advice(
-                            || "block_config.is_last_block",
-                            self.block_config.is_last_block,
-                            i,
-                            || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
-                        )?;
-                        region.assign_advice(
-                            || "block_config.is_block",
-                            self.block_config.is_block,
-                            i,
-                            || Value::known(Fr::one()),
-                        )?;
-                        region.assign_advice(
-                            || "block_config.num_sequences",
-                            self.block_config.num_sequences,
-                            i,
-                            || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                        )?;
+                    // witgen_debug
+                    // if !is_not_block || is_block_header {
+                    //     if block_idx != curr_block_info.block_idx as u64 {
+                    //         curr_block_info = block_info_arr
+                    //             .iter()
+                    //             .find(|&b| b.block_idx == block_idx as usize)
+                    //             .expect("Block info should exist")
+                    //             .clone();
+                    //     }
+                    //     if block_idx != curr_sequence_info.block_idx as u64 {
+                    //         curr_sequence_info = sequence_info_arr
+                    //             .iter()
+                    //             .find(|&s| s.block_idx == block_idx as usize)
+                    //             .expect("Sequence info should exist")
+                    //             .clone();
+                    //     }
+                    //     region.assign_advice(
+                    //         || "block_config.block_len",
+                    //         self.block_config.block_len,
+                    //         i,
+                    //         || Value::known(Fr::from(curr_block_info.block_len as u64)),
+                    //     )?;
+                    //     region.assign_advice(
+                    //         || "block_config.block_idx",
+                    //         self.block_config.block_idx,
+                    //         i,
+                    //         || Value::known(Fr::from(curr_block_info.block_idx as u64)),
+                    //     )?;
+                    //     region.assign_advice(
+                    //         || "block_config.is_last_block",
+                    //         self.block_config.is_last_block,
+                    //         i,
+                    //         || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
+                    //     )?;
+                    //     region.assign_advice(
+                    //         || "block_config.is_block",
+                    //         self.block_config.is_block,
+                    //         i,
+                    //         || Value::known(Fr::one()),
+                    //     )?;
+                    //     region.assign_advice(
+                    //         || "block_config.num_sequences",
+                    //         self.block_config.num_sequences,
+                    //         i,
+                    //         || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                    //     )?;
 
-                        let table_names = ["LLT", "MOT", "MLT"];
-                        for idx in 0..3 {
-                            region.assign_advice(
-                                || table_names[idx],
-                                self.block_config.compression_modes[idx],
-                                i,
-                                || {
-                                    Value::known(Fr::from(
-                                        curr_sequence_info.compression_mode[idx] as u64,
-                                    ))
-                                },
-                            )?;
-                        }
+                    //     let table_names = ["LLT", "MOT", "MLT"];
+                    //     for idx in 0..3 {
+                    //         region.assign_advice(
+                    //             || table_names[idx],
+                    //             self.block_config.compression_modes[idx],
+                    //             i,
+                    //             || {
+                    //                 Value::known(Fr::from(
+                    //                     curr_sequence_info.compression_mode[idx] as u64,
+                    //                 ))
+                    //             },
+                    //         )?;
+                    //     }
 
-                        let is_empty_sequences =
-                            IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
-                        is_empty_sequences.assign(
-                            &mut region,
-                            i,
-                            Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                            Value::known(Fr::from(0u64)),
-                        )?;
-                    }
+                    //     let is_empty_sequences =
+                    //         IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
+                    //     is_empty_sequences.assign(
+                    //         &mut region,
+                    //         i,
+                    //         Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                    //         Value::known(Fr::from(0u64)),
+                    //     )?;
+                    // }
 
                     ////////////////////////////////////////////////////////////
                     ///////// Assign Extra Sequence Bitstream Fields  //////////
                     ////////////////////////////////////////////////////////////
-                    region.assign_advice(
-                        || "sequence_data_decoder.idx",
-                        self.sequences_data_decoder.idx,
-                        i,
-                        || Value::known(Fr::from((row.bitstream_read_data.seq_idx + 1) as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "sequence_data_decoder.is_init_state",
-                        self.sequences_data_decoder.is_init_state,
-                        i,
-                        || Value::known(Fr::from(row.bitstream_read_data.is_seq_init as u64)),
-                    )?;
+                    
+                    // witgen_debug
+                    // region.assign_advice(
+                    //     || "sequence_data_decoder.idx",
+                    //     self.sequences_data_decoder.idx,
+                    //     i,
+                    //     || Value::known(Fr::from((row.bitstream_read_data.seq_idx + 1) as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "sequence_data_decoder.is_init_state",
+                    //     self.sequences_data_decoder.is_init_state,
+                    //     i,
+                    //     || Value::known(Fr::from(row.bitstream_read_data.is_seq_init as u64)),
+                    // )?;
 
                     let seq_states = row.bitstream_read_data.states;
                     let seq_symbols = row.bitstream_read_data.symbols;
                     let is_update_state = seq_states[0] || seq_states[1] || seq_states[2];
                     let tables = ["LLT", "MLT", "MOT"];
-                    for idx in 0..3 {
-                        region.assign_advice(
-                            || format!("sequence_data_decoder.states: {:?}", tables[idx]),
-                            self.sequences_data_decoder.states[idx],
-                            i,
-                            || Value::known(Fr::from(seq_states[idx] as u64)),
-                        )?;
-                        region.assign_advice(
-                            || format!("sequence_data_decoder.symbols: {:?}", tables[idx]),
-                            self.sequences_data_decoder.symbols[idx],
-                            i,
-                            || Value::known(Fr::from(seq_symbols[idx] as u64)),
-                        )?;
-                        region.assign_advice(
-                            || format!("sequence_data_decoder.values: {:?}", tables[idx]),
-                            self.sequences_data_decoder.values[idx],
-                            i,
-                            || Value::known(Fr::from(row.bitstream_read_data.values[idx] as u64)),
-                        )?;
-                    }
-                    region.assign_advice(
-                        || "sequence_data_decoder.is_update_state",
-                        self.sequences_data_decoder.is_update_state,
-                        i,
-                        || Value::known(Fr::from(is_update_state as u64)),
-                    )?;
-                    region.assign_advice(
-                        || "sequence_data_decoder.baseline",
-                        self.sequences_data_decoder.baseline,
-                        i,
-                        || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
-                    )?;
-                    let byte0_lt_0x80 =
-                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
-                    byte0_lt_0x80.assign(
-                        &mut region,
-                        i,
-                        Fr::from(row.encoded_data.value_byte as u64),
-                        Fr::from(0x80 as u64),
-                    )?;
-                    let byte0_lt_0xff =
-                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
-                    byte0_lt_0xff.assign(
-                        &mut region,
-                        i,
-                        Fr::from(row.encoded_data.value_byte as u64),
-                        Fr::from(0xff as u64),
-                    )?;
+
+                    // // witgen_debug
+                    // for idx in 0..3 {
+                    //     region.assign_advice(
+                    //         || format!("sequence_data_decoder.states: {:?}", tables[idx]),
+                    //         self.sequences_data_decoder.states[idx],
+                    //         i,
+                    //         || Value::known(Fr::from(seq_states[idx] as u64)),
+                    //     )?;
+                    //     region.assign_advice(
+                    //         || format!("sequence_data_decoder.symbols: {:?}", tables[idx]),
+                    //         self.sequences_data_decoder.symbols[idx],
+                    //         i,
+                    //         || Value::known(Fr::from(seq_symbols[idx] as u64)),
+                    //     )?;
+                    //     region.assign_advice(
+                    //         || format!("sequence_data_decoder.values: {:?}", tables[idx]),
+                    //         self.sequences_data_decoder.values[idx],
+                    //         i,
+                    //         || Value::known(Fr::from(row.bitstream_read_data.values[idx] as u64)),
+                    //     )?;
+                    // }
+
+                    // witgen_debug
+                    // region.assign_advice(
+                    //     || "sequence_data_decoder.is_update_state",
+                    //     self.sequences_data_decoder.is_update_state,
+                    //     i,
+                    //     || Value::known(Fr::from(is_update_state as u64)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "sequence_data_decoder.baseline",
+                    //     self.sequences_data_decoder.baseline,
+                    //     i,
+                    //     || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
+                    // )?;
+                    // let byte0_lt_0x80 =
+                    //     LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
+                    // byte0_lt_0x80.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Fr::from(row.encoded_data.value_byte as u64),
+                    //     Fr::from(0x80 as u64),
+                    // )?;
+                    // let byte0_lt_0xff =
+                    //     LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
+                    // byte0_lt_0xff.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Fr::from(row.encoded_data.value_byte as u64),
+                    //     Fr::from(0xff as u64),
+                    // )?;
 
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
                     ////////////////////////////////////////////////
-                    region.assign_advice(
-                        || "fse_decoder.table_kind",
-                        self.fse_decoder.table_kind,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.table_kind)),
-                    )?;
-                    region.assign_advice(
-                        || "fse_decoder.table_size",
-                        self.fse_decoder.table_size,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.table_size)),
-                    )?;
-                    region.assign_advice(
-                        || "fse_decoder.symbol",
-                        self.fse_decoder.symbol,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.symbol)),
-                    )?;
-                    region.assign_advice(
-                        || "fse_decoder.value_decoded",
-                        self.fse_decoder.value_decoded,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.value_decoded)),
-                    )?;
-                    region.assign_advice(
-                        || "fse_decoder.probability_acc",
-                        self.fse_decoder.probability_acc,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.probability_acc)),
-                    )?;
-                    region.assign_advice(
-                        || "fse_decoder.is_repeat_bits_loop",
-                        self.fse_decoder.is_repeat_bits_loop,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.is_repeat_bits_loop)),
-                    )?;
-                    region.assign_advice(
-                        || "fse_decoder.is_trailing_bits",
-                        self.fse_decoder.is_trailing_bits,
-                        i,
-                        || Value::known(Fr::from(row.fse_data.is_trailing_bits)),
-                    )?;
+                    
+                    // witgen_debug
+                    // region.assign_advice(
+                    //     || "fse_decoder.table_kind",
+                    //     self.fse_decoder.table_kind,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.table_kind)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "fse_decoder.table_size",
+                    //     self.fse_decoder.table_size,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.table_size)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "fse_decoder.symbol",
+                    //     self.fse_decoder.symbol,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.symbol)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "fse_decoder.value_decoded",
+                    //     self.fse_decoder.value_decoded,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.value_decoded)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "fse_decoder.probability_acc",
+                    //     self.fse_decoder.probability_acc,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.probability_acc)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "fse_decoder.is_repeat_bits_loop",
+                    //     self.fse_decoder.is_repeat_bits_loop,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.is_repeat_bits_loop)),
+                    // )?;
+                    // region.assign_advice(
+                    //     || "fse_decoder.is_trailing_bits",
+                    //     self.fse_decoder.is_trailing_bits,
+                    //     i,
+                    //     || Value::known(Fr::from(row.fse_data.is_trailing_bits)),
+                    // )?;
 
-                    let value_decoded_eq_0 =
-                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
-                    value_decoded_eq_0.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.fse_data.value_decoded)),
-                        Value::known(Fr::zero()),
-                    )?;
-                    let value_decoded_eq_1 =
-                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
-                    value_decoded_eq_1.assign(
-                        &mut region,
-                        i,
-                        Value::known(Fr::from(row.fse_data.value_decoded)),
-                        Value::known(Fr::one()),
-                    )?;
+                    // let value_decoded_eq_0 =
+                    //     IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
+                    // value_decoded_eq_0.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Value::known(Fr::from(row.fse_data.value_decoded)),
+                    //     Value::known(Fr::zero()),
+                    // )?;
+                    // let value_decoded_eq_1 =
+                    //     IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
+                    // value_decoded_eq_1.assign(
+                    //     &mut region,
+                    //     i,
+                    //     Value::known(Fr::from(row.fse_data.value_decoded)),
+                    //     Value::known(Fr::one()),
+                    // )?;
                 }
 
                 for idx in (witness_rows.len())..(2u64.pow(k - 1) as usize) {
