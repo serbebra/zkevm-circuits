@@ -1317,6 +1317,7 @@ fn process_sequences<F: Field>(
                 },
                 values: [0, 0, 0],
                 baseline: curr_baseline as u64,
+                is_nil: false,
             },
             decoded_data: last_row.decoded_data.clone(),
             fse_data: FseDecodingRow::default(), /* TODO: Clarify alternating FSE/data segments
@@ -1325,7 +1326,85 @@ fn process_sequences<F: Field>(
                                                   * is_state_skipped: false, */
         });
 
-        for _ in 0..nb {
+        let multi_byte_boundaries: [usize; 2] = [15, 23];
+        let mut skipped_bits = 0usize;
+
+        for boundary in multi_byte_boundaries {
+            if to_bit_idx >= boundary {
+                for _ in 0..N_BITS_PER_BYTE {
+                    (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
+                }
+                if current_byte_idx > last_byte_idx && current_byte_idx <= n_sequence_data_bytes {
+                    next_tag_value_acc = tag_value_iter.next().unwrap();
+                    next_tag_rlc_acc = tag_rlc_iter.next().unwrap();
+                    last_byte_idx = current_byte_idx;
+                }
+                skipped_bits += N_BITS_PER_BYTE;
+    
+                witness_rows.push(ZstdWitnessRow {
+                    state: ZstdState {
+                        tag: ZstdTag::ZstdBlockSequenceData,
+                        tag_next: if last_block { ZstdTag::Null } else { ZstdTag::BlockHeader },
+                        block_idx,
+                        max_tag_len: lookup_max_tag_len(ZstdTag::ZstdBlockSequenceData),
+                        tag_len: n_sequence_data_bytes as u64,
+                        tag_idx: current_byte_idx as u64,
+                        tag_value,
+                        tag_value_acc: next_tag_value_acc,
+                        is_tag_change: false,
+                        tag_rlc,
+                        tag_rlc_acc: next_tag_rlc_acc,
+                    },
+                    encoded_data: EncodedData {
+                        byte_idx: (byte_offset + current_byte_idx) as u64,
+                        encoded_len,
+                        // witgen_debug, idx overflow
+                        // TODO(ray): This is a special case of the sequences data being a part of the
+                        // "last block", hence the overflow. I have just re-used the "last" byte from the
+                        // source data in such a case.
+                        value_byte: if byte_offset + current_byte_idx - 1 < src.len() {
+                            src[byte_offset + current_byte_idx - 1]
+                        } else {
+                            src.last().cloned().unwrap()
+                        },
+                        value_rlc,
+                        reverse: true,
+                        reverse_len: n_sequence_data_bytes as u64,
+                        reverse_idx: (n_sequence_data_bytes - (current_byte_idx - 1)) as u64,
+                        aux_1,
+                        aux_2: Value::known(F::zero()),
+                    },
+                    bitstream_read_data: BitstreamReadRow {
+                        bit_start_idx: 0,
+                        bit_end_idx: 0,
+                        bit_value: 0,
+                        is_zero_bit_read: true,
+                        is_seq_init: false,
+                        seq_idx,
+                        states: if mode > 0 {
+                            [order_idx == 0, order_idx == 1, order_idx == 2]
+                        } else {
+                            [false, false, false]
+                        },
+                        symbols: if mode > 0 {
+                            [false, false, false]
+                        } else {
+                            [order_idx == 2, order_idx == 1, order_idx == 0]
+                        },
+                        values: [0, 0, 0],
+                        baseline: curr_baseline as u64,
+                        is_nil: true,
+                    },
+                    decoded_data: last_row.decoded_data.clone(),
+                    fse_data: FseDecodingRow::default(), /* TODO: Clarify alternating FSE/data segments
+                                                          * TODO(ray): pls check where to get this field
+                                                          * from.
+                                                          * is_state_skipped: false, */
+                })
+            }
+        }
+        
+        for _ in 0..(nb - skipped_bits) {
             (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
         }
         if current_byte_idx > last_byte_idx && current_byte_idx <= n_sequence_data_bytes {
@@ -1681,29 +1760,30 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     }
 
     // witgen_debug
-    // for (idx, row) in witness_rows.iter().enumerate() {
-    //     write!(
-    //         handle,
-    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
-    //         idx,
-    //         row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
-    //         row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
-    //         row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
-    //         row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
-    //         row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
-    //         row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
-    //         row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
-    //         row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
-    //         row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
-    //         row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
-    //         row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
-    //         row.bitstream_read_data.bit_start_idx,
-    //         row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
-    //         row.bitstream_read_data.is_zero_bit_read
-    //     ).unwrap();
+    for (idx, row) in witness_rows.iter().enumerate() {
+        write!(
+            handle,
+            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
+            idx,
+            row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
+            row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
+            row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
+            row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
+            row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
+            row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
+            row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
+            row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
+            row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
+            row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
+            row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
+            row.bitstream_read_data.bit_start_idx,
+            row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
+            row.bitstream_read_data.is_nil,
+            row.bitstream_read_data.is_zero_bit_read
+        ).unwrap();
 
-    //     writeln!(handle).unwrap();
-    // }
+        writeln!(handle).unwrap();
+    }
 
     (
         witness_rows,

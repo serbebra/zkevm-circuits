@@ -390,6 +390,8 @@ pub struct BitstreamReadRow {
     pub values: [u64; 3],
     /// The baseline value associated with this state.
     pub baseline: u64,
+    /// Whether current byte is completely covered in a multi-byte packing scheme
+    pub is_nil: bool,
 }
 
 /// Sequence data is interleaved with 6 bitstreams. Each producing a different type of value.
