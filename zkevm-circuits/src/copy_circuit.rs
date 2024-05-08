@@ -347,13 +347,14 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     not::expr(is_reader),
                     is_word_end.expr(),
                 );
-                
+
                 let is_memory_copy = meta.query_advice(is_memory_copy, CURRENT);
 
                 constrain_rw_counter(
                     cb,
                     meta,
-                    is_last.expr(),
+                    //is_last.expr(),
+                    is_last_col,
                     is_rw_type.expr(),
                     is_row_end.expr(),
                     is_memory_copy.expr(),
