@@ -775,98 +775,99 @@ impl FseTable {
                         .iter()
                         .filter(|(&_sym, &w)| w < 0)
                         .count();
-                    for state in ((table.table_size - tail_states_count as u64)
-                        ..=(table.table_size - 1))
-                        .into_iter()
-                        .rev()
-                    {
-                        region.assign_advice(
-                            || "state",
-                            self.state,
-                            fse_offset,
-                            || Value::known(Fr::from(state)),
-                        )?;
-                        region.assign_advice(
-                            || "idx",
-                            self.idx,
-                            fse_offset,
-                            || Value::known(Fr::from(state_idx as u64)),
-                        )?;
-                        region.assign_advice(
-                            || "symbol",
-                            self.symbol,
-                            fse_offset,
-                            || {
-                                Value::known(Fr::from(
-                                    states_to_symbol.get(&state).expect("state exists").0,
-                                ))
-                            },
-                        )?;
-                        region.assign_advice(
-                            || "baseline",
-                            self.baseline,
-                            fse_offset,
-                            || {
-                                Value::known(Fr::from(
-                                    states_to_symbol.get(&state).expect("state exists").1,
-                                ))
-                            },
-                        )?;
-                        region.assign_advice(
-                            || "nb",
-                            self.nb,
-                            fse_offset,
-                            || {
-                                Value::known(Fr::from(
-                                    states_to_symbol.get(&state).expect("state exists").2,
-                                ))
-                            },
-                        )?;
-                        region.assign_advice(
-                            || "is_new_symbol",
-                            self.is_new_symbol,
-                            fse_offset,
-                            || Value::known(Fr::one()),
-                        )?;
-                        region.assign_advice(
-                            || "is_prob_less_than1",
-                            self.is_prob_less_than1,
-                            fse_offset,
-                            || Value::known(Fr::one()),
-                        )?;
-                        region.assign_advice(
-                            || "is_skipped_state",
-                            self.is_skipped_state,
-                            fse_offset,
-                            || Value::known(Fr::one()),
-                        )?;
-                        region.assign_advice(
-                            || "symbol_count",
-                            self.symbol_count,
-                            fse_offset,
-                            || Value::known(Fr::one()),
-                        )?;
-                        region.assign_advice(
-                            || "symbol_count_acc",
-                            self.symbol_count_acc,
-                            fse_offset,
-                            || Value::known(Fr::one()),
-                        )?;
-                        region.assign_advice(
-                            || "table_size_rs_1",
-                            self.table_size_rs_1,
-                            fse_offset,
-                            || Value::known(Fr::from(table.table_size >> 1)),
-                        )?;
-                        region.assign_advice(
-                            || "table_size_rs_3",
-                            self.table_size_rs_3,
-                            fse_offset,
-                            || Value::known(Fr::from(table.table_size >> 3)),
-                        )?;
+                    if tail_states_count > 0 {
+                        for state in ((table.table_size - tail_states_count as u64)
+                            ..=(table.table_size - 1))
+                            .rev()
+                        {
+                            region.assign_advice(
+                                || "state",
+                                self.state,
+                                fse_offset,
+                                || Value::known(Fr::from(state)),
+                            )?;
+                            region.assign_advice(
+                                || "idx",
+                                self.idx,
+                                fse_offset,
+                                || Value::known(Fr::from(state_idx as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol",
+                                self.symbol,
+                                fse_offset,
+                                || {
+                                    Value::known(Fr::from(
+                                        states_to_symbol.get(&state).expect("state exists").0,
+                                    ))
+                                },
+                            )?;
+                            region.assign_advice(
+                                || "baseline",
+                                self.baseline,
+                                fse_offset,
+                                || {
+                                    Value::known(Fr::from(
+                                        states_to_symbol.get(&state).expect("state exists").1,
+                                    ))
+                                },
+                            )?;
+                            region.assign_advice(
+                                || "nb",
+                                self.nb,
+                                fse_offset,
+                                || {
+                                    Value::known(Fr::from(
+                                        states_to_symbol.get(&state).expect("state exists").2,
+                                    ))
+                                },
+                            )?;
+                            region.assign_advice(
+                                || "is_new_symbol",
+                                self.is_new_symbol,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "is_prob_less_than1",
+                                self.is_prob_less_than1,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "is_skipped_state",
+                                self.is_skipped_state,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count",
+                                self.symbol_count,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count_acc",
+                                self.symbol_count_acc,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_1",
+                                self.table_size_rs_1,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 1)),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_3",
+                                self.table_size_rs_3,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 3)),
+                            )?;
 
-                        state_idx += 1;
-                        fse_offset += 1;
+                            state_idx += 1;
+                            fse_offset += 1;
+                        }
                     }
 
                     // Assign the symbols with positive probability in fse table
@@ -977,8 +978,9 @@ impl FseTable {
                             .get(&sym)
                             .expect("symbol exists.");
                         let sym_count = sym_rows.iter().filter(|r| !r.is_state_skipped).count();
-                        let mut last_baseline = 0u64;
+                        let last_baseline = sym_rows.last().unwrap().baseline;
                         let mut spot_acc = 0u64;
+                        let mut baseline_mark = false;
                         let smallest_spot = (1
                             << sym_rows
                                 .iter()
@@ -1058,6 +1060,9 @@ impl FseTable {
                                 )?;
 
                                 let curr_baseline = fse_row.baseline;
+                                if curr_baseline == 0 {
+                                    baseline_mark = true;
+                                }
                                 region.assign_advice(
                                     || "sorted_table.baseline",
                                     self.sorted_table.baseline,
@@ -1074,7 +1079,7 @@ impl FseTable {
                                     || "sorted_table.baseline_mark",
                                     self.sorted_table.baseline_mark,
                                     sorted_offset,
-                                    || Value::known(Fr::from((curr_baseline == 0) as u64)),
+                                    || Value::known(Fr::from(baseline_mark as u64)),
                                 )?;
 
                                 region.assign_advice(
@@ -1107,7 +1112,6 @@ impl FseTable {
                                     Value::known(Fr::zero()),
                                 )?;
 
-                                last_baseline = curr_baseline;
                                 sorted_offset += 1;
                                 sym_acc += 1;
                             }
@@ -1509,208 +1513,210 @@ impl FseSortedStatesTable {
 
         // witgen_debug
         // All rows in an instance of FSE table, except the starting row (q_start=true).
-        // meta.create_gate(
-        //     "FseSortedStatesTable: every FSE table (except q_start=1)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_fixed(q_enable, Rotation::cur()),
-        //             not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
-        //         ]);
+        meta.create_gate(
+            "FseSortedStatesTable: every FSE table (except q_start=1)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // FSE table's columns that remain unchanged.
-        //         for column in [
-        //             config.block_idx,
-        //             config.table_kind,
-        //             config.table_size,
-        //             config.is_predefined,
-        //         ] {
-        //             cb.require_equal(
-        //                 "FseSortedStatesTable: columns that remain unchanged",
-        //                 meta.query_advice(column, Rotation::cur()),
-        //                 meta.query_advice(column, Rotation::prev()),
-        //             );
-        //         }
+                // FSE table's columns that remain unchanged.
+                for column in [
+                    config.block_idx,
+                    config.table_kind,
+                    config.table_size,
+                    config.is_predefined,
+                ] {
+                    cb.require_equal(
+                        "FseSortedStatesTable: columns that remain unchanged",
+                        meta.query_advice(column, Rotation::cur()),
+                        meta.query_advice(column, Rotation::prev()),
+                    );
+                }
 
-        //         // Once we enter padding territory, we stay in padding territory, i.e.
-        //         // is_padding transitions from 0 -> 1 only once.
-        //         let (is_padding_curr, is_padding_prev) = (
-        //             meta.query_advice(config.is_padding, Rotation::cur()),
-        //             meta.query_advice(config.is_padding, Rotation::prev()),
-        //         );
-        //         let is_padding_delta = is_padding_curr.expr() - is_padding_prev.expr();
-        //         cb.require_boolean("is_padding is boolean", is_padding_curr.expr());
-        //         cb.require_boolean("is_padding_delta is boolean", is_padding_delta);
+                // Once we enter padding territory, we stay in padding territory, i.e.
+                // is_padding transitions from 0 -> 1 only once.
+                let (is_padding_curr, is_padding_prev) = (
+                    meta.query_advice(config.is_padding, Rotation::cur()),
+                    meta.query_advice(config.is_padding, Rotation::prev()),
+                );
+                let is_padding_delta = is_padding_curr.expr() - is_padding_prev.expr();
+                cb.require_boolean("is_padding is boolean", is_padding_curr.expr());
+                cb.require_boolean("is_padding_delta is boolean", is_padding_delta);
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
-        // witgen_debug
         // For every new symbol detected.
-        // meta.create_gate("FseSortedStatesTable: new symbol", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_fixed(q_enable, Rotation::cur()),
-        //         meta.query_advice(config.is_new_symbol, Rotation::cur()),
-        //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //     ]);
+        meta.create_gate("FseSortedStatesTable: new symbol", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                meta.query_advice(config.is_new_symbol, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // We first do validations for the previous symbol.
-        //     //
-        //     // - symbol_count_acc accumulated to symbol_count.
-        //     // - spot_acc accumulated to table_size.
-        //     // - the last state has the smallest spot value.
-        //     // - the last state's baseline is in fact last_baseline.
-        //     cb.require_equal(
-        //         "symbol_count == symbol_count_acc",
-        //         meta.query_advice(config.symbol_count, Rotation::prev()),
-        //         meta.query_advice(config.symbol_count_acc, Rotation::prev()),
-        //     );
-        //     cb.require_equal(
-        //         "spot_acc == table_size",
-        //         meta.query_advice(config.spot_acc, Rotation::prev()),
-        //         meta.query_advice(config.table_size, Rotation::prev()),
-        //     );
-        //     cb.require_equal(
-        //         "spot == smallest_spot",
-        //         meta.query_advice(config.spot, Rotation::prev()),
-        //         meta.query_advice(config.smallest_spot, Rotation::prev()),
-        //     );
-        //     cb.require_equal(
-        //         "baseline == last_baseline",
-        //         meta.query_advice(config.baseline, Rotation::prev()),
-        //         meta.query_advice(config.last_baseline, Rotation::prev()),
-        //     );
+            // We first do validations for the previous symbol.
+            //
+            // - symbol_count_acc accumulated to symbol_count.
+            // - spot_acc accumulated to table_size.
+            // - the last state has the smallest spot value.
+            // - the last state's baseline is in fact last_baseline.
+            cb.condition(not::expr(meta.query_fixed(config.q_start, Rotation::cur())), |cb| {
+                cb.require_equal(
+                    "symbol_count == symbol_count_acc",
+                    meta.query_advice(config.symbol_count, Rotation::prev()),
+                    meta.query_advice(config.symbol_count_acc, Rotation::prev()),
+                );
+                cb.require_equal(
+                    "spot_acc == table_size",
+                    meta.query_advice(config.spot_acc, Rotation::prev()),
+                    meta.query_advice(config.table_size, Rotation::prev()),
+                );
+                cb.require_equal(
+                    "spot == smallest_spot",
+                    meta.query_advice(config.spot, Rotation::prev()),
+                    meta.query_advice(config.smallest_spot, Rotation::prev()),
+                );
+                cb.require_equal(
+                    "baseline == last_baseline",
+                    meta.query_advice(config.baseline, Rotation::prev()),
+                    meta.query_advice(config.last_baseline, Rotation::prev()),
+                );
+            });
 
-        //     // When the symbol changes, we wish to check in case the baseline==0x00 or not. If it
-        //     // is, then the baseline_mark should be turned on from this row onwards (while the
-        //     // symbol continues). If it is not, the baseline_mark should stay turned off until we
-        //     // encounter baseline==0x00.
-        //     let is_baseline_mark = meta.query_advice(config.baseline_mark, Rotation::cur());
-        //     let is_baseline_0x00 = config.baseline_0x00.expr();
+            // When the symbol changes, we wish to check in case the baseline==0x00 or not. If it
+            // is, then the baseline_mark should be turned on from this row onwards (while the
+            // symbol continues). If it is not, the baseline_mark should stay turned off until we
+            // encounter baseline==0x00.
+            let is_baseline_mark = meta.query_advice(config.baseline_mark, Rotation::cur());
+            let is_baseline_0x00 = config.baseline_0x00.expr();
 
-        //     cb.require_boolean("is_baseline_mark is boolean", is_baseline_mark.expr());
-        //     cb.condition(is_baseline_0x00.expr(), |cb| {
-        //         cb.require_equal(
-        //             "baseline_mark set at baseline==0x00",
-        //             is_baseline_mark.expr(),
-        //             1.expr(),
-        //         );
-        //     });
-        //     cb.condition(not::expr(is_baseline_0x00.expr()), |cb| {
-        //         cb.require_zero(
-        //             "baseline_mark not set at baseline!=0x00",
-        //             is_baseline_mark.expr(),
-        //         );
-        //     });
+            cb.require_boolean("is_baseline_mark is boolean", is_baseline_mark.expr());
+            cb.condition(is_baseline_0x00.expr(), |cb| {
+                cb.require_equal(
+                    "baseline_mark set at baseline==0x00",
+                    is_baseline_mark.expr(),
+                    1.expr(),
+                );
+            });
+            cb.condition(not::expr(is_baseline_0x00.expr()), |cb| {
+                cb.require_zero(
+                    "baseline_mark not set at baseline!=0x00",
+                    is_baseline_mark.expr(),
+                );
+            });
 
-        //     // We repeat the above constraints to make sure witness to baseline mark are set
-        //     // correctly.
-        //     //
-        //     // When a symbol changes and the baseline is not marked, then the baseline is
-        //     // calculated from the baseline and nb at the last state allocated to this symbol.
-        //     cb.condition(is_baseline_mark.expr(), |cb| {
-        //         cb.require_zero(
-        //             "baseline=0x00 at baseline mark",
-        //             meta.query_advice(config.baseline, Rotation::cur()),
-        //         );
-        //     });
-        //     cb.condition(not::expr(is_baseline_mark.expr()), |cb| {
-        //         cb.require_equal(
-        //             "baseline == last_baseline + smallest_spot",
-        //             meta.query_advice(config.baseline, Rotation::cur()),
-        //             meta.query_advice(config.last_baseline, Rotation::cur())
-        //                 + meta.query_advice(config.smallest_spot, Rotation::cur()),
-        //         );
-        //     });
+            // We repeat the above constraints to make sure witness to baseline mark are set
+            // correctly.
+            //
+            // When a symbol changes and the baseline is not marked, then the baseline is
+            // calculated from the baseline and nb at the last state allocated to this symbol.
+            cb.condition(is_baseline_mark.expr(), |cb| {
+                cb.require_zero(
+                    "baseline=0x00 at baseline mark",
+                    meta.query_advice(config.baseline, Rotation::cur()),
+                );
+            });
+            cb.condition(not::expr(is_baseline_mark.expr()), |cb| {
+                cb.require_equal(
+                    "baseline == last_baseline + smallest_spot",
+                    meta.query_advice(config.baseline, Rotation::cur()),
+                    meta.query_advice(config.last_baseline, Rotation::cur())
+                        + meta.query_advice(config.smallest_spot, Rotation::cur()),
+                );
+            });
 
-        //     // The spot accumulation inits at spot.
-        //     cb.require_equal(
-        //         "spot_acc == spot",
-        //         meta.query_advice(config.spot_acc, Rotation::cur()),
-        //         meta.query_advice(config.spot, Rotation::cur()),
-        //     );
+            // The spot accumulation inits at spot.
+            cb.require_equal(
+                "spot_acc == spot",
+                meta.query_advice(config.spot_acc, Rotation::cur()),
+                meta.query_advice(config.spot, Rotation::cur()),
+            );
 
-        //     // The symbol_count_acc inits at 1.
-        //     cb.require_equal(
-        //         "symbol_count_acc inits at 1",
-        //         meta.query_advice(config.symbol_count_acc, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // The symbol_count_acc inits at 1.
+            cb.require_equal(
+                "symbol_count_acc inits at 1",
+                meta.query_advice(config.symbol_count_acc, Rotation::cur()),
+                1.expr(),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         // witgen_debug
         // Whenever we continue allocating states to the same symbol.
-        // meta.create_gate("FseSortedStatesTable: same symbol, new state", |meta| {
-        //     let condition = and::expr([
-        //         not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
-        //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //     ]);
+        meta.create_gate("FseSortedStatesTable: same symbol, new state", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // While we allocate more states to the same symbol:
-        //     //
-        //     // - symbol_count does not change
-        //     // - smallest_spot does not change
-        //     // - last_baseline does not change
-        //     // - symbol_count_acc increments by +1
-        //     // - spot_acc accumlates based on the current spot
-        //     // - baseline_mark can transition from 0 -> 1 only once
-        //     // - baseline==0x00 if baseline_mark is set
-        //     // - baseline==baseline::prev+spot::prev if baseline_mark is not set
-        //     for column in [
-        //         config.symbol_count,
-        //         config.smallest_spot,
-        //         config.last_baseline,
-        //     ] {
-        //         cb.require_equal(
-        //             "FseSortedStatesTable: unchanged columns (same symbol)",
-        //             meta.query_advice(column, Rotation::cur()),
-        //             meta.query_advice(column, Rotation::prev()),
-        //         );
-        //     }
+            // While we allocate more states to the same symbol:
+            //
+            // - symbol_count does not change
+            // - smallest_spot does not change
+            // - last_baseline does not change
+            // - symbol_count_acc increments by +1
+            // - spot_acc accumlates based on the current spot
+            // - baseline_mark can transition from 0 -> 1 only once
+            // - baseline==0x00 if baseline_mark is set
+            // - baseline==baseline::prev+spot::prev if baseline_mark is not set
+            for column in [
+                config.symbol_count,
+                config.smallest_spot,
+                config.last_baseline,
+            ] {
+                cb.require_equal(
+                    "FseSortedStatesTable: unchanged columns (same symbol)",
+                    meta.query_advice(column, Rotation::cur()),
+                    meta.query_advice(column, Rotation::prev()),
+                );
+            }
 
-        //     cb.require_equal(
-        //         "symbol_count_acc increments",
-        //         meta.query_advice(config.symbol_count_acc, Rotation::cur()),
-        //         meta.query_advice(config.symbol_count_acc, Rotation::prev()) + 1.expr(),
-        //     );
+            cb.require_equal(
+                "symbol_count_acc increments",
+                meta.query_advice(config.symbol_count_acc, Rotation::cur()),
+                meta.query_advice(config.symbol_count_acc, Rotation::prev()) + 1.expr(),
+            );
 
-        //     cb.require_equal(
-        //         "spot_acc accumulates",
-        //         meta.query_advice(config.spot_acc, Rotation::cur()),
-        //         meta.query_advice(config.spot_acc, Rotation::prev())
-        //             + meta.query_advice(config.spot, Rotation::cur()),
-        //     );
+            cb.require_equal(
+                "spot_acc accumulates",
+                meta.query_advice(config.spot_acc, Rotation::cur()),
+                meta.query_advice(config.spot_acc, Rotation::prev())
+                    + meta.query_advice(config.spot, Rotation::cur()),
+            );
 
-        //     let (baseline_mark_curr, baseline_mark_prev) = (
-        //         meta.query_advice(config.baseline_mark, Rotation::cur()),
-        //         meta.query_advice(config.baseline_mark, Rotation::prev()),
-        //     );
-        //     let baseline_mark_delta = baseline_mark_curr.expr() - baseline_mark_prev;
-        //     cb.require_boolean("baseline_mark is boolean", baseline_mark_curr);
-        //     cb.require_boolean("baseline_mark_delta is boolean", baseline_mark_delta.expr());
+            let (baseline_mark_curr, baseline_mark_prev) = (
+                meta.query_advice(config.baseline_mark, Rotation::cur()),
+                meta.query_advice(config.baseline_mark, Rotation::prev()),
+            );
+            let baseline_mark_delta = baseline_mark_curr.expr() - baseline_mark_prev;
+            cb.require_boolean("baseline_mark is boolean", baseline_mark_curr);
+            cb.require_boolean("baseline_mark_delta is boolean", baseline_mark_delta.expr());
 
-        //     // baseline == baseline_mark_delta == 1 ? 0x00 : baseline_prev + spot_prev
-        //     let (baseline_curr, baseline_prev, spot_prev) = (
-        //         meta.query_advice(config.baseline, Rotation::cur()),
-        //         meta.query_advice(config.baseline, Rotation::prev()),
-        //         meta.query_advice(config.spot, Rotation::prev()),
-        //     );
-        //     cb.require_equal(
-        //         "baseline calculation",
-        //         baseline_curr,
-        //         select::expr(baseline_mark_delta, 0x00.expr(), baseline_prev + spot_prev),
-        //     );
+            // baseline == baseline_mark_delta == 1 ? 0x00 : baseline_prev + spot_prev
+            let (baseline_curr, baseline_prev, spot_prev) = (
+                meta.query_advice(config.baseline, Rotation::cur()),
+                meta.query_advice(config.baseline, Rotation::prev()),
+                meta.query_advice(config.spot, Rotation::prev()),
+            );
+            cb.require_equal(
+                "baseline calculation",
+                baseline_curr,
+                select::expr(baseline_mark_delta, 0x00.expr(), baseline_prev + spot_prev),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         config
     }
