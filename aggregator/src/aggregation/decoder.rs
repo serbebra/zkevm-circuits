@@ -1518,70 +1518,73 @@ impl DecoderConfig {
         ////////////////////////////// ZstdTag::FrameHeaderDescriptor /////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
         // witgen_debug
-        // meta.create_gate("DecoderConfig: tag FrameHeaderDescriptor", |meta| {
-        //     let condition = is_frame_header_descriptor(meta);
+        meta.create_gate("DecoderConfig: tag FrameHeaderDescriptor", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                is_frame_header_descriptor(meta),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // Structure of the Frame's header descriptor.
-        //     //
-        //     // | Bit number | Field Name              | Expected Value |
-        //     // |------------|-------------------------|----------------|
-        //     // | 7-6        | Frame_Content_Size_Flag | ?              |
-        //     // | 5          | Single_Segment_Flag     | 1              |
-        //     // | 4          | Unused_Bit              | 0              |
-        //     // | 3          | Reserved_Bit            | 0              |
-        //     // | 2          | Content_Checksum_Flag   | 0              |
-        //     // | 1-0        | Dictionary_ID_Flag      | 0              |
-        //     //
-        //     // Note: Since this is a single byte tag, it is processed normally, not back-to-front.
-        //     // Hence is_reverse is False and we have BE bytes.
-        //     cb.require_equal(
-        //         "FHD: Single_Segment_Flag",
-        //         meta.query_advice(config.bits[5], Rotation::cur()),
-        //         1.expr(),
-        //     );
-        //     cb.require_zero(
-        //         "FHD: Unused_Bit",
-        //         meta.query_advice(config.bits[4], Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "FHD: Reserved_Bit",
-        //         meta.query_advice(config.bits[3], Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "FHD: Content_Checksum_Flag",
-        //         meta.query_advice(config.bits[2], Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "FHD: Dictionary_ID_Flag",
-        //         meta.query_advice(config.bits[1], Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "FHD: Dictionary_ID_Flag",
-        //         meta.query_advice(config.bits[0], Rotation::cur()),
-        //     );
+            // Structure of the Frame's header descriptor.
+            //
+            // | Bit number | Field Name              | Expected Value |
+            // |------------|-------------------------|----------------|
+            // | 7-6        | Frame_Content_Size_Flag | ?              |
+            // | 5          | Single_Segment_Flag     | 1              |
+            // | 4          | Unused_Bit              | 0              |
+            // | 3          | Reserved_Bit            | 0              |
+            // | 2          | Content_Checksum_Flag   | 0              |
+            // | 1-0        | Dictionary_ID_Flag      | 0              |
+            //
+            // Note: Since this is a single byte tag, it is processed normally, not back-to-front.
+            // Hence is_reverse is False and we have BE bytes.
+            cb.require_equal(
+                "FHD: Single_Segment_Flag",
+                meta.query_advice(config.bits[5], Rotation::cur()),
+                1.expr(),
+            );
+            cb.require_zero(
+                "FHD: Unused_Bit",
+                meta.query_advice(config.bits[4], Rotation::cur()),
+            );
+            cb.require_zero(
+                "FHD: Reserved_Bit",
+                meta.query_advice(config.bits[3], Rotation::cur()),
+            );
+            cb.require_zero(
+                "FHD: Content_Checksum_Flag",
+                meta.query_advice(config.bits[2], Rotation::cur()),
+            );
+            cb.require_zero(
+                "FHD: Dictionary_ID_Flag",
+                meta.query_advice(config.bits[1], Rotation::cur()),
+            );
+            cb.require_zero(
+                "FHD: Dictionary_ID_Flag",
+                meta.query_advice(config.bits[0], Rotation::cur()),
+            );
 
-        //     // Checks for the next tag, i.e. FrameContentSize.
-        //     let fcs_flag0 = meta.query_advice(config.bits[7], Rotation::cur());
-        //     let fcs_flag1 = meta.query_advice(config.bits[6], Rotation::cur());
-        //     let fcs_field_size = select::expr(
-        //         fcs_flag0.expr() * fcs_flag1.expr(),
-        //         8.expr(),
-        //         select::expr(
-        //             not::expr(fcs_flag0.expr() + fcs_flag1.expr()),
-        //             1.expr(),
-        //             select::expr(fcs_flag0, 4.expr(), 2.expr()),
-        //         ),
-        //     );
-        //     cb.require_equal(
-        //         "tag_len::next == fcs_field_size",
-        //         meta.query_advice(config.tag_config.tag_len, Rotation::next()),
-        //         fcs_field_size,
-        //     );
+            // Checks for the next tag, i.e. FrameContentSize.
+            let fcs_flag0 = meta.query_advice(config.bits[7], Rotation::cur());
+            let fcs_flag1 = meta.query_advice(config.bits[6], Rotation::cur());
+            let fcs_field_size = select::expr(
+                fcs_flag0.expr() * fcs_flag1.expr(),
+                8.expr(),
+                select::expr(
+                    not::expr(fcs_flag0.expr() + fcs_flag1.expr()),
+                    1.expr(),
+                    select::expr(fcs_flag0, 4.expr(), 2.expr()),
+                ),
+            );
+            cb.require_equal(
+                "tag_len::next == fcs_field_size",
+                meta.query_advice(config.tag_config.tag_len, Rotation::next()),
+                fcs_field_size,
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         debug_assert!(meta.degree() <= 9);
 
@@ -3867,7 +3870,6 @@ impl DecoderConfig {
         /////////////////////////////////////////
 
         // witgen_debug
-        self.u8_table.load(layouter)?;
         // self.range8.load(layouter)?;
         // self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
