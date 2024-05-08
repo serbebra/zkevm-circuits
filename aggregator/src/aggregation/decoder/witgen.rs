@@ -960,7 +960,7 @@ fn process_sequences<F: Field>(
             )>>();
 
         // Transform bitstream rows into witness rows
-        for row in bitstream_rows {
+        for (j, row) in bitstream_rows.iter().enumerate() {
             witness_rows.push(ZstdWitnessRow {
                 state: ZstdState {
                     tag: ZstdTag::ZstdBlockSequenceFseCode,
@@ -975,7 +975,7 @@ fn process_sequences<F: Field>(
                     tag_idx: row.2 as u64,
                     tag_value,
                     tag_value_acc: row.7,
-                    is_tag_change: false,
+                    is_tag_change: j == 0,
                     tag_rlc,
                     tag_rlc_acc: row.8,
                 },
@@ -1273,15 +1273,22 @@ fn process_sequences<F: Field>(
                 tag_idx: current_byte_idx as u64,
                 tag_value,
                 tag_value_acc: next_tag_value_acc,
-                is_tag_change: true,
+                is_tag_change: false,
                 tag_rlc,
                 tag_rlc_acc: next_tag_rlc_acc,
             },
             encoded_data: EncodedData {
                 byte_idx: (byte_offset + current_byte_idx) as u64,
                 encoded_len,
-                // value_byte: src[byte_offset + current_byte_idx], // witgen_debug, idx overflow
-                value_byte: src[0], // TODO
+                // witgen_debug, idx overflow
+                // TODO(ray): This is a special case of the sequences data being a part of the
+                // "last block", hence the overflow. I have just re-used the "last" byte from the
+                // source data in such a case.
+                value_byte: if byte_offset + current_byte_idx < src.len() {
+                    src[byte_offset + current_byte_idx]
+                } else {
+                    src.last().cloned().unwrap()
+                },
                 value_rlc,
                 reverse: true,
                 reverse_len: n_sequence_data_bytes as u64,
