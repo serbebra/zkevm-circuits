@@ -1592,63 +1592,64 @@ impl DecoderConfig {
         //////////////////////////////// ZstdTag::FrameContentSize ////////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
         // witgen_debug
-        // meta.create_gate("DecoderConfig: tag FrameContentSize", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_advice(config.tag_config.is_frame_content_size, Rotation::cur()),
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //     ]);
+        meta.create_gate("DecoderConfig: tag FrameContentSize", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_frame_content_size, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // The previous row is FrameHeaderDescriptor.
-        //     let fcs_flag0 = meta.query_advice(config.bits[7], Rotation::prev());
-        //     let fcs_flag1 = meta.query_advice(config.bits[6], Rotation::prev());
+            // The previous row is FrameHeaderDescriptor.
+            let fcs_flag0 = meta.query_advice(config.bits[7], Rotation::prev());
+            let fcs_flag1 = meta.query_advice(config.bits[6], Rotation::prev());
 
-        //     // - [1, 1]: 8 bytes
-        //     // - [1, 0]: 4 bytes
-        //     // - [0, 1]: 2 bytes
-        //     // - [0, 0]: 1 bytes
-        //     let case1 = and::expr([fcs_flag0.expr(), fcs_flag1.expr()]);
-        //     let case2 = fcs_flag0.expr();
-        //     let case3 = fcs_flag1.expr();
+            // - [1, 1]: 8 bytes
+            // - [1, 0]: 4 bytes
+            // - [0, 1]: 2 bytes
+            // - [0, 0]: 1 bytes
+            let case1 = and::expr([fcs_flag0.expr(), fcs_flag1.expr()]);
+            let case2 = fcs_flag0.expr();
+            let case3 = fcs_flag1.expr();
 
-        //     // FrameContentSize are LE bytes.
-        //     let case4_value = meta.query_advice(config.byte, Rotation::cur());
-        //     let case3_value = meta.query_advice(config.byte, Rotation::cur()) * 256.expr()
-        //         + meta.query_advice(config.byte, Rotation::next());
-        //     let case2_value = meta.query_advice(config.byte, Rotation(0)) * 16777216.expr()
-        //         + meta.query_advice(config.byte, Rotation(1)) * 65536.expr()
-        //         + meta.query_advice(config.byte, Rotation(2)) * 256.expr()
-        //         + meta.query_advice(config.byte, Rotation(3));
-        //     let case1_value = meta.query_advice(config.byte, Rotation(0))
-        //         * 72057594037927936u64.expr()
-        //         + meta.query_advice(config.byte, Rotation(1)) * 281474976710656u64.expr()
-        //         + meta.query_advice(config.byte, Rotation(2)) * 1099511627776u64.expr()
-        //         + meta.query_advice(config.byte, Rotation(3)) * 4294967296u64.expr()
-        //         + meta.query_advice(config.byte, Rotation(4)) * 16777216.expr()
-        //         + meta.query_advice(config.byte, Rotation(5)) * 65536.expr()
-        //         + meta.query_advice(config.byte, Rotation(6)) * 256.expr()
-        //         + meta.query_advice(config.byte, Rotation(7));
+            // FrameContentSize are LE bytes.
+            let case4_value = meta.query_advice(config.byte, Rotation::cur());
+            let case3_value = meta.query_advice(config.byte, Rotation::cur()) * 256.expr()
+                + meta.query_advice(config.byte, Rotation::next());
+            let case2_value = meta.query_advice(config.byte, Rotation(0)) * 16777216.expr()
+                + meta.query_advice(config.byte, Rotation(1)) * 65536.expr()
+                + meta.query_advice(config.byte, Rotation(2)) * 256.expr()
+                + meta.query_advice(config.byte, Rotation(3));
+            let case1_value = meta.query_advice(config.byte, Rotation(0))
+                * 72057594037927936u64.expr()
+                + meta.query_advice(config.byte, Rotation(1)) * 281474976710656u64.expr()
+                + meta.query_advice(config.byte, Rotation(2)) * 1099511627776u64.expr()
+                + meta.query_advice(config.byte, Rotation(3)) * 4294967296u64.expr()
+                + meta.query_advice(config.byte, Rotation(4)) * 16777216.expr()
+                + meta.query_advice(config.byte, Rotation(5)) * 65536.expr()
+                + meta.query_advice(config.byte, Rotation(6)) * 256.expr()
+                + meta.query_advice(config.byte, Rotation(7));
 
-        //     let frame_content_size = select::expr(
-        //         case1,
-        //         case1_value,
-        //         select::expr(
-        //             case2,
-        //             case2_value,
-        //             select::expr(case3, 256.expr() + case3_value, case4_value),
-        //         ),
-        //     );
+            let frame_content_size = select::expr(
+                case1,
+                case1_value,
+                select::expr(
+                    case2,
+                    case2_value,
+                    select::expr(case3, 256.expr() + case3_value, case4_value),
+                ),
+            );
 
-        //     // decoded_len of the entire frame is in fact the decoded value of frame content size.
-        //     cb.require_equal(
-        //         "Frame_Content_Size == decoded_len",
-        //         frame_content_size,
-        //         meta.query_advice(config.decoded_len, Rotation::cur()),
-        //     );
+            // decoded_len of the entire frame is in fact the decoded value of frame content size.
+            cb.require_equal(
+                "Frame_Content_Size == decoded_len",
+                frame_content_size,
+                meta.query_advice(config.decoded_len, Rotation::cur()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         // witgen_debug
         // meta.create_gate("DecoderConfig: tag FrameContentSize (block_idx)", |meta| {
@@ -4472,7 +4473,7 @@ impl DecoderConfig {
     }
 
     pub fn unusable_rows (&self) -> usize {
-        6
+        14
     }
 }
 
