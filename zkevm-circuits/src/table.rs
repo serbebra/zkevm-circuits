@@ -1837,6 +1837,10 @@ impl CopyTable {
 
         let mut rw_counter = copy_event.rw_counter_start();
         let mut rwc_inc_left = copy_event.rw_counter_delta();
+        let mut rw_counter_write = rw_counter + rwc_inc_left / 2;
+
+        let is_memory_copy = copy_event.src_id == copy_event.dst_id
+            && copy_event.src_type.eq(&CopyDataType::Memory) &&copy_event.dst_type.eq(&CopyDataType::Memory);
 
         let mut reader = CopyThread {
             tag: copy_event.src_type,
@@ -2001,6 +2005,7 @@ impl CopyTable {
             let is_row_end = is_access_list || (step_idx / 2) % 32 == 31;
             // Update the RW counter.
             if is_row_end && thread.is_rw {
+                // TODO: check is_memory_copy and change rw_counter_write
                 rw_counter += 1;
                 rwc_inc_left -= 1;
             }

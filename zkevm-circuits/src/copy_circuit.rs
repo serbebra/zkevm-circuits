@@ -705,12 +705,15 @@ impl<F: Field> CopyCircuitConfig<F> {
                 *offset,
                 || Value::known(F::from(tag.eq(&CopyDataType::Memory))),
             )?;
+            
+            let is_memory_copy = copy_event.src_id == copy_event.dst_id &&
+                copy_event.src_type.eq(&CopyDataType::Memory) && copy_event.dst_type.eq(&CopyDataType::Memory);
             region.assign_advice(
-                || format!("is_memory at row: {}", *offset),
+                || format!("is_memory_copy at row: {}", *offset),
                 self.is_memory_copy,
                 *offset,
                 //TODO: change this value after copy table assignment done.
-                || Value::known(F::from(tag.eq(&CopyDataType::Memory))),
+                || Value::known(F::from(is_memory_copy)),
             )?;
             region.assign_advice(
                 || format!("is_tx_log at row: {}", *offset),
@@ -1009,6 +1012,7 @@ impl<F: Field> CopyCircuitConfig<F> {
             self.is_tx_calldata,
             self.is_bytecode,
             self.is_memory,
+            self.is_memory_copy,
             self.is_tx_log,
             self.is_access_list_address,
             self.is_access_list_storage_key,
