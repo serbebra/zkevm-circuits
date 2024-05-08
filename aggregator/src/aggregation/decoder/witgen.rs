@@ -1076,6 +1076,7 @@ fn process_sequences<F: Field>(
     let tag_rlc_iter =
         &src[byte_offset..end_offset]
             .iter()
+            .rev()
             .scan(Value::known(F::zero()), |acc, &byte| {
                 *acc = *acc * randomness + Value::known(F::from(byte as u64));
                 Some(*acc)
@@ -1116,7 +1117,7 @@ fn process_sequences<F: Field>(
         encoded_data: EncodedData {
             byte_idx: (byte_offset + current_byte_idx) as u64,
             encoded_len,
-            value_byte: src[byte_offset + current_byte_idx],
+            value_byte: src[byte_offset + current_byte_idx - 1],
             value_rlc,
             reverse: true,
             reverse_len: n_sequence_data_bytes as u64,
@@ -1285,8 +1286,8 @@ fn process_sequences<F: Field>(
                 // TODO(ray): This is a special case of the sequences data being a part of the
                 // "last block", hence the overflow. I have just re-used the "last" byte from the
                 // source data in such a case.
-                value_byte: if byte_offset + current_byte_idx < src.len() {
-                    src[byte_offset + current_byte_idx]
+                value_byte: if byte_offset + current_byte_idx - 1 < src.len() {
+                    src[byte_offset + current_byte_idx - 1]
                 } else {
                     src.last().cloned().unwrap()
                 },

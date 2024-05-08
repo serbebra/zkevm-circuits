@@ -79,8 +79,6 @@ pub struct DecoderConfig {
     // sequences_data_decoder: SequencesDataDecoder,
 
     // witgen_debug
-    // /// Range Table for [0, 255]
-    u8_table: U8Table,
     // /// Range Table for [0, 8).
     // range8: RangeTable<8>,
     // /// Range Table for [0, 16).
@@ -1046,7 +1044,6 @@ impl DecoderConfig {
             // sequences_data_decoder,
 
             // witgen_debug
-            u8_table,
             // range8,
             // range16,
             // pow2_table,
@@ -1299,7 +1296,6 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
         meta.create_gate("DecoderConfig: padded rows", |meta| {
             let condition = and::expr([
                 meta.query_fixed(config.q_enable, Rotation::cur()),
@@ -1322,7 +1318,6 @@ impl DecoderConfig {
             cb.gate(condition)
         });
 
-        // witgen_debug
         meta.lookup_any("DecoderConfig: fixed lookup (tag transition)", |meta| {
             let condition = and::expr([
                 meta.query_fixed(config.q_enable, Rotation::cur()),
@@ -1347,7 +1342,6 @@ impl DecoderConfig {
             .collect()
         });
 
-        // witgen_debug
         meta.create_gate("DecoderConfig: new tag", |meta| {
             let condition = and::expr([
                 meta.query_fixed(config.q_enable, Rotation::cur()),
@@ -1422,6 +1416,7 @@ impl DecoderConfig {
         // witgen_debug
         // meta.create_gate("DecoderConfig: continue same tag", |meta| {
         //     let condition = and::expr([
+        //         meta.query_fixed(config.q_enable, Rotation::cur()),
         //         not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
         //         not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
         //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
@@ -1499,23 +1494,23 @@ impl DecoderConfig {
         //     cb.gate(condition)
         // });
 
-        // witgen_debug
-        // meta.lookup_any("DecoderConfig: keccak randomness power tag_len", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //     ]);
+        meta.lookup_any("DecoderConfig: keccak randomness power tag_len", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     [
-        //         1.expr(),                                                           // enabled
-        //         meta.query_advice(config.tag_config.tag_len, Rotation::cur()),      // exponent
-        //         meta.query_advice(config.tag_config.rpow_tag_len, Rotation::cur()), // exponentiation
-        //     ]
-        //     .into_iter()
-        //     .zip_eq(pow_rand_table.table_exprs(meta))
-        //     .map(|(value, table)| (condition.expr() * value, table))
-        //     .collect()
-        // });
+            [
+                1.expr(),                                                           // enabled
+                meta.query_advice(config.tag_config.tag_len, Rotation::cur()),      // exponent
+                meta.query_advice(config.tag_config.rpow_tag_len, Rotation::cur()), // exponentiation
+            ]
+            .into_iter()
+            .zip_eq(pow_rand_table.table_exprs(meta))
+            .map(|(value, table)| (condition.expr() * value, table))
+            .collect()
+        });
 
         debug_assert!(meta.degree() <= 9);
 
@@ -4509,7 +4504,7 @@ mod tests {
     }
 
     impl Circuit<Fr> for DecoderConfigTester {
-        type Config = (DecoderConfig, Challenges);
+        type Config = (DecoderConfig, U8Table, PowOfRandTable, Challenges);
         type FloorPlanner = SimpleFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
@@ -4540,7 +4535,7 @@ mod tests {
                 },
             );
 
-            (config, challenges)
+            (config, u8_table, pow_rand_table, challenges)
         }
 
         #[allow(clippy::type_complexity)]
@@ -4549,7 +4544,7 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let (config, challenge) = config;
+            let (config, u8_table, pow_rand_table, challenge) = config;
             let challenges = challenge.values(&layouter);
 
             let (
@@ -4561,6 +4556,8 @@ mod tests {
                 sequence_info_arr,
             ) = process(&self.compressed, challenges.keccak_input());
 
+            u8_table.load(&mut layouter)?;
+            pow_rand_table.assign(&mut layouter, &challenges, 1 << (self.k - 1))?;
             config.assign::<Fr>(
                 &mut layouter,
                 witness_rows,
