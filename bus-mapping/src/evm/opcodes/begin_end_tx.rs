@@ -381,6 +381,12 @@ pub fn gen_begin_tx_steps(state: &mut CircuitInputStateRef) -> Result<Vec<ExecSt
              would return 2 steps instead of 1
         */
         (_, true, _) => {
+            if cfg!(feature = "strict-ccc") && state.tx.input.is_empty() {
+                panic!(
+                    "invalid tx: tx.to is precompile and calldata is empty, tx hash {:?}",
+                    state.tx.hash
+                );
+            }
             // some *pre-handling* for precompile address, like what we have done in callop
             // the generation of precompile step is in `handle_tx`, right after the generation
             // of begin_tx step
