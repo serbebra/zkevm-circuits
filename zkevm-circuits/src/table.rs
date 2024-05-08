@@ -1840,9 +1840,9 @@ impl CopyTable {
         let mut rw_counter_write = rw_counter + rwc_inc_left / 2;
         let mut rwc_inc_left_write = rwc_inc_left - rwc_inc_left / 2;
 
-
         let is_memory_copy = copy_event.src_id == copy_event.dst_id
-            && copy_event.src_type.eq(&CopyDataType::Memory) &&copy_event.dst_type.eq(&CopyDataType::Memory);
+            && copy_event.src_type.eq(&CopyDataType::Memory)
+            && copy_event.dst_type.eq(&CopyDataType::Memory);
 
         let mut reader = CopyThread {
             tag: copy_event.src_type,
@@ -1970,12 +1970,15 @@ impl CopyTable {
             };
 
             // rw_counter value in `rw_counter` copytable column.
-            let (rw_counter_in_column, rwc_inc_left_in_column) = if is_memory_copy && !is_read_step {
+            let (rw_counter_in_column, rwc_inc_left_in_column) = if is_memory_copy && !is_read_step
+            {
                 (rw_counter_write, rwc_inc_left_write)
-            }else{
+            } else {
                 (rw_counter, rwc_inc_left)
             };
 
+            println!("idx: {} rw_counter_in_column {}, is_read {} is_last:{}, rwc_inc_left_in_column: {} ", step_idx, rw_counter_in_column, 
+                is_read_step, is_last, rwc_inc_left_in_column);
             assignments.push((
                 thread.tag,
                 [
@@ -1988,7 +1991,10 @@ impl CopyTable {
                     //(Value::known(F::from(rw_counter)), "rw_counter"),
                     (Value::known(F::from(rw_counter_in_column)), "rw_counter"),
                     //(Value::known(F::from(rwc_inc_left)), "rwc_inc_left"),
-                    (Value::known(F::from(rwc_inc_left_in_column)), "rwc_inc_left"),
+                    (
+                        Value::known(F::from(rwc_inc_left_in_column)),
+                        "rwc_inc_left",
+                    ),
                 ],
                 [
                     (Value::known(F::from(is_last)), "is_last"),
@@ -2020,7 +2026,7 @@ impl CopyTable {
                 if is_memory_copy && !is_read_step {
                     rw_counter_write += 1;
                     rwc_inc_left_write -= 1;
-                }else {
+                } else {
                     rw_counter += 1;
                     rwc_inc_left -= 1;
                 }

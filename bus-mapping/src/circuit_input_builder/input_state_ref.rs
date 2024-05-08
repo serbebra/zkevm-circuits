@@ -33,7 +33,7 @@ use eth_types::{
     utils::is_precompiled,
     Address, Bytecode, GethExecStep, ToAddress, ToBigEndian, ToWord, Word, H256, U256,
 };
-use ethers_core::{utils::{get_contract_address, get_create2_address}};
+use ethers_core::utils::{get_contract_address, get_create2_address};
 use log::trace;
 use std::{cmp::max, iter::repeat};
 
@@ -2278,14 +2278,12 @@ impl<'a> CircuitInputStateRef<'a> {
         );
         let mut read_slot_bytes = memory.read_chunk(src_range);
         // adjust bytes in [dst_addr..dst_range.start_slot()+32] for src_data
-        println!("start_slot {}, shift {} read_slot_bytes: {:?}", dst_range.start_slot().0, 
-            dst_range.shift().0, read_slot_bytes);
-
-        // read_slot_bytes = {
-        //     read_slot_bytes[dst_range.start_slot().0 + dst_range.shift().0..dst_range.start_slot().0 + 32]
-        //     .copy_from_slice(&write_slot_bytes[dst_range.shift().0..32]);
-        //     read_slot_bytes
-        // };
+        println!(
+            "start_slot {}, shift {} read_slot_bytes: {:?}",
+            dst_range.start_slot().0,
+            dst_range.shift().0,
+            read_slot_bytes
+        );
 
         let read_steps = CopyEventStepsBuilder::memory_range(src_range)
             .source(read_slot_bytes.as_slice())
@@ -2302,36 +2300,9 @@ impl<'a> CircuitInputStateRef<'a> {
 
         // memory word reads from source and writes to destination word
         let call_id = self.call()?.call_id;
-        // for (read_chunk, write_chunk) in read_slot_bytes.chunks(32).zip(write_slot_bytes.chunks(32))
-        // {
-        //     self.push_op(
-        //         exec_step,
-        //         RW::READ,
-        //         MemoryOp::new(
-        //             call_id,
-        //             src_chunk_index.into(),
-        //             Word::from_big_endian(read_chunk),
-        //         ),
-        //     )?;
-        //     trace!("read chunk: {call_id} {src_chunk_index} rwc {rw_counter_start} {read_chunk:?}");
-        //     src_chunk_index += 32;
-        //     rw_counter_start +=1;
 
-        //     self.write_chunk_for_copy_step(
-        //         exec_step,
-        //         write_chunk,
-        //         dst_chunk_index,
-        //         &mut prev_bytes,
-        //     )?;
-
-        //     trace!("write chunk: {call_id} {dst_chunk_index} rwc {rw_counter_start} {write_chunk:?}");
-        //     rw_counter_start +=1;
-        //     dst_chunk_index += 32;
-        // }
-        
-        // below change to first all reads done and then do writing.
-        for read_chunk in read_slot_bytes.chunks(32)
-        {
+        // change to first all reads done and then do writing.
+        for read_chunk in read_slot_bytes.chunks(32) {
             self.push_op(
                 exec_step,
                 RW::READ,
@@ -2343,11 +2314,10 @@ impl<'a> CircuitInputStateRef<'a> {
             )?;
             trace!("read chunk: {call_id} {src_chunk_index} rwc {rw_counter_start} {read_chunk:?}");
             src_chunk_index += 32;
-            rw_counter_start +=1;
+            rw_counter_start += 1;
         }
 
-        for write_chunk in write_slot_bytes.chunks(32)
-        {
+        for write_chunk in write_slot_bytes.chunks(32) {
             self.write_chunk_for_copy_step(
                 exec_step,
                 write_chunk,
@@ -2355,8 +2325,10 @@ impl<'a> CircuitInputStateRef<'a> {
                 &mut prev_bytes,
             )?;
 
-            trace!("write chunk: {call_id} {dst_chunk_index} rwc {rw_counter_start} {write_chunk:?}");
-            rw_counter_start +=1;
+            trace!(
+                "write chunk: {call_id} {dst_chunk_index} rwc {rw_counter_start} {write_chunk:?}"
+            );
+            rw_counter_start += 1;
             dst_chunk_index += 32;
         }
 
@@ -2563,11 +2535,21 @@ fn combine_copy_slot_bytes_mcopy(
     // [4144..8272] copy from src_data[0..4128]
     // [8272..8288] remain from dst_mem
 
-    println!("src_range {:?} dst_range {:?}, slot_bytes len {}, src_addr_end {}
+    println!(
+        "src_range {:?} dst_range {:?}, slot_bytes len {}, src_addr_end {}
     src_copy_end {} dst_addr_end {}, dst_end_slot {} dst_copy_end {}, 
     dst_begin_slot {}, dst_addr {}",
-     src_range, dst_range, slot_bytes.len(), src_addr_end, src_copy_end
-    ,dst_addr_end, dst_end_slot, dst_copy_end, dst_begin_slot, dst_addr);
+        src_range,
+        dst_range,
+        slot_bytes.len(),
+        src_addr_end,
+        src_copy_end,
+        dst_addr_end,
+        dst_end_slot,
+        dst_copy_end,
+        dst_begin_slot,
+        dst_addr
+    );
 
     (src_range, dst_range, slot_bytes)
 }

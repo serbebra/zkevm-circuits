@@ -177,9 +177,9 @@ impl<F: Field> ExecutionGadget<F> for MCopyGadget<F> {
 mod test {
     use crate::test_util::CircuitTestBuilder;
     use bus_mapping::circuit_input_builder::CircuitsParams;
-    use eth_types::{address, bytecode, Address, Bytecode, Word, word};
+    use eth_types::{address, bytecode, word, Address, Bytecode, Word};
     use mock::TestContext;
-    use std::{sync::LazyLock, str::FromStr};
+    use std::{str::FromStr, sync::LazyLock};
 
     static EXTERNAL_ADDRESS: LazyLock<Address> =
         LazyLock::new(|| address!("0xaabbccddee000000000000000000000000000000"));
@@ -246,7 +246,7 @@ mod test {
         // test_ok(Word::from("0x30"), Word::from("0x30"), 0xA0);
         // test_ok(Word::from("0x40"), Word::from("0x40"), 0xE4);
         // test_ok(Word::from("0x0"), Word::from("0x100"), 0x20);
-        
+
         // TODO: add src and dest copy range overlap case, test tool found that case failed.
         // this test can repro issue: "non-first access reads don't change value"
         test_ok(Word::from("0x0"), Word::from("0x20"), 0x40);
