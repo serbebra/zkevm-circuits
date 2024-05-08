@@ -735,7 +735,7 @@ impl FseTable {
                 let mut fse_offset: usize = 1;
                 let mut sorted_offset: usize = 1;
 
-                for i in (1..((1 << k) - 14)).step_by(1 << 10) {
+                for i in (1..((1 << k) - 30)).step_by(1 << 10) {
                     region.assign_fixed(
                         || "q_start",
                         self.sorted_table.q_start,
@@ -1164,7 +1164,7 @@ impl FseTable {
                     sorted_offset = target_end_offset;
                 }
 
-                for idx in fse_offset..((1 << k) - 14) {
+                for idx in fse_offset..((1 << k) - 30) {
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,
@@ -1173,7 +1173,7 @@ impl FseTable {
                     )?;
                 }
 
-                for idx in sorted_offset..((1 << k) - 14) {
+                for idx in sorted_offset..((1 << k) - 30) {
                     region.assign_advice(
                         || "sorted_table.is_padding",
                         self.sorted_table.is_padding,
