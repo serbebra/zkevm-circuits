@@ -75,8 +75,8 @@ pub struct DecoderConfig {
     // fse_decoder: FseDecoder,
 
     // witgen_debug
-    // /// Config required while applying the FSE tables on the Sequences data.
-    // sequences_data_decoder: SequencesDataDecoder,
+    /// Config required while applying the FSE tables on the Sequences data.
+    sequences_data_decoder: SequencesDataDecoder,
 
     // witgen_debug
     // /// Range Table for [0, 8).
@@ -207,7 +207,7 @@ struct BlockConfig {
 
     // witgen_debug
     /// Helper gadget to know if the number of sequences is 0.
-    // is_empty_sequences: IsEqualConfig<Fr>,
+    is_empty_sequences: IsEqualConfig<Fr>,
 
     /// For sequence decoding, the tag=ZstdBlockSequenceHeader bytes tell us the Compression_Mode
     /// utilised for Literals Lengths, Match Offsets and Match Lengths. We expect only 2
@@ -222,7 +222,7 @@ struct BlockConfig {
 }
 
 impl BlockConfig {
-    fn configure(meta: &mut ConstraintSystem<Fr>, is_padding: Column<Advice>) -> Self {
+    fn configure(meta: &mut ConstraintSystem<Fr>, q_enable: Column<Fixed>) -> Self {
         let num_sequences = meta.advice_column();
         Self {
             block_len: meta.advice_column(),
@@ -231,12 +231,12 @@ impl BlockConfig {
             is_block: meta.advice_column(),
             num_sequences,
             // witgen_debug
-            // is_empty_sequences: IsEqualChip::configure(
-            //     meta,
-            //     |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
-            //     |meta| meta.query_advice(num_sequences, Rotation::cur()),
-            //     |_| 0.expr(),
-            // ),
+            is_empty_sequences: IsEqualChip::configure(
+                meta,
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
+                |meta| meta.query_advice(num_sequences, Rotation::cur()),
+                |_| 0.expr(),
+            ),
             compression_modes: [
                 meta.advice_column(),
                 meta.advice_column(),
@@ -289,15 +289,15 @@ impl BlockConfig {
     }
 
     // witgen_debug
-    // fn is_empty_sequences(
-    //     &self,
-    //     meta: &mut VirtualCells<Fr>,
-    //     rotation: Rotation,
-    // ) -> Expression<Fr> {
-    //     let num_sequences = meta.query_advice(self.num_sequences, rotation);
-    //     self.is_empty_sequences
-    //         .expr_at(meta, rotation, num_sequences, 0.expr())
-    // }
+    fn is_empty_sequences(
+        &self,
+        meta: &mut VirtualCells<Fr>,
+        rotation: Rotation,
+    ) -> Expression<Fr> {
+        let num_sequences = meta.query_advice(self.num_sequences, rotation);
+        self.is_empty_sequences
+            .expr_at(meta, rotation, num_sequences, 0.expr())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -996,14 +996,14 @@ impl DecoderConfig {
         );
 
         let tag_config = TagConfig::configure(meta, q_enable);
-        let block_config = BlockConfig::configure(meta, is_padding);
+        let block_config = BlockConfig::configure(meta, q_enable);
 
         // witgen_debug
         // let sequences_header_decoder =
         //     SequencesHeaderDecoder::configure(meta, byte, is_padding, u8_table);
         // let bitstream_decoder = BitstreamDecoder::configure(meta, is_padding, u8_table);
         // let fse_decoder = FseDecoder::configure(meta, is_padding);
-        // let sequences_data_decoder = SequencesDataDecoder::configure(meta);
+        let sequences_data_decoder = SequencesDataDecoder::configure(meta);
 
         // TODO(enable):
         // let literals_table = [
@@ -1041,7 +1041,7 @@ impl DecoderConfig {
             // sequences_header_decoder,
             // bitstream_decoder,
             // fse_decoder,
-            // sequences_data_decoder,
+            sequences_data_decoder,
 
             // witgen_debug
             // range8,
@@ -1671,111 +1671,112 @@ impl DecoderConfig {
         ////////////////////////////////// ZstdTag::BlockHeader ///////////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
         // witgen_debug
-        // meta.create_gate("DecoderConfig: tag BlockHeader", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_advice(config.tag_config.is_block_header, Rotation::cur()),
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //     ]);
+        meta.create_gate("DecoderConfig: tag BlockHeader", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_block_header, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // BlockHeader is fixed-sized tag.
-        //     cb.require_equal(
-        //         "tag_len(BlockHeader) is fixed-sized",
-        //         meta.query_advice(config.tag_config.tag_len, Rotation::cur()),
-        //         N_BLOCK_HEADER_BYTES.expr(),
-        //     );
+            // BlockHeader is fixed-sized tag.
+            cb.require_equal(
+                "tag_len(BlockHeader) is fixed-sized",
+                meta.query_advice(config.tag_config.tag_len, Rotation::cur()),
+                N_BLOCK_HEADER_BYTES.expr(),
+            );
 
-        //     // Structure of Block_Header is as follows:
-        //     //
-        //     // | Last_Block | Block_Type | Block_Size |
-        //     // |------------|------------|------------|
-        //     // | bit 0      | bits 1-2   | bits 3-23  |
-        //     //
-        //     let is_last_block = meta.query_advice(config.bits[0], Rotation::cur());
-        //     let block_type_bit1 = meta.query_advice(config.bits[1], Rotation::cur());
-        //     let block_type_bit2 = meta.query_advice(config.bits[2], Rotation::cur());
+            // Structure of Block_Header is as follows:
+            //
+            // | Last_Block | Block_Type | Block_Size |
+            // |------------|------------|------------|
+            // | bit 0      | bits 1-2   | bits 3-23  |
+            //
+            let is_last_block = meta.query_advice(config.bits[0], Rotation::cur());
+            let block_type_bit1 = meta.query_advice(config.bits[1], Rotation::cur());
+            let block_type_bit2 = meta.query_advice(config.bits[2], Rotation::cur());
 
-        //     // We expect a Block_Type of Compressed_Block, i.e. Block_Type == 2.
-        //     cb.require_equal(
-        //         "Block_Type is Compressed_Block (bit 1)",
-        //         block_type_bit1,
-        //         0.expr(),
-        //     );
-        //     cb.require_equal(
-        //         "Block_Type is Compressed_Block (bit 2)",
-        //         block_type_bit2,
-        //         1.expr(),
-        //     );
+            // We expect a Block_Type of Compressed_Block, i.e. Block_Type == 2.
+            cb.require_equal(
+                "Block_Type is Compressed_Block (bit 1)",
+                block_type_bit1,
+                0.expr(),
+            );
+            cb.require_equal(
+                "Block_Type is Compressed_Block (bit 2)",
+                block_type_bit2,
+                1.expr(),
+            );
 
-        //     // is_last_block is assigned correctly.
-        //     cb.require_equal(
-        //         "is_last_block assigned correctly",
-        //         meta.query_advice(config.block_config.is_last_block, Rotation::cur()),
-        //         is_last_block,
-        //     );
+            // is_last_block is assigned correctly.
+            cb.require_equal(
+                "is_last_block assigned correctly",
+                meta.query_advice(config.block_config.is_last_block, Rotation::cur()),
+                is_last_block,
+            );
 
-        //     // block_idx increments when we see a new block header.
-        //     cb.require_equal(
-        //         "block_idx::cur == block_idx::prev + 1",
-        //         meta.query_advice(config.block_config.block_idx, Rotation::cur()),
-        //         meta.query_advice(config.block_config.block_idx, Rotation::prev()) + 1.expr(),
-        //     );
+            // block_idx increments when we see a new block header.
+            cb.require_equal(
+                "block_idx::cur == block_idx::prev + 1",
+                meta.query_advice(config.block_config.block_idx, Rotation::cur()),
+                meta.query_advice(config.block_config.block_idx, Rotation::prev()) + 1.expr(),
+            );
 
-        //     // block_len, block_idx and is_last_block fields do not change in the BlockHeader. We
-        //     // explicitly do this check since tag=BlockHeader has is_block=false, to facilitate the
-        //     // change of these parameters between blocks (at the tag=BlockHeader boundary). For the
-        //     // subsequent tags, these fields remain the same and is checked via the gate for
-        //     // is_block=true.
-        //     for column in [
-        //         config.block_config.block_len,
-        //         config.block_config.block_idx,
-        //         config.block_config.is_last_block,
-        //     ] {
-        //         cb.require_equal(
-        //             "BlockHeader: block_idx/block_len/is_last_block",
-        //             meta.query_advice(column, Rotation(0)),
-        //             meta.query_advice(column, Rotation(1)),
-        //         );
-        //         cb.require_equal(
-        //             "BlockHeader: block_idx/block_len/is_last_block",
-        //             meta.query_advice(column, Rotation(0)),
-        //             meta.query_advice(column, Rotation(2)),
-        //         );
-        //     }
+            // block_len, block_idx and is_last_block fields do not change in the BlockHeader. We
+            // explicitly do this check since tag=BlockHeader has is_block=false, to facilitate the
+            // change of these parameters between blocks (at the tag=BlockHeader boundary). For the
+            // subsequent tags, these fields remain the same and is checked via the gate for
+            // is_block=true.
+            for column in [
+                config.block_config.block_len,
+                config.block_config.block_idx,
+                config.block_config.is_last_block,
+            ] {
+                cb.require_equal(
+                    "BlockHeader: block_idx/block_len/is_last_block",
+                    meta.query_advice(column, Rotation(0)),
+                    meta.query_advice(column, Rotation(1)),
+                );
+                cb.require_equal(
+                    "BlockHeader: block_idx/block_len/is_last_block",
+                    meta.query_advice(column, Rotation(0)),
+                    meta.query_advice(column, Rotation(2)),
+                );
+            }
 
-        //     // We now validate the end of the previous block.
-        //     // - tag=BlockHeader is preceded by tag in [FrameContentSize, SeqHeader, SeqData].
-        //     // - if prev_tag=SequenceHeader: prev block had no sequences.
-        //     // - if prev_tag=SequenceData: all sequences from prev block were decoded.
-        //     cb.require_equal(
-        //         "tag::prev in [FCS, SH, SD]",
-        //         meta.query_advice(config.tag_config.tag, Rotation::prev()),
-        //         sum::expr([
-        //             is_prev_frame_content_size(meta),
-        //             is_prev_sequence_header(meta),
-        //             is_prev_sequence_data(meta),
-        //         ]),
-        //     );
-        //     cb.condition(is_prev_sequence_header(meta), |cb| {
-        //         cb.require_equal(
-        //             "tag::prev=SeqHeader",
-        //             config
-        //                 .block_config
-        //                 .is_empty_sequences(meta, Rotation::prev()),
-        //             1.expr(),
-        //         );
-        //     });
-        //     cb.condition(is_prev_sequence_data(meta), |cb| {
-        //         cb.require_equal(
-        //             "tag::prev=SeqData",
-        //             meta.query_advice(config.block_config.num_sequences, Rotation::prev()),
-        //             meta.query_advice(config.sequences_data_decoder.idx, Rotation::prev()),
-        //         );
-        //     });
+            // We now validate the end of the previous block.
+            // - tag=BlockHeader is preceded by tag in [FrameContentSize, SeqHeader, SeqData].
+            // - if prev_tag=SequenceHeader: prev block had no sequences.
+            // - if prev_tag=SequenceData: all sequences from prev block were decoded.
+            cb.require_equal(
+                "tag::prev in [FCS, SH, SD]",
+                sum::expr([
+                    is_prev_frame_content_size(meta),
+                    is_prev_sequence_header(meta),
+                    is_prev_sequence_data(meta),
+                ]),
+                1.expr(),
+            );
+            cb.condition(is_prev_sequence_header(meta), |cb| {
+                cb.require_equal(
+                    "tag::prev=SeqHeader",
+                    config
+                        .block_config
+                        .is_empty_sequences(meta, Rotation::prev()),
+                    1.expr(),
+                );
+            });
+            cb.condition(is_prev_sequence_data(meta), |cb| {
+                cb.require_equal(
+                    "tag::prev=SeqData",
+                    meta.query_advice(config.block_config.num_sequences, Rotation::prev()),
+                    meta.query_advice(config.sequences_data_decoder.idx, Rotation::prev()),
+                );
+            });
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         // witgen_debug
         // meta.lookup("DecoderConfig: tag BlockHeader (Block_Size)", |meta| {
@@ -4295,14 +4296,14 @@ impl DecoderConfig {
                         }
 
                         // witgen_debug
-                        //     let is_empty_sequences =
-                        //     IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
-                        //     is_empty_sequences.assign(
-                        //         &mut region,
-                        //         i,
-                        //         Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                        //         Value::known(Fr::zero()),
-                        //     )?;
+                        let is_empty_sequences =
+                        IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
+                        is_empty_sequences.assign(
+                            &mut region,
+                            i,
+                            Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                            Value::known(Fr::zero()),
+                        )?;
                     }
 
                     ////////////////////////////////////////////////////////////
@@ -4310,18 +4311,18 @@ impl DecoderConfig {
                     ////////////////////////////////////////////////////////////
                     
                     // witgen_debug
-                    // region.assign_advice(
-                    //     || "sequence_data_decoder.idx",
-                    //     self.sequences_data_decoder.idx,
-                    //     i,
-                    //     || Value::known(Fr::from((row.bitstream_read_data.seq_idx + 1) as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "sequence_data_decoder.is_init_state",
-                    //     self.sequences_data_decoder.is_init_state,
-                    //     i,
-                    //     || Value::known(Fr::from(row.bitstream_read_data.is_seq_init as u64)),
-                    // )?;
+                    region.assign_advice(
+                        || "sequence_data_decoder.idx",
+                        self.sequences_data_decoder.idx,
+                        i,
+                        || Value::known(Fr::from((row.bitstream_read_data.seq_idx + 1) as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "sequence_data_decoder.is_init_state",
+                        self.sequences_data_decoder.is_init_state,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.is_seq_init as u64)),
+                    )?;
 
                     let seq_states = row.bitstream_read_data.states;
                     let seq_symbols = row.bitstream_read_data.symbols;
@@ -4329,40 +4330,40 @@ impl DecoderConfig {
                     let tables = ["LLT", "MLT", "MOT"];
 
                     // // witgen_debug
-                    // for idx in 0..3 {
-                    //     region.assign_advice(
-                    //         || format!("sequence_data_decoder.states: {:?}", tables[idx]),
-                    //         self.sequences_data_decoder.states[idx],
-                    //         i,
-                    //         || Value::known(Fr::from(seq_states[idx] as u64)),
-                    //     )?;
-                    //     region.assign_advice(
-                    //         || format!("sequence_data_decoder.symbols: {:?}", tables[idx]),
-                    //         self.sequences_data_decoder.symbols[idx],
-                    //         i,
-                    //         || Value::known(Fr::from(seq_symbols[idx] as u64)),
-                    //     )?;
-                    //     region.assign_advice(
-                    //         || format!("sequence_data_decoder.values: {:?}", tables[idx]),
-                    //         self.sequences_data_decoder.values[idx],
-                    //         i,
-                    //         || Value::known(Fr::from(row.bitstream_read_data.values[idx] as u64)),
-                    //     )?;
-                    // }
+                    for idx in 0..3 {
+                        region.assign_advice(
+                            || format!("sequence_data_decoder.states: {:?}", tables[idx]),
+                            self.sequences_data_decoder.states[idx],
+                            i,
+                            || Value::known(Fr::from(seq_states[idx] as u64)),
+                        )?;
+                        region.assign_advice(
+                            || format!("sequence_data_decoder.symbols: {:?}", tables[idx]),
+                            self.sequences_data_decoder.symbols[idx],
+                            i,
+                            || Value::known(Fr::from(seq_symbols[idx] as u64)),
+                        )?;
+                        region.assign_advice(
+                            || format!("sequence_data_decoder.values: {:?}", tables[idx]),
+                            self.sequences_data_decoder.values[idx],
+                            i,
+                            || Value::known(Fr::from(row.bitstream_read_data.values[idx] as u64)),
+                        )?;
+                    }
 
                     // witgen_debug
-                    // region.assign_advice(
-                    //     || "sequence_data_decoder.is_update_state",
-                    //     self.sequences_data_decoder.is_update_state,
-                    //     i,
-                    //     || Value::known(Fr::from(is_update_state as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "sequence_data_decoder.baseline",
-                    //     self.sequences_data_decoder.baseline,
-                    //     i,
-                    //     || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
-                    // )?;
+                    region.assign_advice(
+                        || "sequence_data_decoder.is_update_state",
+                        self.sequences_data_decoder.is_update_state,
+                        i,
+                        || Value::known(Fr::from(is_update_state as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "sequence_data_decoder.baseline",
+                        self.sequences_data_decoder.baseline,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
+                    )?;
                     // let byte0_lt_0x80 =
                     //     LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
                     // byte0_lt_0x80.assign(
