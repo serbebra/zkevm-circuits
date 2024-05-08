@@ -467,16 +467,12 @@ pub struct BitstreamDecoder {
     bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
     /// Helper gadget to know if the bitstring was spanned over 3 bytes.
     bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
-
-    // witgen_debug
-    // /// When we have encountered a symbol with value=1, i.e. prob=0, it is followed by 2-bits
-    // /// repeat bits flag that tells us the number of symbols following the current one that also
-    // /// have a probability of prob=0. If the repeat bits flag itself is [1, 1], i.e.
-    // /// bitstring_value==3, then it is followed by another 2-bits repeat bits flag and so on. We
-    // /// utilise this equality config to identify these cases.
-    // bitstring_value_eq_3: IsEqualConfig<Fr>,
-
-
+    /// When we have encountered a symbol with value=1, i.e. prob=0, it is followed by 2-bits
+    /// repeat bits flag that tells us the number of symbols following the current one that also
+    /// have a probability of prob=0. If the repeat bits flag itself is [1, 1], i.e.
+    /// bitstring_value==3, then it is followed by another 2-bits repeat bits flag and so on. We
+    /// utilise this equality config to identify these cases.
+    bitstring_value_eq_3: IsEqualConfig<Fr>,
     /// The value of the binary bitstring.
     bitstring_value: Column<Advice>,
     /// Boolean that is set for a special case:
@@ -529,12 +525,12 @@ impl BitstreamDecoder {
                 u8_table.into(),
             ),
             // witgen_debug
-            // bitstring_value_eq_3: IsEqualChip::configure(
-            //     meta,
-            //     |meta| meta.query_fixed(q_enable, Rotation::cur()),
-            //     |meta| meta.query_advice(bitstring_value, Rotation::cur()),
-            //     |_| 3.expr(),
-            // ),
+            bitstring_value_eq_3: IsEqualChip::configure(
+                meta,
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
+                |meta| meta.query_advice(bitstring_value, Rotation::cur()),
+                |_| 3.expr(),
+            ),
             bitstring_value,
             is_nil: meta.advice_column(),
             is_nb0: meta.advice_column(),
@@ -4076,15 +4072,14 @@ impl DecoderConfig {
                         Fr::from(row.bitstream_read_data.bit_end_idx as u64),
                         Fr::from(23u64),
                     )?;
-                    // witgen_debug
-                    // let bitstring_value_eq_3 =
-                    //     IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
-                    // bitstring_value_eq_3.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
-                    //     Value::known(Fr::from(3u64)),
-                    // )?;
+                    let bitstring_value_eq_3 =
+                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
+                    bitstring_value_eq_3.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                        Value::known(Fr::from(3u64)),
+                    )?;
                     // let start_unchanged =
                     //     IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
                     // start_unchanged.assign(
@@ -4495,16 +4490,14 @@ impl DecoderConfig {
                         Fr::zero(),
                         Fr::from(23u64),
                     )?;
-
-                    // witgen_debug
-                    // let bitstring_value_eq_3 =
-                    //     IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
-                    // bitstring_value_eq_3.assign(
-                    //     &mut region,
-                    //     idx,
-                    //     Value::known(Fr::zero()),
-                    //     Value::known(Fr::from(3u64)),
-                    // )?;
+                    let bitstring_value_eq_3 =
+                        IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
+                    bitstring_value_eq_3.assign(
+                        &mut region,
+                        idx,
+                        Value::known(Fr::zero()),
+                        Value::known(Fr::from(3u64)),
+                    )?;
 
                     // witgen_debug
                     // let start_unchanged =
