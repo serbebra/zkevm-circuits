@@ -241,13 +241,13 @@ mod test {
     #[test]
     fn mcopy_non_empty() {
         // copy within one slot
-        // test_ok(Word::from("0x20"), Word::from("0x39"), 0x01);
-        // // copy across multi slots
-        // test_ok(Word::from("0x30"), Word::from("0x30"), 0xA0);
-        // test_ok(Word::from("0x40"), Word::from("0x40"), 0xE4);
-        // test_ok(Word::from("0x0"), Word::from("0x100"), 0x20);
+        test_ok(Word::from("0x20"), Word::from("0x39"), 0x01);
+        // copy across multi slots
+        test_ok(Word::from("0x30"), Word::from("0x30"), 0xA0);
+        test_ok(Word::from("0x40"), Word::from("0x40"), 0xE4);
+        test_ok(Word::from("0x0"), Word::from("0x100"), 0x20);
 
-        // TODO: add src and dest copy range overlap case, test tool found that case failed.
+        // src and dest copy range overlap case, test tool found that case failed.
         // this test can repro issue: "non-first access reads don't change value"
         test_ok(Word::from("0x0"), Word::from("0x20"), 0x40);
     }
