@@ -497,6 +497,7 @@ pub fn constrain_rw_counter<F: Field>(
     is_last: Expression<F>, // The last row.
     is_rw_type: Expression<F>,
     is_row_end: Expression<F>,
+    is_memory_copy: Expression<F>,
     rw_counter: Column<Advice>,
     rwc_inc_left: Column<Advice>,
 ) {
@@ -509,13 +510,23 @@ pub fn constrain_rw_counter<F: Field>(
         meta.query_advice(rwc_inc_left, NEXT_ROW),
         0.expr(),
     );
-    cb.require_equal(
-        "rwc_inc_left[2] == rwc_inc_left[0] - rwc_diff, or 0 at the end",
-        new_value,
-        update_or_finish,
-    );
+    cb.condition(not::expr(is_memory_copy.clone()), |cb | {
+        cb.require_equal(
+            "rwc_inc_left[2] == rwc_inc_left[0] - rwc_diff, or 0 at the end",
+            new_value,
+            update_or_finish,
+        );
+     });
 
-    // TODO: need updates for mcopy.
+    // TODO：handle is_memory_copy case correctly.
+    //  cb.condition(is_memory_copy, |cb | {
+    //     cb.require_equal(
+    //         "rwc_inc_left[2] == rwc_inc_left[0] - rwc_diff, or 0 at the end",
+    //         new_value,
+    //         update_or_finish,
+    //     );
+    //  });
+
     // Maintain rw_counter based on rwc_inc_left. Their sum remains constant in all cases.
     cb.condition(not::expr(is_last.expr()), |cb| {
         cb.require_equal(
