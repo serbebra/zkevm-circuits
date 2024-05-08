@@ -1946,20 +1946,22 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         /////////////////////////// ZstdTag::ZstdBlockLiteralsRawBytes ////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: tag ZstdBlockLiteralsRawBytes", |meta| {
-        //     let condition = is_zb_raw_block(meta);
+        meta.create_gate("DecoderConfig: tag ZstdBlockLiteralsRawBytes", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                is_zb_raw_block(meta),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     cb.require_equal(
-        //         "byte_idx::cur == byte_idx::prev + 1",
-        //         meta.query_advice(config.byte_idx, Rotation::cur()),
-        //         meta.query_advice(config.byte_idx, Rotation::prev()) + 1.expr(),
-        //     );
+            cb.require_equal(
+                "byte_idx::cur == byte_idx::prev + 1",
+                meta.query_advice(config.byte_idx, Rotation::cur()),
+                meta.query_advice(config.byte_idx, Rotation::prev()) + 1.expr(),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         debug_assert!(meta.degree() <= 9);
 
