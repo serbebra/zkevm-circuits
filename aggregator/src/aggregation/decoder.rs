@@ -63,8 +63,8 @@ pub struct DecoderConfig {
     block_config: BlockConfig,
 
     // witgen_debug
-    // /// Decoding helpers for the sequences section header.
-    // sequences_header_decoder: SequencesHeaderDecoder,
+    /// Decoding helpers for the sequences section header.
+    sequences_header_decoder: SequencesHeaderDecoder,
 
     // witgen_debug
     // /// Config for reading and decoding bitstreams.
@@ -331,20 +331,20 @@ impl SequencesHeaderDecoder {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         byte: Column<Advice>,
-        is_padding: Column<Advice>,
+        q_enable: Column<Fixed>,
         u8_table: U8Table,
     ) -> Self {
         Self {
             byte0_lt_0x80: LtChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(byte, Rotation::cur()),
                 |_| 0x80.expr(),
                 u8_table.into(),
             ),
             byte0_lt_0xff: LtChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(byte, Rotation::cur()),
                 |_| 0xff.expr(),
                 u8_table.into(),
@@ -386,43 +386,24 @@ impl SequencesHeaderDecoder {
 
         let comp_mode_bit0_ll = select::expr(
             byte0_lt_0x80.expr(),
-            meta.query_advice(bits[0], Rotation(1)),
+            meta.query_advice(bits[6], Rotation(1)),
             select::expr(
                 byte0_lt_0xff.expr(),
-                meta.query_advice(bits[0], Rotation(2)),
-                meta.query_advice(bits[0], Rotation(3)),
+                meta.query_advice(bits[6], Rotation(2)),
+                meta.query_advice(bits[6], Rotation(3)),
             ),
         );
         let comp_mode_bit1_ll = select::expr(
             byte0_lt_0x80.expr(),
-            meta.query_advice(bits[1], Rotation(1)),
+            meta.query_advice(bits[7], Rotation(1)),
             select::expr(
                 byte0_lt_0xff.expr(),
-                meta.query_advice(bits[1], Rotation(2)),
-                meta.query_advice(bits[1], Rotation(3)),
+                meta.query_advice(bits[7], Rotation(2)),
+                meta.query_advice(bits[7], Rotation(3)),
             ),
         );
 
         let comp_mode_bit0_om = select::expr(
-            byte0_lt_0x80.expr(),
-            meta.query_advice(bits[2], Rotation(1)),
-            select::expr(
-                byte0_lt_0xff.expr(),
-                meta.query_advice(bits[2], Rotation(2)),
-                meta.query_advice(bits[2], Rotation(3)),
-            ),
-        );
-        let comp_mode_bit1_om = select::expr(
-            byte0_lt_0x80.expr(),
-            meta.query_advice(bits[3], Rotation(1)),
-            select::expr(
-                byte0_lt_0xff.expr(),
-                meta.query_advice(bits[3], Rotation(2)),
-                meta.query_advice(bits[3], Rotation(3)),
-            ),
-        );
-
-        let comp_mode_bit0_ml = select::expr(
             byte0_lt_0x80.expr(),
             meta.query_advice(bits[4], Rotation(1)),
             select::expr(
@@ -431,13 +412,32 @@ impl SequencesHeaderDecoder {
                 meta.query_advice(bits[4], Rotation(3)),
             ),
         );
-        let comp_mode_bit1_ml = select::expr(
+        let comp_mode_bit1_om = select::expr(
             byte0_lt_0x80.expr(),
             meta.query_advice(bits[5], Rotation(1)),
             select::expr(
                 byte0_lt_0xff.expr(),
                 meta.query_advice(bits[5], Rotation(2)),
                 meta.query_advice(bits[5], Rotation(3)),
+            ),
+        );
+
+        let comp_mode_bit0_ml = select::expr(
+            byte0_lt_0x80.expr(),
+            meta.query_advice(bits[2], Rotation(1)),
+            select::expr(
+                byte0_lt_0xff.expr(),
+                meta.query_advice(bits[2], Rotation(2)),
+                meta.query_advice(bits[2], Rotation(3)),
+            ),
+        );
+        let comp_mode_bit1_ml = select::expr(
+            byte0_lt_0x80.expr(),
+            meta.query_advice(bits[3], Rotation(1)),
+            select::expr(
+                byte0_lt_0xff.expr(),
+                meta.query_advice(bits[3], Rotation(2)),
+                meta.query_advice(bits[3], Rotation(3)),
             ),
         );
 
@@ -999,8 +999,8 @@ impl DecoderConfig {
         let block_config = BlockConfig::configure(meta, q_enable);
 
         // witgen_debug
-        // let sequences_header_decoder =
-        //     SequencesHeaderDecoder::configure(meta, byte, is_padding, u8_table);
+        let sequences_header_decoder =
+            SequencesHeaderDecoder::configure(meta, byte, q_enable, u8_table);
         // let bitstream_decoder = BitstreamDecoder::configure(meta, is_padding, u8_table);
         // let fse_decoder = FseDecoder::configure(meta, is_padding);
         let sequences_data_decoder = SequencesDataDecoder::configure(meta);
@@ -1038,7 +1038,7 @@ impl DecoderConfig {
             block_config,
 
             // witgen_debug
-            // sequences_header_decoder,
+            sequences_header_decoder,
             // bitstream_decoder,
             // fse_decoder,
             sequences_data_decoder,
@@ -1968,79 +1968,79 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         //////////////////////////// ZstdTag::ZstdBlockSequenceHeader /////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: tag ZstdBlockSequenceHeader", |meta| {
-        //     let condition = and::expr([
-        //         is_zb_sequence_header(meta),
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //     ]);
+        meta.create_gate("DecoderConfig: tag ZstdBlockSequenceHeader", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                is_zb_sequence_header(meta),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // The Sequences_Section_Header consists of 2 items:
-        //     // - Number of Sequences (1-3 bytes)
-        //     // - Symbol Compression Mode (1 byte)
-        //     let decoded_sequences_header =
-        //         config
-        //             .sequences_header_decoder
-        //             .decode(meta, config.byte, &config.bits);
+            // The Sequences_Section_Header consists of 2 items:
+            // - Number of Sequences (1-3 bytes)
+            // - Symbol Compression Mode (1 byte)
+            let decoded_sequences_header =
+                config
+                    .sequences_header_decoder
+                    .decode(meta, config.byte, &config.bits);
 
-        //     cb.require_equal(
-        //         "sequences header tag_len check",
-        //         meta.query_advice(config.tag_config.tag_len, Rotation::cur()),
-        //         decoded_sequences_header.tag_len,
-        //     );
+            cb.require_equal(
+                "sequences header tag_len check",
+                meta.query_advice(config.tag_config.tag_len, Rotation::cur()),
+                decoded_sequences_header.tag_len,
+            );
 
-        //     cb.require_equal(
-        //         "number of sequences in block decoded from the sequences section header",
-        //         meta.query_advice(config.block_config.num_sequences, Rotation::cur()),
-        //         decoded_sequences_header.num_sequences,
-        //     );
+            cb.require_equal(
+                "number of sequences in block decoded from the sequences section header",
+                meta.query_advice(config.block_config.num_sequences, Rotation::cur()),
+                decoded_sequences_header.num_sequences,
+            );
 
-        //     // The compression modes for literals length, match length and offsets are expected to
-        //     // be either Predefined_Mode or Fse_Compressed_Mode, i.e. compression mode==0 or
-        //     // compression_mode==2. i.e. bit0==0.
-        //     cb.require_zero("ll: bit0 == 0", decoded_sequences_header.comp_mode_bit0_ll);
-        //     cb.require_zero("om: bit0 == 0", decoded_sequences_header.comp_mode_bit0_om);
-        //     cb.require_zero("ml: bit0 == 0", decoded_sequences_header.comp_mode_bit0_ml);
+            // The compression modes for literals length, match length and offsets are expected to
+            // be either Predefined_Mode or Fse_Compressed_Mode, i.e. compression mode==0 or
+            // compression_mode==2. i.e. bit0==0.
+            cb.require_zero("ll: bit0 == 0", decoded_sequences_header.comp_mode_bit0_ll);
+            cb.require_zero("om: bit0 == 0", decoded_sequences_header.comp_mode_bit0_om);
+            cb.require_zero("ml: bit0 == 0", decoded_sequences_header.comp_mode_bit0_ml);
 
-        //     // Depending on bit1==0 or bit1==1 we know whether the compression mode is
-        //     // Predefined_Mode or Fse_Compressed_Mode. The compression_modes flag is set when
-        //     // Fse_Compressed_Mode is utilised.
-        //     cb.require_equal(
-        //         "block_config: compression_modes llt",
-        //         meta.query_advice(config.block_config.compression_modes[0], Rotation::cur()),
-        //         decoded_sequences_header.comp_mode_bit1_ll,
-        //     );
-        //     cb.require_equal(
-        //         "block_config: compression_modes mot",
-        //         meta.query_advice(config.block_config.compression_modes[1], Rotation::cur()),
-        //         decoded_sequences_header.comp_mode_bit1_om,
-        //     );
-        //     cb.require_equal(
-        //         "block_config: compression_modes mlt",
-        //         meta.query_advice(config.block_config.compression_modes[2], Rotation::cur()),
-        //         decoded_sequences_header.comp_mode_bit1_ml,
-        //     );
+            // Depending on bit1==0 or bit1==1 we know whether the compression mode is
+            // Predefined_Mode or Fse_Compressed_Mode. The compression_modes flag is set when
+            // Fse_Compressed_Mode is utilised.
+            cb.require_equal(
+                "block_config: compression_modes llt",
+                meta.query_advice(config.block_config.compression_modes[0], Rotation::cur()),
+                decoded_sequences_header.comp_mode_bit1_ll,
+            );
+            cb.require_equal(
+                "block_config: compression_modes mot",
+                meta.query_advice(config.block_config.compression_modes[1], Rotation::cur()),
+                decoded_sequences_header.comp_mode_bit1_om,
+            );
+            cb.require_equal(
+                "block_config: compression_modes mlt",
+                meta.query_advice(config.block_config.compression_modes[2], Rotation::cur()),
+                decoded_sequences_header.comp_mode_bit1_ml,
+            );
 
-        //     // If all the three LLT, MOT and MLT use the Predefined_Mode, we have no FSE tables to
-        //     // decode in the sequences section. And the tag=ZstdBlockSequenceHeader will
-        //     // immediately be followed by tag=ZstdBlockSequenceData.
-        //     let no_fse_tables = config
-        //         .block_config
-        //         .are_predefined_all(meta, Rotation::cur());
-        //     cb.require_equal(
-        //         "SequenceHeader: tag_next=FseCode or tag_next=SequencesData",
-        //         meta.query_advice(config.tag_config.tag_next, Rotation::cur()),
-        //         select::expr(
-        //             no_fse_tables,
-        //             ZstdTag::ZstdBlockSequenceData.expr(),
-        //             ZstdTag::ZstdBlockSequenceFseCode.expr(),
-        //         ),
-        //     );
+            // If all the three LLT, MOT and MLT use the Predefined_Mode, we have no FSE tables to
+            // decode in the sequences section. And the tag=ZstdBlockSequenceHeader will
+            // immediately be followed by tag=ZstdBlockSequenceData.
+            let no_fse_tables = config
+                .block_config
+                .are_predefined_all(meta, Rotation::cur());
+            cb.require_equal(
+                "SequenceHeader: tag_next=FseCode or tag_next=SequencesData",
+                meta.query_advice(config.tag_config.tag_next, Rotation::cur()),
+                select::expr(
+                    no_fse_tables,
+                    ZstdTag::ZstdBlockSequenceData.expr(),
+                    ZstdTag::ZstdBlockSequenceFseCode.expr(),
+                ),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         // TODO: lookup(SeqInstTable) for seq_count_lookup
         // meta.lookup_any(
@@ -4365,22 +4365,22 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
                     )?;
-                    // let byte0_lt_0x80 =
-                    //     LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
-                    // byte0_lt_0x80.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Fr::from(row.encoded_data.value_byte as u64),
-                    //     Fr::from(0x80 as u64),
-                    // )?;
-                    // let byte0_lt_0xff =
-                    //     LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
-                    // byte0_lt_0xff.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Fr::from(row.encoded_data.value_byte as u64),
-                    //     Fr::from(0xff as u64),
-                    // )?;
+                    let byte0_lt_0x80 =
+                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
+                    byte0_lt_0x80.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.encoded_data.value_byte as u64),
+                        Fr::from(0x80),
+                    )?;
+                    let byte0_lt_0xff =
+                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
+                    byte0_lt_0xff.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.encoded_data.value_byte as u64),
+                        Fr::from(0xff),
+                    )?;
 
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
@@ -4455,6 +4455,22 @@ impl DecoderConfig {
                         self.is_padding,
                         idx,
                         || Value::known(Fr::one()),
+                    )?;
+                    let byte0_lt_0x80 =
+                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
+                    byte0_lt_0x80.assign(
+                        &mut region,
+                        idx,
+                        Fr::zero(),
+                        Fr::from(0x80),
+                    )?;
+                    let byte0_lt_0xff =
+                        LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
+                    byte0_lt_0xff.assign(
+                        &mut region,
+                        idx,
+                        Fr::zero(),
+                        Fr::from(0xff),
                     )?;
                 }
 
