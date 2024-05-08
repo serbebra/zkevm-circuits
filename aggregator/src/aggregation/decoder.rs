@@ -55,14 +55,10 @@ pub struct DecoderConfig {
     decoded_len: Column<Advice>,
     /// Once all the encoded bytes are decoded, we append the layout with padded rows.
     is_padding: Column<Advice>,
-
-    // witgen_debug
-    // /// Zstd tag related config.
-    // tag_config: TagConfig,
-
-    // witgen_debug
-    // /// Block related config.
-    // block_config: BlockConfig,
+    /// Zstd tag related config.
+    tag_config: TagConfig,
+    /// Block related config.
+    block_config: BlockConfig,
 
     // witgen_debug
     // /// Decoding helpers for the sequences section header.
@@ -118,25 +114,17 @@ struct TagConfig {
     q_enable: Column<Fixed>,
     /// The ZstdTag being processed at the current row.
     tag: Column<Advice>,
-
-    // witgen_debug
     /// Tag decomposed as bits. This is useful in constructing conditional checks against the tag
     /// value.
-    // tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
-
-
+    tag_bits: BinaryNumberConfig<ZstdTag, N_BITS_ZSTD_TAG>,
     /// The Zstd tag that will be processed after processing the current tag.
     tag_next: Column<Advice>,
     /// The number of bytes in the current tag.
     tag_len: Column<Advice>,
     /// The byte index within the current tag. At the first tag byte, tag_idx = 1.
     tag_idx: Column<Advice>,
-
-    // witgen_debug
     /// A utility gadget to identify the row where tag_idx == tag_len.
-    // tag_idx_eq_tag_len: IsEqualConfig<Fr>,
-
-
+    tag_idx_eq_tag_len: IsEqualConfig<Fr>,
     /// The maximum number bytes that the current tag may occupy. This is an upper bound on the
     /// number of bytes required to encode this tag. For instance, the LiteralsHeader is variable
     /// sized, ranging from 1-5 bytes. The max_len for LiteralsHeader would be 5.
@@ -178,18 +166,16 @@ impl TagConfig {
         Self {
             q_enable,
             tag,
-            // witgen_debug
-            // tag_bits: BinaryNumberChip::configure(meta, q_enable, Some(tag.into())),
+            tag_bits: BinaryNumberChip::configure(meta, q_enable, Some(tag.into())),
             tag_next: meta.advice_column(),
             tag_len,
             tag_idx,
-            // witgen_debug
-            // tag_idx_eq_tag_len: IsEqualChip::configure(
-            //     meta,
-            //     |meta| meta.query_fixed(q_enable, Rotation::cur()),
-            //     |meta| meta.query_advice(tag_idx, Rotation::cur()),
-            //     |meta| meta.query_advice(tag_len, Rotation::cur()),
-            // ),
+            tag_idx_eq_tag_len: IsEqualChip::configure(
+                meta,
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
+                |meta| meta.query_advice(tag_idx, Rotation::cur()),
+                |meta| meta.query_advice(tag_len, Rotation::cur()),
+            ),
             max_len: meta.advice_column(),
             tag_rlc: meta.advice_column_in(SecondPhase),
             rpow_tag_len: meta.advice_column_in(SecondPhase),
@@ -220,8 +206,11 @@ struct BlockConfig {
     is_block: Column<Advice>,
     /// Number of sequences decoded from the sequences section header in the block.
     num_sequences: Column<Advice>,
+
+    // witgen_debug
     /// Helper gadget to know if the number of sequences is 0.
-    is_empty_sequences: IsEqualConfig<Fr>,
+    // is_empty_sequences: IsEqualConfig<Fr>,
+
     /// For sequence decoding, the tag=ZstdBlockSequenceHeader bytes tell us the Compression_Mode
     /// utilised for Literals Lengths, Match Offsets and Match Lengths. We expect only 2
     /// possibilities:
@@ -243,12 +232,13 @@ impl BlockConfig {
             is_last_block: meta.advice_column(),
             is_block: meta.advice_column(),
             num_sequences,
-            is_empty_sequences: IsEqualChip::configure(
-                meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
-                |meta| meta.query_advice(num_sequences, Rotation::cur()),
-                |_| 0.expr(),
-            ),
+            // witgen_debug
+            // is_empty_sequences: IsEqualChip::configure(
+            //     meta,
+            //     |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+            //     |meta| meta.query_advice(num_sequences, Rotation::cur()),
+            //     |_| 0.expr(),
+            // ),
             compression_modes: [
                 meta.advice_column(),
                 meta.advice_column(),
@@ -300,15 +290,16 @@ impl BlockConfig {
         )
     }
 
-    fn is_empty_sequences(
-        &self,
-        meta: &mut VirtualCells<Fr>,
-        rotation: Rotation,
-    ) -> Expression<Fr> {
-        let num_sequences = meta.query_advice(self.num_sequences, rotation);
-        self.is_empty_sequences
-            .expr_at(meta, rotation, num_sequences, 0.expr())
-    }
+    // witgen_debug
+    // fn is_empty_sequences(
+    //     &self,
+    //     meta: &mut VirtualCells<Fr>,
+    //     rotation: Rotation,
+    // ) -> Expression<Fr> {
+    //     let num_sequences = meta.query_advice(self.num_sequences, rotation);
+    //     self.is_empty_sequences
+    //         .expr_at(meta, rotation, num_sequences, 0.expr())
+    // }
 }
 
 #[derive(Clone, Debug)]
@@ -1005,9 +996,10 @@ impl DecoderConfig {
             meta.advice_column(),
         );
 
+        let tag_config = TagConfig::configure(meta);
+        let block_config = BlockConfig::configure(meta, is_padding);
+
         // witgen_debug
-        // let tag_config = TagConfig::configure(meta);
-        // let block_config = BlockConfig::configure(meta, is_padding);
         // let sequences_header_decoder =
         //     SequencesHeaderDecoder::configure(meta, byte, is_padding, u8_table);
         // let bitstream_decoder = BitstreamDecoder::configure(meta, is_padding, u8_table);
@@ -1042,12 +1034,10 @@ impl DecoderConfig {
             encoded_rlc: meta.advice_column_in(SecondPhase),
             decoded_len: meta.advice_column(),
             is_padding,
+            tag_config,
+            block_config,
 
             // witgen_debug
-            // tag_config,
-
-            // witgen_debug
-            // block_config,
             // sequences_header_decoder,
             // bitstream_decoder,
             // fse_decoder,
@@ -1071,44 +1061,41 @@ impl DecoderConfig {
             // fixed_table,
         };
 
+        macro_rules! is_tag {
+            ($var:ident, $tag_variant:ident) => {
+                let $var = |meta: &mut VirtualCells<Fr>| {
+                    config
+                        .tag_config
+                        .tag_bits
+                        .value_equals(ZstdTag::$tag_variant, Rotation::cur())(meta)
+                };
+            };
+        }
 
-        // witgen_debug
-        // macro_rules! is_tag {
-        //     ($var:ident, $tag_variant:ident) => {
-        //         let $var = |meta: &mut VirtualCells<Fr>| {
-        //             config
-        //                 .tag_config
-        //                 .tag_bits
-        //                 .value_equals(ZstdTag::$tag_variant, Rotation::cur())(meta)
-        //         };
-        //     };
-        // }
+        macro_rules! is_prev_tag {
+            ($var:ident, $tag_variant:ident) => {
+                let $var = |meta: &mut VirtualCells<Fr>| {
+                    config
+                        .tag_config
+                        .tag_bits
+                        .value_equals(ZstdTag::$tag_variant, Rotation::prev())(meta)
+                };
+            };
+        }
 
-        // macro_rules! is_prev_tag {
-        //     ($var:ident, $tag_variant:ident) => {
-        //         let $var = |meta: &mut VirtualCells<Fr>| {
-        //             config
-        //                 .tag_config
-        //                 .tag_bits
-        //                 .value_equals(ZstdTag::$tag_variant, Rotation::prev())(meta)
-        //         };
-        //     };
-        // }
+        is_tag!(is_null, Null);
+        is_tag!(is_frame_header_descriptor, FrameHeaderDescriptor);
+        is_tag!(is_frame_content_size, FrameContentSize);
+        is_tag!(is_block_header, BlockHeader);
+        is_tag!(is_zb_literals_header, ZstdBlockLiteralsHeader);
+        is_tag!(is_zb_raw_block, ZstdBlockLiteralsRawBytes);
+        is_tag!(is_zb_sequence_header, ZstdBlockSequenceHeader);
+        is_tag!(is_zb_sequence_fse, ZstdBlockSequenceFseCode);
+        is_tag!(is_zb_sequence_data, ZstdBlockSequenceData);
 
-        // witgen_debug
-        // is_tag!(is_null, Null);
-        // is_tag!(is_frame_header_descriptor, FrameHeaderDescriptor);
-        // is_tag!(is_frame_content_size, FrameContentSize);
-        // is_tag!(is_block_header, BlockHeader);
-        // is_tag!(is_zb_literals_header, ZstdBlockLiteralsHeader);
-        // is_tag!(is_zb_raw_block, ZstdBlockLiteralsRawBytes);
-        // is_tag!(is_zb_sequence_header, ZstdBlockSequenceHeader);
-        // is_tag!(is_zb_sequence_fse, ZstdBlockSequenceFseCode);
-        // is_tag!(is_zb_sequence_data, ZstdBlockSequenceData);
-
-        // is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
-        // is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
-        // is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
+        is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
+        is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
+        is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
 
         // witgen_debug
         // meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
@@ -3954,7 +3941,7 @@ impl DecoderConfig {
                         || "is_padding",
                         self.is_padding,
                         i,
-                        || Value::known(Fr::from(0u64)),
+                        || Value::known(Fr::zero()),
                     )?;
                     region.assign_advice(
                         || "byte_idx",
@@ -4098,141 +4085,137 @@ impl DecoderConfig {
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
                     /////////////////////////////////////////
+                    region.assign_fixed(
+                        || "tag_config.q_enable",
+                        self.tag_config.q_enable,
+                        i,
+                        || Value::known(Fr::one()),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag",
+                        self.tag_config.tag,
+                        i,
+                        || Value::known(Fr::from(row.state.tag as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_next",
+                        self.tag_config.tag_next,
+                        i,
+                        || Value::known(Fr::from(row.state.tag_next as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_len",
+                        self.tag_config.tag_len,
+                        i,
+                        || Value::known(Fr::from(row.state.tag_len as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.max_len",
+                        self.tag_config.max_len,
+                        i,
+                        || Value::known(Fr::from(row.state.max_tag_len as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_idx",
+                        self.tag_config.tag_idx,
+                        i,
+                        || Value::known(Fr::from(row.state.tag_idx as u64)),
+                    )?;
 
-                    // witgen_debug
-                    // region.assign_fixed(
-                    //     || "tag_config.q_enable",
-                    //     self.tag_config.q_enable,
-                    //     i,
-                    //     || Value::known(Fr::one()),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.tag",
-                    //     self.tag_config.tag,
-                    //     i,
-                    //     || Value::known(Fr::from(row.state.tag as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.tag_next",
-                    //     self.tag_config.tag_next,
-                    //     i,
-                    //     || Value::known(Fr::from(row.state.tag_next as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.tag_len",
-                    //     self.tag_config.tag_len,
-                    //     i,
-                    //     || Value::known(Fr::from(row.state.tag_len as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.max_len",
-                    //     self.tag_config.max_len,
-                    //     i,
-                    //     || Value::known(Fr::from(row.state.max_tag_len as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.tag_idx",
-                    //     self.tag_config.tag_idx,
-                    //     i,
-                    //     || Value::known(Fr::from(row.state.tag_idx as u64)),
-                    // )?;
+                    let is_sequence_data = row.state.tag == ZstdTag::ZstdBlockSequenceData;
+                    region.assign_advice(
+                        || "tag_config.is_sequence_data",
+                        self.tag_config.is_sequence_data,
+                        i,
+                        || Value::known(Fr::from(is_sequence_data as u64)),
+                    )?;
 
-                    // let is_sequence_data = row.state.tag == ZstdTag::ZstdBlockSequenceData;
-                    // region.assign_advice(
-                    //     || "tag_config.is_sequence_data",
-                    //     self.tag_config.is_sequence_data,
-                    //     i,
-                    //     || Value::known(Fr::from(is_sequence_data as u64)),
-                    // )?;
+                    let is_frame_content_size = row.state.tag == ZstdTag::FrameContentSize;
+                    region.assign_advice(
+                        || "tag_config.is_frame_content_size",
+                        self.tag_config.is_frame_content_size,
+                        i,
+                        || Value::known(Fr::from(is_frame_content_size as u64)),
+                    )?;
 
-                    // let is_frame_content_size = row.state.tag == ZstdTag::FrameContentSize;
-                    // region.assign_advice(
-                    //     || "tag_config.is_frame_content_size",
-                    //     self.tag_config.is_frame_content_size,
-                    //     i,
-                    //     || Value::known(Fr::from(is_frame_content_size as u64)),
-                    // )?;
+                    let is_block_header = row.state.tag == ZstdTag::BlockHeader;
+                    region.assign_advice(
+                        || "tag_config.is_block_header",
+                        self.tag_config.is_block_header,
+                        i,
+                        || Value::known(Fr::from(is_block_header as u64)),
+                    )?;
 
-                    // let is_block_header = row.state.tag == ZstdTag::BlockHeader;
-                    // region.assign_advice(
-                    //     || "tag_config.is_block_header",
-                    //     self.tag_config.is_block_header,
-                    //     i,
-                    //     || Value::known(Fr::from(is_block_header as u64)),
-                    // )?;
+                    let is_fse_code = row.state.tag == ZstdTag::ZstdBlockSequenceFseCode;
+                    region.assign_advice(
+                        || "tag_config.is_fse_code",
+                        self.tag_config.is_fse_code,
+                        i,
+                        || Value::known(Fr::from(is_fse_code as u64)),
+                    )?;
 
-                    // let is_fse_code = row.state.tag == ZstdTag::ZstdBlockSequenceFseCode;
-                    // region.assign_advice(
-                    //     || "tag_config.is_fse_code",
-                    //     self.tag_config.is_fse_code,
-                    //     i,
-                    //     || Value::known(Fr::from(is_fse_code as u64)),
-                    // )?;
+                    let is_null = row.state.tag == ZstdTag::Null;
+                    region.assign_advice(
+                        || "tag_config.is_null",
+                        self.tag_config.is_null,
+                        i,
+                        || Value::known(Fr::from(is_null as u64)),
+                    )?;
 
-                    // let is_null = row.state.tag == ZstdTag::Null;
-                    // region.assign_advice(
-                    //     || "tag_config.is_null",
-                    //     self.tag_config.is_null,
-                    //     i,
-                    //     || Value::known(Fr::from(is_null as u64)),
-                    // )?;
+                    region.assign_advice(
+                        || "tag_config.is_change",
+                        self.tag_config.is_change,
+                        i,
+                        || Value::known(Fr::from((row.state.is_tag_change && i > 0) as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.is_reverse",
+                        self.tag_config.is_reverse,
+                        i,
+                        || Value::known(Fr::from(row.encoded_data.reverse as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.tag_rlc",
+                        self.tag_config.tag_rlc,
+                        i,
+                        || row.state.tag_rlc_acc,
+                    )?;
+                    region.assign_advice(
+                        || "tag_config.is_output",
+                        self.tag_config.is_output,
+                        i,
+                        || Value::known(Fr::from(row.state.tag.is_output() as u64)),
+                    )?;
 
-                    // region.assign_advice(
-                    //     || "tag_config.is_change",
-                    //     self.tag_config.is_change,
-                    //     i,
-                    //     || Value::known(Fr::from((row.state.is_tag_change && i > 0) as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.is_reverse",
-                    //     self.tag_config.is_reverse,
-                    //     i,
-                    //     || Value::known(Fr::from(row.encoded_data.reverse as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.tag_rlc",
-                    //     self.tag_config.tag_rlc,
-                    //     i,
-                    //     || row.state.tag_rlc_acc,
-                    // )?;
-                    // region.assign_advice(
-                    //     || "tag_config.is_output",
-                    //     self.tag_config.is_output,
-                    //     i,
-                    //     || Value::known(Fr::from(row.state.tag.is_output() as u64)),
-                    // )?;
+                    let tag_len = row.state.tag_len as usize;
+                    if tag_len >= pow_of_rand.len() {
+                        let mut last = pow_of_rand
+                            .last()
+                            .expect("Last pow_of_rand exists.")
+                            .clone();
+                        for _ in pow_of_rand.len()..=tag_len {
+                            last = last * challenges.keccak_input();
+                            pow_of_rand.push(last.clone());
+                        }
+                    }
+                    region.assign_advice(
+                        || "tag_config.rpow_tag_len",
+                        self.tag_config.rpow_tag_len,
+                        i,
+                        || pow_of_rand[tag_len],
+                    )?;
 
-                    // let tag_len = row.state.tag_len as usize;
-                    // if tag_len >= pow_of_rand.len() {
-                    //     let mut last = pow_of_rand
-                    //         .last()
-                    //         .expect("Last pow_of_rand exists.")
-                    //         .clone();
-                    //     for _ in pow_of_rand.len()..=tag_len {
-                    //         last = last * challenges.keccak_input();
-                    //         pow_of_rand.push(last.clone());
-                    //     }
-                    // }
-                    // region.assign_advice(
-                    //     || "tag_config.rpow_tag_len",
-                    //     self.tag_config.rpow_tag_len,
-                    //     i,
-                    //     || pow_of_rand[tag_len],
-                    // )?;
+                    let tag_idx_eq_tag_len =
+                        IsEqualChip::construct(self.tag_config.tag_idx_eq_tag_len.clone());
+                    tag_idx_eq_tag_len.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.state.tag_idx as u64)),
+                        Value::known(Fr::from(row.state.tag_len as u64)),
+                    )?;
 
-                    // witgen_debug
-                    // let tag_idx_eq_tag_len =
-                    //     IsEqualChip::construct(self.tag_config.tag_idx_eq_tag_len.clone());
-                    // tag_idx_eq_tag_len.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Value::known(Fr::from(row.state.tag_idx as u64)),
-                    //     Value::known(Fr::from(row.state.tag_len as u64)),
-                    // )?;
-
-                    // witgen_debug
-                    // let tag_chip = BinaryNumberChip::construct(self.tag_config.tag_bits);
-                    // tag_chip.assign(&mut region, i, &row.state.tag)?;
+                    let tag_chip = BinaryNumberChip::construct(self.tag_config.tag_bits);
+                    tag_chip.assign(&mut region, i, &row.state.tag)?;
 
                     /////////////////////////////////////////
                     ///////// Assign Block Config  //////////
@@ -4243,76 +4226,76 @@ impl DecoderConfig {
                         || row.state.tag == BlockHeader;
                     let is_block_header = row.state.tag == BlockHeader;
 
-                    // witgen_debug
-                    // if !is_not_block || is_block_header {
-                    //     if block_idx != curr_block_info.block_idx as u64 {
-                    //         curr_block_info = block_info_arr
-                    //             .iter()
-                    //             .find(|&b| b.block_idx == block_idx as usize)
-                    //             .expect("Block info should exist")
-                    //             .clone();
-                    //     }
-                    //     if block_idx != curr_sequence_info.block_idx as u64 {
-                    //         curr_sequence_info = sequence_info_arr
-                    //             .iter()
-                    //             .find(|&s| s.block_idx == block_idx as usize)
-                    //             .expect("Sequence info should exist")
-                    //             .clone();
-                    //     }
-                    //     region.assign_advice(
-                    //         || "block_config.block_len",
-                    //         self.block_config.block_len,
-                    //         i,
-                    //         || Value::known(Fr::from(curr_block_info.block_len as u64)),
-                    //     )?;
-                    //     region.assign_advice(
-                    //         || "block_config.block_idx",
-                    //         self.block_config.block_idx,
-                    //         i,
-                    //         || Value::known(Fr::from(curr_block_info.block_idx as u64)),
-                    //     )?;
-                    //     region.assign_advice(
-                    //         || "block_config.is_last_block",
-                    //         self.block_config.is_last_block,
-                    //         i,
-                    //         || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
-                    //     )?;
-                    //     region.assign_advice(
-                    //         || "block_config.is_block",
-                    //         self.block_config.is_block,
-                    //         i,
-                    //         || Value::known(Fr::one()),
-                    //     )?;
-                    //     region.assign_advice(
-                    //         || "block_config.num_sequences",
-                    //         self.block_config.num_sequences,
-                    //         i,
-                    //         || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                    //     )?;
+                    if !is_not_block || is_block_header {
+                        if block_idx != curr_block_info.block_idx as u64 {
+                            curr_block_info = block_info_arr
+                                .iter()
+                                .find(|&b| b.block_idx == block_idx as usize)
+                                .expect("Block info should exist")
+                                .clone();
+                        }
+                        if block_idx != curr_sequence_info.block_idx as u64 {
+                            curr_sequence_info = sequence_info_arr
+                                .iter()
+                                .find(|&s| s.block_idx == block_idx as usize)
+                                .expect("Sequence info should exist")
+                                .clone();
+                        }
+                        region.assign_advice(
+                            || "block_config.block_len",
+                            self.block_config.block_len,
+                            i,
+                            || Value::known(Fr::from(curr_block_info.block_len as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.block_idx",
+                            self.block_config.block_idx,
+                            i,
+                            || Value::known(Fr::from(curr_block_info.block_idx as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.is_last_block",
+                            self.block_config.is_last_block,
+                            i,
+                            || Value::known(Fr::from(curr_block_info.is_last_block as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.is_block",
+                            self.block_config.is_block,
+                            i,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "block_config.num_sequences",
+                            self.block_config.num_sequences,
+                            i,
+                            || Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                        )?;
 
-                    //     let table_names = ["LLT", "MOT", "MLT"];
-                    //     for idx in 0..3 {
-                    //         region.assign_advice(
-                    //             || table_names[idx],
-                    //             self.block_config.compression_modes[idx],
-                    //             i,
-                    //             || {
-                    //                 Value::known(Fr::from(
-                    //                     curr_sequence_info.compression_mode[idx] as u64,
-                    //                 ))
-                    //             },
-                    //         )?;
-                    //     }
+                        let table_names = ["LLT", "MOT", "MLT"];
+                        for idx in 0..3 {
+                            region.assign_advice(
+                                || table_names[idx],
+                                self.block_config.compression_modes[idx],
+                                i,
+                                || {
+                                    Value::known(Fr::from(
+                                        curr_sequence_info.compression_mode[idx] as u64,
+                                    ))
+                                },
+                            )?;
+                        }
 
-                    //     let is_empty_sequences =
-                    //         IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
-                    //     is_empty_sequences.assign(
-                    //         &mut region,
-                    //         i,
-                    //         Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
-                    //         Value::known(Fr::from(0u64)),
-                    //     )?;
-                    // }
+                        // witgen_debug
+                        //     let is_empty_sequences =
+                        //     IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
+                        //     is_empty_sequences.assign(
+                        //         &mut region,
+                        //         i,
+                        //         Value::known(Fr::from(curr_sequence_info.num_sequences as u64)),
+                        //         Value::known(Fr::zero()),
+                        //     )?;
+                    }
 
                     ////////////////////////////////////////////////////////////
                     ///////// Assign Extra Sequence Bitstream Fields  //////////
@@ -4455,6 +4438,7 @@ impl DecoderConfig {
                     // )?;
                 }
 
+                // witgen_debug
                 for idx in (witness_rows.len())..(2u64.pow(k - 1) as usize) {
                     region.assign_advice(
                         || "is_padding",
