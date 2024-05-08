@@ -4333,7 +4333,7 @@ impl DecoderConfig {
                     )?;
                 }
 
-                for idx in (witness_rows.len())..(2u64.pow(k) as usize) {
+                for idx in (witness_rows.len())..(2u64.pow(k - 1) as usize) {
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,
@@ -4497,7 +4497,12 @@ mod tests {
         };
 
         let k = 18;
-        let decoder_config_tester = DecoderConfigTester { compressed, k };
+        let decoder_config_tester = DecoderConfigTester { 
+            compressed, 
+            k,
+            // witgen_debug
+            // k: k - 1,
+        };
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
     }

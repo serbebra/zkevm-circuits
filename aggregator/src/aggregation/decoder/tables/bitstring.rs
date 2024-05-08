@@ -657,7 +657,7 @@ impl BitstringTable {
                     }
                 }
 
-                for idx in offset..(2u64.pow(k) as usize) {
+                for idx in offset..(2u64.pow(k - 1) as usize) {
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,
