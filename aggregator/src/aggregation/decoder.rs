@@ -3756,6 +3756,7 @@ impl DecoderConfig {
         block_info_arr: Vec<BlockInfo>,
         sequence_info_arr: Vec<SequenceInfo>,
         challenges: &Challenges<Value<Fr>>,
+        k: u32,
         // witgen_debug
         // ) -> Result<AssignedDecoderConfigExports, Error> {
     ) -> Result<(), Error> {
@@ -3778,9 +3779,9 @@ impl DecoderConfig {
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
-        self.fse_table.assign(layouter, fse_aux_tables)?;
+        self.fse_table.assign(layouter, fse_aux_tables, k)?;
         self.bitstring_table
-            .assign(layouter, &block_info_arr, &witness_rows)?;
+            .assign(layouter, &block_info_arr, &witness_rows, k)?;
 
         /////////////////////////////////////////
         ///// Assign LiteralHeaderTable  ////////
@@ -4332,8 +4333,14 @@ impl DecoderConfig {
                     )?;
                 }
 
-                // witgen_debug
-                // Assign is_padding: Column<Advice>,
+                for idx in (witness_rows.len())..(2u64.pow(k) as usize) {
+                    region.assign_advice(
+                        || "is_padding",
+                        self.is_padding,
+                        idx,
+                        || Value::known(Fr::one()),
+                    )?;
+                }
 
                 Ok(())
             },
@@ -4377,6 +4384,7 @@ mod tests {
     #[derive(Clone, Debug, Default)]
     struct DecoderConfigTester {
         compressed: Vec<u8>,
+        k: u32,
     }
 
     impl Circuit<Fr> for DecoderConfigTester {
@@ -4440,6 +4448,7 @@ mod tests {
                 block_info_arr,
                 sequence_info_arr,
                 &challenges,
+                self.k,
             )?;
 
             Ok(())
@@ -4487,9 +4496,8 @@ mod tests {
             encoder.finish().expect("Encoder success")
         };
 
-        let decoder_config_tester = DecoderConfigTester { compressed };
-
         let k = 18;
+        let decoder_config_tester = DecoderConfigTester { compressed, k };
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
     }

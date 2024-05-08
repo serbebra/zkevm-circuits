@@ -448,6 +448,7 @@ impl BitstringTable {
         layouter: &mut impl Layouter<Fr>,
         block_info_arr: &Vec<BlockInfo>,
         witness_rows: &[ZstdWitnessRow<Fr>],
+        k: u32,
     ) -> Result<(), Error> {
         let mut offset: usize = 0;
         assert!(!witness_rows.is_empty());
@@ -656,17 +657,18 @@ impl BitstringTable {
                     }
                 }
 
+                for idx in offset..(2u64.pow(k) as usize) {
+                    region.assign_advice(
+                        || "is_padding",
+                        self.is_padding,
+                        idx,
+                        || Value::known(Fr::one()),
+                    )?;
+                }
+                
                 Ok(())
             },
-        )?;
-
-        // witgen_debug
-        //     /// After all rows of meaningful bytes are done, we mark the remaining rows by a
-        // padding     /// boolean where our constraints are skipped.
-        //     pub is_padding: Column<Advice>,
-        // }
-
-        Ok(())
+        )
     }
 }
 

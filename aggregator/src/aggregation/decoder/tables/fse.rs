@@ -719,6 +719,7 @@ impl FseTable {
         &self,
         layouter: &mut impl Layouter<Fr>,
         data: Vec<FseAuxiliaryTableData>,
+        k: u32,
     ) -> Result<(), Error> {
         layouter.assign_region(
             || "FseTable",
@@ -1108,6 +1109,24 @@ impl FseTable {
                             || Value::known(Fr::one()),
                         )?;
                     }
+                }
+
+                for idx in fse_offset..(2u64.pow(k) as usize) {
+                    region.assign_advice(
+                        || "is_padding",
+                        self.is_padding,
+                        idx,
+                        || Value::known(Fr::one()),
+                    )?;
+                }
+
+                for idx in sorted_offset..(2u64.pow(k) as usize) {
+                    region.assign_advice(
+                        || "sorted_table.is_padding",
+                        self.sorted_table.is_padding,
+                        idx,
+                        || Value::known(Fr::one()),
+                    )?;
                 }
 
                 Ok(())
