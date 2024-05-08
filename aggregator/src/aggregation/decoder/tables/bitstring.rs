@@ -551,7 +551,7 @@ impl BitstringTable {
                             let mut acc: u64 = 0;
                             let mut bitstring_len: u64 = 0;
 
-                            for (bit_idx, bit) in bits.into_iter().enumerate().take(16) {
+                            for (bit_idx, bit) in bits.into_iter().enumerate().take(24) {
                                 region.assign_advice(
                                     || "byte_idx_1",
                                     self.byte_idx_1,
@@ -651,7 +651,7 @@ impl BitstringTable {
                                 )?;
                             }
 
-                            offset += 16;
+                            offset += 24;
                         }
                     }
                 }
