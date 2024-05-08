@@ -161,7 +161,6 @@ impl FseTable {
             nb: meta.advice_column(),
         };
 
-        // witgen_debug
         // Check that on the starting row of each FSE table, i.e. q_start=true:
         // - table_size_rs_3 == table_size >> 3.
         // meta.lookup("FseTable: table_size >> 3", |meta| {
