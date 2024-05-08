@@ -66,8 +66,8 @@ pub struct DecoderConfig {
     sequences_header_decoder: SequencesHeaderDecoder,
 
     // witgen_debug
-    // /// Config for reading and decoding bitstreams.
-    // bitstream_decoder: BitstreamDecoder,
+    /// Config for reading and decoding bitstreams.
+    bitstream_decoder: BitstreamDecoder,
 
     // witgen_debug
     // /// Config established while recovering the FSE table.
@@ -467,14 +467,18 @@ pub struct BitstreamDecoder {
     bit_index_end_cmp_15: ComparatorConfig<Fr, 1>,
     /// Helper gadget to know if the bitstring was spanned over 3 bytes.
     bit_index_end_cmp_23: ComparatorConfig<Fr, 1>,
+
+    // witgen_debug
+    // /// When we have encountered a symbol with value=1, i.e. prob=0, it is followed by 2-bits
+    // /// repeat bits flag that tells us the number of symbols following the current one that also
+    // /// have a probability of prob=0. If the repeat bits flag itself is [1, 1], i.e.
+    // /// bitstring_value==3, then it is followed by another 2-bits repeat bits flag and so on. We
+    // /// utilise this equality config to identify these cases.
+    // bitstring_value_eq_3: IsEqualConfig<Fr>,
+
+
     /// The value of the binary bitstring.
     bitstring_value: Column<Advice>,
-    /// When we have encountered a symbol with value=1, i.e. prob=0, it is followed by 2-bits
-    /// repeat bits flag that tells us the number of symbols following the current one that also
-    /// have a probability of prob=0. If the repeat bits flag itself is [1, 1], i.e.
-    /// bitstring_value==3, then it is followed by another 2-bits repeat bits flag and so on. We
-    /// utilise this equality config to identify these cases.
-    bitstring_value_eq_3: IsEqualConfig<Fr>,
     /// Boolean that is set for a special case:
     /// - The bitstring that we have read in the current row is byte-aligned up to the next or the
     /// next-to-next byte. In this case, the next or the next-to-next following row(s) should have
@@ -485,14 +489,16 @@ pub struct BitstreamDecoder {
     /// case while applying an FSE table to bitstream, where the number of bits to be read from
     /// the bitstream is 0. This can happen when we decode sequences in the SequencesData tag.
     is_nb0: Column<Advice>,
-    /// Helper gadget to check when bit_index_start has not changed.
-    start_unchanged: IsEqualConfig<Fr>,
+
+    // witgen_debug
+    // /// Helper gadget to check when bit_index_start has not changed.
+    // start_unchanged: IsEqualConfig<Fr>,
 }
 
 impl BitstreamDecoder {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
-        is_padding: Column<Advice>,
+        q_enable: Column<Fixed>,
         u8_table: U8Table,
     ) -> Self {
         let bit_index_start = meta.advice_column();
@@ -503,182 +509,185 @@ impl BitstreamDecoder {
             bit_index_end,
             bit_index_end_cmp_7: ComparatorChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(bit_index_end, Rotation::cur()),
                 |_| 7.expr(),
                 u8_table.into(),
             ),
             bit_index_end_cmp_15: ComparatorChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(bit_index_end, Rotation::cur()),
                 |_| 15.expr(),
                 u8_table.into(),
             ),
             bit_index_end_cmp_23: ComparatorChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(bit_index_end, Rotation::cur()),
                 |_| 23.expr(),
                 u8_table.into(),
             ),
+            // witgen_debug
+            // bitstring_value_eq_3: IsEqualChip::configure(
+            //     meta,
+            //     |meta| meta.query_fixed(q_enable, Rotation::cur()),
+            //     |meta| meta.query_advice(bitstring_value, Rotation::cur()),
+            //     |_| 3.expr(),
+            // ),
             bitstring_value,
-            bitstring_value_eq_3: IsEqualChip::configure(
-                meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
-                |meta| meta.query_advice(bitstring_value, Rotation::cur()),
-                |_| 3.expr(),
-            ),
             is_nil: meta.advice_column(),
             is_nb0: meta.advice_column(),
-            start_unchanged: IsEqualChip::configure(
-                meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
-                |meta| meta.query_advice(bit_index_start, Rotation::prev()),
-                |meta| meta.query_advice(bit_index_start, Rotation::cur()),
-            ),
+            // witgen_debug
+            // start_unchanged: IsEqualChip::configure(
+            //     meta,
+            //     |meta| meta.query_fixed(q_enable, Rotation::cur()),
+            //     |meta| meta.query_advice(bit_index_start, Rotation::prev()),
+            //     |meta| meta.query_advice(bit_index_end, Rotation::cur()),
+            // ),
         }
     }
 }
 
-impl BitstreamDecoder {
-    /// If we skip reading any bitstring at this row, because of byte-alignment over multiple bytes
-    /// from the previously read bitstring.
-    fn is_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-        meta.query_advice(self.is_nil, rotation)
-    }
+// witgen_debug
+// impl BitstreamDecoder {
+//     /// If we skip reading any bitstring at this row, because of byte-alignment over multiple bytes
+//     /// from the previously read bitstring.
+//     fn is_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+//         meta.query_advice(self.is_nil, rotation)
+//     }
 
-    /// If we expect to read a bitstring at this row.
-    fn is_not_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-        not::expr(self.is_nil(meta, rotation))
-    }
+//     /// If we expect to read a bitstring at this row.
+//     fn is_not_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+//         not::expr(self.is_nil(meta, rotation))
+//     }
 
-    /// If the number of bits to be read from the bitstream is nb=0. This scenario occurs in the
-    /// SequencesData tag section, when we are applying the FSE tables to decode sequences.
-    fn is_nb0(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-        meta.query_advice(self.is_nb0, rotation)
-    }
+//     /// If the number of bits to be read from the bitstream is nb=0. This scenario occurs in the
+//     /// SequencesData tag section, when we are applying the FSE tables to decode sequences.
+//     fn is_nb0(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+//         meta.query_advice(self.is_nb0, rotation)
+//     }
 
-    /// Whether the 2-bits repeat flag was [1, 1]. In this case, the repeat flag is followed by
-    /// another repeat flag.
-    fn is_rb_flag3(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-        let bitstream_value = meta.query_advice(self.bitstring_value, rotation);
-        self.bitstring_value_eq_3
-            .expr_at(meta, rotation, bitstream_value, 3.expr())
-    }
+//     /// Whether the 2-bits repeat flag was [1, 1]. In this case, the repeat flag is followed by
+//     /// another repeat flag.
+//     fn is_rb_flag3(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+//         let bitstream_value = meta.query_advice(self.bitstring_value, rotation);
+//         self.bitstring_value_eq_3
+//             .expr_at(meta, rotation, bitstream_value, 3.expr())
+//     }
 
-    /// A bitstring strictly spans 1 byte if the bit_index at which it ends is such that:
-    /// - 0 <= bit_index_end < 7.
-    fn strictly_spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (lt, _eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
-        lt
-    }
+//     /// A bitstring strictly spans 1 byte if the bit_index at which it ends is such that:
+//     /// - 0 <= bit_index_end < 7.
+//     fn strictly_spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (lt, _eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
+//         lt
+//     }
 
-    /// A bitstring spans 1 byte if the bit_index at which it ends is such that:
-    /// - 0 <= bit_index_end <= 7.
-    fn spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
-        lt + eq
-    }
+//     /// A bitstring spans 1 byte if the bit_index at which it ends is such that:
+//     /// - 0 <= bit_index_end <= 7.
+//     fn spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
+//         lt + eq
+//     }
 
-    /// A bitstring spans 1 byte and is byte-aligned:
-    /// - bit_index_end == 7.
-    fn aligned_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (_lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
-        eq
-    }
+//     /// A bitstring spans 1 byte and is byte-aligned:
+//     /// - bit_index_end == 7.
+//     fn aligned_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (_lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
+//         eq
+//     }
 
-    /// A bitstring strictly spans 2 bytes if the bit_index at which it ends is such that:
-    /// - 8 <= bit_index_end < 15.
-    fn strictly_spans_two_bytes(
-        &self,
-        meta: &mut VirtualCells<Fr>,
-        at: Rotation,
-    ) -> Expression<Fr> {
-        let spans_one_byte = self.spans_one_byte(meta, at);
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (lt2, _eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
-        not::expr(spans_one_byte) * lt2
-    }
+//     /// A bitstring strictly spans 2 bytes if the bit_index at which it ends is such that:
+//     /// - 8 <= bit_index_end < 15.
+//     fn strictly_spans_two_bytes(
+//         &self,
+//         meta: &mut VirtualCells<Fr>,
+//         at: Rotation,
+//     ) -> Expression<Fr> {
+//         let spans_one_byte = self.spans_one_byte(meta, at);
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (lt2, _eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
+//         not::expr(spans_one_byte) * lt2
+//     }
 
-    /// A bitstring spans 2 bytes and is byte-aligned:
-    /// - bit_index_end == 15.
-    fn aligned_two_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (_lt, eq) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
-        eq
-    }
+//     /// A bitstring spans 2 bytes and is byte-aligned:
+//     /// - bit_index_end == 15.
+//     fn aligned_two_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (_lt, eq) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
+//         eq
+//     }
 
-    /// A bitstring strictly spans 3 bytes if the bit_index at which it ends is such that:
-    /// - 16 <= bit_index_end < 23.
-    fn strictly_spans_three_bytes(
-        &self,
-        meta: &mut VirtualCells<Fr>,
-        at: Rotation,
-    ) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (lt2, eq2) = self
-            .bit_index_end_cmp_15
-            .expr_at(meta, at, lhs.expr(), 15.expr());
-        let (lt3, _eq3) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
-        not::expr(lt2 + eq2) * lt3
-    }
+//     /// A bitstring strictly spans 3 bytes if the bit_index at which it ends is such that:
+//     /// - 16 <= bit_index_end < 23.
+//     fn strictly_spans_three_bytes(
+//         &self,
+//         meta: &mut VirtualCells<Fr>,
+//         at: Rotation,
+//     ) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (lt2, eq2) = self
+//             .bit_index_end_cmp_15
+//             .expr_at(meta, at, lhs.expr(), 15.expr());
+//         let (lt3, _eq3) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
+//         not::expr(lt2 + eq2) * lt3
+//     }
 
-    /// A bitstring spans 3 bytes if the bit_index at which it ends is such that:
-    /// - 16 <= bit_index_end <= 23.
-    fn spans_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (lt2, eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
-        not::expr(lt2 + eq2)
-    }
+//     /// A bitstring spans 3 bytes if the bit_index at which it ends is such that:
+//     /// - 16 <= bit_index_end <= 23.
+//     fn spans_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (lt2, eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
+//         not::expr(lt2 + eq2)
+//     }
 
-    /// A bitstring spans 3 bytes and is byte-aligned:
-    /// - bit_index_end == 23.
-    fn aligned_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-        let lhs = meta.query_advice(self.bit_index_end, at);
-        let (_lt, eq) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
-        eq
-    }
+//     /// A bitstring spans 3 bytes and is byte-aligned:
+//     /// - bit_index_end == 23.
+//     fn aligned_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+//         let lhs = meta.query_advice(self.bit_index_end, at);
+//         let (_lt, eq) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
+//         eq
+//     }
 
-    /// bit_index_start' == bit_index_start.
-    fn start_unchanged(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-        let (bit_index_start_prev, bit_index_start_curr) = (
-            meta.query_advice(self.bit_index_start, Rotation(rotation.0 - 1)),
-            meta.query_advice(self.bit_index_start, rotation),
-        );
-        self.start_unchanged
-            .expr_at(meta, rotation, bit_index_start_prev, bit_index_start_curr)
-    }
+//     /// bit_index_start' == bit_index_start.
+//     fn start_unchanged(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+//         let (bit_index_start_prev, bit_index_start_curr) = (
+//             meta.query_advice(self.bit_index_start, Rotation(rotation.0 - 1)),
+//             meta.query_advice(self.bit_index_start, rotation),
+//         );
+//         self.start_unchanged
+//             .expr_at(meta, rotation, bit_index_start_prev, bit_index_start_curr)
+//     }
 
-    /// if is_nb0=true then 0 else bit_index_end - bit_index_start + 1.
-    fn bitstring_len(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-        let (bit_index_start, bit_index_end) = (
-            meta.query_advice(self.bit_index_start, rotation),
-            meta.query_advice(self.bit_index_end, rotation),
-        );
-        select::expr(
-            self.is_nb0(meta, rotation),
-            0.expr(),
-            bit_index_end - bit_index_start + 1.expr(),
-        )
-    }
+//     /// if is_nb0=true then 0 else bit_index_end - bit_index_start + 1.
+//     fn bitstring_len(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+//         let (bit_index_start, bit_index_end) = (
+//             meta.query_advice(self.bit_index_start, rotation),
+//             meta.query_advice(self.bit_index_end, rotation),
+//         );
+//         select::expr(
+//             self.is_nb0(meta, rotation),
+//             0.expr(),
+//             bit_index_end - bit_index_start + 1.expr(),
+//         )
+//     }
 
-    /// bit_index_end - bit_index_start + 1.
-    fn bitstring_len_unchecked(
-        &self,
-        meta: &mut VirtualCells<Fr>,
-        rotation: Rotation,
-    ) -> Expression<Fr> {
-        let (bit_index_start, bit_index_end) = (
-            meta.query_advice(self.bit_index_start, rotation),
-            meta.query_advice(self.bit_index_end, rotation),
-        );
-        bit_index_end - bit_index_start + 1.expr()
-    }
-}
+//     /// bit_index_end - bit_index_start + 1.
+//     fn bitstring_len_unchecked(
+//         &self,
+//         meta: &mut VirtualCells<Fr>,
+//         rotation: Rotation,
+//     ) -> Expression<Fr> {
+//         let (bit_index_start, bit_index_end) = (
+//             meta.query_advice(self.bit_index_start, rotation),
+//             meta.query_advice(self.bit_index_end, rotation),
+//         );
+//         bit_index_end - bit_index_start + 1.expr()
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub struct FseDecoder {
@@ -1001,7 +1010,7 @@ impl DecoderConfig {
         // witgen_debug
         let sequences_header_decoder =
             SequencesHeaderDecoder::configure(meta, byte, q_enable, u8_table);
-        // let bitstream_decoder = BitstreamDecoder::configure(meta, is_padding, u8_table);
+        let bitstream_decoder = BitstreamDecoder::configure(meta, q_enable, u8_table);
         // let fse_decoder = FseDecoder::configure(meta, is_padding);
         let sequences_data_decoder = SequencesDataDecoder::configure(meta);
 
@@ -1039,7 +1048,7 @@ impl DecoderConfig {
 
             // witgen_debug
             sequences_header_decoder,
-            // bitstream_decoder,
+            bitstream_decoder,
             // fse_decoder,
             sequences_data_decoder,
 
@@ -4009,77 +4018,64 @@ impl DecoderConfig {
                     /////////////////////////////////////////
 
                     // witgen_debug
-                    // region.assign_advice(
-                    //     || "bit_index_start",
-                    //     self.bitstream_decoder.bit_index_start,
-                    //     i,
-                    //     || Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "bit_index_end",
-                    //     self.bitstream_decoder.bit_index_end,
-                    //     i,
-                    //     || Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "bitstring_value",
-                    //     self.bitstream_decoder.bitstring_value,
-                    //     i,
-                    //     || Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "is_nb0",
-                    //     self.bitstream_decoder.is_nb0,
-                    //     i,
-                    //     || Value::known(Fr::from(row.bitstream_read_data.is_zero_bit_read as u64)),
-                    // )?;
+                    region.assign_advice(
+                        || "bit_index_start",
+                        self.bitstream_decoder.bit_index_start,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "bit_index_end",
+                        self.bitstream_decoder.bit_index_end,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "bitstring_value",
+                        self.bitstream_decoder.bitstring_value,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "is_nb0",
+                        self.bitstream_decoder.is_nb0,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.is_zero_bit_read as u64)),
+                    )?;
+                    region.assign_advice(
+                        || "is_nil",
+                        self.bitstream_decoder.is_nil,
+                        i,
+                        || Value::known(Fr::from(row.bitstream_read_data.is_nil as u64)),
+                    )?;
 
-                    let bit_end_idx = row.bitstream_read_data.bit_end_idx;
-                    let is_end_aligned = bit_end_idx == 7 || bit_end_idx == 15 || bit_end_idx == 23;
-                    let is_start_aligned = row.bitstream_read_data.bit_start_idx == 0;
-                    let is_nil = is_start_aligned || is_end_aligned;
-
-                    // witgen_debug
-                    // region.assign_advice(
-                    //     || "is_nil",
-                    //     self.bitstream_decoder.is_nil,
-                    //     i,
-                    //     || Value::known(Fr::from(is_nil as u64)),
-                    // )?;
-
-                    // witgen_debug
-                    // let bit_index_end_cmp_7 = ComparatorChip::construct(
-                    //     self.bitstream_decoder.bit_index_end_cmp_7.clone(),
-                    // );
-                    // bit_index_end_cmp_7.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Fr::from(bit_end_idx as u64),
-                    //     Fr::from(7u64),
-                    // )?;
-
-                    // witgen_debug
-                    // let bit_index_end_cmp_15 = ComparatorChip::construct(
-                    //     self.bitstream_decoder.bit_index_end_cmp_15.clone(),
-                    // );
-                    // bit_index_end_cmp_15.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Fr::from(bit_end_idx as u64),
-                    //     Fr::from(15u64),
-                    // )?;
-
-                    // witgen_debug
-                    // let bit_index_end_cmp_23 = ComparatorChip::construct(
-                    //     self.bitstream_decoder.bit_index_end_cmp_23.clone(),
-                    // );
-                    // bit_index_end_cmp_23.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Fr::from(bit_end_idx as u64),
-                    //     Fr::from(23u64),
-                    // )?;
-
+                    let bit_index_end_cmp_7 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_7.clone(),
+                    );
+                    bit_index_end_cmp_7.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.bitstream_read_data.bit_end_idx as u64),
+                        Fr::from(7u64),
+                    )?;
+                    let bit_index_end_cmp_15 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_15.clone(),
+                    );
+                    bit_index_end_cmp_15.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.bitstream_read_data.bit_end_idx as u64),
+                        Fr::from(15u64),
+                    )?;
+                    let bit_index_end_cmp_23 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_23.clone(),
+                    );
+                    bit_index_end_cmp_23.assign(
+                        &mut region,
+                        i,
+                        Fr::from(row.bitstream_read_data.bit_end_idx as u64),
+                        Fr::from(23u64),
+                    )?;
                     // witgen_debug
                     // let bitstring_value_eq_3 =
                     //     IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
@@ -4089,8 +4085,6 @@ impl DecoderConfig {
                     //     Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
                     //     Value::known(Fr::from(3u64)),
                     // )?;
-
-                    // witgen_debug
                     // let start_unchanged =
                     //     IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
                     // start_unchanged.assign(
@@ -4472,6 +4466,55 @@ impl DecoderConfig {
                         Fr::zero(),
                         Fr::from(0xff),
                     )?;
+
+                    // Bitstream decoder gadgets
+                    let bit_index_end_cmp_7 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_7.clone(),
+                    );
+                    bit_index_end_cmp_7.assign(
+                        &mut region,
+                        idx,
+                        Fr::zero(),
+                        Fr::from(7u64),
+                    )?;
+                    let bit_index_end_cmp_15 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_15.clone(),
+                    );
+                    bit_index_end_cmp_15.assign(
+                        &mut region,
+                        idx,
+                        Fr::zero(),
+                        Fr::from(15u64),
+                    )?;
+                    let bit_index_end_cmp_23 = ComparatorChip::construct(
+                        self.bitstream_decoder.bit_index_end_cmp_23.clone(),
+                    );
+                    bit_index_end_cmp_23.assign(
+                        &mut region,
+                        idx,
+                        Fr::zero(),
+                        Fr::from(23u64),
+                    )?;
+
+                    // witgen_debug
+                    // let bitstring_value_eq_3 =
+                    //     IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
+                    // bitstring_value_eq_3.assign(
+                    //     &mut region,
+                    //     idx,
+                    //     Value::known(Fr::zero()),
+                    //     Value::known(Fr::from(3u64)),
+                    // )?;
+
+                    // witgen_debug
+                    // let start_unchanged =
+                    //     IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
+                    // start_unchanged.assign(
+                    //     &mut region,
+                    //     idx,
+                    //     Value::known(Fr::zero()),
+                    //     Value::known(Fr::zero()),
+                    // )?;
                 }
 
                 Ok(())
