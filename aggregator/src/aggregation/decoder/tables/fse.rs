@@ -134,6 +134,7 @@ impl FseTable {
     /// Configure the FSE table.
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        q_enable: Column<Fixed>,
         fixed_table: &FixedTable,
         u8_table: U8Table,
         range8_table: RangeTable<8>,
@@ -142,7 +143,7 @@ impl FseTable {
     ) -> Self {
         // Auxiliary table to validate that (baseline, nb) were assigned correctly to the states
         // allocated to a symbol.
-        let sorted_table = FseSortedStatesTable::configure(meta, pow2_table, u8_table);
+        let sorted_table = FseSortedStatesTable::configure(meta, q_enable, pow2_table, u8_table);
 
         let config = Self {
             sorted_table,
@@ -752,15 +753,18 @@ impl FseTable {
                 let mut fse_offset: usize = 1;
                 let mut sorted_offset: usize = 1;
 
-                for (table_idx, table) in data.clone().into_iter().enumerate() {
-                    let target_end_offset = fse_offset + (1 << 10); // reserve enough rows to accommodate skipped states
-                                                                    // Assign q_start
+                for i in (1..((1 << k) - 14)).step_by(1 << 10) {
                     region.assign_fixed(
                         || "q_start",
                         self.sorted_table.q_start,
-                        fse_offset,
+                        i,
                         || Value::known(Fr::one()),
                     )?;
+                }
+
+                for (table_idx, table) in data.clone().into_iter().enumerate() {
+                    let target_end_offset = fse_offset + (1 << 10); // reserve enough rows to accommodate skipped states
+                                                                    // Assign q_start
 
                     let states_to_symbol = table.parse_state_table();
                     let mut state_idx: usize = 1;
@@ -1125,10 +1129,36 @@ impl FseTable {
                             offset,
                             || Value::known(Fr::one()),
                         )?;
+                        region.assign_advice(
+                            || "sorted_table.block_idx",
+                            self.sorted_table.block_idx,
+                            offset,
+                            || Value::known(Fr::from(table.block_idx)),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.table_kind",
+                            self.sorted_table.table_kind,
+                            offset,
+                            || Value::known(Fr::from(table.table_kind as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.table_size",
+                            self.sorted_table.table_size,
+                            offset,
+                            || Value::known(Fr::from(table.table_size)),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.is_predefined",
+                            self.sorted_table.is_predefined,
+                            offset,
+                            || Value::known(Fr::from(table.is_predefined as u64)),
+                        )?;
                     }
+                    fse_offset = target_end_offset;
+                    sorted_offset = target_end_offset;
                 }
 
-                for idx in fse_offset..(2u64.pow(k - 1) as usize) {
+                for idx in fse_offset..((1 << k) - 14) {
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,
@@ -1137,7 +1167,7 @@ impl FseTable {
                     )?;
                 }
 
-                for idx in sorted_offset..(2u64.pow(k - 1) as usize) {
+                for idx in sorted_offset..((1 << k) - 14) {
                     region.assign_advice(
                         || "sorted_table.is_padding",
                         self.sorted_table.is_padding,
@@ -1300,6 +1330,7 @@ struct FseSortedStatesTable {
 impl FseSortedStatesTable {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        q_enable: Column<Fixed>,
         pow2_table: Pow2Table<20>,
         u8_table: U8Table,
     ) -> Self {
@@ -1322,7 +1353,7 @@ impl FseSortedStatesTable {
             is_padding,
             baseline_0x00: IsEqualChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(baseline, Rotation::cur()),
                 |_| 0.expr(),
             ),
@@ -1333,154 +1364,158 @@ impl FseSortedStatesTable {
             baseline_mark: meta.advice_column(),
         };
 
-        // witgen_debug
         // For every non-padded row, the SPoT is 2^nb.
-        // meta.lookup_any("FseSortedStatesTable: spot == 1 << nb", |meta| {
-        //     let condition = not::expr(meta.query_advice(config.is_padding, Rotation::cur()));
+        meta.lookup_any("FseSortedStatesTable: spot == 1 << nb", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     [
-        //         meta.query_advice(config.nb, Rotation::cur()),
-        //         meta.query_advice(config.spot, Rotation::cur()),
-        //     ]
-        //     .into_iter()
-        //     .zip_eq(pow2_table.table_exprs(meta))
-        //     .map(|(arg, table)| (condition.expr() * arg, table))
-        //     .collect()
-        // });
+            [
+                meta.query_advice(config.nb, Rotation::cur()),
+                meta.query_advice(config.spot, Rotation::cur()),
+            ]
+            .into_iter()
+            .zip_eq(pow2_table.table_exprs(meta))
+            .map(|(arg, table)| (condition.expr() * arg, table))
+            .collect()
+        });
 
-        // witgen_debug
         // The first row of the FseTable layout, i.e. q_first=true.
-        // meta.create_gate("FseSortedStatesTable: first row", |meta| {
-        //     let condition = meta.query_fixed(config.q_first, Rotation::cur());
+        meta.create_gate("FseSortedStatesTable: first row", |meta| {
+            let condition = meta.query_fixed(config.q_first, Rotation::cur());
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // The first row is all 0s. This is then followed by a q_start==1 fixed column. We want
-        //     // to make sure the first FSE table belongs to block_idx=1.
-        //     cb.require_equal(
-        //         "block_idx == 1 for the first FSE table",
-        //         meta.query_advice(config.block_idx, Rotation::next()),
-        //         1.expr(),
-        //     );
+            // The first row is all 0s. This is then followed by a q_start==1 fixed column. We want
+            // to make sure the first FSE table belongs to block_idx=1.
+            cb.require_equal(
+                "block_idx == 1 for the first FSE table",
+                meta.query_advice(config.block_idx, Rotation::next()),
+                1.expr(),
+            );
 
-        //     // The first FSE table described should be the LLT table.
-        //     cb.require_equal(
-        //         "table_kind == LLT for the first FSE table",
-        //         meta.query_advice(config.table_kind, Rotation::next()),
-        //         FseTableKind::LLT.expr(),
-        //     );
+            // The first FSE table described should be the LLT table.
+            cb.require_equal(
+                "table_kind == LLT for the first FSE table",
+                meta.query_advice(config.table_kind, Rotation::next()),
+                FseTableKind::LLT.expr(),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
-        // witgen_debug
         // The starting row of every FSE table, i.e. q_start=true.
-        // meta.create_gate("FseSortedStatesTable: start row", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_fixed(config.q_start, Rotation::cur()),
-        //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //     ]);
+        meta.create_gate("FseSortedStatesTable: start row", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                meta.query_fixed(config.q_start, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // The start row is a new symbol.
-        //     cb.require_equal(
-        //         "is_new_symbol==true",
-        //         meta.query_advice(config.is_new_symbol, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // The start row is a new symbol.
+            cb.require_equal(
+                "is_new_symbol==true",
+                meta.query_advice(config.is_new_symbol, Rotation::cur()),
+                1.expr(),
+            );
 
-        //     cb.require_boolean(
-        //         "is_predefined is boolean",
-        //         meta.query_advice(config.is_predefined, Rotation::cur()),
-        //     );
+            cb.require_boolean(
+                "is_predefined is boolean",
+                meta.query_advice(config.is_predefined, Rotation::cur()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
-        // witgen_debug
         // Symbols are in increasing order.
-        // meta.lookup(
-        //     "FseSortedStatesTable: symbols are in increasing order",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
-        //             meta.query_advice(config.is_new_symbol, Rotation::cur()),
-        //         ]);
+        meta.lookup(
+            "FseSortedStatesTable: symbols are in increasing order",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                    meta.query_advice(config.is_new_symbol, Rotation::cur()),
+                ]);
 
-        //         // Whenever we move to a new symbol (is_new_symbol=true), excluding the first symbol
-        //         // with prob>=1, the symbol is increasing.
-        //         //
-        //         // - symbol::cur - symbol::prev > 0
-        //         //
-        //         // We check that (symbol - symbol_prev - 1) lies in the [0, 256) range.
-        //         let (symbol_curr, symbol_prev) = (
-        //             meta.query_advice(config.symbol, Rotation::cur()),
-        //             meta.query_advice(config.symbol, Rotation::prev()),
-        //         );
-        //         let delta = symbol_curr - symbol_prev - 1.expr();
+                // Whenever we move to a new symbol (is_new_symbol=true), excluding the first symbol
+                // with prob>=1, the symbol is increasing.
+                //
+                // - symbol::cur - symbol::prev > 0
+                //
+                // We check that (symbol - symbol_prev - 1) lies in the [0, 256) range.
+                let (symbol_curr, symbol_prev) = (
+                    meta.query_advice(config.symbol, Rotation::cur()),
+                    meta.query_advice(config.symbol, Rotation::prev()),
+                );
+                let delta = symbol_curr - symbol_prev - 1.expr();
 
-        //         vec![(condition * delta, u8_table.into())]
-        //     },
-        // );
+                vec![(condition * delta, u8_table.into())]
+            },
+        );
 
-        // witgen_debug
         // We continue the same symbol if not a new symbol.
-        // meta.create_gate("FseSortedStatesTable: same symbol", |meta| {
-        //     let condition = and::expr([
-        //         not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
-        //         not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
-        //         not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
-        //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //     ]);
+        meta.create_gate("FseSortedStatesTable: same symbol", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+                not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // When we are not seeing a new symbol, make sure the symbol is equal to the symbol on
-        //     // the previous row.
-        //     cb.require_equal(
-        //         "prob>=1: same symbol",
-        //         meta.query_advice(config.symbol, Rotation::cur()),
-        //         meta.query_advice(config.symbol, Rotation::prev()),
-        //     );
+            // When we are not seeing a new symbol, make sure the symbol is equal to the symbol on
+            // the previous row.
+            cb.require_equal(
+                "prob>=1: same symbol",
+                meta.query_advice(config.symbol, Rotation::cur()),
+                meta.query_advice(config.symbol, Rotation::prev()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
-        // witgen_debug
         // While continuing the same symbol, states are in increasing order.
-        // meta.lookup(
-        //     "FseSortedStatesTable: states are in increasing order",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
-        //             not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
-        //             not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
-        //             not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //         ]);
+        meta.lookup(
+            "FseSortedStatesTable: states are in increasing order",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+                    not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                    not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
+                    not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+                ]);
 
-        //         // While traversing the same symbol (is_new_symbol=false), the states allocated to
-        //         // it in the FseSortedStatesTable are in increasing order. So we check that:
-        //         //
-        //         // - state::cur - state::prev > 0
-        //         //
-        //         // We check that (state::cur - state::prev - 1) lies in the [0, 256) range.
-        //         let (state_curr, state_prev) = (
-        //             meta.query_advice(config.state, Rotation::cur()),
-        //             meta.query_advice(config.state, Rotation::prev()),
-        //         );
-        //         let delta = state_curr - state_prev - 1.expr();
+                // While traversing the same symbol (is_new_symbol=false), the states allocated to
+                // it in the FseSortedStatesTable are in increasing order. So we check that:
+                //
+                // - state::cur - state::prev > 0
+                //
+                // We check that (state::cur - state::prev - 1) lies in the [0, 256) range.
+                let (state_curr, state_prev) = (
+                    meta.query_advice(config.state, Rotation::cur()),
+                    meta.query_advice(config.state, Rotation::prev()),
+                );
+                let delta = state_curr - state_prev - 1.expr();
 
-        //         vec![(condition * delta, u8_table.into())]
-        //     },
-        // );
+                vec![(condition * delta, u8_table.into())]
+            },
+        );
 
         // witgen_debug
         // All rows in an instance of FSE table, except the starting row (q_start=true).
         // meta.create_gate(
         //     "FseSortedStatesTable: every FSE table (except q_start=1)",
         //     |meta| {
-        //         let condition = not::expr(meta.query_fixed(config.q_start, Rotation::cur()));
+        //         let condition = and::expr([
+        //             meta.query_fixed(q_enable, Rotation::cur()),
+        //             not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+        //         ]);
 
         //         let mut cb = BaseConstraintBuilder::default();
 
@@ -1516,6 +1551,7 @@ impl FseSortedStatesTable {
         // For every new symbol detected.
         // meta.create_gate("FseSortedStatesTable: new symbol", |meta| {
         //     let condition = and::expr([
+        //         meta.query_fixed(q_enable, Rotation::cur()),
         //         meta.query_advice(config.is_new_symbol, Rotation::cur()),
         //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
         //     ]);

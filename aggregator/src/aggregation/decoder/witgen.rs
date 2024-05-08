@@ -679,7 +679,7 @@ fn process_sequences<F: Field>(
     // Literal Length Table (LLT)
     let (n_fse_bytes_llt, bit_boundaries_llt, table_llt) = FseAuxiliaryTableData::reconstruct(
         src,
-        0,
+        block_idx,
         FseTableKind::LLT,
         byte_offset,
         literal_lengths_mode < 2,
@@ -700,7 +700,7 @@ fn process_sequences<F: Field>(
     let byte_offset = byte_offset + n_fse_bytes_llt;
     let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) = FseAuxiliaryTableData::reconstruct(
         src,
-        0,
+        block_idx,
         FseTableKind::MOT,
         byte_offset,
         offsets_mode < 2,
@@ -721,7 +721,7 @@ fn process_sequences<F: Field>(
     let byte_offset = byte_offset + n_fse_bytes_cmot;
     let (n_fse_bytes_mlt, bit_boundaries_mlt, table_mlt) = FseAuxiliaryTableData::reconstruct(
         src,
-        0,
+        block_idx,
         FseTableKind::MLT,
         byte_offset,
         match_lengths_mode < 2,

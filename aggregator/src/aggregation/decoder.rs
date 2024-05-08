@@ -1,6 +1,5 @@
 mod tables;
 pub mod witgen;
-use ethers_core::k256::elliptic_curve::rand_core::block;
 use witgen::*;
 
 use crate::aggregation::decoder::tables::FixedLookupTag;
@@ -83,8 +82,8 @@ pub struct DecoderConfig {
     range8: RangeTable<8>,
     /// Range Table for [0, 16).
     range16: RangeTable<16>,
-    // /// Power of 2 lookup table.
-    // pow2_table: Pow2Table<20>,
+    /// Power of 2 lookup table.
+    pow2_table: Pow2Table<20>,
 
     // witgen_debug
     /// Helper table for decoding the regenerated size from LiteralsHeader.
@@ -95,8 +94,8 @@ pub struct DecoderConfig {
     // bitstring_table: BitstringTable,
 
     // witgen_debug
-    // /// Helper table for decoding FSE tables.
-    // fse_table: FseTable,
+    /// Helper table for decoding FSE tables.
+    fse_table: FseTable,
 
 
     // witgen_debug
@@ -984,14 +983,15 @@ impl DecoderConfig {
         // Helper tables
         let literals_header_table = LiteralsHeaderTable::configure(meta, q_enable, range8, range16);
         // let bitstring_table = BitstringTable::configure(meta, u8_table);
-        // let fse_table = FseTable::configure(
-        //     meta,
-        //     &fixed_table,
-        //     u8_table,
-        //     range8,
-        //     pow2_table,
-        //     bitwise_op_table,
-        // );
+        let fse_table = FseTable::configure(
+            meta,
+            q_enable,
+            &fixed_table,
+            u8_table,
+            range8,
+            pow2_table,
+            bitwise_op_table,
+        );
         // TODO(enable): let sequence_instruction_table = SequenceInstructionTable::configure(meta);
 
         // Peripheral configs
@@ -1046,12 +1046,12 @@ impl DecoderConfig {
             // witgen_debug
             range8,
             range16,
-            // pow2_table,
+            pow2_table,
 
             // witgen_debug
             literals_header_table,
             // bitstring_table,
-            // fse_table,
+            fse_table,
 
 
             // TODO(enable): sequence_instruction_table,
@@ -3875,13 +3875,13 @@ impl DecoderConfig {
         self.range8.load(layouter)?;
         self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
-        // self.pow2_table.load(layouter)?;
+        self.pow2_table.load(layouter)?;
 
         // witgen_debug
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
-        // self.fse_table.assign(layouter, fse_aux_tables, k)?;
+        self.fse_table.assign(layouter, fse_aux_tables, k)?;
         // self.bitstring_table
         //     .assign(layouter, &block_info_arr, &witness_rows, k)?;
 
@@ -4448,8 +4448,8 @@ impl DecoderConfig {
                     // )?;
                 }
 
-                // witgen_debug
-                for idx in (witness_rows.len())..(2u64.pow(k) as usize - self.unusable_rows()) {
+                // witness_debug
+                for idx in witness_rows.len()..((1 << k) - self.unusable_rows()) {
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,
@@ -4634,7 +4634,7 @@ mod tests {
             encoder.finish().expect("Encoder success")
         };
 
-        let k = 11;
+        let k = 13;
         let decoder_config_tester = DecoderConfigTester { 
             compressed, 
             k,
