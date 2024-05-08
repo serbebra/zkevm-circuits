@@ -515,6 +515,7 @@ pub fn constrain_rw_counter<F: Field>(
         update_or_finish,
     );
 
+    // TODO: need updates for mcopy.
     // Maintain rw_counter based on rwc_inc_left. Their sum remains constant in all cases.
     cb.condition(not::expr(is_last.expr()), |cb| {
         cb.require_equal(

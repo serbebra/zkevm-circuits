@@ -1838,6 +1838,8 @@ impl CopyTable {
         let mut rw_counter = copy_event.rw_counter_start();
         let mut rwc_inc_left = copy_event.rw_counter_delta();
         let mut rw_counter_write = rw_counter + rwc_inc_left / 2;
+        let mut rwc_inc_left_write = rwc_inc_left - rwc_inc_left / 2;
+
 
         let is_memory_copy = copy_event.src_id == copy_event.dst_id
             && copy_event.src_type.eq(&CopyDataType::Memory) &&copy_event.dst_type.eq(&CopyDataType::Memory);
@@ -1967,6 +1969,13 @@ impl CopyTable {
                 F::from(thread.addr)
             };
 
+            // rw_counter value in `rw_counter` copytable column.
+            let (rw_counter_in_column, rwc_inc_left_in_column) = if is_memory_copy && !is_read_step {
+                (rw_counter_write, rwc_inc_left_write)
+            }else{
+                (rw_counter, rwc_inc_left)
+            };
+
             assignments.push((
                 thread.tag,
                 [
@@ -1976,8 +1985,10 @@ impl CopyTable {
                     (Value::known(F::from(thread.addr_end)), "src_addr_end"),
                     (Value::known(F::from(thread.bytes_left)), "real_bytes_left"),
                     (rlc_acc, "rlc_acc"),
-                    (Value::known(F::from(rw_counter)), "rw_counter"),
-                    (Value::known(F::from(rwc_inc_left)), "rwc_inc_left"),
+                    //(Value::known(F::from(rw_counter)), "rw_counter"),
+                    (Value::known(F::from(rw_counter_in_column)), "rw_counter"),
+                    //(Value::known(F::from(rwc_inc_left)), "rwc_inc_left"),
+                    (Value::known(F::from(rwc_inc_left_in_column)), "rwc_inc_left"),
                 ],
                 [
                     (Value::known(F::from(is_last)), "is_last"),
@@ -2005,9 +2016,14 @@ impl CopyTable {
             let is_row_end = is_access_list || (step_idx / 2) % 32 == 31;
             // Update the RW counter.
             if is_row_end && thread.is_rw {
-                // TODO: check is_memory_copy and change rw_counter_write
-                rw_counter += 1;
-                rwc_inc_left -= 1;
+                // TODO: if write step in memory_copy case, and change rw_counter_write
+                if is_memory_copy && !is_read_step {
+                    rw_counter_write += 1;
+                    rwc_inc_left_write -= 1;
+                }else {
+                    rw_counter += 1;
+                    rwc_inc_left -= 1;
+                }
             }
         }
         assignments
