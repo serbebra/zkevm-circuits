@@ -81,14 +81,14 @@ pub struct DecoderConfig {
     // witgen_debug
     /// Range Table for [0, 8).
     range8: RangeTable<8>,
-    // /// Range Table for [0, 16).
-    // range16: RangeTable<16>,
+    /// Range Table for [0, 16).
+    range16: RangeTable<16>,
     // /// Power of 2 lookup table.
     // pow2_table: Pow2Table<20>,
 
     // witgen_debug
-    // /// Helper table for decoding the regenerated size from LiteralsHeader.
-    // literals_header_table: LiteralsHeaderTable,
+    /// Helper table for decoding the regenerated size from LiteralsHeader.
+    literals_header_table: LiteralsHeaderTable,
 
     // witgen_debug
     // /// Helper table for decoding bitstreams.
@@ -973,9 +973,16 @@ impl DecoderConfig {
         // Fixed table
         let fixed_table = FixedTable::construct(meta);
 
+        let (q_enable, byte_idx, byte, is_padding) = (
+            meta.fixed_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+        );
+
         // witgen_debug
         // Helper tables
-        // let literals_header_table = LiteralsHeaderTable::configure(meta, range8, range16);
+        let literals_header_table = LiteralsHeaderTable::configure(meta, q_enable, range8, range16);
         // let bitstring_table = BitstringTable::configure(meta, u8_table);
         // let fse_table = FseTable::configure(
         //     meta,
@@ -988,13 +995,6 @@ impl DecoderConfig {
         // TODO(enable): let sequence_instruction_table = SequenceInstructionTable::configure(meta);
 
         // Peripheral configs
-        let (q_enable, byte_idx, byte, is_padding) = (
-            meta.fixed_column(),
-            meta.advice_column(),
-            meta.advice_column(),
-            meta.advice_column(),
-        );
-
         let tag_config = TagConfig::configure(meta, q_enable);
         let block_config = BlockConfig::configure(meta, q_enable);
 
@@ -1045,11 +1045,11 @@ impl DecoderConfig {
 
             // witgen_debug
             range8,
-            // range16,
+            range16,
             // pow2_table,
 
             // witgen_debug
-            // literals_header_table,
+            literals_header_table,
             // bitstring_table,
             // fse_table,
 
@@ -1848,99 +1848,98 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         ///////////////////////////// ZstdTag::ZstdBlockLiteralsHeader ////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: tag ZstdBlockLiteralsHeader", |meta| {
-        //     let condition = and::expr([
-        //         is_zb_literals_header(meta),
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //     ]);
+        meta.create_gate("DecoderConfig: tag ZstdBlockLiteralsHeader", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                is_zb_literals_header(meta),
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     let literals_block_type_bit0 = meta.query_advice(config.bits[0], Rotation::cur());
-        //     let literals_block_type_bit1 = meta.query_advice(config.bits[1], Rotation::cur());
+            let literals_block_type_bit0 = meta.query_advice(config.bits[0], Rotation::cur());
+            let literals_block_type_bit1 = meta.query_advice(config.bits[1], Rotation::cur());
 
-        //     // We expect a Raw_Literals_Block, i.e. bit0 and bit1 are both 0.
-        //     cb.require_zero("Raw_Literals_Block: bit0", literals_block_type_bit0);
-        //     cb.require_zero("Raw_Literals_Block: bit1", literals_block_type_bit1);
+            // We expect a Raw_Literals_Block, i.e. bit0 and bit1 are both 0.
+            cb.require_zero("Raw_Literals_Block: bit0", literals_block_type_bit0);
+            cb.require_zero("Raw_Literals_Block: bit1", literals_block_type_bit1);
 
-        //     let size_format_bit0 = meta.query_advice(config.bits[2], Rotation::cur());
-        //     let size_format_bit1 = meta.query_advice(config.bits[3], Rotation::cur());
+            let size_format_bit0 = meta.query_advice(config.bits[2], Rotation::cur());
+            let size_format_bit1 = meta.query_advice(config.bits[3], Rotation::cur());
 
-        //     // - Size_Format is 00 or 10: Size_Format uses 1 bit, literals header is 1 byte
-        //     // - Size_Format is 01: Size_Format uses 2 bits, literals header is 2 bytes
-        //     // - Size_Format is 10: Size_Format uses 2 bits, literals header is 3 bytes
-        //     let expected_tag_len = select::expr(
-        //         not::expr(size_format_bit0),
-        //         1.expr(),
-        //         select::expr(size_format_bit1, 3.expr(), 2.expr()),
-        //     );
-        //     cb.require_equal(
-        //         "ZstdBlockLiteralsHeader: tag_len == expected_tag_len",
-        //         meta.query_advice(config.tag_config.tag_len, Rotation::cur()),
-        //         expected_tag_len,
-        //     );
+            // - Size_Format is 00 or 10: Size_Format uses 1 bit, literals header is 1 byte
+            // - Size_Format is 01: Size_Format uses 2 bits, literals header is 2 bytes
+            // - Size_Format is 10: Size_Format uses 2 bits, literals header is 3 bytes
+            let expected_tag_len = select::expr(
+                not::expr(size_format_bit0),
+                1.expr(),
+                select::expr(size_format_bit1, 3.expr(), 2.expr()),
+            );
+            cb.require_equal(
+                "ZstdBlockLiteralsHeader: tag_len == expected_tag_len",
+                meta.query_advice(config.tag_config.tag_len, Rotation::cur()),
+                expected_tag_len,
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockLiteralsHeader decomposition to regen size",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             is_zb_literals_header(meta),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockLiteralsHeader decomposition to regen size",
+            |meta| {
+                let condition = and::expr([
+                    is_zb_literals_header(meta),
+                    meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                ]);
 
-        //         let size_format_bit0 = meta.query_advice(config.bits[2], Rotation::cur());
-        //         let size_format_bit1 = meta.query_advice(config.bits[3], Rotation::cur());
+                let size_format_bit0 = meta.query_advice(config.bits[2], Rotation::cur());
+                let size_format_bit1 = meta.query_advice(config.bits[3], Rotation::cur());
 
-        //         // - byte0 is the first byte of the literals header
-        //         // - byte1 is either the second byte of the literals header or 0
-        //         // - byte2 is either the third byte of the literals header or 0
-        //         let byte0 = meta.query_advice(config.byte, Rotation(0));
-        //         let byte1 = select::expr(
-        //             size_format_bit0.expr(),
-        //             meta.query_advice(config.byte, Rotation(1)),
-        //             0.expr(),
-        //         );
-        //         let byte2 = select::expr(
-        //             size_format_bit1.expr() * size_format_bit1.expr(),
-        //             meta.query_advice(config.byte, Rotation(2)),
-        //             0.expr(),
-        //         );
+                // - byte0 is the first byte of the literals header
+                // - byte1 is either the second byte of the literals header or 0
+                // - byte2 is either the third byte of the literals header or 0
+                let byte0 = meta.query_advice(config.byte, Rotation(0));
+                let byte1 = select::expr(
+                    size_format_bit0.expr(),
+                    meta.query_advice(config.byte, Rotation(1)),
+                    0.expr(),
+                );
+                let byte2 = select::expr(
+                    size_format_bit1.expr() * size_format_bit1.expr(),
+                    meta.query_advice(config.byte, Rotation(2)),
+                    0.expr(),
+                );
 
-        //         // The regenerated size is in fact the tag length of the ZstdBlockLiteralsRawBytes
-        //         // tag. But depending on how many bytes are in the literals header, we select the
-        //         // appropriate offset to read the tag_len from.
-        //         let regen_size = select::expr(
-        //             size_format_bit0.expr() * not::expr(size_format_bit1.expr()),
-        //             meta.query_advice(config.tag_config.tag_len, Rotation(2)),
-        //             select::expr(
-        //                 size_format_bit1.expr() * not::expr(size_format_bit0.expr()),
-        //                 meta.query_advice(config.tag_config.tag_len, Rotation(3)),
-        //                 meta.query_advice(config.tag_config.tag_len, Rotation(1)),
-        //             ),
-        //         );
+                // The regenerated size is in fact the tag length of the ZstdBlockLiteralsRawBytes
+                // tag. But depending on how many bytes are in the literals header, we select the
+                // appropriate offset to read the tag_len from.
+                let regen_size = select::expr(
+                    size_format_bit0.expr() * not::expr(size_format_bit1.expr()),
+                    meta.query_advice(config.tag_config.tag_len, Rotation(2)),
+                    select::expr(
+                        size_format_bit1.expr() * not::expr(size_format_bit0.expr()),
+                        meta.query_advice(config.tag_config.tag_len, Rotation(3)),
+                        meta.query_advice(config.tag_config.tag_len, Rotation(1)),
+                    ),
+                );
 
-        //         let block_idx = meta.query_advice(config.block_config.block_idx, Rotation::cur());
-        //         [
-        //             block_idx,
-        //             byte0,
-        //             byte1,
-        //             byte2,
-        //             size_format_bit0,
-        //             size_format_bit1,
-        //             regen_size,
-        //             0.expr(), // not padding
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.literals_header_table.table_exprs(meta))
-        //         .map(|(value, table)| (condition.expr() * value, table))
-        //         .collect()
-        //     },
-        // );
+                let block_idx = meta.query_advice(config.block_config.block_idx, Rotation::cur());
+                [
+                    block_idx,
+                    byte0,
+                    byte1,
+                    byte2,
+                    size_format_bit0,
+                    size_format_bit1,
+                    regen_size,
+                    0.expr(), // not padding
+                ]
+                .into_iter()
+                .zip_eq(config.literals_header_table.table_exprs(meta))
+                .map(|(value, table)| (condition.expr() * value, table))
+                .collect()
+            },
+        );
 
         debug_assert!(meta.degree() <= 9);
 
@@ -3872,7 +3871,7 @@ impl DecoderConfig {
 
         // witgen_debug
         self.range8.load(layouter)?;
-        // self.range16.load(layouter)?;
+        self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
         // self.pow2_table.load(layouter)?;
 
@@ -3933,8 +3932,8 @@ impl DecoderConfig {
         }
 
         // witgen_debug
-        // self.literals_header_table
-        //     .assign(layouter, literal_headers)?;
+        self.literals_header_table
+            .assign(layouter, literal_headers)?;
 
         /////////////////////////////////////////
         ///// Assign Decompression Region  //////
