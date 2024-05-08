@@ -1517,7 +1517,6 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////// ZstdTag::FrameHeaderDescriptor /////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
         meta.create_gate("DecoderConfig: tag FrameHeaderDescriptor", |meta| {
             let condition = and::expr([
                 meta.query_fixed(config.q_enable, Rotation::cur()),
@@ -1591,7 +1590,6 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         //////////////////////////////// ZstdTag::FrameContentSize ////////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
         meta.create_gate("DecoderConfig: tag FrameContentSize", |meta| {
             let condition = and::expr([
                 meta.query_fixed(config.q_enable, Rotation::cur()),
@@ -1651,20 +1649,21 @@ impl DecoderConfig {
             cb.gate(condition)
         });
 
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: tag FrameContentSize (block_idx)", |meta| {
-        //     let condition =
-        //         meta.query_advice(config.tag_config.is_frame_content_size, Rotation::cur());
+        meta.create_gate("DecoderConfig: tag FrameContentSize (block_idx)", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_frame_content_size, Rotation::cur()),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     cb.require_zero(
-        //         "block_idx == 0 to start",
-        //         meta.query_advice(config.block_config.block_idx, Rotation::cur()),
-        //     );
+            cb.require_zero(
+                "block_idx == 0 to start",
+                meta.query_advice(config.block_config.block_idx, Rotation::cur()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         debug_assert!(meta.degree() <= 9);
 
