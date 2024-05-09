@@ -2066,58 +2066,58 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         /////////////////////////// ZstdTag::ZstdBlockSequenceFseCode /////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (first row)",
-        //     |meta| {
-        //         // The first row of a ZstdBlockSequenceFseCode tag.
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (first row)",
+            |meta| {
+                // The first row of a ZstdBlockSequenceFseCode tag.
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // At this tag=ZstdBlockSequenceFseCode we are not processing bits instead of
-        //         // bytes. The first bitstring is the 4-bits bitstring that encodes the accuracy log
-        //         // of the FSE table.
-        //         cb.require_zero(
-        //             "fse(al): bit_index_start == 0",
-        //             meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-        //         );
+                // At this tag=ZstdBlockSequenceFseCode we are not processing bits instead of
+                // bytes. The first bitstring is the 4-bits bitstring that encodes the accuracy log
+                // of the FSE table.
+                cb.require_zero(
+                    "fse(al): bit_index_start == 0",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                );
 
-        //         cb.require_equal(
-        //             "fse(al): bit_index_end == 3",
-        //             meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //             3.expr(),
-        //         );
+                cb.require_equal(
+                    "fse(al): bit_index_end == 3",
+                    meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+                    3.expr(),
+                );
 
-        //         cb.require_zero(
-        //             "fse(init): probability_acc=0",
-        //             meta.query_advice(config.fse_decoder.probability_acc, Rotation::cur()),
-        //         );
+                cb.require_zero(
+                    "fse(init): probability_acc=0",
+                    meta.query_advice(config.fse_decoder.probability_acc, Rotation::cur()),
+                );
 
-        //         // The symbol=0 is handled immediately after the AL 4-bits.
-        //         cb.require_zero(
-        //             "fse(init): symbol=0",
-        //             meta.query_advice(config.fse_decoder.symbol, Rotation::next()),
-        //         );
+                // The symbol=0 is handled immediately after the AL 4-bits.
+                cb.require_zero(
+                    "fse(init): symbol=0",
+                    meta.query_advice(config.fse_decoder.symbol, Rotation::next()),
+                );
 
-        //         // The is_repeat_bits_loop inits at 0 after the AL 4-bits.
-        //         cb.require_zero(
-        //             "fse(init): is_repeat_bits_loop=0",
-        //             meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::next()),
-        //         );
+                // The is_repeat_bits_loop inits at 0 after the AL 4-bits.
+                cb.require_zero(
+                    "fse(init): is_repeat_bits_loop=0",
+                    meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::next()),
+                );
 
-        //         // We will always start reading bits from the bitstream for the first symbol.
-        //         cb.require_zero(
-        //             "fse(init): is_nil=0",
-        //             config.bitstream_decoder.is_nil(meta, Rotation::next()),
-        //         );
+                // We will always start reading bits from the bitstream for the first symbol.
+                cb.require_zero(
+                    "fse(init): is_nil=0",
+                    config.bitstream_decoder.is_nil(meta, Rotation::next()),
+                );
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         meta.lookup_any(
             "DecoderConfig: tag ZstdBlockSequenceFseCode (table kind)",
