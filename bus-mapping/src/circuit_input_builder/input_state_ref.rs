@@ -2494,8 +2494,7 @@ fn combine_copy_slot_bytes_mcopy(
     src_range.ensure_equal_length(&mut dst_range);
 
     // Extend call memory.
-    // TODO: check if dst_addr > src_addr for mcopy ?
-    // dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
+    // check if dst_addr > src_addr for mcopy
     if is_memory_copy && dst_addr < src_addr {
         dst_memory.extend_for_range(src_addr.into(), copy_length.into());
     } else {

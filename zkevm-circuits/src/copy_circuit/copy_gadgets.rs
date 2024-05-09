@@ -516,11 +516,6 @@ pub fn constrain_rw_counter<F: Field>(
     );
 
     let update_or_finish_mcopy = meta.query_advice(rwc_inc_left, NEXT_STEP);
-    // let update_or_finish_mcopy = select::expr(
-    //     not::expr(is_last.clone()) * not::expr(is_last_two),
-    //     meta.query_advice(rwc_inc_left, NEXT_STEP),
-    //     0.expr(),
-    // );
     cb.condition(not::expr(is_memory_copy.clone()), |cb| {
         cb.require_equal(
             "rwc_inc_left[1] == rwc_inc_left[0] - rwc_diff, or 0 at the end",

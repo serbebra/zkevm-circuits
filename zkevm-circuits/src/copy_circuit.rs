@@ -226,7 +226,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             is_tx_calldata,
             is_bytecode,
             is_memory,
-            // TODO: add is_memory_copy
             is_tx_log,
             is_access_list_address,
             is_access_list_storage_key,
