@@ -198,9 +198,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         // TODO: rename to is_id_equals;
         let is_copy_id_equals = IsEqualChip::configure(
             meta,
-            |meta| {
-                meta.query_selector(q_step) * not::expr(meta.query_advice(is_last.clone(), CURRENT))
-            },
+            |meta| meta.query_selector(q_step) * not::expr(meta.query_advice(is_last, CURRENT)),
             |meta| meta.query_advice(id, CURRENT),
             |meta| meta.query_advice(id, NEXT_ROW),
         );
@@ -627,10 +625,6 @@ impl<F: Field> CopyCircuitConfig<F> {
         challenges: Challenges<Value<F>>,
         copy_event: &CopyEvent,
     ) -> Result<(), Error> {
-        let original_offset = *offset;
-        let mut id_next = Value::known(F::zero());
-        let mut first_step_id = Value::known(F::zero());
-
         for (step_idx, (tag, table_row, circuit_row)) in
             CopyTable::assignments(copy_event, challenges)
                 .iter()
@@ -759,8 +753,6 @@ impl<F: Field> CopyCircuitConfig<F> {
                 *offset,
                 || Value::known(F::from(tag.eq(&CopyDataType::Memory))),
             )?;
-            // TODO: remove debug info
-            let is_memory = tag.eq(&CopyDataType::Memory);
             let is_memory_copy = copy_event.src_id == copy_event.dst_id
                 && copy_event.src_type.eq(&CopyDataType::Memory)
                 && copy_event.dst_type.eq(&CopyDataType::Memory);
@@ -770,18 +762,6 @@ impl<F: Field> CopyCircuitConfig<F> {
                 *offset,
                 || Value::known(F::from(is_memory_copy)),
             )?;
-            if *offset == 577 || *offset == 578 || *offset == 576 {
-                println!(
-                    "offset {} is_memory_copy {}, is_memory {}, id_equals {}, 
-                src_id {:?}, dst_id {:?}",
-                    *offset,
-                    is_memory_copy,
-                    is_memory,
-                    copy_event.src_id == copy_event.dst_id,
-                    copy_event.src_id,
-                    copy_event.dst_id
-                );
-            }
 
             region.assign_advice(
                 || format!("is_tx_log at row: {}", *offset),
@@ -804,11 +784,6 @@ impl<F: Field> CopyCircuitConfig<F> {
 
             *offset += 1;
         }
-
-        // set first step id_next
-        //println!("end assign_copy_event offset:{}, original_offset {}", *offset,
-        // original_offset); is_copy_id_equals_chip.assign(region, original_offset,
-        // first_step_id, id_next)?;
 
         Ok(())
     }
