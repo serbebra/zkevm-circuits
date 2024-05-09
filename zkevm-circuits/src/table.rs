@@ -1837,6 +1837,8 @@ impl CopyTable {
 
         let mut rw_counter = copy_event.rw_counter_start();
         let mut rwc_inc_left = copy_event.rw_counter_delta();
+        // for memory copy (mcopy) case, first half of ops are reading, the other half are
+        // writing parts, so rw_counter starts from half too.
         let mut rw_counter_write = rw_counter + rwc_inc_left / 2;
         let mut rwc_inc_left_write = rwc_inc_left - rwc_inc_left / 2;
 
@@ -2020,7 +2022,7 @@ impl CopyTable {
             let is_row_end = is_access_list || (step_idx / 2) % 32 == 31;
             // Update the RW counter.
             if is_row_end && thread.is_rw {
-                // TODO: if write step in memory_copy case, and change rw_counter_write
+                // if write step in memory_copy case, and update rw_counter_write
                 if is_memory_copy && !is_read_step {
                     rw_counter_write += 1;
                     rwc_inc_left_write -= 1;

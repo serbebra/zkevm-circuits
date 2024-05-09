@@ -393,7 +393,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
 
         // memory word lookup
         meta.lookup_any("rw lookup", |meta| {
-            //TODO: consider is_memory_copy ?
             let cond = meta.query_fixed(q_enable, CURRENT)
                 * meta.query_advice(is_memory, CURRENT)
                 * is_word_end.is_equal_expression.expr();
@@ -769,7 +768,6 @@ impl<F: Field> CopyCircuitConfig<F> {
                 || format!("is_memory_copy at row: {}", *offset),
                 self.is_memory_copy,
                 *offset,
-                //TODO: change this value after copy table assignment done.
                 || Value::known(F::from(is_memory_copy)),
             )?;
             if *offset == 577 || *offset == 578 || *offset == 576 {

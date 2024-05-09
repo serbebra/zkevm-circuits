@@ -494,7 +494,6 @@ pub fn constrain_address<F: Field>(
 pub fn constrain_rw_counter<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
-    //is_last: Expression<F>, // The last row.
     is_last_col: Column<Advice>,
     is_rw_type: Expression<F>,
     is_row_end: Expression<F>,
@@ -524,7 +523,7 @@ pub fn constrain_rw_counter<F: Field>(
         );
     });
 
-    // TODO：handle is_memory_copy case correctly.
+    // handle is_memory_copy case.
     cb.condition(
         is_memory_copy * not::expr(is_last_two) * not::expr(is_last.clone()),
         |cb| {
@@ -546,7 +545,7 @@ pub fn constrain_rw_counter<F: Field>(
     });
 }
 
-/// validate is_memory_copy validity.
+/// validate `is_memory_copy` column is set correctly .
 pub fn constrain_is_memory_copy<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
