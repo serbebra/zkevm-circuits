@@ -2119,37 +2119,36 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (table kind)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (table kind)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                ]);
 
-        //         let (cmode_llt, cmode_mot, cmode_mlt) = (
-        //             meta.query_advice(config.block_config.compression_modes[0], Rotation::cur()),
-        //             meta.query_advice(config.block_config.compression_modes[1], Rotation::cur()),
-        //             meta.query_advice(config.block_config.compression_modes[2], Rotation::cur()),
-        //         );
+                let (cmode_llt, cmode_mot, cmode_mlt) = (
+                    meta.query_advice(config.block_config.compression_modes[0], Rotation::cur()),
+                    meta.query_advice(config.block_config.compression_modes[1], Rotation::cur()),
+                    meta.query_advice(config.block_config.compression_modes[2], Rotation::cur()),
+                );
 
-        //         let cmodes_lc = (4.expr() * cmode_llt) + (2.expr() * cmode_mot) + cmode_mlt;
-        //         [
-        //             FixedLookupTag::SeqTagOrder.expr(),
-        //             cmodes_lc,
-        //             meta.query_advice(config.tag_config.tag, Rotation::prev()), // tag_prev
-        //             meta.query_advice(config.tag_config.tag, Rotation::cur()),  // tag_cur
-        //             meta.query_advice(config.tag_config.tag_next, Rotation::cur()), // tag_next
-        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()), // table_kind
-        //             0.expr(),                                                   // unused
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.fixed_table.table_exprs(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                let cmodes_lc = (4.expr() * cmode_llt) + (2.expr() * cmode_mot) + cmode_mlt;
+                [
+                    FixedLookupTag::SeqTagOrder.expr(),
+                    cmodes_lc,
+                    meta.query_advice(config.tag_config.tag, Rotation::prev()), // tag_prev
+                    meta.query_advice(config.tag_config.tag, Rotation::cur()),  // tag_cur
+                    meta.query_advice(config.tag_config.tag_next, Rotation::cur()), // tag_next
+                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()), // table_kind
+                    0.expr(),                                                   // unused
+                ]
+                .into_iter()
+                .zip_eq(config.fixed_table.table_exprs(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
         meta.lookup_any(
             "DecoderConfig: tag ZstdBlockSequenceFseCode (table size)",
