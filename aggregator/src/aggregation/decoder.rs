@@ -1407,86 +1407,85 @@ impl DecoderConfig {
             cb.gate(condition)
         });
 
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: continue same tag", |meta| {
-        //     let condition = and::expr([
-        //         meta.query_fixed(config.q_enable, Rotation::cur()),
-        //         not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
-        //         not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-        //         not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //     ]);
+        meta.create_gate("DecoderConfig: continue same tag", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+                not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // Fields that are maintained while processing the same tag.
-        //     for column in [
-        //         config.tag_config.tag,
-        //         config.tag_config.tag_next,
-        //         config.tag_config.tag_len,
-        //         config.tag_config.max_len,
-        //         config.tag_config.rpow_tag_len,
-        //         config.tag_config.is_output,
-        //         config.tag_config.is_reverse,
-        //         config.block_config.is_block,
-        //         config.encoded_rlc,
-        //     ] {
-        //         cb.require_equal(
-        //             "tag_config field unchanged while processing same tag",
-        //             meta.query_advice(column, Rotation::cur()),
-        //             meta.query_advice(column, Rotation::prev()),
-        //         );
-        //     }
+            // Fields that are maintained while processing the same tag.
+            for column in [
+                config.tag_config.tag,
+                config.tag_config.tag_next,
+                config.tag_config.tag_len,
+                config.tag_config.max_len,
+                config.tag_config.rpow_tag_len,
+                config.tag_config.is_output,
+                config.tag_config.is_reverse,
+                config.block_config.is_block,
+                config.encoded_rlc,
+            ] {
+                cb.require_equal(
+                    "tag_config field unchanged while processing same tag",
+                    meta.query_advice(column, Rotation::cur()),
+                    meta.query_advice(column, Rotation::prev()),
+                );
+            }
 
-        //     // tag_idx increments with byte_idx.
-        //     let byte_idx_delta = meta.query_advice(config.byte_idx, Rotation::cur())
-        //         - meta.query_advice(config.byte_idx, Rotation::prev());
-        //     cb.require_equal(
-        //         "tag_idx::cur - tag_idx::prev == byte_idx::cur - byte_idx::prev",
-        //         meta.query_advice(config.tag_config.tag_idx, Rotation::cur()),
-        //         meta.query_advice(config.tag_config.tag_idx, Rotation::prev())
-        //             + byte_idx_delta.expr(),
-        //     );
+            // tag_idx increments with byte_idx.
+            let byte_idx_delta = meta.query_advice(config.byte_idx, Rotation::cur())
+                - meta.query_advice(config.byte_idx, Rotation::prev());
+            cb.require_equal(
+                "tag_idx::cur - tag_idx::prev == byte_idx::cur - byte_idx::prev",
+                meta.query_advice(config.tag_config.tag_idx, Rotation::cur()),
+                meta.query_advice(config.tag_config.tag_idx, Rotation::prev())
+                    + byte_idx_delta.expr(),
+            );
 
-        //     // tag_rlc is computed correctly, i.e. its accumulated with byte_idx increment, however
-        //     // remains unchanged if byte_idx remains unchanged.
-        //     //
-        //     // Furthermore the accumulation logic depends on whether the current tag is processed
-        //     // from back-to-front or not.
-        //     let byte_prev = meta.query_advice(config.byte, Rotation::prev());
-        //     let byte_curr = meta.query_advice(config.byte, Rotation::cur());
-        //     let tag_rlc_prev = meta.query_advice(config.tag_config.tag_rlc, Rotation::prev());
-        //     let tag_rlc_curr = meta.query_advice(config.tag_config.tag_rlc, Rotation::cur());
-        //     let curr_tag_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
-        //     cb.condition(not::expr(byte_idx_delta.expr()), |cb| {
-        //         cb.require_equal(
-        //             "tag_rlc::cur == tag_rlc::prev",
-        //             tag_rlc_curr.expr(),
-        //             tag_rlc_prev.expr(),
-        //         );
-        //     });
-        //     cb.condition(
-        //         and::expr([byte_idx_delta.expr(), curr_tag_reverse.expr()]),
-        //         |cb| {
-        //             cb.require_equal(
-        //                 "tag_rlc::prev == tag_rlc::cur * r + byte::prev",
-        //                 tag_rlc_prev.expr(),
-        //                 tag_rlc_curr.expr() * challenges.keccak_input() + byte_prev,
-        //             );
-        //         },
-        //     );
-        //     cb.condition(
-        //         and::expr([byte_idx_delta.expr(), not::expr(curr_tag_reverse.expr())]),
-        //         |cb| {
-        //             cb.require_equal(
-        //                 "tag_rlc::cur == tag_rlc::prev * r + byte::cur",
-        //                 tag_rlc_curr.expr(),
-        //                 tag_rlc_prev.expr() * challenges.keccak_input() + byte_curr,
-        //             );
-        //         },
-        //     );
+            // tag_rlc is computed correctly, i.e. its accumulated with byte_idx increment, however
+            // remains unchanged if byte_idx remains unchanged.
+            //
+            // Furthermore the accumulation logic depends on whether the current tag is processed
+            // from back-to-front or not.
+            let byte_prev = meta.query_advice(config.byte, Rotation::prev());
+            let byte_curr = meta.query_advice(config.byte, Rotation::cur());
+            let tag_rlc_prev = meta.query_advice(config.tag_config.tag_rlc, Rotation::prev());
+            let tag_rlc_curr = meta.query_advice(config.tag_config.tag_rlc, Rotation::cur());
+            let curr_tag_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
+            cb.condition(not::expr(byte_idx_delta.expr()), |cb| {
+                cb.require_equal(
+                    "tag_rlc::cur == tag_rlc::prev",
+                    tag_rlc_curr.expr(),
+                    tag_rlc_prev.expr(),
+                );
+            });
+            cb.condition(
+                and::expr([byte_idx_delta.expr(), curr_tag_reverse.expr()]),
+                |cb| {
+                    cb.require_equal(
+                        "tag_rlc::prev == tag_rlc::cur * r + byte::prev",
+                        tag_rlc_prev.expr(),
+                        tag_rlc_curr.expr() * challenges.keccak_input() + byte_prev,
+                    );
+                },
+            );
+            cb.condition(
+                and::expr([byte_idx_delta.expr(), not::expr(curr_tag_reverse.expr())]),
+                |cb| {
+                    cb.require_equal(
+                        "tag_rlc::cur == tag_rlc::prev * r + byte::cur",
+                        tag_rlc_curr.expr(),
+                        tag_rlc_prev.expr() * challenges.keccak_input() + byte_curr,
+                    );
+                },
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         meta.lookup_any("DecoderConfig: keccak randomness power tag_len", |meta| {
             let condition = and::expr([
