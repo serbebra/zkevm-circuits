@@ -60,43 +60,28 @@ pub struct DecoderConfig {
     tag_config: TagConfig,
     /// Block related config.
     block_config: BlockConfig,
-
-    // witgen_debug
     /// Decoding helpers for the sequences section header.
     sequences_header_decoder: SequencesHeaderDecoder,
-
-    // witgen_debug
     /// Config for reading and decoding bitstreams.
     bitstream_decoder: BitstreamDecoder,
 
     // witgen_debug
-    // /// Config established while recovering the FSE table.
-    // fse_decoder: FseDecoder,
-
-    // witgen_debug
+    /// Config established while recovering the FSE table.
+    fse_decoder: FseDecoder,
     /// Config required while applying the FSE tables on the Sequences data.
     sequences_data_decoder: SequencesDataDecoder,
-
-    // witgen_debug
     /// Range Table for [0, 8).
     range8: RangeTable<8>,
     /// Range Table for [0, 16).
     range16: RangeTable<16>,
     /// Power of 2 lookup table.
     pow2_table: Pow2Table<20>,
-
-    // witgen_debug
     /// Helper table for decoding the regenerated size from LiteralsHeader.
     literals_header_table: LiteralsHeaderTable,
-
-    // witgen_debug
     // /// Helper table for decoding bitstreams.
     bitstring_table: BitstringTable,
-
-    // witgen_debug
     /// Helper table for decoding FSE tables.
     fse_table: FseTable,
-
 
     // witgen_debug
     // /// Helper table for sequences as instructions.
@@ -104,7 +89,6 @@ pub struct DecoderConfig {
     // /// Helper table in the "output" region for accumulating the result of executing sequences.
     // /// TODO(enable): sequence_execution_table: SequenceExecutionTable,
 
-    // witgen_debug
     // /// Fixed lookups table.
     fixed_table: FixedTable,
 }
@@ -715,7 +699,7 @@ pub struct FseDecoder {
 }
 
 impl FseDecoder {
-    fn configure(meta: &mut ConstraintSystem<Fr>, is_padding: Column<Advice>) -> Self {
+    fn configure(meta: &mut ConstraintSystem<Fr>, q_enable: Column<Fixed>) -> Self {
         let value_decoded = meta.advice_column();
         Self {
             table_kind: meta.advice_column(),
@@ -727,13 +711,13 @@ impl FseDecoder {
             is_trailing_bits: meta.advice_column(),
             value_decoded_eq_0: IsEqualChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(value_decoded, Rotation::cur()),
                 |_| 0.expr(),
             ),
             value_decoded_eq_1: IsEqualChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(value_decoded, Rotation::cur()),
                 |_| 1.expr(),
             ),
@@ -1007,7 +991,7 @@ impl DecoderConfig {
         let sequences_header_decoder =
             SequencesHeaderDecoder::configure(meta, byte, q_enable, u8_table);
         let bitstream_decoder = BitstreamDecoder::configure(meta, q_enable, q_first, u8_table);
-        // let fse_decoder = FseDecoder::configure(meta, is_padding);
+        let fse_decoder = FseDecoder::configure(meta, q_enable);
         let sequences_data_decoder = SequencesDataDecoder::configure(meta);
 
         // TODO(enable):
@@ -1041,28 +1025,20 @@ impl DecoderConfig {
             is_padding,
             tag_config,
             block_config,
-
-            // witgen_debug
             sequences_header_decoder,
             bitstream_decoder,
-            // fse_decoder,
+            fse_decoder,
             sequences_data_decoder,
-
-            // witgen_debug
             range8,
             range16,
             pow2_table,
-
-            // witgen_debug
             literals_header_table,
             bitstring_table,
             fse_table,
 
-
             // TODO(enable): sequence_instruction_table,
             // TODO(enable): sequence_execution_table,
 
-            // witgen_debug
             fixed_table,
         };
 
@@ -4402,71 +4378,69 @@ impl DecoderConfig {
                     ////////////////////////////////////////////////
                     
                     // witgen_debug
-                    // region.assign_advice(
-                    //     || "fse_decoder.table_kind",
-                    //     self.fse_decoder.table_kind,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.table_kind)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "fse_decoder.table_size",
-                    //     self.fse_decoder.table_size,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.table_size)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "fse_decoder.symbol",
-                    //     self.fse_decoder.symbol,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.symbol)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "fse_decoder.value_decoded",
-                    //     self.fse_decoder.value_decoded,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.value_decoded)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "fse_decoder.probability_acc",
-                    //     self.fse_decoder.probability_acc,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.probability_acc)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "fse_decoder.is_repeat_bits_loop",
-                    //     self.fse_decoder.is_repeat_bits_loop,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.is_repeat_bits_loop)),
-                    // )?;
-                    // region.assign_advice(
-                    //     || "fse_decoder.is_trailing_bits",
-                    //     self.fse_decoder.is_trailing_bits,
-                    //     i,
-                    //     || Value::known(Fr::from(row.fse_data.is_trailing_bits)),
-                    // )?;
+                    region.assign_advice(
+                        || "fse_decoder.table_kind",
+                        self.fse_decoder.table_kind,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.table_kind)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.table_size",
+                        self.fse_decoder.table_size,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.table_size)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.symbol",
+                        self.fse_decoder.symbol,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.symbol)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.value_decoded",
+                        self.fse_decoder.value_decoded,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.value_decoded)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.probability_acc",
+                        self.fse_decoder.probability_acc,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.probability_acc)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.is_repeat_bits_loop",
+                        self.fse_decoder.is_repeat_bits_loop,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.is_repeat_bits_loop)),
+                    )?;
+                    region.assign_advice(
+                        || "fse_decoder.is_trailing_bits",
+                        self.fse_decoder.is_trailing_bits,
+                        i,
+                        || Value::known(Fr::from(row.fse_data.is_trailing_bits)),
+                    )?;
 
-                    // let value_decoded_eq_0 =
-                    //     IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
-                    // value_decoded_eq_0.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Value::known(Fr::from(row.fse_data.value_decoded)),
-                    //     Value::known(Fr::zero()),
-                    // )?;
-                    // let value_decoded_eq_1 =
-                    //     IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
-                    // value_decoded_eq_1.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Value::known(Fr::from(row.fse_data.value_decoded)),
-                    //     Value::known(Fr::one()),
-                    // )?;
+                    let value_decoded_eq_0 =
+                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
+                    value_decoded_eq_0.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.fse_data.value_decoded)),
+                        Value::known(Fr::zero()),
+                    )?;
+                    let value_decoded_eq_1 =
+                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
+                    value_decoded_eq_1.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(row.fse_data.value_decoded)),
+                        Value::known(Fr::one()),
+                    )?;
                 }
 
-                // witness_debug
                 let mut padding_count = 2usize;
                 for idx in witness_rows.len()..((1 << k) - self.unusable_rows()) {
-                    // witgen_debug
                     if padding_count > 0 {
                         region.assign_advice(
                             || "byte_idx",
@@ -4474,13 +4448,7 @@ impl DecoderConfig {
                             idx,
                             || Value::known(Fr::from(last_byte_idx as u64)),
                         )?;
-                    //     region.assign_advice(
-                    //         || "bitstream_decoder.bit_index_start",
-                    //         self.bitstream_decoder.bit_index_start,
-                    //         idx,
-                    //         || Value::known(Fr::from(last_bit_start_idx as u64)),
-                    //     )?;
-                    //     padding_count -= 1;
+                        padding_count -= 1;
                     }
                     region.assign_advice(
                         || "tag_config.tag",
@@ -4556,6 +4524,24 @@ impl DecoderConfig {
                         Value::known(Fr::zero()),
                     )?;
                     last_bit_start_idx = 0;
+
+                    // Fse decoder gadgets
+                    let value_decoded_eq_0 =
+                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_0.clone());
+                    value_decoded_eq_0.assign(
+                        &mut region,
+                        idx,
+                        Value::known(Fr::zero()),
+                        Value::known(Fr::zero()),
+                    )?;
+                    let value_decoded_eq_1 =
+                        IsEqualChip::construct(self.fse_decoder.value_decoded_eq_1.clone());
+                    value_decoded_eq_1.assign(
+                        &mut region,
+                        idx,
+                        Value::known(Fr::zero()),
+                        Value::known(Fr::one()),
+                    )?;
                 }
 
                 Ok(())
