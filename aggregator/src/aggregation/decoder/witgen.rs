@@ -696,6 +696,12 @@ fn process_sequences<F: Field>(
         6
     };
 
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+    // write!(handle, "bit_boundaries_llt: {:?}", bit_boundaries_llt).unwrap();
+    // writeln!(handle).unwrap();
+
     // Cooked Match Offset Table (CMOT)
     let byte_offset = byte_offset + n_fse_bytes_llt;
     let (n_fse_bytes_cmot, bit_boundaries_cmot, table_cmot) = FseAuxiliaryTableData::reconstruct(
@@ -793,7 +799,7 @@ fn process_sequences<F: Field>(
         let mut from_pos: (i64, i64) = (1, 0);
         let mut to_pos: (i64, i64) = (0, 0);
         let kind = table.table_kind;
-        let mut next_symbol: u64 = 0;
+        let mut next_symbol: i32 = -1;
         let mut is_repeating_bit_boundary: HashMap<usize, bool> = HashMap::new();
 
         let multiplier =
@@ -805,7 +811,7 @@ fn process_sequences<F: Field>(
             .enumerate()
             .map(|(bit_boundary_idx, (bit_idx, value))| {
                 // Calculate byte and bit positions. Increment allocators.
-                from_pos = if next_symbol == 0 { (1, -1) } else { to_pos };
+                from_pos = if next_symbol == -1 { (1, -1) } else { to_pos };
 
                 from_pos.1 += 1;
                 if from_pos.1 == 8 {
@@ -832,6 +838,7 @@ fn process_sequences<F: Field>(
                 // Decide Fse decoding results
                 if bit_boundary_idx < 1 {
                     // Accuracy log bits
+                    next_symbol += 1;
                     (
                         0,
                         n_emitted,
@@ -871,7 +878,8 @@ fn process_sequences<F: Field>(
                         )
                     } else {
                         // Regular decoding state
-                        decoded = next_symbol;
+                        assert!(next_symbol >= 0);
+                        decoded = next_symbol as u64;
                         n_emitted += 1;
                         next_symbol += 1;
                         match *value {
@@ -887,7 +895,7 @@ fn process_sequences<F: Field>(
                                 loop {
                                     let repeating_bits =
                                         bit_boundaries[repeating_bit_boundary_idx].1;
-                                    next_symbol += repeating_bits; // skip symbols
+                                    next_symbol += repeating_bits as i32; // skip symbols
                                     is_repeating_bit_boundary
                                         .insert(repeating_bit_boundary_idx, true);
 
@@ -1201,8 +1209,8 @@ fn process_sequences<F: Field>(
         }
 
         // witgen_debug
-        write!(handle, "current_byte_idx: {:?}, current_bit_idx: {:?}, nb: {:?}", current_byte_idx, current_bit_idx, nb).unwrap();
-        writeln!(handle).unwrap();
+        // write!(handle, "current_byte_idx: {:?}, current_bit_idx: {:?}, nb: {:?}", current_byte_idx, current_bit_idx, nb).unwrap();
+        // writeln!(handle).unwrap();
 
         let bitstring_value =
             be_bits_to_value(&sequence_bitstream[current_bit_idx..(current_bit_idx + nb)]);
@@ -1273,8 +1281,8 @@ fn process_sequences<F: Field>(
                 );
 
                 // witgen_debug
-                write!(handle, "NewInstruction - idx: {:?}, Offset: {:?}, ML: {:?}, LLT: {:?}", raw_sequence_instructions.len(), new_instruction.0, new_instruction.1, new_instruction.2).unwrap();
-                writeln!(handle);
+                // write!(handle, "NewInstruction - idx: {:?}, Offset: {:?}, ML: {:?}, LLT: {:?}", raw_sequence_instructions.len(), new_instruction.0, new_instruction.1, new_instruction.2).unwrap();
+                // writeln!(handle);
 
                 raw_sequence_instructions.push(new_instruction);
             }
@@ -1788,30 +1796,30 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     }
 
     // witgen_debug
-    for (idx, row) in witness_rows.iter().enumerate() {
-        write!(
-            handle,
-            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
-            idx,
-            row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
-            row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
-            row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
-            row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
-            row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
-            row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
-            row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
-            row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
-            row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
-            row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
-            row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
-            row.bitstream_read_data.bit_start_idx,
-            row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
-            row.bitstream_read_data.is_nil,
-            row.bitstream_read_data.is_zero_bit_read
-        ).unwrap();
+    // for (idx, row) in witness_rows.iter().enumerate() {
+    //     write!(
+    //         handle,
+    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
+    //         idx,
+    //         row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
+    //         row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
+    //         row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
+    //         row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
+    //         row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
+    //         row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
+    //         row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
+    //         row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
+    //         row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
+    //         row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
+    //         row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
+    //         row.bitstream_read_data.bit_start_idx,
+    //         row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
+    //         row.bitstream_read_data.is_nil,
+    //         row.bitstream_read_data.is_zero_bit_read
+    //     ).unwrap();
 
-        writeln!(handle).unwrap();
-    }
+    //     writeln!(handle).unwrap();
+    // }
 
     (
         witness_rows,
