@@ -550,7 +550,7 @@ pub fn constrain_is_memory_copy<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
     is_last_col: Column<Advice>, // The last row.
-    is_copy_id_equals: &IsEqualConfig<F>,
+    is_id_unchange: &IsEqualConfig<F>,
     is_memory: Column<Advice>,
     is_memory_copy: Expression<F>,
 ) {
@@ -562,7 +562,7 @@ pub fn constrain_is_memory_copy<F: Field>(
         cb.require_equal(
             "is_memory_copy == is_memory_cur * is_memory_next * id_equals",
             is_memory_copy.clone(),
-            is_memory_cur * is_memory_next * is_copy_id_equals.expr(),
+            is_memory_cur * is_memory_next * is_id_unchange.expr(),
         );
     });
 }

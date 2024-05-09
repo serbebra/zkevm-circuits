@@ -115,7 +115,7 @@ pub struct CopyCircuitConfig<F> {
     /// expressions
     pub copy_table: CopyTable,
     /// Detect if copy src_id equals dst_id.
-    pub is_copy_id_equals: IsEqualConfig<F>,
+    pub is_id_unchange: IsEqualConfig<F>,
     /// Detect when the address reaches the limit src_addr_end.
     pub is_src_end: IsEqualConfig<F>,
     /// Whether this is the end of a word (last byte).
@@ -195,8 +195,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         bytecode_table.annotate_columns(meta);
         copy_table.annotate_columns(meta);
 
-        // TODO: rename to is_id_equals;
-        let is_copy_id_equals = IsEqualChip::configure(
+        let is_id_unchange = IsEqualChip::configure(
             meta,
             |meta| meta.query_selector(q_step) * not::expr(meta.query_advice(is_last, CURRENT)),
             |meta| meta.query_advice(id, CURRENT),
@@ -379,7 +378,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     cb,
                     meta,
                     is_last_col,
-                    &is_copy_id_equals,
+                    &is_id_unchange,
                     is_memory,
                     is_memory_copy,
                 );
@@ -600,7 +599,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
             is_access_list_storage_key,
             q_enable,
             copy_table,
-            is_copy_id_equals,
+            is_id_unchange,
             is_src_end,
             is_word_end,
             non_pad_non_mask,
@@ -619,7 +618,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         region: &mut Region<F>,
         offset: &mut usize,
         tag_chip: &BinaryNumberChip<F, CopyDataType, { CopyDataType::N_BITS }>,
-        is_copy_id_equals_chip: &IsEqualChip<F>,
+        is_id_unchange: &IsEqualChip<F>,
         is_src_end_chip: &IsEqualChip<F>,
         lt_word_end_chip: &IsEqualChip<F>,
         challenges: Challenges<Value<F>>,
@@ -703,20 +702,12 @@ impl<F: Field> CopyCircuitConfig<F> {
             };
 
             // for first step, id_next is not correct, will adjust it at the end.
-            is_copy_id_equals_chip.assign(
+            is_id_unchange.assign(
                 region,
                 *offset,
                 number_or_hash_to_field(id, challenges.evm_word()),
                 number_or_hash_to_field(id_next, challenges.evm_word()),
             )?;
-
-            // TODO: rm debug info
-            if *offset == 577 || *offset == 578 || *offset == 576 {
-                println!(
-                    "is_copy_id_equals_chip offset {}, step_idx {}, id {:?}, id_next {:?}",
-                    *offset, step_idx, id, id_next
-                );
-            }
 
             lt_word_end_chip.assign(
                 region,
@@ -813,7 +804,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         let filler_rows = max_copy_rows - copy_rows_needed - DISABLED_ROWS;
 
         let tag_chip = BinaryNumberChip::construct(self.copy_table.tag);
-        let is_copy_id_equals_chip = IsEqualChip::construct(self.is_copy_id_equals.clone());
+        let is_id_unchange = IsEqualChip::construct(self.is_id_unchange.clone());
         let is_src_end_chip = IsEqualChip::construct(self.is_src_end.clone());
         let lt_word_end_chip = IsEqualChip::construct(self.is_word_end.clone());
 
@@ -849,7 +840,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                         &mut region,
                         &mut offset,
                         &tag_chip,
-                        &is_copy_id_equals_chip,
+                        &is_id_unchange,
                         &is_src_end_chip,
                         &lt_word_end_chip,
                         challenges,
@@ -863,7 +854,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                         &mut offset,
                         true,
                         &tag_chip,
-                        &is_copy_id_equals_chip,
+                        &is_id_unchange,
                         &is_src_end_chip,
                         &lt_word_end_chip,
                     )?;
@@ -876,7 +867,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                         &mut offset,
                         false,
                         &tag_chip,
-                        &is_copy_id_equals_chip,
+                        &is_id_unchange,
                         &is_src_end_chip,
                         &lt_word_end_chip,
                     )?;
@@ -894,7 +885,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         offset: &mut usize,
         enabled: bool,
         tag_chip: &BinaryNumberChip<F, CopyDataType, { CopyDataType::N_BITS }>,
-        is_copy_id_equals_chip: &IsEqualChip<F>,
+        is_id_unchange_chip: &IsEqualChip<F>,
         is_src_end_chip: &IsEqualChip<F>,
         lt_word_end_chip: &IsEqualChip<F>,
     ) -> Result<(), Error> {
@@ -1041,7 +1032,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         // tag
         tag_chip.assign(region, *offset, &CopyDataType::Padding)?;
         // Assign IsEqual gadgets
-        is_copy_id_equals_chip.assign(
+        is_id_unchange_chip.assign(
             region,
             *offset,
             Value::known(F::zero()),
