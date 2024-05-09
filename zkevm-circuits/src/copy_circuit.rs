@@ -363,7 +363,6 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                 constrain_rw_counter(
                     cb,
                     meta,
-                    //is_last.expr(),
                     is_last_col,
                     is_rw_type.expr(),
                     is_row_end.expr(),
@@ -372,7 +371,7 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     rwc_inc_left,
                 );
 
-                // constrain is_memory_copy = src_id = dst_id && src_type = Memory && dst_type =
+                // constrain is_memory_copy = src_id == dst_id && src_type == dst_type ==
                 // memory
                 constrain_is_memory_copy(
                     cb,
@@ -701,7 +700,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                 (&copy_event.dst_id, &copy_event.src_id)
             };
 
-            // for first step, id_next is not correct, will adjust it at the end.
+            // assign id, id_next
             is_id_unchange.assign(
                 region,
                 *offset,

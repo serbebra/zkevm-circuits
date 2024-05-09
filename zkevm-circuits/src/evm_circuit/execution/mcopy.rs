@@ -189,8 +189,6 @@ mod test {
         code.append(&bytecode! {
             // prepare memory values by mstore
             PUSH32(word!("0x0102030405060708090a0b0c0d0e0f000102030405060708090a"))
-            //PUSH32(Word::from(0x0102030405060708090a0b0c0d0e0f0))
-            //sPUSH32(Word::from_str("0x100a256040ef2801080f"))
             PUSH2(0x20)
             MSTORE
             PUSH32(length)

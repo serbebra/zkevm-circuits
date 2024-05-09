@@ -2277,13 +2277,6 @@ impl<'a> CircuitInputStateRef<'a> {
             true,
         );
         let read_slot_bytes = memory.read_chunk(src_range);
-        // adjust bytes in [dst_addr..dst_range.start_slot()+32] for src_data
-        println!(
-            "start_slot {}, shift {} read_slot_bytes: {:?}",
-            dst_range.start_slot().0,
-            dst_range.shift().0,
-            read_slot_bytes
-        );
 
         let read_steps = CopyEventStepsBuilder::memory_range(src_range)
             .source(read_slot_bytes.as_slice())
@@ -2299,7 +2292,8 @@ impl<'a> CircuitInputStateRef<'a> {
         // memory word reads from source and writes to destination word
         let call_id = self.call()?.call_id;
 
-        // first all reads done and then do writing, this is different from other copy cases.
+        // first all reads done and then do writing, this is different from other copy cases
+        // (read step--> write step --> read step --> write step ...).
         for read_chunk in read_slot_bytes.chunks(32) {
             self.push_op(
                 exec_step,
@@ -2310,7 +2304,7 @@ impl<'a> CircuitInputStateRef<'a> {
                     Word::from_big_endian(read_chunk),
                 ),
             )?;
-
+            trace!("read chunk: {call_id} {src_chunk_index} {read_chunk:?}");
             src_chunk_index += 32;
         }
 
