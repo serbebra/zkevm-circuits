@@ -2590,53 +2590,53 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         //////////////////////////// ZstdTag::ZstdBlockSequenceData ///////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (sentinel row)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceData (sentinel row)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // We read the tag=SequencesData from back-to-front, i.e. is_reverse=true. The first
-        //         // bitstring we read is the sentinel bitstring, i.e. 0-7 number of 0s followed by a
-        //         // sentinel 1-bit. This is used to eventually byte-align the entire SequencesData
-        //         // bitstream.
-        //         cb.require_zero(
-        //             "sentinel: is_nil=false",
-        //             config.bitstream_decoder.is_nil(meta, Rotation::cur()),
-        //         );
-        //         cb.require_zero(
-        //             "sentinel: is_nb0=false",
-        //             config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
-        //         );
-        //         cb.require_equal(
-        //             "sentinel: bitstring_value=1",
-        //             meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
-        //             1.expr(),
-        //         );
-        //         cb.require_equal(
-        //             "sentinel: bit_index_end <= 7",
-        //             config
-        //                 .bitstream_decoder
-        //                 .spans_one_byte(meta, Rotation::cur()),
-        //             1.expr(),
-        //         );
+                // We read the tag=SequencesData from back-to-front, i.e. is_reverse=true. The first
+                // bitstring we read is the sentinel bitstring, i.e. 0-7 number of 0s followed by a
+                // sentinel 1-bit. This is used to eventually byte-align the entire SequencesData
+                // bitstream.
+                cb.require_zero(
+                    "sentinel: is_nil=false",
+                    config.bitstream_decoder.is_nil(meta, Rotation::cur()),
+                );
+                cb.require_zero(
+                    "sentinel: is_nb0=false",
+                    config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
+                );
+                cb.require_equal(
+                    "sentinel: bitstring_value=1",
+                    meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
+                    1.expr(),
+                );
+                cb.require_equal(
+                    "sentinel: bit_index_end <= 7",
+                    config
+                        .bitstream_decoder
+                        .spans_one_byte(meta, Rotation::cur()),
+                    1.expr(),
+                );
 
-        //         // The next row starts with initialising the states (with LLT), and this is in fact
-        //         // the start of the decoding process for sequence_idx=1.
-        //         cb.require_equal(
-        //             "seq_idx==1",
-        //             meta.query_advice(config.sequences_data_decoder.idx, Rotation::next()),
-        //             1.expr(),
-        //         );
+                // The next row starts with initialising the states (with LLT), and this is in fact
+                // the start of the decoding process for sequence_idx=1.
+                cb.require_equal(
+                    "seq_idx==1",
+                    meta.query_advice(config.sequences_data_decoder.idx, Rotation::next()),
+                    1.expr(),
+                );
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         // witgen_debug
         // meta.lookup_any(
