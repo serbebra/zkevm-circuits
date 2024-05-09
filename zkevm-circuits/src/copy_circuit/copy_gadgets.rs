@@ -551,6 +551,28 @@ pub fn constrain_rw_counter<F: Field>(
     });
 }
 
+/// validate is_memory_copy validity.
+pub fn constrain_is_memory_copy<F: Field>(
+    cb: &mut BaseConstraintBuilder<F>,
+    meta: &mut VirtualCells<'_, F>,
+    is_last_col: Column<Advice>, // The last row.
+    is_copy_id_equals: &IsEqualConfig<F>,
+    is_memory: Column<Advice>,
+    is_memory_copy: Expression<F>,
+) {
+    let is_memory_cur = meta.query_advice(is_memory, CURRENT);
+    let is_memory_next = meta.query_advice(is_memory, NEXT_ROW);
+    let is_last = meta.query_advice(is_last_col, CURRENT);
+
+    cb.condition(not::expr(is_last.clone()), |cb| {
+        cb.require_equal(
+            "is_memory_copy == is_memory_cur * is_memory_next * id_equals",
+            is_memory_copy.clone(),
+            is_memory_cur * is_memory_next * is_copy_id_equals.expr(),
+        );
+    });
+}
+
 /// Ensure the word operation completes for RW.
 pub fn constrain_rw_word_complete<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,

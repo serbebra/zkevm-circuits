@@ -46,10 +46,10 @@ use crate::{
 
 use self::copy_gadgets::{
     constrain_address, constrain_bytes_left, constrain_event_rlc_acc, constrain_first_last,
-    constrain_forward_parameters, constrain_is_pad, constrain_mask, constrain_masked_value,
-    constrain_must_terminate, constrain_non_pad_non_mask, constrain_rw_counter,
-    constrain_rw_word_complete, constrain_tag, constrain_value_rlc, constrain_word_index,
-    constrain_word_rlc,
+    constrain_forward_parameters, constrain_is_memory_copy, constrain_is_pad, constrain_mask,
+    constrain_masked_value, constrain_must_terminate, constrain_non_pad_non_mask,
+    constrain_rw_counter, constrain_rw_word_complete, constrain_tag, constrain_value_rlc,
+    constrain_word_index, constrain_word_rlc,
 };
 
 /// The current row.
@@ -193,11 +193,12 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
         bytecode_table.annotate_columns(meta);
         copy_table.annotate_columns(meta);
 
-        //let is_last_expr = meta.query_advice(is_last.clone(), CURRENT);
+        // TODO: rename to is_id_equals;
         let is_copy_id_equals = IsEqualChip::configure(
             meta,
-            |meta| meta.query_selector(q_step) * not::expr(
-                meta.query_advice(is_last.clone(), CURRENT)),
+            |meta| {
+                meta.query_selector(q_step) * not::expr(meta.query_advice(is_last.clone(), CURRENT))
+            },
             |meta| meta.query_advice(id, CURRENT),
             |meta| meta.query_advice(id, NEXT_ROW),
         );
@@ -373,10 +374,16 @@ impl<F: Field> SubCircuitConfig<F> for CopyCircuitConfig<F> {
                     rwc_inc_left,
                 );
 
-                // constrain is_memory_copy = src_id = dst_id && src_type = Memory && dst_type = memory
-                // let is_memory_cur = meta.query_advice(is_memory, CURRENT);
-                // let is_memory_next = meta.query_advice(is_memory, NEXT_ROW);
-
+                // constrain is_memory_copy = src_id = dst_id && src_type = Memory && dst_type =
+                // memory
+                constrain_is_memory_copy(
+                    cb,
+                    meta,
+                    is_last_col,
+                    &is_copy_id_equals,
+                    is_memory,
+                    is_memory_copy,
+                );
                 constrain_rw_word_complete(cb, is_last_step, is_rw_word_type.expr(), is_word_end);
             }
 
@@ -700,12 +707,7 @@ impl<F: Field> CopyCircuitConfig<F> {
                 first_step_id = id;
             }
             // for first step, id_next is not correct, will adjust it at the end.
-            is_copy_id_equals_chip.assign(
-                region,
-                *offset,
-                id,
-                id_next,
-            )?;
+            is_copy_id_equals_chip.assign(region, *offset, id, id_next)?;
             if step_idx == 1 {
                 id_next = id;
             }
@@ -779,12 +781,7 @@ impl<F: Field> CopyCircuitConfig<F> {
         }
 
         // set first step id_next
-        is_copy_id_equals_chip.assign(
-            region,
-            original_offset,
-            first_step_id,
-            id_next,
-        )?;
+        is_copy_id_equals_chip.assign(region, original_offset, first_step_id, id_next)?;
 
         Ok(())
     }
