@@ -1232,63 +1232,62 @@ impl DecoderConfig {
             cb.gate(condition)
         });
 
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: all non-padded rows except the first row",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_fixed(config.q_enable, Rotation::cur()),
-        //             not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
-        //             not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: all non-padded rows except the first row",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(config.q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+                    not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // byte_idx either remains the same or increments by 1.
-        //         let byte_idx_delta = meta.query_advice(config.byte_idx, Rotation::cur())
-        //             - meta.query_advice(config.byte_idx, Rotation::prev());
-        //         cb.require_boolean(
-        //             "(byte_idx::cur - byte_idx::prev) in [0, 1]",
-        //             byte_idx_delta.expr(),
-        //         );
+                // byte_idx either remains the same or increments by 1.
+                let byte_idx_delta = meta.query_advice(config.byte_idx, Rotation::cur())
+                    - meta.query_advice(config.byte_idx, Rotation::prev());
+                cb.require_boolean(
+                    "(byte_idx::cur - byte_idx::prev) in [0, 1]",
+                    byte_idx_delta.expr(),
+                );
 
-        //         // If byte_idx has not incremented, we see the same byte.
-        //         cb.condition(not::expr(byte_idx_delta.expr()), |cb| {
-        //             cb.require_equal(
-        //                 "if byte_idx::cur == byte_idx::prev then byte::cur == byte::prev",
-        //                 meta.query_advice(config.byte, Rotation::cur()),
-        //                 meta.query_advice(config.byte, Rotation::prev()),
-        //             );
-        //         });
+                // If byte_idx has not incremented, we see the same byte.
+                cb.condition(not::expr(byte_idx_delta.expr()), |cb| {
+                    cb.require_equal(
+                        "if byte_idx::cur == byte_idx::prev then byte::cur == byte::prev",
+                        meta.query_advice(config.byte, Rotation::cur()),
+                        meta.query_advice(config.byte, Rotation::prev()),
+                    );
+                });
 
-        //         // If the previous tag was done processing, verify that the is_change boolean was
-        //         // set.
-        //         let tag_idx_prev = meta.query_advice(config.tag_config.tag_idx, Rotation::prev());
-        //         let tag_len_prev = meta.query_advice(config.tag_config.tag_len, Rotation::prev());
-        //         let tag_idx_eq_tag_len_prev = config.tag_config.tag_idx_eq_tag_len.expr_at(
-        //             meta,
-        //             Rotation::prev(),
-        //             tag_idx_prev,
-        //             tag_len_prev,
-        //         );
-        //         cb.condition(and::expr([byte_idx_delta, tag_idx_eq_tag_len_prev]), |cb| {
-        //             cb.require_equal(
-        //                 "is_change is set",
-        //                 meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //                 1.expr(),
-        //             );
-        //         });
+                // If the previous tag was done processing, verify that the is_change boolean was
+                // set.
+                let tag_idx_prev = meta.query_advice(config.tag_config.tag_idx, Rotation::prev());
+                let tag_len_prev = meta.query_advice(config.tag_config.tag_len, Rotation::prev());
+                let tag_idx_eq_tag_len_prev = config.tag_config.tag_idx_eq_tag_len.expr_at(
+                    meta,
+                    Rotation::prev(),
+                    tag_idx_prev,
+                    tag_len_prev,
+                );
+                cb.condition(and::expr([byte_idx_delta, tag_idx_eq_tag_len_prev]), |cb| {
+                    cb.require_equal(
+                        "is_change is set",
+                        meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                        1.expr(),
+                    );
+                });
 
-        //         // decoded_len is unchanged.
-        //         cb.require_equal(
-        //             "decoded_len::cur == decoded_len::prev",
-        //             meta.query_advice(config.decoded_len, Rotation::cur()),
-        //             meta.query_advice(config.decoded_len, Rotation::prev()),
-        //         );
+                // decoded_len is unchanged.
+                cb.require_equal(
+                    "decoded_len::cur == decoded_len::prev",
+                    meta.query_advice(config.decoded_len, Rotation::cur()),
+                    meta.query_advice(config.decoded_len, Rotation::prev()),
+                );
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         meta.create_gate("DecoderConfig: padded rows", |meta| {
             let condition = and::expr([
