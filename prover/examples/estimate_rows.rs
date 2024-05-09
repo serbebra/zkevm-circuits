@@ -8,20 +8,25 @@ use zkevm_circuits::evm_circuit::ExecutionState;
 fn main() {
     let trace = std::fs::read_to_string(std::env::var("TRACE_FILE").unwrap()).unwrap();
 
-    let block_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
-    let block_trace = vec![block_trace];
     println!("{}", ExecutionState::BeginTx.get_step_height());
+
     let now = std::time::Instant::now();
+
     let guard = pprof::ProfilerGuardBuilder::default()
         .frequency(1000)
         .blocklist(&["libc", "libgcc", "pthread", "vdso"])
         .build()
         .unwrap();
+
+    let block_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
+    let block_trace = vec![block_trace];
     let result = estimate_rows(block_trace);
+
     if let Ok(report) = guard.report().build() {
         let file = File::create("flamegraph.svg").unwrap();
         report.flamegraph(file).unwrap();
     };
+
     let elapsed = now.elapsed();
     println!("elapsed: {elapsed:?}, result: {result}");
 }
