@@ -18,7 +18,15 @@ fn main() {
         .build()
         .unwrap();
 
-    let block_trace: BlockTrace = serde_json::from_str(&trace).unwrap();
+    let block_trace: BlockTrace = serde_json::from_str(&trace).unwrap_or_else(|_| {
+        #[derive(serde::Deserialize, Default, Debug, Clone)]
+        pub struct BlockTraceJsonRpcResult {
+            pub result: BlockTrace,
+        }
+        serde_json::from_str::<BlockTraceJsonRpcResult>(&trace)
+            .unwrap()
+            .result
+    });
     let block_trace = vec![block_trace];
     let result = estimate_rows(block_trace);
 
