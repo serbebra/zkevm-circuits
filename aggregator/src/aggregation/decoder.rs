@@ -2151,29 +2151,29 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (table size)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (table size)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                ]);
 
-        //         // accuracy_log == 4bits + 5
-        //         let al = meta
-        //             .query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur())
-        //             + 5.expr();
-        //         let table_size = meta.query_advice(config.fse_decoder.table_size, Rotation::cur());
+                // accuracy_log == 4bits + 5
+                let al = meta
+                    .query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur())
+                    + 5.expr();
+                let table_size = meta.query_advice(config.fse_decoder.table_size, Rotation::cur());
 
-        //         // table_size == 1 << al
-        //         [al, table_size]
-        //             .into_iter()
-        //             .zip_eq(config.pow2_table.table_exprs(meta))
-        //             .map(|(arg, table)| (condition.expr() * arg, table))
-        //             .collect()
-        //     },
-        // );
+                // table_size == 1 << al
+                [al, table_size]
+                    .into_iter()
+                    .zip_eq(config.pow2_table.table_exprs(meta))
+                    .map(|(arg, table)| (condition.expr() * arg, table))
+                    .collect()
+            },
+        );
 
         // witgen_debug
         // meta.create_gate(
