@@ -810,7 +810,7 @@ fn process_sequences<F: Field>(
         let bitstream_rows = bit_boundaries
             .iter()
             .enumerate()
-            .map(|(bit_boundary_idx, (bit_idx, value))| {
+            .map(|(bit_boundary_idx, (bit_idx, value_read, value_decoded))| {
                 // Calculate byte and bit positions. Increment allocators.
                 from_pos = if next_symbol == -1 { (1, -1) } else { to_pos };
 
@@ -840,6 +840,7 @@ fn process_sequences<F: Field>(
                 if bit_boundary_idx < 1 {
                     // Accuracy log bits
                     next_symbol += 1;
+                    assert_eq!(value_read, value_decoded, "no varbit packing for AL bits");
                     (
                         0,
                         n_emitted,
@@ -847,7 +848,8 @@ fn process_sequences<F: Field>(
                         from_pos.1 as usize,
                         to_pos.0 as usize,
                         to_pos.1 as usize,
-                        *value,
+                        *value_read,
+                        *value_decoded,
                         current_tag_value_acc,
                         current_tag_rlc_acc,
                         n_acc,
@@ -860,6 +862,7 @@ fn process_sequences<F: Field>(
                 } else if !is_repeating_bit_boundary.contains_key(&bit_boundary_idx) {
                     if n_acc >= (table.table_size as usize) {
                         // Trailing bits
+                        assert_eq!(value_read, value_decoded, "no varbit packing for trailing bits");
                         (
                             last_symbol as u64,
                             n_emitted,
@@ -867,7 +870,8 @@ fn process_sequences<F: Field>(
                             from_pos.1 as usize,
                             to_pos.0 as usize,
                             to_pos.1 as usize,
-                            *value,
+                            *value_read,
+                            *value_decoded,
                             current_tag_value_acc,
                             current_tag_rlc_acc,
                             n_acc,
@@ -884,7 +888,7 @@ fn process_sequences<F: Field>(
                         n_emitted += 1;
                         last_symbol = next_symbol;
                         next_symbol += 1;
-                        match *value {
+                        match *value_decoded {
                             0 => {
                                 // When a symbol has a value==0, it signifies a case of prob=-1 (or
                                 // probability "less than 1"), where
@@ -909,7 +913,7 @@ fn process_sequences<F: Field>(
                                 }
                             }
                             _ => {
-                                n_acc += (*value - 1) as usize;
+                                n_acc += (*value_decoded - 1) as usize;
                             }
                         }
 
@@ -920,7 +924,8 @@ fn process_sequences<F: Field>(
                             from_pos.1 as usize,
                             to_pos.0 as usize,
                             to_pos.1 as usize,
-                            *value,
+                            *value_read,
+                            *value_decoded,
                             current_tag_value_acc,
                             current_tag_rlc_acc,
                             n_acc,
@@ -933,8 +938,9 @@ fn process_sequences<F: Field>(
                     }
                 } else {
                     // Repeating bits
-                    let symbol = last_symbol as u64 + value;
+                    let symbol = last_symbol as u64 + value_decoded;
                     last_symbol = symbol as i32;
+                    assert_eq!(value_read, value_decoded, "no varbit packing for repeat-bits flag");
                     (
                         symbol,
                         n_emitted,
@@ -942,7 +948,8 @@ fn process_sequences<F: Field>(
                         from_pos.1 as usize,
                         to_pos.0 as usize,
                         to_pos.1 as usize,
-                        *value,
+                        *value_read,
+                        *value_decoded,
                         current_tag_value_acc,
                         current_tag_rlc_acc,
                         n_acc,
@@ -961,6 +968,7 @@ fn process_sequences<F: Field>(
                 usize,
                 usize,
                 usize,
+                u64,
                 u64,
                 Value<F>,
                 Value<F>,
@@ -986,10 +994,10 @@ fn process_sequences<F: Field>(
                     tag_len,
                     tag_idx: row.2 as u64,
                     tag_value,
-                    tag_value_acc: row.7,
+                    tag_value_acc: row.8,
                     is_tag_change: j == 0,
                     tag_rlc,
-                    tag_rlc_acc: row.8,
+                    tag_rlc_acc: row.9,
                 },
                 encoded_data: EncodedData {
                     byte_idx: (start_offset + row.2) as u64,
@@ -1014,14 +1022,14 @@ fn process_sequences<F: Field>(
                     decoded_value_rlc: last_row.decoded_data.decoded_value_rlc,
                 },
                 fse_data: FseDecodingRow {
-                    table_kind: row.10,
-                    table_size: row.11,
+                    table_kind: row.11,
+                    table_size: row.12,
                     symbol: row.0,
                     num_emitted: row.1 as u64,
-                    value_decoded: row.6,
-                    probability_acc: row.9 as u64,
-                    is_repeat_bits_loop: row.12,
-                    is_trailing_bits: row.13,
+                    value_decoded: row.7,
+                    probability_acc: row.10 as u64,
+                    is_repeat_bits_loop: row.13,
+                    is_trailing_bits: row.14,
                 },
             });
         }

@@ -217,7 +217,7 @@ impl From<ZstdTag> for usize {
 }
 
 /// FSE table variants that we observe in the sequences section.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum FseTableKind {
     /// Literal length FSE table.
@@ -567,7 +567,7 @@ pub struct FseAuxiliaryTableData {
 /// This representation makes it easy to look up decoded symbol from current state.   
 /// Map<state, (symbol, baseline, num_bits)>.
 type FseStateMapping = BTreeMap<u64, (u64, u64, u64)>;
-type ReconstructedFse = (usize, Vec<(u32, u64)>, FseAuxiliaryTableData);
+type ReconstructedFse = (usize, Vec<(u32, u64, u64)>, FseAuxiliaryTableData);
 
 impl FseAuxiliaryTableData {
     /// While we reconstruct an FSE table from a bitstream, we do not know before reconstruction
@@ -588,7 +588,7 @@ impl FseAuxiliaryTableData {
         // construct little-endian bit-reader.
         let data = src.iter().skip(byte_offset).cloned().collect::<Vec<u8>>();
         let mut reader = BitReader::endian(Cursor::new(&data), LittleEndian);
-        let mut bit_boundaries: Vec<(u32, u64)> = vec![];
+        let mut bit_boundaries: Vec<(u32, u64, u64)> = vec![];
 
         // number of bits read by the bit-reader from the bistream.
         let mut offset = 0;
@@ -597,7 +597,7 @@ impl FseAuxiliaryTableData {
             offset += 4;
             reader.read::<u8>(offset)? + 5
         };
-        bit_boundaries.push((offset, accuracy_log as u64 - 5));
+        bit_boundaries.push((offset, accuracy_log as u64 - 5, accuracy_log as u64 - 5));
         let table_size = 1 << accuracy_log;
 
         ////////////////////////////////////////////////////////////////////////////////////////
@@ -637,18 +637,18 @@ impl FseAuxiliaryTableData {
             while R > 0 {
                 // number of bits and value read from the variable bit-packed data.
                 // And update the total number of bits read so far.
-                let (n_bits_read, value) = read_variable_bit_packing(&data, offset, R + 1)?;
+                let (n_bits_read, value_read, value_decoded) = read_variable_bit_packing(&data, offset, R + 1)?;
                 reader.skip(n_bits_read)?;
                 offset += n_bits_read;
-                bit_boundaries.push((offset, value));
+                bit_boundaries.push((offset, value_read, value_decoded));
 
                 // Number of states allocated to this symbol.
                 // - prob=-1 => 1
                 // - prob=0  => 0
                 // - prob>=1 => prob
-                let N = match value {
+                let N = match value_decoded {
                     0 => 1,
-                    _ => value - 1,
+                    _ => value_decoded - 1,
                 };
 
                 // When a symbol has a value==0, it signifies a case of prob=-1 (or probability
@@ -656,7 +656,7 @@ impl FseAuxiliaryTableData {
                 // end and retreating. In such cases, we reset the FSE state, i.e.
                 // read accuracy_log number of bits from the bitstream with a
                 // baseline==0x00.
-                if value == 0 {
+                if value_decoded == 0 {
                     normalised_probs.insert(symbol, -1);
                     symbol += 1;
                 }
@@ -665,13 +665,13 @@ impl FseAuxiliaryTableData {
                 // This repeat flag tells how many probabilities of zeroes follow
                 // the current one. It provides a number ranging from 0 to 3. If it
                 // is a 3, another 2-bits repeat flag follows, and so on.
-                if value == 1 {
+                if value_decoded == 1 {
                     normalised_probs.insert(symbol, 0);
                     symbol += 1;
                     loop {
                         let repeat_bits = reader.read::<u8>(2)?;
                         offset += 2;
-                        bit_boundaries.push((offset, repeat_bits as u64));
+                        bit_boundaries.push((offset, repeat_bits as u64, repeat_bits as u64));
 
                         for k in 0..repeat_bits {
                             normalised_probs.insert(symbol + (k as u64), 0);
@@ -686,7 +686,7 @@ impl FseAuxiliaryTableData {
 
                 // When a symbol has a value>1 (prob>=1), it is allocated that many number of states
                 // in the FSE table.
-                if value > 1 {
+                if value_decoded > 1 {
                     normalised_probs.insert(symbol, N as i32);
                     symbol += 1;
                 }
@@ -706,9 +706,11 @@ impl FseAuxiliaryTableData {
         // read the trailing section
         if t * N_BITS_PER_BYTE > (offset as usize) {
             let bits_remaining = t * N_BITS_PER_BYTE - offset as usize;
+            let trailing_value = reader.read::<u8>(bits_remaining as u32)? as u64;
             bit_boundaries.push((
                 offset + bits_remaining as u32,
-                reader.read::<u8>(bits_remaining as u32)? as u64,
+                trailing_value,
+                trailing_value,
             ));
         }
 

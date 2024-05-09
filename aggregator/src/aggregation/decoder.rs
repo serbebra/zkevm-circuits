@@ -756,7 +756,7 @@ impl FseDecoder {
     ) -> Expression<Fr> {
         let value_decoded = meta.query_advice(self.value_decoded, rotation);
         self.value_decoded_eq_0
-            .expr_at(meta, rotation, value_decoded, 1.expr())
+            .expr_at(meta, rotation, value_decoded, 0.expr())
     }
 
     /// While reconstructing the FSE table, indicates whether a value=1 was found, i.e. prob=0. In
@@ -2172,212 +2172,219 @@ impl DecoderConfig {
             },
         );
 
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (other rows)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_fixed(q_enable, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (other rows)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+                    not::expr(meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur())),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // FseDecoder columns that remain unchanged.
-        //         for column in [config.fse_decoder.table_kind, config.fse_decoder.table_size] {
-        //             cb.require_equal(
-        //                 "fse_decoder column unchanged",
-        //                 meta.query_advice(column, Rotation::cur()),
-        //                 meta.query_advice(column, Rotation::prev()),
-        //             );
-        //         }
+                // FseDecoder columns that remain unchanged.
+                for column in [config.fse_decoder.table_kind, config.fse_decoder.table_size] {
+                    cb.require_equal(
+                        "fse_decoder column unchanged",
+                        meta.query_advice(column, Rotation::cur()),
+                        meta.query_advice(column, Rotation::prev()),
+                    );
+                }
 
-        //         // FSE tables are decoded for Literal Length (LLT), Match Offset (MOT) and Match
-        //         // Length (MLT).
-        //         //
-        //         // The maximum permissible accuracy log for the above are:
-        //         // - LLT: 9
-        //         // - MOT: 8
-        //         // - MLT: 9
-        //         //
-        //         // Which means, at the most we would be reading a bitstring up to length=9. Note
-        //         // that an FSE table would exist only if there are more than one symbols and in
-        //         // that case, we wouldn't actually reserve ALL possibly states for a single symbol,
-        //         // indirectly meaning that we would be reading bitstrings of at the most length=9.
-        //         //
-        //         // The only scenario in which we would skip reading bits from a byte altogether is
-        //         // if the bitstring is ``aligned_two_bytes``.
-        //         cb.require_zero(
-        //             "fse: bitstrings cannot span 3 bytes",
-        //             config
-        //                 .bitstream_decoder
-        //                 .spans_three_bytes(meta, Rotation::cur()),
-        //         );
+                // FSE tables are decoded for Literal Length (LLT), Match Offset (MOT) and Match
+                // Length (MLT).
+                //
+                // The maximum permissible accuracy log for the above are:
+                // - LLT: 9
+                // - MOT: 8
+                // - MLT: 9
+                //
+                // Which means, at the most we would be reading a bitstring up to length=9. Note
+                // that an FSE table would exist only if there are more than one symbols and in
+                // that case, we wouldn't actually reserve ALL possibly states for a single symbol,
+                // indirectly meaning that we would be reading bitstrings of at the most length=9.
+                //
+                // The only scenario in which we would skip reading bits from a byte altogether is
+                // if the bitstring is ``aligned_two_bytes``.
+                cb.require_zero(
+                    "fse: bitstrings cannot span 3 bytes",
+                    config
+                        .bitstream_decoder
+                        .spans_three_bytes(meta, Rotation::cur()),
+                );
 
-        //         // If the bitstring read at the current row is ``aligned_two_bytes`` then the one
-        //         // on the next row is nil (not read).
-        //         cb.condition(
-        //             config
-        //                 .bitstream_decoder
-        //                 .aligned_two_bytes(meta, Rotation::cur()),
-        //             |cb| {
-        //                 cb.require_equal(
-        //                     "fse: aligned_two_bytes is followed by is_nil",
-        //                     config.bitstream_decoder.is_nil(meta, Rotation::next()),
-        //                     1.expr(),
-        //                 );
-        //             },
-        //         );
+                // If the bitstring read at the current row is ``aligned_two_bytes`` then the one
+                // on the next row is nil (not read).
+                cb.condition(
+                    config
+                        .bitstream_decoder
+                        .aligned_two_bytes(meta, Rotation::cur()),
+                    |cb| {
+                        cb.require_equal(
+                            "fse: aligned_two_bytes is followed by is_nil",
+                            config.bitstream_decoder.is_nil(meta, Rotation::next()),
+                            1.expr(),
+                        );
+                    },
+                );
 
-        //         // We now tackle the scenario of observing value=1 (prob=0) which is then followed
-        //         // by 2-bits repeat bits.
-        //         //
-        //         // If we are not in a repeat-bits loop and encounter a value=1 (prob=0) bitstring,
-        //         // then we enter a repeat bits loop.
-        //         let is_repeat_bits_loop =
-        //             meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur());
-        //         cb.condition(
-        //             and::expr([
-        //                 not::expr(is_repeat_bits_loop.expr()),
-        //                 config.fse_decoder.is_prob0(meta, Rotation::cur()),
-        //             ]),
-        //             |cb| {
-        //                 cb.require_equal(
-        //                     "fse: enter repeat-bits loop",
-        //                     meta.query_advice(
-        //                         config.fse_decoder.is_repeat_bits_loop,
-        //                         Rotation::next(),
-        //                     ),
-        //                     1.expr(),
-        //                 );
-        //             },
-        //         );
+                // We now tackle the scenario of observing value=1 (prob=0) which is then followed
+                // by 2-bits repeat bits.
+                //
+                // If we are not in a repeat-bits loop and encounter a value=1 (prob=0) bitstring,
+                // then we enter a repeat bits loop.
+                let is_repeat_bits_loop =
+                    meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur());
+                cb.condition(
+                    and::expr([
+                        not::expr(is_repeat_bits_loop.expr()),
+                        config.fse_decoder.is_prob0(meta, Rotation::cur()),
+                    ]),
+                    |cb| {
+                        cb.require_equal(
+                            "fse: enter repeat-bits loop",
+                            meta.query_advice(
+                                config.fse_decoder.is_repeat_bits_loop,
+                                Rotation::next(),
+                            ),
+                            1.expr(),
+                        );
+                    },
+                );
 
-        //         // If we are in a repeat-bits loop and the repeat-bits are [1, 1], then continue
-        //         // the repeat-bits loop.
-        //         let is_rb_flag3 = config.bitstream_decoder.is_rb_flag3(meta, Rotation::cur());
-        //         cb.condition(
-        //             and::expr([is_repeat_bits_loop.expr(), is_rb_flag3.expr()]),
-        //             |cb| {
-        //                 cb.require_equal(
-        //                     "fse: continue repeat-bits loop",
-        //                     meta.query_advice(
-        //                         config.fse_decoder.is_repeat_bits_loop,
-        //                         Rotation::next(),
-        //                     ),
-        //                     1.expr(),
-        //                 );
-        //             },
-        //         );
+                // If we are in a repeat-bits loop and the repeat-bits are [1, 1], then continue
+                // the repeat-bits loop.
+                let is_rb_flag3 = config.bitstream_decoder.is_rb_flag3(meta, Rotation::cur());
+                cb.condition(
+                    and::expr([is_repeat_bits_loop.expr(), is_rb_flag3.expr()]),
+                    |cb| {
+                        cb.require_equal(
+                            "fse: continue repeat-bits loop",
+                            meta.query_advice(
+                                config.fse_decoder.is_repeat_bits_loop,
+                                Rotation::next(),
+                            ),
+                            1.expr(),
+                        );
+                    },
+                );
 
-        //         // If we are in a repeat-bits loop and the repeat-bits are not [1, 1] then break
-        //         // out of the repeat-bits loop.
-        //         cb.condition(
-        //             and::expr([is_repeat_bits_loop.expr(), not::expr(is_rb_flag3)]),
-        //             |cb| {
-        //                 cb.require_zero(
-        //                     "fse: break out of repeat-bits loop",
-        //                     meta.query_advice(
-        //                         config.fse_decoder.is_repeat_bits_loop,
-        //                         Rotation::next(),
-        //                     ),
-        //                 );
-        //             },
-        //         );
+                // If we are in a repeat-bits loop and the repeat-bits are not [1, 1] then break
+                // out of the repeat-bits loop.
+                cb.condition(
+                    and::expr([is_repeat_bits_loop.expr(), not::expr(is_rb_flag3)]),
+                    |cb| {
+                        cb.require_zero(
+                            "fse: break out of repeat-bits loop",
+                            meta.query_advice(
+                                config.fse_decoder.is_repeat_bits_loop,
+                                Rotation::next(),
+                            ),
+                        );
+                    },
+                );
 
-        //         // We not tackle the normalised probability of symbols in the FSE table, their
-        //         // updating and the FSE symbol itself.
-        //         //
-        //         // If no bitstring was read, even the symbol value is carried forward.
-        //         let (
-        //             prob_acc_cur,
-        //             prob_acc_prev,
-        //             fse_symbol_cur,
-        //             fse_symbol_prev,
-        //             bitstring_value,
-        //             value_decoded,
-        //         ) = (
-        //             meta.query_advice(config.fse_decoder.probability_acc, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.probability_acc, Rotation::prev()),
-        //             meta.query_advice(config.fse_decoder.symbol, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.symbol, Rotation::prev()),
-        //             meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.value_decoded, Rotation::cur()),
-        //         );
-        //         cb.condition(
-        //             config.bitstream_decoder.is_nil(meta, Rotation::cur()),
-        //             |cb| {
-        //                 cb.require_equal(
-        //                     "fse: probability_acc continues",
-        //                     prob_acc_cur.expr(),
-        //                     prob_acc_prev.expr(),
-        //                 );
-        //                 cb.require_equal(
-        //                     "fse: symbol continues",
-        //                     fse_symbol_cur.expr(),
-        //                     fse_symbol_prev.expr(),
-        //                 );
-        //             },
-        //         );
+                // We not tackle the normalised probability of symbols in the FSE table, their
+                // updating and the FSE symbol itself.
+                //
+                // If no bitstring was read, even the symbol value is carried forward.
+                let (
+                    prob_acc_cur,
+                    prob_acc_prev,
+                    fse_symbol_cur,
+                    fse_symbol_prev,
+                    bitstring_value,
+                    value_decoded,
+                ) = (
+                    meta.query_advice(config.fse_decoder.probability_acc, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.probability_acc, Rotation::prev()),
+                    meta.query_advice(config.fse_decoder.symbol, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.symbol, Rotation::prev()),
+                    meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.value_decoded, Rotation::cur()),
+                );
+                cb.condition(
+                    config.bitstream_decoder.is_nil(meta, Rotation::cur()),
+                    |cb| {
+                        cb.require_equal(
+                            "fse: probability_acc continues",
+                            prob_acc_cur.expr(),
+                            prob_acc_prev.expr(),
+                        );
+                        cb.require_equal(
+                            "fse: symbol continues",
+                            fse_symbol_cur.expr(),
+                            fse_symbol_prev.expr(),
+                        );
+                    },
+                );
 
-        //         // As we decode the normalised probability for each symbol in the FSE table, we
-        //         // update the probability accumulator. It should be updated as long as we are
-        //         // reading a bitstring and we are not in the repeat-bits loop.
-        //         cb.condition(
-        //             and::expr([
-        //                 config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //                 not::expr(is_repeat_bits_loop.expr()),
-        //             ]),
-        //             |cb| {
-        //                 // if value>=1: prob_acc_cur == prob_acc_prev + (value - 1)
-        //                 // if value==0: prob_acc_cur == prob_acc_prev + 1
-        //                 cb.require_equal(
-        //                     "fse: probability_acc is updated correctly",
-        //                     prob_acc_cur.expr(),
-        //                     select::expr(
-        //                         config.fse_decoder.is_prob_less_than1(meta, Rotation::cur()),
-        //                         prob_acc_prev.expr() + 1.expr(),
-        //                         prob_acc_prev.expr() + value_decoded.expr() - 1.expr(),
-        //                     ),
-        //                 );
-        //                 cb.require_equal(
-        //                     "fse: symbol increments",
-        //                     fse_symbol_cur.expr(),
-        //                     fse_symbol_prev.expr() + 1.expr(),
-        //                 );
-        //             },
-        //         );
+                // As we decode the normalised probability for each symbol in the FSE table, we
+                // update the probability accumulator. It should be updated as long as we are
+                // reading a bitstring and we are not in the repeat-bits loop.
+                //
+                // We skip the check for symbol on the first bitstring after the 4-bits for AL
+                // because this check has already been done on the "first row".
+                cb.condition(
+                    and::expr([
+                        config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                        not::expr(is_repeat_bits_loop.expr()),
+                    ]),
+                    |cb| {
+                        // if value>=1: prob_acc_cur == prob_acc_prev + (value - 1)
+                        // if value==0: prob_acc_cur == prob_acc_prev + 1
+                        cb.require_equal(
+                            "fse: probability_acc is updated correctly",
+                            prob_acc_cur.expr(),
+                            select::expr(
+                                config.fse_decoder.is_prob_less_than1(meta, Rotation::cur()),
+                                prob_acc_prev.expr() + 1.expr(),
+                                prob_acc_prev.expr() + value_decoded.expr() - 1.expr(),
+                            ),
+                        );
+                        cb.require_equal(
+                            "fse: symbol increments",
+                            fse_symbol_cur.expr(),
+                            select::expr(
+                                meta.query_advice(config.tag_config.is_change, Rotation::prev()),
+                                0.expr(),
+                                fse_symbol_prev.expr() + 1.expr(),
+                            ),
+                        );
+                    },
+                );
 
-        //         // If we are in the repeat-bits loop, then the normalised probability accumulator
-        //         // does not change, as the repeat-bits loop is for symbols that are not emitted
-        //         // through the FSE table. However, the symbol value itself increments by the value
-        //         // in the 2 repeat bits.
-        //         cb.condition(is_repeat_bits_loop.expr(), |cb| {
-        //             let bit_index_start = meta
-        //                 .query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur());
-        //             let bit_index_end =
-        //                 meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur());
-        //             cb.require_equal(
-        //                 "fse: repeat-bits read N_BITS_REPEAT_FLAG=2 bits",
-        //                 bit_index_end - bit_index_start + 1.expr(),
-        //                 N_BITS_REPEAT_FLAG.expr(),
-        //             );
-        //             cb.require_equal(
-        //                 "fse: repeat-bits do not change probability_acc",
-        //                 prob_acc_cur,
-        //                 prob_acc_prev,
-        //             );
-        //             cb.require_equal(
-        //                 "fse: repeat-bits increases by the 2-bit value",
-        //                 fse_symbol_cur,
-        //                 fse_symbol_prev + bitstring_value,
-        //             );
-        //         });
+                // If we are in the repeat-bits loop, then the normalised probability accumulator
+                // does not change, as the repeat-bits loop is for symbols that are not emitted
+                // through the FSE table. However, the symbol value itself increments by the value
+                // in the 2 repeat bits.
+                cb.condition(is_repeat_bits_loop.expr(), |cb| {
+                    let bit_index_start = meta
+                        .query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur());
+                    let bit_index_end =
+                        meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur());
+                    cb.require_equal(
+                        "fse: repeat-bits read N_BITS_REPEAT_FLAG=2 bits",
+                        bit_index_end - bit_index_start + 1.expr(),
+                        N_BITS_REPEAT_FLAG.expr(),
+                    );
+                    cb.require_equal(
+                        "fse: repeat-bits do not change probability_acc",
+                        prob_acc_cur,
+                        prob_acc_prev,
+                    );
+                    cb.require_equal(
+                        "fse: repeat-bits increases by the 2-bit value",
+                        fse_symbol_cur,
+                        fse_symbol_prev + bitstring_value,
+                    );
+                });
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         meta.create_gate(
             "DecoderConfig: tag ZstdBlockSequenceFseCode (last row)",
@@ -2485,105 +2492,106 @@ impl DecoderConfig {
             },
         );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (variable bit-packing)",
-        //     |meta| {
-        //         // At every row where a non-nil bitstring is read:
-        //         // - except the AL bits (is_change=true)
-        //         // - except when we are in repeat-bits loop
-        //         // - except the trailing bits (if they exist)
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-        //             not::expr(
-        //                 meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
-        //             ),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (variable bit-packing)",
+            |meta| {
+                // At every row where a non-nil bitstring is read:
+                // - except the AL bits (is_change=true)
+                // - except when we are in repeat-bits loop
+                // - except the trailing bits (if they exist)
+                let condition = and::expr([
+                    meta.query_fixed(config.q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+                    not::expr(
+                        meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
+                    ),
+                    not::expr(meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur())),
+                ]);
 
-        //         let (table_size, probability_acc, value_read, value_decoded, num_bits) = (
-        //             meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.probability_acc, Rotation::prev()),
-        //             meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.value_decoded, Rotation::cur()),
-        //             config
-        //                 .bitstream_decoder
-        //                 .bitstring_len_unchecked(meta, Rotation::cur()),
-        //         );
+                let (table_size, probability_acc, value_read, value_decoded, num_bits) = (
+                    meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.probability_acc, Rotation::prev()),
+                    meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.value_decoded, Rotation::cur()),
+                    config
+                        .bitstream_decoder
+                        .bitstring_len_unchecked(meta, Rotation::cur()),
+                );
 
-        //         let range = table_size - probability_acc + 1.expr();
-        //         [
-        //             FixedLookupTag::VariableBitPacking.expr(),
-        //             range,
-        //             value_read,
-        //             value_decoded,
-        //             num_bits,
-        //             0.expr(),
-        //             0.expr(),
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.fixed_table.table_exprs(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                let range = table_size - probability_acc + 1.expr();
+                [
+                    FixedLookupTag::VariableBitPacking.expr(),
+                    range,
+                    value_read,
+                    value_decoded,
+                    num_bits,
+                    0.expr(),
+                    0.expr(),
+                ]
+                .into_iter()
+                .zip_eq(config.fixed_table.table_exprs(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (normalised probability of symbol)",
-        //     |meta| {
-        //         // At every row where a non-nil bitstring is read:
-        //         // - except the AL bits (is_change=true)
-        //         // - except when the value=1, i.e. prob=0
-        //         // - except when we are in repeat-bits loop
-        //         // - except the trailing bits (if they exist)
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-        //             not::expr(config.fse_decoder.is_prob0(meta, Rotation::cur())),
-        //             not::expr(
-        //                 meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
-        //             ),
-        //             not::expr(
-        //                 meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
-        //             ),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (normalised probability of symbol)",
+            |meta| {
+                // At every row where a non-nil bitstring is read:
+                // - except the AL bits (is_change=true)
+                // - except when the value=1, i.e. prob=0
+                // - except when we are in repeat-bits loop
+                // - except the trailing bits (if they exist)
+                let condition = and::expr([
+                    meta.query_fixed(config.q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+                    not::expr(config.fse_decoder.is_prob0(meta, Rotation::cur())),
+                    not::expr(
+                        meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
+                    ),
+                    not::expr(
+                        meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
+                    ),
+                ]);
 
-        //         let (block_idx, fse_table_kind, fse_table_size, fse_symbol, value_decoded) = (
-        //             meta.query_advice(config.block_config.block_idx, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.symbol, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.value_decoded, Rotation::cur()),
-        //         );
-        //         let is_prob_less_than1 =
-        //             config.fse_decoder.is_prob_less_than1(meta, Rotation::cur());
-        //         let norm_prob = select::expr(
-        //             is_prob_less_than1.expr(),
-        //             1.expr(),
-        //             value_decoded - 1.expr(),
-        //         );
+                let (block_idx, fse_table_kind, fse_table_size, fse_symbol, value_decoded) = (
+                    meta.query_advice(config.block_config.block_idx, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.symbol, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.value_decoded, Rotation::cur()),
+                );
+                let is_prob_less_than1 =
+                    config.fse_decoder.is_prob_less_than1(meta, Rotation::cur());
+                let norm_prob = select::expr(
+                    is_prob_less_than1.expr(),
+                    1.expr(),
+                    value_decoded - 1.expr(),
+                );
 
-        //         [
-        //             0.expr(), // skip first row
-        //             block_idx,
-        //             fse_table_kind,
-        //             fse_table_size,
-        //             0.expr(), // is_predefined
-        //             fse_symbol,
-        //             norm_prob.expr(),
-        //             norm_prob.expr(),
-        //             is_prob_less_than1.expr(),
-        //             0.expr(), // is_padding
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.fse_table.table_exprs_by_symbol(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                [
+                    0.expr(), // skip first row
+                    block_idx,
+                    fse_table_kind,
+                    fse_table_size,
+                    0.expr(), // is_predefined
+                    fse_symbol,
+                    norm_prob.expr(),
+                    norm_prob.expr(),
+                    is_prob_less_than1.expr(),
+                    0.expr(), // is_padding
+                ]
+                .into_iter()
+                .zip_eq(config.fse_table.table_exprs_by_symbol(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
         debug_assert!(meta.degree() <= 9);
 
@@ -4704,7 +4712,7 @@ mod tests {
             encoder.finish().expect("Encoder success")
         };
 
-        let k = 17;
+        let k = 18;
         let decoder_config_tester = DecoderConfigTester { 
             compressed, 
             k,

@@ -15,7 +15,7 @@ use super::N_BITS_PER_BYTE;
 /// - v: the read value that is in the range 0..=r
 ///
 /// [doclink]: https://www.rfc-editor.org/rfc/rfc8478.txt
-pub fn read_variable_bit_packing(src: &[u8], offset: u32, r: u64) -> Result<(u32, u64)> {
+pub fn read_variable_bit_packing(src: &[u8], offset: u32, r: u64) -> Result<(u32, u64, u64)> {
     // construct a bit-reader.
     let mut reader = BitReader::endian(Cursor::new(&src), LittleEndian);
 
@@ -27,7 +27,7 @@ pub fn read_variable_bit_packing(src: &[u8], offset: u32, r: u64) -> Result<(u32
     if r + 1 == max {
         reader.skip(offset)?;
         let value = reader.read::<u64>(size)?;
-        return Ok((size, value));
+        return Ok((size, value, value));
     }
 
     // lo_pin denotes the pin where if the value read is below the pin, its considered a low value
@@ -57,14 +57,14 @@ pub fn read_variable_bit_packing(src: &[u8], offset: u32, r: u64) -> Result<(u32
     let lo_value = value & ((1 << (size - 1)) - 1);
 
     Ok(if (0..lo_pin).contains(&lo_value) {
-        (size - 1, lo_value)
+        (size - 1, lo_value, lo_value)
     } else if (lo_pin..hi_pin_1).contains(&value) {
-        (size, value)
+        (size, value, value)
     } else if (hi_pin_1..hi_pin_2).contains(&value) {
-        (size - 1, value - hi_pin_1)
+        (size - 1, lo_value, value - hi_pin_1)
     } else {
         assert!((hi_pin_2..(1 << size)).contains(&value));
-        (size, value - lo_pin)
+        (size, value, value - lo_pin)
     })
 }
 
@@ -168,9 +168,9 @@ mod tests {
         let src = vec![0x30, 0x6f, 0x9b, 0x03];
         let offset = 4;
         let range = 32;
-        let (n_bits, value_read) = read_variable_bit_packing(&src, offset, range)?;
+        let (n_bits, value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
         assert_eq!(n_bits, 5);
-        assert_eq!(value_read, 19);
+        assert_eq!(value_decoded, 19);
 
         // case 2:
         // read in little-endian order:
@@ -182,17 +182,17 @@ mod tests {
         let src = vec![0b10000000];
         let offset = 6;
         let range = 3;
-        let (n_bits, value_read) = read_variable_bit_packing(&src, offset, range)?;
+        let (n_bits, value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
         assert_eq!(n_bits, 2);
-        assert_eq!(value_read, 2);
+        assert_eq!(value_decoded, 2);
 
         // case 3:
         let src = vec![0b11000000];
         let offset = 6;
         let range = 2;
-        let (n_bits, value_read) = read_variable_bit_packing(&src, offset, range)?;
+        let (n_bits, value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
         assert_eq!(n_bits, 2);
-        assert_eq!(value_read, 2);
+        assert_eq!(value_decoded, 2);
 
         Ok(())
     }
