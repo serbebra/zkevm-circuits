@@ -545,145 +545,144 @@ impl BitstreamDecoder {
     }
 }
 
-// witgen_debug
-// impl BitstreamDecoder {
-//     /// If we skip reading any bitstring at this row, because of byte-alignment over multiple bytes
-//     /// from the previously read bitstring.
-//     fn is_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-//         meta.query_advice(self.is_nil, rotation)
-//     }
+impl BitstreamDecoder {
+    /// If we skip reading any bitstring at this row, because of byte-alignment over multiple bytes
+    /// from the previously read bitstring.
+    fn is_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+        meta.query_advice(self.is_nil, rotation)
+    }
 
-//     /// If we expect to read a bitstring at this row.
-//     fn is_not_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-//         not::expr(self.is_nil(meta, rotation))
-//     }
+    /// If we expect to read a bitstring at this row.
+    fn is_not_nil(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+        not::expr(self.is_nil(meta, rotation))
+    }
 
-//     /// If the number of bits to be read from the bitstream is nb=0. This scenario occurs in the
-//     /// SequencesData tag section, when we are applying the FSE tables to decode sequences.
-//     fn is_nb0(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-//         meta.query_advice(self.is_nb0, rotation)
-//     }
+    /// If the number of bits to be read from the bitstream is nb=0. This scenario occurs in the
+    /// SequencesData tag section, when we are applying the FSE tables to decode sequences.
+    fn is_nb0(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+        meta.query_advice(self.is_nb0, rotation)
+    }
 
-//     /// Whether the 2-bits repeat flag was [1, 1]. In this case, the repeat flag is followed by
-//     /// another repeat flag.
-//     fn is_rb_flag3(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-//         let bitstream_value = meta.query_advice(self.bitstring_value, rotation);
-//         self.bitstring_value_eq_3
-//             .expr_at(meta, rotation, bitstream_value, 3.expr())
-//     }
+    /// Whether the 2-bits repeat flag was [1, 1]. In this case, the repeat flag is followed by
+    /// another repeat flag.
+    fn is_rb_flag3(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+        let bitstream_value = meta.query_advice(self.bitstring_value, rotation);
+        self.bitstring_value_eq_3
+            .expr_at(meta, rotation, bitstream_value, 3.expr())
+    }
 
-//     /// A bitstring strictly spans 1 byte if the bit_index at which it ends is such that:
-//     /// - 0 <= bit_index_end < 7.
-//     fn strictly_spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (lt, _eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
-//         lt
-//     }
+    /// A bitstring strictly spans 1 byte if the bit_index at which it ends is such that:
+    /// - 0 <= bit_index_end < 7.
+    fn strictly_spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (lt, _eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
+        lt
+    }
 
-//     /// A bitstring spans 1 byte if the bit_index at which it ends is such that:
-//     /// - 0 <= bit_index_end <= 7.
-//     fn spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
-//         lt + eq
-//     }
+    /// A bitstring spans 1 byte if the bit_index at which it ends is such that:
+    /// - 0 <= bit_index_end <= 7.
+    fn spans_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
+        lt + eq
+    }
 
-//     /// A bitstring spans 1 byte and is byte-aligned:
-//     /// - bit_index_end == 7.
-//     fn aligned_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (_lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
-//         eq
-//     }
+    /// A bitstring spans 1 byte and is byte-aligned:
+    /// - bit_index_end == 7.
+    fn aligned_one_byte(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (_lt, eq) = self.bit_index_end_cmp_7.expr_at(meta, at, lhs, 7.expr());
+        eq
+    }
 
-//     /// A bitstring strictly spans 2 bytes if the bit_index at which it ends is such that:
-//     /// - 8 <= bit_index_end < 15.
-//     fn strictly_spans_two_bytes(
-//         &self,
-//         meta: &mut VirtualCells<Fr>,
-//         at: Rotation,
-//     ) -> Expression<Fr> {
-//         let spans_one_byte = self.spans_one_byte(meta, at);
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (lt2, _eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
-//         not::expr(spans_one_byte) * lt2
-//     }
+    /// A bitstring strictly spans 2 bytes if the bit_index at which it ends is such that:
+    /// - 8 <= bit_index_end < 15.
+    fn strictly_spans_two_bytes(
+        &self,
+        meta: &mut VirtualCells<Fr>,
+        at: Rotation,
+    ) -> Expression<Fr> {
+        let spans_one_byte = self.spans_one_byte(meta, at);
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (lt2, _eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
+        not::expr(spans_one_byte) * lt2
+    }
 
-//     /// A bitstring spans 2 bytes and is byte-aligned:
-//     /// - bit_index_end == 15.
-//     fn aligned_two_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (_lt, eq) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
-//         eq
-//     }
+    /// A bitstring spans 2 bytes and is byte-aligned:
+    /// - bit_index_end == 15.
+    fn aligned_two_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (_lt, eq) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
+        eq
+    }
 
-//     /// A bitstring strictly spans 3 bytes if the bit_index at which it ends is such that:
-//     /// - 16 <= bit_index_end < 23.
-//     fn strictly_spans_three_bytes(
-//         &self,
-//         meta: &mut VirtualCells<Fr>,
-//         at: Rotation,
-//     ) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (lt2, eq2) = self
-//             .bit_index_end_cmp_15
-//             .expr_at(meta, at, lhs.expr(), 15.expr());
-//         let (lt3, _eq3) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
-//         not::expr(lt2 + eq2) * lt3
-//     }
+    /// A bitstring strictly spans 3 bytes if the bit_index at which it ends is such that:
+    /// - 16 <= bit_index_end < 23.
+    fn strictly_spans_three_bytes(
+        &self,
+        meta: &mut VirtualCells<Fr>,
+        at: Rotation,
+    ) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (lt2, eq2) = self
+            .bit_index_end_cmp_15
+            .expr_at(meta, at, lhs.expr(), 15.expr());
+        let (lt3, _eq3) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
+        not::expr(lt2 + eq2) * lt3
+    }
 
-//     /// A bitstring spans 3 bytes if the bit_index at which it ends is such that:
-//     /// - 16 <= bit_index_end <= 23.
-//     fn spans_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (lt2, eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
-//         not::expr(lt2 + eq2)
-//     }
+    /// A bitstring spans 3 bytes if the bit_index at which it ends is such that:
+    /// - 16 <= bit_index_end <= 23.
+    fn spans_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (lt2, eq2) = self.bit_index_end_cmp_15.expr_at(meta, at, lhs, 15.expr());
+        not::expr(lt2 + eq2)
+    }
 
-//     /// A bitstring spans 3 bytes and is byte-aligned:
-//     /// - bit_index_end == 23.
-//     fn aligned_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
-//         let lhs = meta.query_advice(self.bit_index_end, at);
-//         let (_lt, eq) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
-//         eq
-//     }
+    /// A bitstring spans 3 bytes and is byte-aligned:
+    /// - bit_index_end == 23.
+    fn aligned_three_bytes(&self, meta: &mut VirtualCells<Fr>, at: Rotation) -> Expression<Fr> {
+        let lhs = meta.query_advice(self.bit_index_end, at);
+        let (_lt, eq) = self.bit_index_end_cmp_23.expr_at(meta, at, lhs, 23.expr());
+        eq
+    }
 
-//     /// bit_index_start' == bit_index_start.
-//     fn start_unchanged(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-//         let (bit_index_start_prev, bit_index_start_curr) = (
-//             meta.query_advice(self.bit_index_start, Rotation(rotation.0 - 1)),
-//             meta.query_advice(self.bit_index_start, rotation),
-//         );
-//         self.start_unchanged
-//             .expr_at(meta, rotation, bit_index_start_prev, bit_index_start_curr)
-//     }
+    /// bit_index_start' == bit_index_start.
+    fn start_unchanged(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+        let (bit_index_start_prev, bit_index_start_curr) = (
+            meta.query_advice(self.bit_index_start, Rotation(rotation.0 - 1)),
+            meta.query_advice(self.bit_index_start, rotation),
+        );
+        self.start_unchanged
+            .expr_at(meta, rotation, bit_index_start_prev, bit_index_start_curr)
+    }
 
-//     /// if is_nb0=true then 0 else bit_index_end - bit_index_start + 1.
-//     fn bitstring_len(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
-//         let (bit_index_start, bit_index_end) = (
-//             meta.query_advice(self.bit_index_start, rotation),
-//             meta.query_advice(self.bit_index_end, rotation),
-//         );
-//         select::expr(
-//             self.is_nb0(meta, rotation),
-//             0.expr(),
-//             bit_index_end - bit_index_start + 1.expr(),
-//         )
-//     }
+    /// if is_nb0=true then 0 else bit_index_end - bit_index_start + 1.
+    fn bitstring_len(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+        let (bit_index_start, bit_index_end) = (
+            meta.query_advice(self.bit_index_start, rotation),
+            meta.query_advice(self.bit_index_end, rotation),
+        );
+        select::expr(
+            self.is_nb0(meta, rotation),
+            0.expr(),
+            bit_index_end - bit_index_start + 1.expr(),
+        )
+    }
 
-//     /// bit_index_end - bit_index_start + 1.
-//     fn bitstring_len_unchecked(
-//         &self,
-//         meta: &mut VirtualCells<Fr>,
-//         rotation: Rotation,
-//     ) -> Expression<Fr> {
-//         let (bit_index_start, bit_index_end) = (
-//             meta.query_advice(self.bit_index_start, rotation),
-//             meta.query_advice(self.bit_index_end, rotation),
-//         );
-//         bit_index_end - bit_index_start + 1.expr()
-//     }
-// }
+    /// bit_index_end - bit_index_start + 1.
+    fn bitstring_len_unchecked(
+        &self,
+        meta: &mut VirtualCells<Fr>,
+        rotation: Rotation,
+    ) -> Expression<Fr> {
+        let (bit_index_start, bit_index_end) = (
+            meta.query_advice(self.bit_index_start, rotation),
+            meta.query_advice(self.bit_index_end, rotation),
+        );
+        bit_index_end - bit_index_start + 1.expr()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct FseDecoder {
@@ -1089,6 +1088,17 @@ impl DecoderConfig {
             };
         }
 
+        macro_rules! is_next_tag {
+            ($var:ident, $tag_variant:ident) => {
+                let $var = |meta: &mut VirtualCells<Fr>| {
+                    config
+                        .tag_config
+                        .tag_bits
+                        .value_equals(ZstdTag::$tag_variant, Rotation::next())(meta)
+                };
+            };
+        }
+
         is_tag!(is_null, Null);
         is_tag!(is_frame_header_descriptor, FrameHeaderDescriptor);
         is_tag!(is_frame_content_size, FrameContentSize);
@@ -1102,6 +1112,8 @@ impl DecoderConfig {
         is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
         is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
         is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
+
+        is_next_tag!(is_next_null, Null);
 
         meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
             vec![(
@@ -3359,88 +3371,99 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////// Bitstream Decoding /////////////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: Bitstream Decoder (is_nil)", |meta| {
-        //     // Bitstream decoder when we skip reading a bitstring at a row.
-        //     let condition = config.bitstream_decoder.is_nil(meta, Rotation::cur());
+        meta.create_gate("DecoderConfig: Bitstream Decoder (is_nil)", |meta| {
+            // Bitstream decoder when we skip reading a bitstring at a row.
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            // witgen_debug
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                config.bitstream_decoder.is_nil(meta, Rotation::cur()),  
+            ]);
 
-        //     cb.require_zero(
-        //         "bit_index_start == 0",
-        //         meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "bit_index_end == 0",
-        //         meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "bit_index_start' == 0",
-        //         meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
-        //     );
-        //     cb.require_equal(
-        //         "if is_nil: byte_idx' == byte_idx",
-        //         meta.query_advice(config.byte_idx, Rotation::next()),
-        //         meta.query_advice(config.byte_idx, Rotation::cur()),
-        //     );
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     cb.require_zero(
-        //         "if is_nil is True then is_nb0 is False",
-        //         config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
-        //     );
-        //     cb.require_equal(
-        //         "bitstream(is_nil) can occur in [FseCode, SequencesData] tags",
-        //         sum::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //         ]),
-        //         1.expr(),
-        //     );
+            cb.require_zero(
+                "bit_index_start == 0",
+                meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+            );
+            cb.require_zero(
+                "bit_index_end == 0",
+                meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+            );
+            cb.require_zero(
+                "bit_index_start' == 0",
+                meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            // witgen_debug
+            // cb.require_equal(
+            //     "if is_nil: byte_idx' == byte_idx",
+            //     meta.query_advice(config.byte_idx, Rotation::next()),
+            //     meta.query_advice(config.byte_idx, Rotation::cur()),
+            // );
 
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: Bitstream Decoder (is_nb0)", |meta| {
-        //     // Bitstream decoder when we read nb=0 bits from the bitstream.
-        //     let condition = config.bitstream_decoder.is_nb0(meta, Rotation::cur());
+            cb.require_zero(
+                "if is_nil is True then is_nb0 is False",
+                config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
+            );
+            cb.require_equal(
+                "bitstream(is_nil) can occur in [FseCode, SequencesData] tags",
+                sum::expr([
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                ]),
+                1.expr(),
+            );
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            cb.gate(condition)
+        });
 
-        //     cb.require_equal(
-        //         "bit_index_start == bit_index_end",
-        //         meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-        //         meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //     );
-        //     cb.require_equal(
-        //         "bit_index_start' == bit_index_start",
-        //         meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
-        //         meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-        //     );
-        //     cb.require_equal(
-        //         "if is_nb0: byte_idx' == byte_idx",
-        //         meta.query_advice(config.byte_idx, Rotation::next()),
-        //         meta.query_advice(config.byte_idx, Rotation::cur()),
-        //     );
-        //     cb.require_zero(
-        //         "if is_nb0: bitstring_value == 0",
-        //         meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
-        //     );
+        meta.create_gate("DecoderConfig: Bitstream Decoder (is_nb0)", |meta| {
+            // Bitstream decoder when we read nb=0 bits from the bitstream.
 
-        //     cb.require_zero(
-        //         "if is_nb0 is True then is_nil is False",
-        //         config.bitstream_decoder.is_nil(meta, Rotation::cur()),
-        //     );
+            // witgen_debug
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
+                not::expr(is_next_null(meta)), // Exclude last block's bitstream tail row. Transition to Null.
+            ]);
 
-        //     // This can only occur in tag=SequencesData.
-        //     cb.require_equal(
-        //         "bitstream(is_nb0) can occur in SequencesData",
-        //         meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     cb.gate(condition)
-        // });
+            cb.require_equal(
+                "bit_index_start == bit_index_end",
+                meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+            );
+            cb.require_equal(
+                "bit_index_start' == bit_index_start",
+                meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
+                meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+            );
+            cb.require_equal(
+                "if is_nb0: byte_idx' == byte_idx",
+                meta.query_advice(config.byte_idx, Rotation::next()),
+                meta.query_advice(config.byte_idx, Rotation::cur()),
+            );
+            cb.require_zero(
+                "if is_nb0: bitstring_value == 0",
+                meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
+            );
+
+            cb.require_zero(
+                "if is_nb0 is True then is_nil is False",
+                config.bitstream_decoder.is_nil(meta, Rotation::cur()),
+            );
+
+            // This can only occur in tag=SequencesData.
+            cb.require_equal(
+                "bitstream(is_nb0) can occur in SequencesData",
+                meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                1.expr(),
+            );
+
+            cb.gate(condition)
+        });
 
         // witgen_debug
         // meta.create_gate(
@@ -3956,7 +3979,8 @@ impl DecoderConfig {
                 for i in 0..((1 << k) - self.unusable_rows()) {
                     region.assign_fixed(|| "q_enable", self.q_enable, i, || Value::known(Fr::one()))?;
                 }
-                let mut last_bit_start_idx = 0usize;
+                let mut last_byte_idx = 0u64;
+                let mut last_bit_start_idx = 0u64;
 
                 /////////////////////////////////////////
                 ///////// Assign Witness Rows  //////////
@@ -3974,6 +3998,7 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(row.encoded_data.byte_idx)),
                     )?;
+                    last_byte_idx = row.encoded_data.byte_idx;
                     region.assign_advice(
                         || "byte",
                         self.byte,
@@ -4030,7 +4055,7 @@ impl DecoderConfig {
                         Value::known(Fr::from(last_bit_start_idx as u64)),
                         Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
                     )?;
-                    last_bit_start_idx = row.bitstream_read_data.bit_start_idx;
+                    last_bit_start_idx = row.bitstream_read_data.bit_start_idx as u64;
 
                     region.assign_advice(
                         || "bit_index_end",
@@ -4443,7 +4468,30 @@ impl DecoderConfig {
                 }
 
                 // witness_debug
+                let mut padding_count = 2usize;
                 for idx in witness_rows.len()..((1 << k) - self.unusable_rows()) {
+                    // witgen_debug
+                    if padding_count > 0 {
+                        region.assign_advice(
+                            || "byte_idx",
+                            self.byte_idx,
+                            idx,
+                            || Value::known(Fr::from(last_byte_idx as u64)),
+                        )?;
+                    //     region.assign_advice(
+                    //         || "bitstream_decoder.bit_index_start",
+                    //         self.bitstream_decoder.bit_index_start,
+                    //         idx,
+                    //         || Value::known(Fr::from(last_bit_start_idx as u64)),
+                    //     )?;
+                    //     padding_count -= 1;
+                    }
+                    region.assign_advice(
+                        || "tag_config.tag",
+                        self.tag_config.tag,
+                        idx,
+                        || Value::known(Fr::from(ZstdTag::Null as u64)),
+                    )?;
                     region.assign_advice(
                         || "is_padding",
                         self.is_padding,

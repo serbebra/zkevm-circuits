@@ -1182,8 +1182,28 @@ fn process_sequences<F: Field>(
 
     let mut is_init = true;
     let mut nb = nb_switch[mode][order_idx];
+    let bitstream_end_bit_idx = n_sequence_data_bytes * N_BITS_PER_BYTE;
 
-    while current_bit_idx + nb <= n_sequence_data_bytes * N_BITS_PER_BYTE {
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
+    while current_bit_idx + nb <= bitstream_end_bit_idx {
+        let is_tail = current_bit_idx == bitstream_end_bit_idx;
+        if is_tail { 
+            assert!(nb == 0, "Can only read 0 bit at the very tail end of bitstream.");
+            // The byte idx has already been incremented to > n_sequence_bytes.
+            // But continuously reading 0 bits from the very tail end of the last byte is allowed.
+            // In this case, the byte_idx is restored to the last byte of the bitstream bytes.
+            if current_byte_idx > n_sequence_data_bytes {
+                current_byte_idx -= 1;
+            }
+        }
+
+        // witgen_debug
+        write!(handle, "current_byte_idx: {:?}, current_bit_idx: {:?}, nb: {:?}", current_byte_idx, current_bit_idx, nb).unwrap();
+        writeln!(handle).unwrap();
+
         let bitstring_value =
             be_bits_to_value(&sequence_bitstream[current_bit_idx..(current_bit_idx + nb)]);
 
@@ -1252,12 +1272,20 @@ fn process_sequences<F: Field>(
                     curr_instruction[2],
                 );
 
+                // witgen_debug
+                write!(handle, "NewInstruction - idx: {:?}, Offset: {:?}, ML: {:?}, LLT: {:?}", raw_sequence_instructions.len(), new_instruction.0, new_instruction.1, new_instruction.2).unwrap();
+                writeln!(handle);
+
                 raw_sequence_instructions.push(new_instruction);
             }
         }
 
         // bitstream witness row data
-        let from_bit_idx = current_bit_idx.rem_euclid(8);
+        let from_bit_idx = if !is_tail {
+            current_bit_idx.rem_euclid(8)
+        } else {
+            7
+        };
         let to_bit_idx = if nb > 0 {
             from_bit_idx + (nb - 1)
         } else {
@@ -1378,7 +1406,7 @@ fn process_sequences<F: Field>(
                         bit_start_idx: 0,
                         bit_end_idx: 0,
                         bit_value: 0,
-                        is_zero_bit_read: true,
+                        is_zero_bit_read: false,
                         is_seq_init: false,
                         seq_idx,
                         states: if mode > 0 {
@@ -1760,30 +1788,30 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     }
 
     // witgen_debug
-    // for (idx, row) in witness_rows.iter().enumerate() {
-    //     write!(
-    //         handle,
-    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
-    //         idx,
-    //         row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
-    //         row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
-    //         row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
-    //         row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
-    //         row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
-    //         row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
-    //         row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
-    //         row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
-    //         row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
-    //         row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
-    //         row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
-    //         row.bitstream_read_data.bit_start_idx,
-    //         row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
-    //         row.bitstream_read_data.is_nil,
-    //         row.bitstream_read_data.is_zero_bit_read
-    //     ).unwrap();
+    for (idx, row) in witness_rows.iter().enumerate() {
+        write!(
+            handle,
+            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
+            idx,
+            row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
+            row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
+            row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
+            row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
+            row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
+            row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
+            row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
+            row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
+            row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
+            row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
+            row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
+            row.bitstream_read_data.bit_start_idx,
+            row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
+            row.bitstream_read_data.is_nil,
+            row.bitstream_read_data.is_zero_bit_read
+        ).unwrap();
 
-    //     writeln!(handle).unwrap();
-    // }
+        writeln!(handle).unwrap();
+    }
 
     (
         witness_rows,
