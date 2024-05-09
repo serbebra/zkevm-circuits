@@ -2433,56 +2433,57 @@ impl DecoderConfig {
             },
         );
 
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (trailing bits)",
-        //     |meta| {
-        //         let condition =
-        //             meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur());
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (trailing bits)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // 1. is_trailing_bits can occur iff tag=FseCode.
-        //         cb.require_equal(
-        //             "tag=FseCode",
-        //             meta.query_advice(config.tag_config.tag, Rotation::cur()),
-        //             ZstdTag::ZstdBlockSequenceFseCode.expr(),
-        //         );
+                // 1. is_trailing_bits can occur iff tag=FseCode.
+                cb.require_equal(
+                    "tag=FseCode",
+                    meta.query_advice(config.tag_config.tag, Rotation::cur()),
+                    ZstdTag::ZstdBlockSequenceFseCode.expr(),
+                );
 
-        //         // 2. trailing bits only occur on the last row of the tag=FseCode section.
-        //         cb.require_equal(
-        //             "is_change'=true",
-        //             meta.query_advice(config.tag_config.is_change, Rotation::next()),
-        //             1.expr(),
-        //         );
+                // 2. trailing bits only occur on the last row of the tag=FseCode section.
+                cb.require_equal(
+                    "is_change'=true",
+                    meta.query_advice(config.tag_config.is_change, Rotation::next()),
+                    1.expr(),
+                );
 
-        //         // 3. trailing bits are meant to byte-align the bitstream, i.e. bit_index_end==7.
-        //         cb.require_equal(
-        //             "bit_index_end==7",
-        //             meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //             7.expr(),
-        //         );
+                // 3. trailing bits are meant to byte-align the bitstream, i.e. bit_index_end==7.
+                cb.require_equal(
+                    "bit_index_end==7",
+                    meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+                    7.expr(),
+                );
 
-        //         // 4. if trailing bits exist, it means the last valid bitstring was not
-        //         //    byte-aligned.
-        //         cb.require_zero(
-        //             "last valid bitstring byte-unaligned",
-        //             sum::expr([
-        //                 config
-        //                     .bitstream_decoder
-        //                     .aligned_one_byte(meta, Rotation(-1)),
-        //                 config
-        //                     .bitstream_decoder
-        //                     .aligned_two_bytes(meta, Rotation(-2)),
-        //                 config
-        //                     .bitstream_decoder
-        //                     .aligned_three_bytes(meta, Rotation(-3)),
-        //             ]),
-        //         );
+                // 4. if trailing bits exist, it means the last valid bitstring was not
+                //    byte-aligned.
+                cb.require_zero(
+                    "last valid bitstring byte-unaligned",
+                    sum::expr([
+                        config
+                            .bitstream_decoder
+                            .aligned_one_byte(meta, Rotation(-1)),
+                        config
+                            .bitstream_decoder
+                            .aligned_two_bytes(meta, Rotation(-2)),
+                        config
+                            .bitstream_decoder
+                            .aligned_three_bytes(meta, Rotation(-3)),
+                    ]),
+                );
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         // witgen_debug
         // meta.lookup_any(
