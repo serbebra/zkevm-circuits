@@ -523,7 +523,10 @@ pub fn constrain_rw_counter<F: Field>(
         );
     });
 
-    // handle is_memory_copy case.
+    // handle is_memory_copy case: for all read steps, `rwc_inc_left` decrease by 1 or 0,
+    // for all write steps, `rwc_inc_left` decrease by 1 or 0 as well. this is not the same as normal case(
+    // `rwc_inc_left` decrease by 1 or 0 for consecutive read steps--> write step --> read step
+    // -->write step ...).
     cb.condition(
         is_memory_copy * not::expr(is_last_two) * not::expr(is_last.clone()),
         |cb| {

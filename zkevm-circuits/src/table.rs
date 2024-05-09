@@ -1838,7 +1838,7 @@ impl CopyTable {
         let mut rw_counter = copy_event.rw_counter_start();
         let mut rwc_inc_left = copy_event.rw_counter_delta();
         // for memory copy (mcopy) case, first half of ops are reading, the other half are
-        // writing parts, so rw_counter starts from half too.
+        // writing parts, so for write ops, `rw_counter_write` starts from half too.
         let mut rw_counter_write = rw_counter + rwc_inc_left / 2;
         let mut rwc_inc_left_write = rwc_inc_left - rwc_inc_left / 2;
 
@@ -1988,9 +1988,7 @@ impl CopyTable {
                     (Value::known(F::from(thread.addr_end)), "src_addr_end"),
                     (Value::known(F::from(thread.bytes_left)), "real_bytes_left"),
                     (rlc_acc, "rlc_acc"),
-                    //(Value::known(F::from(rw_counter)), "rw_counter"),
                     (Value::known(F::from(rw_counter_in_column)), "rw_counter"),
-                    //(Value::known(F::from(rwc_inc_left)), "rwc_inc_left"),
                     (
                         Value::known(F::from(rwc_inc_left_in_column)),
                         "rwc_inc_left",

@@ -114,7 +114,7 @@ pub struct CopyCircuitConfig<F> {
     /// The Copy Table contains the columns that are exposed via the lookup
     /// expressions
     pub copy_table: CopyTable,
-    /// Detect if copy src_id equals dst_id.
+    /// Detect if copy src_id equals dst_id for current row and next row.
     pub is_id_unchange: IsEqualConfig<F>,
     /// Detect when the address reaches the limit src_addr_end.
     pub is_src_end: IsEqualConfig<F>,

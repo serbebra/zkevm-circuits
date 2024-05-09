@@ -108,8 +108,11 @@ mod mcopy_tests {
 
     #[test]
     fn mcopy_opcode_impl() {
+        // zero size copy
         test_ok(0x40, 0x50, 0x0);
+        // simple size copy
         test_ok(0x40, 0x60, 0x02);
+        // large size copy
         test_ok(0x60, 0x80, 0xA0);
         test_ok(0x90, 0x200, 0xE9);
     }
@@ -230,7 +233,8 @@ mod mcopy_tests {
                 .collect::<Vec<(RW, MemoryOp)>>(),
             (0..word_ops)
                 .map(|idx| {
-                    // index that write op starts
+                    // index that first write op starts from, since read and write ops have
+                    // same length, so write_index starts from half of word_ops count.
                     let write_index = word_ops / 2;
                     if idx < write_index {
                         // first all read ops
