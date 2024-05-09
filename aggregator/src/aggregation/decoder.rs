@@ -3134,72 +3134,70 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (init state pow2 table)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             config
-        //                 .sequences_data_decoder
-        //                 .is_init_state(meta, Rotation::cur()),
-        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceData (init state pow2 table)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    config
+                        .sequences_data_decoder
+                        .is_init_state(meta, Rotation::cur()),
+                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                ]);
 
-        //         let (nb, table_size) = (
-        //             config
-        //                 .bitstream_decoder
-        //                 .bitstring_len_unchecked(meta, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
-        //         );
+                let (nb, table_size) = (
+                    config
+                        .bitstream_decoder
+                        .bitstring_len_unchecked(meta, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
+                );
 
-        //         // When state is initialised, we must read AL number of bits.
-        //         // Since table_size == 1 << AL, we do a lookup to the pow2 table.
-        //         [nb, table_size]
-        //             .into_iter()
-        //             .zip_eq(config.pow2_table.table_exprs(meta))
-        //             .map(|(arg, table)| (condition.expr() * arg, table))
-        //             .collect()
-        //     },
-        // );
+                // When state is initialised, we must read AL number of bits.
+                // Since table_size == 1 << AL, we do a lookup to the pow2 table.
+                [nb, table_size]
+                    .into_iter()
+                    .zip_eq(config.pow2_table.table_exprs(meta))
+                    .map(|(arg, table)| (condition.expr() * arg, table))
+                    .collect()
+            },
+        );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (init state fse table)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //             config
-        //                 .sequences_data_decoder
-        //                 .is_init_state(meta, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceData (init state fse table)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                    config
+                        .sequences_data_decoder
+                        .is_init_state(meta, Rotation::cur()),
+                ]);
 
-        //         let (block_idx, table_kind, table_size) = (
-        //             meta.query_advice(config.block_config.block_idx, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
-        //         );
-        //         let is_predefined_mode =
-        //             config
-        //                 .block_config
-        //                 .is_predefined(meta, &config.fse_decoder, Rotation::cur());
+                let (block_idx, table_kind, table_size) = (
+                    meta.query_advice(config.block_config.block_idx, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
+                );
+                let is_predefined_mode =
+                    config
+                        .block_config
+                        .is_predefined(meta, &config.fse_decoder, Rotation::cur());
 
-        //         [
-        //             0.expr(), // q_first
-        //             1.expr(), // q_start
-        //             block_idx,
-        //             table_kind,
-        //             table_size,
-        //             is_predefined_mode, // is_predefined
-        //             0.expr(),           // is_padding
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.fse_table.table_exprs_metadata(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                [
+                    0.expr(), // q_first
+                    1.expr(), // q_start
+                    block_idx,
+                    table_kind,
+                    table_size,
+                    is_predefined_mode, // is_predefined
+                    0.expr(),           // is_padding
+                ]
+                .into_iter()
+                .zip_eq(config.fse_table.table_exprs_metadata(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
         // TODO(enable): lookup(SeqInstTable) at code-to-value for seq_values_lookup
         // meta.lookup_any(
