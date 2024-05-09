@@ -485,16 +485,15 @@ pub struct BitstreamDecoder {
     /// case while applying an FSE table to bitstream, where the number of bits to be read from
     /// the bitstream is 0. This can happen when we decode sequences in the SequencesData tag.
     is_nb0: Column<Advice>,
-
-    // witgen_debug
-    // /// Helper gadget to check when bit_index_start has not changed.
-    // start_unchanged: IsEqualConfig<Fr>,
+    /// Helper gadget to check when bit_index_start has not changed.
+    start_unchanged: IsEqualConfig<Fr>,
 }
 
 impl BitstreamDecoder {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         q_enable: Column<Fixed>,
+        q_first: Column<Fixed>,
         u8_table: U8Table,
     ) -> Self {
         let bit_index_start = meta.advice_column();
@@ -524,7 +523,6 @@ impl BitstreamDecoder {
                 |_| 23.expr(),
                 u8_table.into(),
             ),
-            // witgen_debug
             bitstring_value_eq_3: IsEqualChip::configure(
                 meta,
                 |meta| meta.query_fixed(q_enable, Rotation::cur()),
@@ -534,13 +532,15 @@ impl BitstreamDecoder {
             bitstring_value,
             is_nil: meta.advice_column(),
             is_nb0: meta.advice_column(),
-            // witgen_debug
-            // start_unchanged: IsEqualChip::configure(
-            //     meta,
-            //     |meta| meta.query_fixed(q_enable, Rotation::cur()),
-            //     |meta| meta.query_advice(bit_index_start, Rotation::prev()),
-            //     |meta| meta.query_advice(bit_index_end, Rotation::cur()),
-            // ),
+            start_unchanged: IsEqualChip::configure(
+                meta,
+                |meta| and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(q_first, Rotation::cur())),
+                ]),
+                |meta| meta.query_advice(bit_index_start, Rotation::prev()),
+                |meta| meta.query_advice(bit_index_start, Rotation::cur()),
+            ),
         }
     }
 }
@@ -977,7 +977,8 @@ impl DecoderConfig {
         // Fixed table
         let fixed_table = FixedTable::construct(meta);
 
-        let (q_enable, byte_idx, byte, is_padding) = (
+        let (q_enable, q_first, byte_idx, byte, is_padding) = (
+            meta.fixed_column(),
             meta.fixed_column(),
             meta.advice_column(),
             meta.advice_column(),
@@ -1006,7 +1007,7 @@ impl DecoderConfig {
         // witgen_debug
         let sequences_header_decoder =
             SequencesHeaderDecoder::configure(meta, byte, q_enable, u8_table);
-        let bitstream_decoder = BitstreamDecoder::configure(meta, q_enable, u8_table);
+        let bitstream_decoder = BitstreamDecoder::configure(meta, q_enable, q_first, u8_table);
         // let fse_decoder = FseDecoder::configure(meta, is_padding);
         let sequences_data_decoder = SequencesDataDecoder::configure(meta);
 
@@ -1028,7 +1029,7 @@ impl DecoderConfig {
         // Main config
         let config = Self {
             q_enable,
-            q_first: meta.fixed_column(),
+            q_first,
             byte_idx,
             byte,
             bits: (0..N_BITS_PER_BYTE)
@@ -3955,6 +3956,7 @@ impl DecoderConfig {
                 for i in 0..((1 << k) - self.unusable_rows()) {
                     region.assign_fixed(|| "q_enable", self.q_enable, i, || Value::known(Fr::one()))?;
                 }
+                let mut last_bit_start_idx = 0usize;
 
                 /////////////////////////////////////////
                 ///////// Assign Witness Rows  //////////
@@ -4020,6 +4022,16 @@ impl DecoderConfig {
                         i,
                         || Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
                     )?;
+                    let start_unchanged =
+                        IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
+                    start_unchanged.assign(
+                        &mut region,
+                        i,
+                        Value::known(Fr::from(last_bit_start_idx as u64)),
+                        Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
+                    )?;
+                    last_bit_start_idx = row.bitstream_read_data.bit_start_idx;
+
                     region.assign_advice(
                         || "bit_index_end",
                         self.bitstream_decoder.bit_index_end,
@@ -4080,14 +4092,7 @@ impl DecoderConfig {
                         Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
                         Value::known(Fr::from(3u64)),
                     )?;
-                    // let start_unchanged =
-                    //     IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
-                    // start_unchanged.assign(
-                    //     &mut region,
-                    //     i,
-                    //     Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
-                    //     Value::known(Fr::from(row.bitstream_read_data.bit_end_idx as u64)),
-                    // )?;
+                    
 
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
@@ -4498,16 +4503,15 @@ impl DecoderConfig {
                         Value::known(Fr::zero()),
                         Value::known(Fr::from(3u64)),
                     )?;
-
-                    // witgen_debug
-                    // let start_unchanged =
-                    //     IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
-                    // start_unchanged.assign(
-                    //     &mut region,
-                    //     idx,
-                    //     Value::known(Fr::zero()),
-                    //     Value::known(Fr::zero()),
-                    // )?;
+                    let start_unchanged =
+                        IsEqualChip::construct(self.bitstream_decoder.start_unchanged.clone());
+                    start_unchanged.assign(
+                        &mut region,
+                        idx,
+                        Value::known(Fr::from(last_bit_start_idx as u64)),
+                        Value::known(Fr::zero()),
+                    )?;
+                    last_bit_start_idx = 0;
                 }
 
                 Ok(())
