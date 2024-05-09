@@ -1203,6 +1203,8 @@ fn process_sequences<F: Field>(
     let mut is_init = true;
     let mut nb = nb_switch[mode][order_idx];
     let bitstream_end_bit_idx = n_sequence_data_bytes * N_BITS_PER_BYTE;
+    let mut table_kind = 0u64;
+    let mut table_size = 0u64;
 
     // witgen_debug
     let stdout = io::stdout();
@@ -1227,15 +1229,28 @@ fn process_sequences<F: Field>(
         let bitstring_value =
             be_bits_to_value(&sequence_bitstream[current_bit_idx..(current_bit_idx + nb)]);
 
-        let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
-        decoded_bitstring_values.push(new_decoded);
-
         let mut curr_baseline = 0;
         if mode > 0 {
             // For the initial baseline determination, ML and CMO positions are flipped.
             if is_init {
                 order_idx = [0, 2, 1][order_idx];
             }
+
+            let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
+            decoded_bitstring_values.push(new_decoded);
+
+            table_kind = match new_decoded.0 {
+                SequenceDataTag::CookedMatchOffsetFse | SequenceDataTag::CookedMatchOffsetValue => table_cmot.table_kind as u64,
+                SequenceDataTag::MatchLengthFse | SequenceDataTag::MatchLengthValue => table_mlt.table_kind as u64,
+                SequenceDataTag::LiteralLengthFse | SequenceDataTag::LiteralLengthValue => table_llt.table_kind as u64,
+                _ => unreachable!(),
+            };
+            table_size = match new_decoded.0 {
+                SequenceDataTag::CookedMatchOffsetFse | SequenceDataTag::CookedMatchOffsetValue => table_cmot.table_size,
+                SequenceDataTag::MatchLengthFse | SequenceDataTag::MatchLengthValue => table_mlt.table_size,
+                SequenceDataTag::LiteralLengthFse | SequenceDataTag::LiteralLengthValue => table_llt.table_size,
+                _ => unreachable!(),
+            };
 
             // FSE state update step
             curr_baseline = state_baselines[order_idx];
@@ -1267,6 +1282,22 @@ fn process_sequences<F: Field>(
 
             order_idx += 1;
         } else {
+            let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
+            decoded_bitstring_values.push(new_decoded);
+
+            table_kind = match new_decoded.0 {
+                SequenceDataTag::CookedMatchOffsetFse | SequenceDataTag::CookedMatchOffsetValue => table_cmot.table_kind as u64,
+                SequenceDataTag::MatchLengthFse | SequenceDataTag::MatchLengthValue => table_mlt.table_kind as u64,
+                SequenceDataTag::LiteralLengthFse | SequenceDataTag::LiteralLengthValue => table_llt.table_kind as u64,
+                _ => unreachable!(),
+            };
+            table_size = match new_decoded.0 {
+                SequenceDataTag::CookedMatchOffsetFse | SequenceDataTag::CookedMatchOffsetValue => table_cmot.table_size,
+                SequenceDataTag::MatchLengthFse | SequenceDataTag::MatchLengthValue => table_mlt.table_size,
+                SequenceDataTag::LiteralLengthFse | SequenceDataTag::LiteralLengthValue => table_llt.table_size,
+                _ => unreachable!(),
+            };
+
             // Value decoding step
             curr_baseline = decoding_baselines[order_idx];
             let new_value = (curr_baseline as u64) + bitstring_value;
@@ -1343,10 +1374,11 @@ fn process_sequences<F: Field>(
                 is_nil: false,
             },
             decoded_data: last_row.decoded_data.clone(),
-            fse_data: FseDecodingRow::default(), /* TODO: Clarify alternating FSE/data segments
-                                                  * TODO(ray): pls check where to get this field
-                                                  * from.
-                                                  * is_state_skipped: false, */
+            fse_data: FseDecodingRow { 
+                table_kind, 
+                table_size,
+                ..Default::default()
+            }
         });
 
         let multi_byte_boundaries: [usize; 2] = [15, 23];
@@ -1419,10 +1451,11 @@ fn process_sequences<F: Field>(
                         is_nil: true,
                     },
                     decoded_data: last_row.decoded_data.clone(),
-                    fse_data: FseDecodingRow::default(), /* TODO: Clarify alternating FSE/data segments
-                                                          * TODO(ray): pls check where to get this field
-                                                          * from.
-                                                          * is_state_skipped: false, */
+                    fse_data: FseDecodingRow { 
+                        table_kind, 
+                        table_size,
+                        ..Default::default()
+                    }
                 })
             }
         }
@@ -1813,7 +1846,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     // for (idx, row) in witness_rows.iter().enumerate() {
     //     write!(
     //         handle,
-    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
+    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
     //         idx,
     //         row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
     //         row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
@@ -1829,7 +1862,13 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     //         row.bitstream_read_data.bit_start_idx,
     //         row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
     //         row.bitstream_read_data.is_nil,
-    //         row.bitstream_read_data.is_zero_bit_read
+    //         row.bitstream_read_data.is_zero_bit_read,
+    //         row.bitstream_read_data.is_seq_init,
+    //         row.bitstream_read_data.seq_idx,
+    //         row.bitstream_read_data.states,
+    //         row.bitstream_read_data.symbols,
+    //         row.bitstream_read_data.values,
+    //         row.bitstream_read_data.baseline,
     //     ).unwrap();
 
     //     writeln!(handle).unwrap();
