@@ -20,6 +20,8 @@ use gadgets::{
     is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
     util::{not, select, Expr},
 };
+
+use crate::copy_circuit::util::number_or_hash_to_field;
 use halo2_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
@@ -701,14 +703,26 @@ impl<F: Field> CopyCircuitConfig<F> {
                 )?;
             }
 
-            let id = table_row[1].0;
-            if step_idx == 0 {
-                first_step_id = id;
-            }
+            let (id, id_next) = if is_read {
+                (&copy_event.src_id, &copy_event.dst_id)
+            } else {
+                (&copy_event.dst_id, &copy_event.src_id)
+            };
+
             // for first step, id_next is not correct, will adjust it at the end.
-            is_copy_id_equals_chip.assign(region, *offset, id, id_next)?;
-            if step_idx == 1 {
-                id_next = id;
+            is_copy_id_equals_chip.assign(
+                region,
+                *offset,
+                number_or_hash_to_field(id, challenges.evm_word()),
+                number_or_hash_to_field(id_next, challenges.evm_word()),
+            )?;
+
+            // TODO: rm debug info
+            if *offset == 577 || *offset == 578 || *offset == 576 {
+                println!(
+                    "is_copy_id_equals_chip offset {}, step_idx {}, id {:?}, id_next {:?}",
+                    *offset, step_idx, id, id_next
+                );
             }
 
             lt_word_end_chip.assign(
@@ -746,7 +760,8 @@ impl<F: Field> CopyCircuitConfig<F> {
                 *offset,
                 || Value::known(F::from(tag.eq(&CopyDataType::Memory))),
             )?;
-
+            // TODO: remove debug info
+            let is_memory = tag.eq(&CopyDataType::Memory);
             let is_memory_copy = copy_event.src_id == copy_event.dst_id
                 && copy_event.src_type.eq(&CopyDataType::Memory)
                 && copy_event.dst_type.eq(&CopyDataType::Memory);
@@ -757,6 +772,19 @@ impl<F: Field> CopyCircuitConfig<F> {
                 //TODO: change this value after copy table assignment done.
                 || Value::known(F::from(is_memory_copy)),
             )?;
+            if *offset == 577 || *offset == 578 || *offset == 576 {
+                println!(
+                    "offset {} is_memory_copy {}, is_memory {}, id_equals {}, 
+                src_id {:?}, dst_id {:?}",
+                    *offset,
+                    is_memory_copy,
+                    is_memory,
+                    copy_event.src_id == copy_event.dst_id,
+                    copy_event.src_id,
+                    copy_event.dst_id
+                );
+            }
+
             region.assign_advice(
                 || format!("is_tx_log at row: {}", *offset),
                 self.is_tx_log,
@@ -780,7 +808,9 @@ impl<F: Field> CopyCircuitConfig<F> {
         }
 
         // set first step id_next
-        is_copy_id_equals_chip.assign(region, original_offset, first_step_id, id_next)?;
+        //println!("end assign_copy_event offset:{}, original_offset {}", *offset,
+        // original_offset); is_copy_id_equals_chip.assign(region, original_offset,
+        // first_step_id, id_next)?;
 
         Ok(())
     }
@@ -854,7 +884,6 @@ impl<F: Field> CopyCircuitConfig<F> {
                     )?;
                     log::trace!("offset after {}th copy event: {}", ev_idx, offset);
                 }
-
                 for _ in 0..filler_rows {
                     self.assign_padding_row(
                         &mut region,
