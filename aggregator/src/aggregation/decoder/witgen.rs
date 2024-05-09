@@ -1279,8 +1279,6 @@ fn process_sequences<F: Field>(
             if is_init {
                 order_idx = [0, 2, 1][order_idx];
             }
-
-            order_idx += 1;
         } else {
             let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
             decoded_bitstring_values.push(new_decoded);
@@ -1302,8 +1300,6 @@ fn process_sequences<F: Field>(
             curr_baseline = decoding_baselines[order_idx];
             let new_value = (curr_baseline as u64) + bitstring_value;
             curr_instruction[order_idx] = new_value as usize;
-
-            order_idx += 1;
         }
 
         // bitstream witness row data
@@ -1460,6 +1456,7 @@ fn process_sequences<F: Field>(
             }
         }
 
+        order_idx += 1;
         if mode > 0 {
             if order_idx > 2 {
                 is_init = false;
@@ -1843,36 +1840,36 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     }
 
     // witgen_debug
-    // for (idx, row) in witness_rows.iter().enumerate() {
-    //     write!(
-    //         handle,
-    //         "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
-    //         idx,
-    //         row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
-    //         row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
-    //         row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
-    //         row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
-    //         row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
-    //         row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
-    //         row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
-    //         row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
-    //         row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
-    //         row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
-    //         row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
-    //         row.bitstream_read_data.bit_start_idx,
-    //         row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
-    //         row.bitstream_read_data.is_nil,
-    //         row.bitstream_read_data.is_zero_bit_read,
-    //         row.bitstream_read_data.is_seq_init,
-    //         row.bitstream_read_data.seq_idx,
-    //         row.bitstream_read_data.states,
-    //         row.bitstream_read_data.symbols,
-    //         row.bitstream_read_data.values,
-    //         row.bitstream_read_data.baseline,
-    //     ).unwrap();
+    for (idx, row) in witness_rows.iter().enumerate() {
+        write!(
+            handle,
+            "{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};{:?};",
+            idx,
+            row.state.tag, row.state.tag_next, row.state.block_idx, row.state.max_tag_len,
+            row.state.tag_len, row.state.tag_idx, row.state.tag_value, row.state.tag_value_acc,
+            row.state.is_tag_change, row.state.tag_rlc_acc,         row.encoded_data.byte_idx,
+            row.encoded_data.encoded_len, row.encoded_data.value_byte, row.encoded_data.reverse,
+            row.encoded_data.reverse_idx, row.encoded_data.reverse_len, row.encoded_data.aux_1,
+            row.encoded_data.aux_2, row.encoded_data.value_rlc,         row.decoded_data.decoded_len,
+            row.decoded_data.decoded_len_acc, row.decoded_data.total_decoded_len,
+            row.decoded_data.decoded_byte, row.decoded_data.decoded_value_rlc,    
+            row.fse_data.table_kind, row.fse_data.table_size, row.fse_data.symbol,
+            row.fse_data.num_emitted, row.fse_data.value_decoded, row.fse_data.probability_acc, 
+            row.fse_data.is_repeat_bits_loop, row.fse_data.is_trailing_bits,
+            row.bitstream_read_data.bit_start_idx,
+            row.bitstream_read_data.bit_end_idx, row.bitstream_read_data.bit_value,
+            row.bitstream_read_data.is_nil,
+            row.bitstream_read_data.is_zero_bit_read,
+            row.bitstream_read_data.is_seq_init,
+            row.bitstream_read_data.seq_idx,
+            row.bitstream_read_data.states,
+            row.bitstream_read_data.symbols,
+            row.bitstream_read_data.values,
+            row.bitstream_read_data.baseline,
+        ).unwrap();
 
-    //     writeln!(handle).unwrap();
-    // }
+        writeln!(handle).unwrap();
+    }
 
     (
         witness_rows,

@@ -2656,6 +2656,7 @@ impl DecoderConfig {
         //         // bitstring. We also skip the row where we don't read a bitstring
         //         // (is_nil=true).
         //         let condition = and::expr([
+        //             meta.query_fixed(q_enable, Rotation::cur()),
         //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
         //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
         //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
@@ -2692,6 +2693,7 @@ impl DecoderConfig {
         //     "DecoderConfig: tag ZstdBlockSequenceData (sequences)",
         //     |meta| {
         //         let condition = and::expr([
+        //             meta.query_fixed(q_enable, Rotation::cur()),
         //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
         //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
         //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
@@ -2949,96 +2951,95 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (last row)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::next()),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceData (last row)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(config.q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::next()),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // last operation is: code-to-value for LLT.
-        //         cb.require_zero(
-        //             "last operation (sequences data): is_init",
-        //             meta.query_advice(config.sequences_data_decoder.is_init_state, Rotation::cur()),
-        //         );
-        //         cb.require_zero(
-        //             "last operation (sequences data): is_update_state",
-        //             meta.query_advice(
-        //                 config.sequences_data_decoder.is_update_state,
-        //                 Rotation::cur(),
-        //             ),
-        //         );
-        //         cb.require_equal(
-        //             "last operation (sequences data): table_kind",
-        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
-        //             FseTableKind::LLT.expr(),
-        //         );
+                // last operation is: code-to-value for LLT.
+                cb.require_zero(
+                    "last operation (sequences data): is_init",
+                    meta.query_advice(config.sequences_data_decoder.is_init_state, Rotation::cur()),
+                );
+                cb.require_zero(
+                    "last operation (sequences data): is_update_state",
+                    meta.query_advice(
+                        config.sequences_data_decoder.is_update_state,
+                        Rotation::cur(),
+                    ),
+                );
+                cb.require_equal(
+                    "last operation (sequences data): table_kind",
+                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
+                    FseTableKind::LLT.expr(),
+                );
 
-        //         // idx == block.num_sequences.
-        //         cb.require_equal(
-        //             "last row: idx = num_sequences",
-        //             meta.query_advice(config.sequences_data_decoder.idx, Rotation::cur()),
-        //             meta.query_advice(config.block_config.num_sequences, Rotation::cur()),
-        //         );
+                // idx == block.num_sequences.
+                cb.require_equal(
+                    "last row: idx = num_sequences",
+                    meta.query_advice(config.sequences_data_decoder.idx, Rotation::cur()),
+                    meta.query_advice(config.block_config.num_sequences, Rotation::cur()),
+                );
 
-        //         // tag::next == is_last_block ? Null : BlockHeader.
-        //         cb.require_equal(
-        //             "last row: tag::next",
-        //             meta.query_advice(config.tag_config.tag_next, Rotation::cur()),
-        //             select::expr(
-        //                 meta.query_advice(config.block_config.is_last_block, Rotation::cur()),
-        //                 ZstdTag::Null.expr(),
-        //                 ZstdTag::BlockHeader.expr(),
-        //             ),
-        //         );
+                // tag::next == is_last_block ? Null : BlockHeader.
+                cb.require_equal(
+                    "last row: tag::next",
+                    meta.query_advice(config.tag_config.tag_next, Rotation::cur()),
+                    select::expr(
+                        meta.query_advice(config.block_config.is_last_block, Rotation::cur()),
+                        ZstdTag::Null.expr(),
+                        ZstdTag::BlockHeader.expr(),
+                    ),
+                );
 
-        //         // bitstream was consumed completely (byte-aligned):
-        //         // - if not_nil(cur) -> bit_index_end == 7
-        //         // - if nil(cur) and not_nil(prev) -> bit_index_end == 15
-        //         // - if nil(cur) and nil(prev) -> not_nil(-2) and bit_index_end == 23
-        //         let (is_nil_curr, is_nil_prev, is_nil_prev_prev) = (
-        //             config.bitstream_decoder.is_nil(meta, Rotation::cur()),
-        //             config.bitstream_decoder.is_nil(meta, Rotation::prev()),
-        //             config.bitstream_decoder.is_nil(meta, Rotation(-2)),
-        //         );
-        //         cb.condition(not::expr(is_nil_curr.expr()), |cb| {
-        //             cb.require_equal(
-        //                 "is_not_nil: bit_index_end==7",
-        //                 meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //                 7.expr(),
-        //             );
-        //         });
-        //         cb.condition(
-        //             and::expr([is_nil_curr.expr(), not::expr(is_nil_prev.expr())]),
-        //             |cb| {
-        //                 cb.require_equal(
-        //                     "is_nil and is_not_nil(prev): bit_index_end==15",
-        //                     meta.query_advice(
-        //                         config.bitstream_decoder.bit_index_end,
-        //                         Rotation::prev(),
-        //                     ),
-        //                     15.expr(),
-        //                 );
-        //             },
-        //         );
-        //         cb.condition(and::expr([is_nil_curr, is_nil_prev]), |cb| {
-        //             cb.require_zero("is_nil and is_nil(prev): is_not_nil(-2)", is_nil_prev_prev);
-        //             cb.require_equal(
-        //                 "is_nil and is_nil(prev): bit_index_end==23",
-        //                 meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation(-2)),
-        //                 23.expr(),
-        //             );
-        //         });
+                // bitstream was consumed completely (byte-aligned):
+                // - if not_nil(cur) -> bit_index_end == 7
+                // - if nil(cur) and not_nil(prev) -> bit_index_end == 15
+                // - if nil(cur) and nil(prev) -> not_nil(-2) and bit_index_end == 23
+                let (is_nil_curr, is_nil_prev, is_nil_prev_prev) = (
+                    config.bitstream_decoder.is_nil(meta, Rotation::cur()),
+                    config.bitstream_decoder.is_nil(meta, Rotation::prev()),
+                    config.bitstream_decoder.is_nil(meta, Rotation(-2)),
+                );
+                cb.condition(not::expr(is_nil_curr.expr()), |cb| {
+                    cb.require_equal(
+                        "is_not_nil: bit_index_end==7",
+                        meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+                        7.expr(),
+                    );
+                });
+                cb.condition(
+                    and::expr([is_nil_curr.expr(), not::expr(is_nil_prev.expr())]),
+                    |cb| {
+                        cb.require_equal(
+                            "is_nil and is_not_nil(prev): bit_index_end==15",
+                            meta.query_advice(
+                                config.bitstream_decoder.bit_index_end,
+                                Rotation::prev(),
+                            ),
+                            15.expr(),
+                        );
+                    },
+                );
+                cb.condition(and::expr([is_nil_curr, is_nil_prev]), |cb| {
+                    cb.require_zero("is_nil and is_nil(prev): is_not_nil(-2)", is_nil_prev_prev);
+                    cb.require_equal(
+                        "is_nil and is_nil(prev): bit_index_end==23",
+                        meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation(-2)),
+                        23.expr(),
+                    );
+                });
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
-        // witgen_debug
         meta.create_gate(
             "DecoderConfig: tag ZstdBlockSequenceData (is_nil)",
             |meta| {
