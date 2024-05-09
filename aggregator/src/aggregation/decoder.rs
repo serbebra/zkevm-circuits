@@ -3039,45 +3039,46 @@ impl DecoderConfig {
         // );
 
         // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (is_nil)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             config.bitstream_decoder.is_nil(meta, Rotation::cur()),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceData (is_nil)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(config.q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    config.bitstream_decoder.is_nil(meta, Rotation::cur()),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // If we encounter an is_nil=true scenario in the tag=SequencesData region, we make
-        //         // sure that certain columns remain unchanged, specifically: SequencesDataDecoder
-        //         // and FseDecoder.
-        //         for column in [
-        //             config.fse_decoder.table_kind,
-        //             config.fse_decoder.table_size,
-        //             config.sequences_data_decoder.idx,
-        //             config.sequences_data_decoder.is_init_state,
-        //             config.sequences_data_decoder.is_update_state,
-        //             config.sequences_data_decoder.states[0],
-        //             config.sequences_data_decoder.states[1],
-        //             config.sequences_data_decoder.states[2],
-        //             config.sequences_data_decoder.symbols[0],
-        //             config.sequences_data_decoder.symbols[1],
-        //             config.sequences_data_decoder.symbols[2],
-        //             config.sequences_data_decoder.values[0],
-        //             config.sequences_data_decoder.values[1],
-        //             config.sequences_data_decoder.values[2],
-        //         ] {
-        //             cb.require_equal(
-        //                 "sequencesData: is_nil=true columns unchanged",
-        //                 meta.query_advice(column, Rotation::cur()),
-        //                 meta.query_advice(column, Rotation::prev()),
-        //             );
-        //         }
+                // If we encounter an is_nil=true scenario in the tag=SequencesData region, we make
+                // sure that certain columns remain unchanged, specifically: SequencesDataDecoder
+                // and FseDecoder.
+                for column in [
+                    config.fse_decoder.table_kind,
+                    config.fse_decoder.table_size,
+                    config.sequences_data_decoder.idx,
+                    config.sequences_data_decoder.is_init_state,
+                    config.sequences_data_decoder.is_update_state,
+                    config.sequences_data_decoder.states[0],
+                    config.sequences_data_decoder.states[1],
+                    config.sequences_data_decoder.states[2],
+                    config.sequences_data_decoder.symbols[0],
+                    config.sequences_data_decoder.symbols[1],
+                    config.sequences_data_decoder.symbols[2],
+                    config.sequences_data_decoder.values[0],
+                    config.sequences_data_decoder.values[1],
+                    config.sequences_data_decoder.values[2],
+                ] {
+                    cb.require_equal(
+                        "sequencesData: is_nil=true columns unchanged",
+                        meta.query_advice(column, Rotation::cur()),
+                        meta.query_advice(column, Rotation::prev()),
+                    );
+                }
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         // witgen_debug
         // meta.lookup_any(
@@ -3378,12 +3379,11 @@ impl DecoderConfig {
                 meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
             );
 
-            // witgen_debug
-            // cb.require_equal(
-            //     "if is_nil: byte_idx' == byte_idx",
-            //     meta.query_advice(config.byte_idx, Rotation::next()),
-            //     meta.query_advice(config.byte_idx, Rotation::cur()),
-            // );
+            cb.require_equal(
+                "if is_nil: byte_idx' == byte_idx + 1",
+                meta.query_advice(config.byte_idx, Rotation::next()),
+                meta.query_advice(config.byte_idx, Rotation::cur()) + 1.expr(),
+            );
 
             cb.require_zero(
                 "if is_nil is True then is_nb0 is False",
