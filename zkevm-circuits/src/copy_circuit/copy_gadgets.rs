@@ -549,7 +549,7 @@ pub fn constrain_rw_counter<F: Field>(
 pub fn constrain_is_memory_copy<F: Field>(
     cb: &mut BaseConstraintBuilder<F>,
     meta: &mut VirtualCells<'_, F>,
-    is_last_col: Column<Advice>, // The last row.
+    is_last_col: Column<Advice>,
     is_id_unchange: &IsEqualConfig<F>,
     is_memory: Column<Advice>,
     is_memory_copy: Expression<F>,
@@ -560,7 +560,7 @@ pub fn constrain_is_memory_copy<F: Field>(
 
     cb.condition(not::expr(is_last.clone()), |cb| {
         cb.require_equal(
-            "is_memory_copy == is_memory_cur * is_memory_next * id_equals",
+            "is_memory_copy == is_memory_cur * is_memory_next * is_id_unchange",
             is_memory_copy.clone(),
             is_memory_cur * is_memory_next * is_id_unchange.expr(),
         );

@@ -2252,7 +2252,7 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok((read_steps, write_steps, prev_bytes))
     }
 
-    // generates copy steps for memory to memory case.
+    // generates copy steps for memory to memory case(mcopy).
     pub(crate) fn gen_copy_steps_for_memory_to_memory(
         &mut self,
         exec_step: &mut ExecStep,
@@ -2268,7 +2268,7 @@ impl<'a> CircuitInputStateRef<'a> {
         // current call's memory
         let memory = self.call_ctx()?.memory.clone();
         let call_ctx = self.call_ctx_mut()?;
-        let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes_mcopy(
+        let (src_range, dst_range, write_slot_bytes) = combine_copy_slot_bytes(
             src_addr.into().0,
             dst_addr.into().0,
             copy_length,
@@ -2296,12 +2296,10 @@ impl<'a> CircuitInputStateRef<'a> {
         let mut dst_chunk_index = dst_range.start_slot().0;
         let mut prev_bytes: Vec<u8> = vec![];
 
-        let mut rw_counter_start = self.block_ctx.rwc.0;
-
         // memory word reads from source and writes to destination word
         let call_id = self.call()?.call_id;
 
-        // change to first all reads done and then do writing.
+        // first all reads done and then do writing, this is different from other copy cases.
         for read_chunk in read_slot_bytes.chunks(32) {
             self.push_op(
                 exec_step,
@@ -2312,9 +2310,8 @@ impl<'a> CircuitInputStateRef<'a> {
                     Word::from_big_endian(read_chunk),
                 ),
             )?;
-            trace!("read chunk: {call_id} {src_chunk_index} rwc {rw_counter_start} {read_chunk:?}");
+
             src_chunk_index += 32;
-            rw_counter_start += 1;
         }
 
         for write_chunk in write_slot_bytes.chunks(32) {
@@ -2325,10 +2322,6 @@ impl<'a> CircuitInputStateRef<'a> {
                 &mut prev_bytes,
             )?;
 
-            trace!(
-                "write chunk: {call_id} {dst_chunk_index} rwc {rw_counter_start} {write_chunk:?}"
-            );
-            rw_counter_start += 1;
             dst_chunk_index += 32;
         }
 
@@ -2437,7 +2430,7 @@ fn combine_copy_slot_bytes(
     copy_length: usize,
     src_data: &[impl Into<u8> + Clone],
     dst_memory: &mut Memory,
-    is_memory_copy: bool, // indicates memroy --> memory copy type.
+    is_memory_copy: bool, // indicates memroy --> memory copy(mcopy) type.
 ) -> (MemoryWordRange, MemoryWordRange, Vec<u8>) {
     let mut src_range = MemoryWordRange::align_range(src_addr, copy_length);
     let mut dst_range = MemoryWordRange::align_range(dst_addr, copy_length);
@@ -2445,6 +2438,7 @@ fn combine_copy_slot_bytes(
 
     // Extend call memory.
     // if is_memory_copy=true, both dst_addr and src_addr are memory address
+    // expand from larger address.
     if is_memory_copy && dst_addr < src_addr {
         dst_memory.extend_for_range(src_addr.into(), copy_length.into());
     } else {
@@ -2477,78 +2471,6 @@ fn combine_copy_slot_bytes(
         .chain(dst_memory[dst_copy_end..dst_addr_end].iter().cloned())
         .chain(end_padding_bytes)
         .collect();
-
-    (src_range, dst_range, slot_bytes)
-}
-
-fn combine_copy_slot_bytes_mcopy(
-    src_addr: usize,
-    dst_addr: usize,
-    copy_length: usize,
-    src_data: &[impl Into<u8> + Clone],
-    dst_memory: &mut Memory,
-    is_memory_copy: bool, // indicates memroy --> memory copy type.
-) -> (MemoryWordRange, MemoryWordRange, Vec<u8>) {
-    let mut src_range = MemoryWordRange::align_range(src_addr, copy_length);
-    let mut dst_range = MemoryWordRange::align_range(dst_addr, copy_length);
-    src_range.ensure_equal_length(&mut dst_range);
-
-    // Extend call memory.
-    // check if dst_addr > src_addr for mcopy
-    if is_memory_copy && dst_addr < src_addr {
-        dst_memory.extend_for_range(src_addr.into(), copy_length.into());
-    } else {
-        dst_memory.extend_for_range(dst_addr.into(), copy_length.into());
-    }
-
-    let dst_begin_slot = dst_range.start_slot().0;
-    let dst_end_slot = dst_range.end_slot().0;
-
-    let src_data_length = src_data.len();
-    let src_addr = src_addr.min(src_data_length);
-    let src_copy_end = src_addr + copy_length;
-    let src_addr_end = src_copy_end.min(src_data_length);
-    let dst_copy_end = dst_addr + copy_length;
-    let dst_addr_end = dst_end_slot.min(dst_memory.len());
-
-    // Combine the destination slot bytes. [0..4128]
-    let bytes_to_copy: Vec<_> = src_data[src_addr..src_addr_end]
-        .iter()
-        .cloned()
-        .map(Into::into)
-        .collect();
-    // 0 bytes
-    let copy_padding_bytes = repeat(0).take(src_copy_end - src_addr_end);
-    // 0 bytes
-    let end_padding_bytes = repeat(0).take(dst_end_slot - dst_addr_end);
-    let slot_bytes: Vec<u8> = dst_memory[dst_begin_slot..dst_addr] // dst_memory[4128..4144]
-        .iter()
-        .cloned()
-        .chain(bytes_to_copy)
-        .chain(copy_padding_bytes)
-        // dst_memory[8272..8288] 16 bytes
-        .chain(dst_memory[dst_copy_end..dst_addr_end].iter().cloned())
-        .chain(end_padding_bytes)
-        .collect();
-    // 16 + 4128 + 16 = 4160 in total bytes
-    // [4144..8272] copy from src_data[0..4128]
-    // [8272..8288] remain from dst_mem
-
-    println!(
-        "src_range {:?} dst_range {:?}, slot_bytes len {}, src_addr_end {}
-    src_copy_end {} dst_addr_end {}, dst_end_slot {} dst_copy_end {}, 
-    dst_begin_slot {}, dst_addr {}",
-        src_range,
-        dst_range,
-        slot_bytes.len(),
-        src_addr_end,
-        src_copy_end,
-        dst_addr_end,
-        dst_end_slot,
-        dst_copy_end,
-        dst_begin_slot,
-        dst_addr
-    );
 
     (src_range, dst_range, slot_bytes)
 }
