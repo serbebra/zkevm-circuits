@@ -1266,13 +1266,6 @@ fn process_sequences<F: Field>(
             }
 
             order_idx += 1;
-
-            if order_idx > 2 {
-                is_init = false;
-                mode = 0; // switch to data mode
-                order_idx = 0;
-                seq_idx += 1;
-            }
         } else {
             // Value decoding step
             curr_baseline = decoding_baselines[order_idx];
@@ -1280,24 +1273,6 @@ fn process_sequences<F: Field>(
             curr_instruction[order_idx] = new_value as usize;
 
             order_idx += 1;
-
-            if order_idx > 2 {
-                mode = 1; // switch to FSE mode
-                order_idx = 0;
-
-                // Add the instruction
-                let new_instruction = (
-                    curr_instruction[0],
-                    curr_instruction[1],
-                    curr_instruction[2],
-                );
-
-                // witgen_debug
-                // write!(handle, "NewInstruction - idx: {:?}, Offset: {:?}, ML: {:?}, LLT: {:?}", raw_sequence_instructions.len(), new_instruction.0, new_instruction.1, new_instruction.2).unwrap();
-                // writeln!(handle);
-
-                raw_sequence_instructions.push(new_instruction);
-            }
         }
 
         // bitstream witness row data
@@ -1449,6 +1424,33 @@ fn process_sequences<F: Field>(
                                                           * from.
                                                           * is_state_skipped: false, */
                 })
+            }
+        }
+
+        if mode > 0 {
+            if order_idx > 2 {
+                is_init = false;
+                mode = 0; // switch to data mode
+                order_idx = 0;
+                seq_idx += 1;
+            }
+        } else {
+            if order_idx > 2 {
+                mode = 1; // switch to FSE mode
+                order_idx = 0;
+
+                // Add the instruction
+                let new_instruction = (
+                    curr_instruction[0],
+                    curr_instruction[1],
+                    curr_instruction[2],
+                );
+
+                // witgen_debug
+                // write!(handle, "NewInstruction - idx: {:?}, Offset: {:?}, ML: {:?}, LLT: {:?}", raw_sequence_instructions.len(), new_instruction.0, new_instruction.1, new_instruction.2).unwrap();
+                // writeln!(handle);
+
+                raw_sequence_instructions.push(new_instruction);
             }
         }
         
