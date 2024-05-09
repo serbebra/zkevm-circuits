@@ -3756,105 +3756,105 @@ impl DecoderConfig {
         });
 
         // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: Bitstream Decoder (bitstring start)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             not::expr(config.bitstream_decoder.is_nil(meta, Rotation::cur())),
-        //             not::expr(config.bitstream_decoder.is_nb0(meta, Rotation::cur())),
-        //             sum::expr([
-        //                 meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //                 meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             ]),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: Bitstream Decoder (bitstring start)",
+            |meta| {
+                let condition = and::expr([
+                    not::expr(config.bitstream_decoder.is_nil(meta, Rotation::cur())),
+                    not::expr(config.bitstream_decoder.is_nb0(meta, Rotation::cur())),
+                    sum::expr([
+                        meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                        meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    ]),
+                ]);
 
-        //         let (byte_idx0, byte_idx1, byte_idx2) = (
-        //             meta.query_advice(config.byte_idx, Rotation(0)),
-        //             meta.query_advice(config.byte_idx, Rotation(1)),
-        //             meta.query_advice(config.byte_idx, Rotation(2)),
-        //         );
-        //         let (byte0, byte1, byte2) = (
-        //             meta.query_advice(config.byte, Rotation(0)),
-        //             meta.query_advice(config.byte, Rotation(1)),
-        //             meta.query_advice(config.byte, Rotation(2)),
-        //         );
-        //         let (bit_index_start, _bit_index_end, bitstring_value) = (
-        //             meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-        //             meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //             meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
-        //         );
-        //         let is_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
+                let (byte_idx0, byte_idx1, byte_idx2) = (
+                    meta.query_advice(config.byte_idx, Rotation(0)),
+                    meta.query_advice(config.byte_idx, Rotation(1)),
+                    meta.query_advice(config.byte_idx, Rotation(2)),
+                );
+                let (byte0, byte1, byte2) = (
+                    meta.query_advice(config.byte, Rotation(0)),
+                    meta.query_advice(config.byte, Rotation(1)),
+                    meta.query_advice(config.byte, Rotation(2)),
+                );
+                let (bit_index_start, _bit_index_end, bitstring_value) = (
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                    meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+                    meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
+                );
+                let is_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
 
-        //         [
-        //             byte_idx0,
-        //             byte_idx1,
-        //             byte_idx2,
-        //             byte0,
-        //             byte1,
-        //             byte2,
-        //             bitstring_value,
-        //             1.expr(), // bitstring_len at start
-        //             bit_index_start,
-        //             1.expr(), // from_start
-        //             1.expr(), // until_end
-        //             is_reverse,
-        //             0.expr(), // is_padding
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.bitstring_table.table_exprs(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                [
+                    byte_idx0,
+                    byte_idx1,
+                    byte_idx2,
+                    byte0,
+                    byte1,
+                    byte2,
+                    bitstring_value,
+                    1.expr(), // bitstring_len at start
+                    bit_index_start,
+                    1.expr(), // from_start
+                    1.expr(), // until_end
+                    is_reverse,
+                    0.expr(), // is_padding
+                ]
+                .into_iter()
+                .zip_eq(config.bitstring_table.table_exprs(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
         // witgen_debug
-        // meta.lookup_any("DecoderConfig: Bitstream Decoder (bitstring end)", |meta| {
-        //     let condition = and::expr([
-        //         not::expr(config.bitstream_decoder.is_nil(meta, Rotation::cur())),
-        //         not::expr(config.bitstream_decoder.is_nb0(meta, Rotation::cur())),
-        //         sum::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //         ]),
-        //     ]);
+        meta.lookup_any("DecoderConfig: Bitstream Decoder (bitstring end)", |meta| {
+            let condition = and::expr([
+                not::expr(config.bitstream_decoder.is_nil(meta, Rotation::cur())),
+                not::expr(config.bitstream_decoder.is_nb0(meta, Rotation::cur())),
+                sum::expr([
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                ]),
+            ]);
 
-        //     let (byte_idx0, byte_idx1, byte_idx2) = (
-        //         meta.query_advice(config.byte_idx, Rotation(0)),
-        //         meta.query_advice(config.byte_idx, Rotation(1)),
-        //         meta.query_advice(config.byte_idx, Rotation(2)),
-        //     );
-        //     let (byte0, byte1, byte2) = (
-        //         meta.query_advice(config.byte, Rotation(0)),
-        //         meta.query_advice(config.byte, Rotation(1)),
-        //         meta.query_advice(config.byte, Rotation(2)),
-        //     );
-        //     let (bit_index_start, bit_index_end, bitstring_value) = (
-        //         meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-        //         meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-        //         meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
-        //     );
-        //     let is_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
+            let (byte_idx0, byte_idx1, byte_idx2) = (
+                meta.query_advice(config.byte_idx, Rotation(0)),
+                meta.query_advice(config.byte_idx, Rotation(1)),
+                meta.query_advice(config.byte_idx, Rotation(2)),
+            );
+            let (byte0, byte1, byte2) = (
+                meta.query_advice(config.byte, Rotation(0)),
+                meta.query_advice(config.byte, Rotation(1)),
+                meta.query_advice(config.byte, Rotation(2)),
+            );
+            let (bit_index_start, bit_index_end, bitstring_value) = (
+                meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+                meta.query_advice(config.bitstream_decoder.bitstring_value, Rotation::cur()),
+            );
+            let is_reverse = meta.query_advice(config.tag_config.is_reverse, Rotation::cur());
 
-        //     [
-        //         byte_idx0,
-        //         byte_idx1,
-        //         byte_idx2,
-        //         byte0,
-        //         byte1,
-        //         byte2,
-        //         bitstring_value,
-        //         bit_index_end.expr() - bit_index_start + 1.expr(), // bitstring_len at end
-        //         bit_index_end,
-        //         1.expr(), // from_start
-        //         1.expr(), // until_end
-        //         is_reverse,
-        //         0.expr(), // is_padding
-        //     ]
-        //     .into_iter()
-        //     .zip_eq(config.bitstring_table.table_exprs(meta))
-        //     .map(|(arg, table)| (condition.expr() * arg, table))
-        //     .collect()
-        // });
+            [
+                byte_idx0,
+                byte_idx1,
+                byte_idx2,
+                byte0,
+                byte1,
+                byte2,
+                bitstring_value,
+                bit_index_end.expr() - bit_index_start + 1.expr(), // bitstring_len at end
+                bit_index_end,
+                1.expr(), // from_start
+                1.expr(), // until_end
+                is_reverse,
+                0.expr(), // is_padding
+            ]
+            .into_iter()
+            .zip_eq(config.bitstring_table.table_exprs(meta))
+            .map(|(arg, table)| (condition.expr() * arg, table))
+            .collect()
+        });
 
         debug_assert!(meta.degree() <= 9);
 
