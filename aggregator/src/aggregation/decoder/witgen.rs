@@ -805,6 +805,7 @@ fn process_sequences<F: Field>(
         let multiplier =
             (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
         let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
+        let mut last_symbol: i32 = 0;
 
         let bitstream_rows = bit_boundaries
             .iter()
@@ -860,7 +861,7 @@ fn process_sequences<F: Field>(
                     if n_acc >= (table.table_size as usize) {
                         // Trailing bits
                         (
-                            0,
+                            last_symbol as u64,
                             n_emitted,
                             from_pos.0 as usize,
                             from_pos.1 as usize,
@@ -881,6 +882,7 @@ fn process_sequences<F: Field>(
                         assert!(next_symbol >= 0);
                         decoded = next_symbol as u64;
                         n_emitted += 1;
+                        last_symbol = next_symbol;
                         next_symbol += 1;
                         match *value {
                             0 => {
@@ -931,8 +933,10 @@ fn process_sequences<F: Field>(
                     }
                 } else {
                     // Repeating bits
+                    let symbol = last_symbol as u64 + value;
+                    last_symbol = symbol as i32;
                     (
-                        0,
+                        symbol,
                         n_emitted,
                         from_pos.0 as usize,
                         from_pos.1 as usize,

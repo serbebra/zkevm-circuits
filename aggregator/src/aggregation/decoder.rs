@@ -2179,6 +2179,7 @@ impl DecoderConfig {
         //     "DecoderConfig: tag ZstdBlockSequenceFseCode (other rows)",
         //     |meta| {
         //         let condition = and::expr([
+        //             meta.query_fixed(q_enable, Rotation::cur()),
         //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
         //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
         //         ]);
@@ -2380,59 +2381,59 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
-        // meta.create_gate(
-        //     "DecoderConfig: tag ZstdBlockSequenceFseCode (last row)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_change, Rotation::next()),
-        //         ]);
+        meta.create_gate(
+            "DecoderConfig: tag ZstdBlockSequenceFseCode (last row)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_change, Rotation::next()),
+                ]);
 
-        //         let mut cb = BaseConstraintBuilder::default();
+                let mut cb = BaseConstraintBuilder::default();
 
-        //         // cumulative prob of symbols == table_size
-        //         cb.require_equal(
-        //             "cumulative normalised probabilities over all symbols is the table size",
-        //             meta.query_advice(config.fse_decoder.probability_acc, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
-        //         );
+                // cumulative prob of symbols == table_size
+                cb.require_equal(
+                    "cumulative normalised probabilities over all symbols is the table size",
+                    meta.query_advice(config.fse_decoder.probability_acc, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
+                );
 
-        //         // bitstream can be byte-unaligned (trailing bits are ignored)
-        //         //
-        //         // One of the following scenarios is true for the last row of tag=FseCode:
-        //         // - the last row is the trailing bits (ignored).
-        //         // - the last row is a valid bitstring that is byte-aligned.
-        //         //      - aligned_one_byte(0)
-        //         //      - aligned_two_bytes(-1)
-        //         //      - aligned_three_bytes(-2)
-        //         let is_trailing_bits =
-        //             meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur());
-        //         cb.require_equal(
-        //             "last bitstring is either byte-aligned or the 0-7 trailing bits",
-        //             sum::expr([
-        //                 is_trailing_bits.expr(),
-        //                 and::expr([
-        //                     not::expr(is_trailing_bits),
-        //                     sum::expr([
-        //                         config
-        //                             .bitstream_decoder
-        //                             .aligned_one_byte(meta, Rotation::cur()),
-        //                         config
-        //                             .bitstream_decoder
-        //                             .aligned_two_bytes(meta, Rotation::prev()),
-        //                         config
-        //                             .bitstream_decoder
-        //                             .aligned_three_bytes(meta, Rotation(-2)),
-        //                     ]),
-        //                 ]),
-        //             ]),
-        //             1.expr(),
-        //         );
+                // bitstream can be byte-unaligned (trailing bits are ignored)
+                //
+                // One of the following scenarios is true for the last row of tag=FseCode:
+                // - the last row is the trailing bits (ignored).
+                // - the last row is a valid bitstring that is byte-aligned.
+                //      - aligned_one_byte(0)
+                //      - aligned_two_bytes(-1)
+                //      - aligned_three_bytes(-2)
+                let is_trailing_bits =
+                    meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur());
+                cb.require_equal(
+                    "last bitstring is either byte-aligned or the 0-7 trailing bits",
+                    sum::expr([
+                        is_trailing_bits.expr(),
+                        and::expr([
+                            not::expr(is_trailing_bits),
+                            sum::expr([
+                                config
+                                    .bitstream_decoder
+                                    .aligned_one_byte(meta, Rotation::cur()),
+                                config
+                                    .bitstream_decoder
+                                    .aligned_two_bytes(meta, Rotation::prev()),
+                                config
+                                    .bitstream_decoder
+                                    .aligned_three_bytes(meta, Rotation(-2)),
+                            ]),
+                        ]),
+                    ]),
+                    1.expr(),
+                );
 
-        //         cb.gate(condition)
-        //     },
-        // );
+                cb.gate(condition)
+            },
+        );
 
         // witgen_debug
         // meta.create_gate(
