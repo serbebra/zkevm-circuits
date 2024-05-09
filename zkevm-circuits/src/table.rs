@@ -1977,8 +1977,6 @@ impl CopyTable {
                 (rw_counter, rwc_inc_left)
             };
 
-            println!("idx: {} rw_counter_in_column {}, is_read {} is_last:{}, rwc_inc_left_in_column: {} ", step_idx, rw_counter_in_column, 
-                is_read_step, is_last, rwc_inc_left_in_column);
             assignments.push((
                 thread.tag,
                 [
