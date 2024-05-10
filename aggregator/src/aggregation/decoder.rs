@@ -2646,7 +2646,6 @@ impl DecoderConfig {
             },
         );
 
-        // witgen_debug
         meta.lookup_any(
             "DecoderConfig: tag ZstdBlockSequenceData (interleaved order)",
             |meta| {
