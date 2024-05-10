@@ -1239,6 +1239,10 @@ fn process_sequences<F: Field>(
                 order_idx = [0, 2, 1][order_idx];
             }
 
+            if order_idx < 1 {
+                seq_idx += 1;
+            }
+
             let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
             decoded_bitstring_values.push(new_decoded);
 
@@ -1465,7 +1469,6 @@ fn process_sequences<F: Field>(
                 is_init = false;
                 mode = 0; // switch to data mode
                 order_idx = 0;
-                seq_idx += 1;
             }
         } else {
             if order_idx > 2 {

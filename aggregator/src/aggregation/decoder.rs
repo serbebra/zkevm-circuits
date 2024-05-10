@@ -64,8 +64,6 @@ pub struct DecoderConfig {
     sequences_header_decoder: SequencesHeaderDecoder,
     /// Config for reading and decoding bitstreams.
     bitstream_decoder: BitstreamDecoder,
-
-    // witgen_debug
     /// Config established while recovering the FSE table.
     fse_decoder: FseDecoder,
     /// Config required while applying the FSE tables on the Sequences data.
@@ -89,7 +87,7 @@ pub struct DecoderConfig {
     // /// Helper table in the "output" region for accumulating the result of executing sequences.
     // /// TODO(enable): sequence_execution_table: SequenceExecutionTable,
 
-    // /// Fixed lookups table.
+    /// Fixed lookups table.
     fixed_table: FixedTable,
 }
 
@@ -187,11 +185,8 @@ struct BlockConfig {
     is_block: Column<Advice>,
     /// Number of sequences decoded from the sequences section header in the block.
     num_sequences: Column<Advice>,
-
-    // witgen_debug
     /// Helper gadget to know if the number of sequences is 0.
     is_empty_sequences: IsEqualConfig<Fr>,
-
     /// For sequence decoding, the tag=ZstdBlockSequenceHeader bytes tell us the Compression_Mode
     /// utilised for Literals Lengths, Match Offsets and Match Lengths. We expect only 2
     /// possibilities:
@@ -213,7 +208,6 @@ impl BlockConfig {
             is_last_block: meta.advice_column(),
             is_block: meta.advice_column(),
             num_sequences,
-            // witgen_debug
             is_empty_sequences: IsEqualChip::configure(
                 meta,
                 |meta| meta.query_fixed(q_enable, Rotation::cur()),
@@ -270,8 +264,6 @@ impl BlockConfig {
             ),
         )
     }
-
-    // witgen_debug
     fn is_empty_sequences(
         &self,
         meta: &mut VirtualCells<Fr>,
@@ -969,8 +961,6 @@ impl DecoderConfig {
             meta.advice_column(),
             meta.advice_column(),
         );
-
-        // witgen_debug
         // Helper tables
         let literals_header_table = LiteralsHeaderTable::configure(meta, q_enable, range8, range16);
         let bitstring_table = BitstringTable::configure(meta, q_enable, u8_table);
@@ -988,8 +978,6 @@ impl DecoderConfig {
         // Peripheral configs
         let tag_config = TagConfig::configure(meta, q_enable);
         let block_config = BlockConfig::configure(meta, q_enable);
-
-        // witgen_debug
         let sequences_header_decoder =
             SequencesHeaderDecoder::configure(meta, byte, q_enable, u8_table);
         let bitstream_decoder = BitstreamDecoder::configure(meta, q_enable, q_first, u8_table);
@@ -3377,8 +3365,6 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         meta.create_gate("DecoderConfig: Bitstream Decoder (is_nil)", |meta| {
             // Bitstream decoder when we skip reading a bitstring at a row.
-
-            // witgen_debug
             let condition = and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
                 config.bitstream_decoder.is_nil(meta, Rotation::cur()),
@@ -3423,8 +3409,6 @@ impl DecoderConfig {
 
         meta.create_gate("DecoderConfig: Bitstream Decoder (is_nb0)", |meta| {
             // Bitstream decoder when we read nb=0 bits from the bitstream.
-
-            // witgen_debug
             let condition = and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
                 config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
@@ -3904,14 +3888,11 @@ impl DecoderConfig {
         /////////////////////////////////////////
         //////// Load Auxiliary Tables  /////////
         /////////////////////////////////////////
-
-        // witgen_debug
         self.range8.load(layouter)?;
         self.range16.load(layouter)?;
         self.fixed_table.load(layouter)?;
         self.pow2_table.load(layouter)?;
 
-        // witgen_debug
         /////////////////////////////////////////////////////////
         //////// Assign FSE and Bitstream Accumulation  /////////
         /////////////////////////////////////////////////////////
@@ -3967,7 +3948,6 @@ impl DecoderConfig {
             ));
         }
 
-        // witgen_debug
         self.literals_header_table
             .assign(layouter, literal_headers)?;
 
@@ -4049,8 +4029,6 @@ impl DecoderConfig {
                     /////////////////////////////////////////
                     ///// Assign Bitstream Decoder  /////////
                     /////////////////////////////////////////
-
-                    // witgen_debug
                     region.assign_advice(
                         || "bit_index_start",
                         self.bitstream_decoder.bit_index_start,
@@ -4340,7 +4318,7 @@ impl DecoderConfig {
                         || "sequence_data_decoder.idx",
                         self.sequences_data_decoder.idx,
                         i,
-                        || Value::known(Fr::from((row.bitstream_read_data.seq_idx + 1) as u64)),
+                        || Value::known(Fr::from((row.bitstream_read_data.seq_idx) as u64)),
                     )?;
                     region.assign_advice(
                         || "sequence_data_decoder.is_init_state",
@@ -4405,8 +4383,6 @@ impl DecoderConfig {
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
                     ////////////////////////////////////////////////
-
-                    // witgen_debug
                     region.assign_advice(
                         || "fse_decoder.table_kind",
                         self.fse_decoder.table_kind,
