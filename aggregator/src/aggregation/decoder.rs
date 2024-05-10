@@ -3300,54 +3300,63 @@ impl DecoderConfig {
         ///////////////////////////////////////////////////////////////////////////////////////////
         //////////////////////////////////// ZstdTag::Null ////////////////////////////////////////
         ///////////////////////////////////////////////////////////////////////////////////////////
-        // witgen_debug
-        // meta.create_gate("DecoderConfig: tag=Null", |meta| {
-        //     let condition = meta.query_advice(config.tag_config.is_null, Rotation::cur());
+        meta.create_gate("DecoderConfig: tag=Null", |meta| {
+            let condition = and::expr([
+                meta.query_fixed(config.q_enable, Rotation::cur()),
+                meta.query_advice(config.tag_config.is_null, Rotation::cur()),
+                not::expr(meta.query_advice(config.tag_config.is_null, Rotation::prev())),
+            ]);
 
-        //     let mut cb = BaseConstraintBuilder::default();
+            let mut cb = BaseConstraintBuilder::default();
 
-        //     // tag=Null also is the start of padding.
-        //     cb.require_zero(
-        //         "is_null: is_padding_prev=false",
-        //         meta.query_advice(config.is_padding, Rotation::prev()),
-        //     );
-        //     cb.require_equal(
-        //         "is_null: is_padding=true",
-        //         meta.query_advice(config.is_padding, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // tag=Null also is the start of padding.
+            cb.require_zero(
+                "is_null: is_padding_prev=false",
+                meta.query_advice(config.is_padding, Rotation::prev()),
+            );
+            cb.require_equal(
+                "is_null: is_padding=true",
+                meta.query_advice(config.is_padding, Rotation::cur()),
+                1.expr(),
+            );
 
-        //     // tag::is_change=true which ensures the encoded_rlc is computed here. This also
-        //     // implies that the previous tag in fact ended correctly.
-        //     cb.require_equal(
-        //         "is_null: is_tag_change=true",
-        //         meta.query_advice(config.tag_config.is_change, Rotation::cur()),
-        //         1.expr(),
-        //     );
+            // tag::is_change=true which ensures the encoded_rlc is computed here. This also
+            // implies that the previous tag in fact ended correctly.
+            cb.require_equal(
+                "is_null: is_tag_change=true",
+                meta.query_advice(config.tag_config.is_change, Rotation::cur()),
+                1.expr(),
+            );
 
-        //     // is_null=true implies we have reached the end of the encoded data. This can happen in
-        //     // the following scenarios:
-        //     // - end of block (is_last=true) with tag=SequenceData
-        //     // - end of block (is_last=true) with tag=SequenceHeader and num_sequences=0
-        //     cb.require_equal(
-        //         "is_null: block::is_last=true on the previous row",
-        //         meta.query_advice(config.block_config.is_last_block, Rotation::prev()),
-        //         1.expr(),
-        //     );
-        //     cb.require_equal(
-        //         "is_null: tag::prev check",
-        //         meta.query_advice(config.tag_config.tag, Rotation::prev()),
-        //         select::expr(
-        //             config
-        //                 .block_config
-        //                 .is_empty_sequences(meta, Rotation::prev()),
-        //             ZstdTag::ZstdBlockSequenceHeader.expr(),
-        //             ZstdTag::ZstdBlockSequenceData.expr(),
-        //         ),
-        //     );
+            // is_null=true implies we have reached the end of the encoded data. This can happen in
+            // the following scenarios:
+            // - end of block (is_last=true) with tag=SequenceData
+            // - end of block (is_last=true) with tag=SequenceHeader and num_sequences=0
+            // - the last tag ended OK
+            cb.require_equal(
+                "is_null: block::is_last=true on the previous row",
+                meta.query_advice(config.block_config.is_last_block, Rotation::prev()),
+                1.expr(),
+            );
+            cb.require_equal(
+                "is_null: tag::prev check",
+                meta.query_advice(config.tag_config.tag, Rotation::prev()),
+                select::expr(
+                    config
+                        .block_config
+                        .is_empty_sequences(meta, Rotation::prev()),
+                    ZstdTag::ZstdBlockSequenceHeader.expr(),
+                    ZstdTag::ZstdBlockSequenceData.expr(),
+                ),
+            );
+            cb.require_equal(
+                "is_null: tag_idx::prev == tag_len::prev",
+                meta.query_advice(config.tag_config.tag_idx, Rotation::prev()),
+                meta.query_advice(config.tag_config.tag_len, Rotation::prev()),
+            );
 
-        //     cb.gate(condition)
-        // });
+            cb.gate(condition)
+        });
 
         debug_assert!(meta.degree() <= 9);
 
@@ -3754,7 +3763,6 @@ impl DecoderConfig {
             cb.gate(condition)
         });
 
-        // witgen_debug
         meta.lookup_any(
             "DecoderConfig: Bitstream Decoder (bitstring start)",
             |meta| {
@@ -3806,7 +3814,6 @@ impl DecoderConfig {
             },
         );
 
-        // witgen_debug
         meta.lookup_any("DecoderConfig: Bitstream Decoder (bitstring end)", |meta| {
             let condition = and::expr([
                 not::expr(config.bitstream_decoder.is_nil(meta, Rotation::cur())),
