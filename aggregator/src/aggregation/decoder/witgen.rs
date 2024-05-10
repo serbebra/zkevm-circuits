@@ -1242,7 +1242,7 @@ fn process_sequences<F: Field>(
             let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
             decoded_bitstring_values.push(new_decoded);
 
-            current_decoding_state = (mode * 3 + order_idx + 1) as u64;
+            current_decoding_state = (mode * 3 + order_idx) as u64;
 
             table_kind = match new_decoded.0 {
                 SequenceDataTag::CookedMatchOffsetFse | SequenceDataTag::CookedMatchOffsetValue => table_cmot.table_kind as u64,
@@ -1290,7 +1290,7 @@ fn process_sequences<F: Field>(
             let new_decoded = (data_tags[mode * 3 + order_idx], bitstring_value);
             decoded_bitstring_values.push(new_decoded);
 
-            current_decoding_state = (mode * 3 + order_idx + 1) as u64;
+            current_decoding_state = (mode * 3 + order_idx) as u64;
 
             table_kind = match new_decoded.0 {
                 SequenceDataTag::CookedMatchOffsetFse | SequenceDataTag::CookedMatchOffsetValue => table_cmot.table_kind as u64,
@@ -1373,7 +1373,7 @@ fn process_sequences<F: Field>(
                 ],
                 baseline: curr_baseline as u64,
                 is_nil: false,
-                is_update_state: current_decoding_state,
+                is_update_state: (current_decoding_state >= 3) as u64,
             },
             decoded_data: last_row.decoded_data.clone(),
             fse_data: FseDecodingRow { 
@@ -1447,7 +1447,7 @@ fn process_sequences<F: Field>(
                         ],
                         baseline: curr_baseline as u64,
                         is_nil: true,
-                        is_update_state: current_decoding_state,
+                        is_update_state: 0u64,
                     },
                     decoded_data: last_row.decoded_data.clone(),
                     fse_data: FseDecodingRow { 
