@@ -2647,46 +2647,46 @@ impl DecoderConfig {
         );
 
         // witgen_debug
-        meta.lookup_any(
-            "DecoderConfig: tag ZstdBlockSequenceData (interleaved order)",
-            |meta| {
-                // We want to check for the interleaved order within the SequencesData section
-                // whenever we are reading a bitstring. We skip the first row of the
-                // tag (is_change=true) since that is guaranteed to be the sentinel
-                // bitstring. We also skip the row where we don't read a bitstring
-                // (is_nil=true).
-                let condition = and::expr([
-                    meta.query_fixed(q_enable, Rotation::cur()),
-                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-                ]);
+        // meta.lookup_any(
+        //     "DecoderConfig: tag ZstdBlockSequenceData (interleaved order)",
+        //     |meta| {
+        //         // We want to check for the interleaved order within the SequencesData section
+        //         // whenever we are reading a bitstring. We skip the first row of the
+        //         // tag (is_change=true) since that is guaranteed to be the sentinel
+        //         // bitstring. We also skip the row where we don't read a bitstring
+        //         // (is_nil=true).
+        //         let condition = and::expr([
+        //             meta.query_fixed(q_enable, Rotation::cur()),
+        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+        //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+        //         ]);
 
-                let (table_kind_prev, table_kind_curr, is_init_state, is_update_state) = (
-                    meta.query_advice(config.fse_decoder.table_kind, Rotation::prev()),
-                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
-                    meta.query_advice(config.sequences_data_decoder.is_init_state, Rotation::cur()),
-                    meta.query_advice(
-                        config.sequences_data_decoder.is_update_state,
-                        Rotation::cur(),
-                    ),
-                );
+        //         let (table_kind_prev, table_kind_curr, is_init_state, is_update_state) = (
+        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::prev()),
+        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
+        //             meta.query_advice(config.sequences_data_decoder.is_init_state, Rotation::cur()),
+        //             meta.query_advice(
+        //                 config.sequences_data_decoder.is_update_state,
+        //                 Rotation::cur(),
+        //             ),
+        //         );
 
-                [
-                    FixedLookupTag::SeqDataInterleavedOrder.expr(),
-                    table_kind_prev,
-                    table_kind_curr,
-                    is_init_state,
-                    is_update_state,
-                    0.expr(), // unused
-                    0.expr(), // unused
-                ]
-                .into_iter()
-                .zip_eq(config.fixed_table.table_exprs(meta))
-                .map(|(arg, table)| (condition.expr() * arg, table))
-                .collect()
-            },
-        );
+        //         [
+        //             FixedLookupTag::SeqDataInterleavedOrder.expr(),
+        //             table_kind_prev,
+        //             table_kind_curr,
+        //             is_init_state,
+        //             is_update_state,
+        //             0.expr(), // unused
+        //             0.expr(), // unused
+        //         ]
+        //         .into_iter()
+        //         .zip_eq(config.fixed_table.table_exprs(meta))
+        //         .map(|(arg, table)| (condition.expr() * arg, table))
+        //         .collect()
+        //     },
+        // );
 
         // witgen_debug
         // meta.create_gate(
@@ -3098,6 +3098,7 @@ impl DecoderConfig {
         //         //
         //         // which is used in the next lookup to the SequenceInstructionTable.
         //         let condition = and::expr([
+        //             meta.query_fixed(q_enable, Rotation::cur()),
         //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
         //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
         //             config
@@ -4334,7 +4335,6 @@ impl DecoderConfig {
 
                     let seq_states = row.bitstream_read_data.states;
                     let seq_symbols = row.bitstream_read_data.symbols;
-                    let is_update_state = (seq_states[0] || seq_states[1] || seq_states[2]) && !row.bitstream_read_data.is_seq_init;
                     let tables = ["LLT", "MLT", "MOT"];
 
                     for idx in 0..3 {
@@ -4342,26 +4342,26 @@ impl DecoderConfig {
                             || format!("sequence_data_decoder.states: {:?}", tables[idx]),
                             self.sequences_data_decoder.states[idx],
                             i,
-                            || Value::known(Fr::from(seq_states[idx] as u64)),
+                            || Value::known(Fr::from(seq_states[idx])),
                         )?;
                         region.assign_advice(
                             || format!("sequence_data_decoder.symbols: {:?}", tables[idx]),
                             self.sequences_data_decoder.symbols[idx],
                             i,
-                            || Value::known(Fr::from(seq_symbols[idx] as u64)),
+                            || Value::known(Fr::from(seq_symbols[idx])),
                         )?;
                         region.assign_advice(
                             || format!("sequence_data_decoder.values: {:?}", tables[idx]),
                             self.sequences_data_decoder.values[idx],
                             i,
-                            || Value::known(Fr::from(row.bitstream_read_data.values[idx] as u64)),
+                            || Value::known(Fr::from(row.bitstream_read_data.values[idx])),
                         )?;
                     }
                     region.assign_advice(
                         || "sequence_data_decoder.is_update_state",
                         self.sequences_data_decoder.is_update_state,
                         i,
-                        || Value::known(Fr::from(is_update_state as u64)),
+                        || Value::known(Fr::from(row.bitstream_read_data.is_update_state)),
                     )?;
                     region.assign_advice(
                         || "sequence_data_decoder.baseline",
