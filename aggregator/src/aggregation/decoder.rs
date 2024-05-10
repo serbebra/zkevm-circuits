@@ -518,10 +518,12 @@ impl BitstreamDecoder {
             is_nb0: meta.advice_column(),
             start_unchanged: IsEqualChip::configure(
                 meta,
-                |meta| and::expr([
-                    meta.query_fixed(q_enable, Rotation::cur()),
-                    not::expr(meta.query_fixed(q_first, Rotation::cur())),
-                ]),
+                |meta| {
+                    and::expr([
+                        meta.query_fixed(q_enable, Rotation::cur()),
+                        not::expr(meta.query_fixed(q_first, Rotation::cur())),
+                    ])
+                },
                 |meta| meta.query_advice(bit_index_start, Rotation::prev()),
                 |meta| meta.query_advice(bit_index_start, Rotation::cur()),
             ),
@@ -1038,7 +1040,6 @@ impl DecoderConfig {
 
             // TODO(enable): sequence_instruction_table,
             // TODO(enable): sequence_execution_table,
-
             fixed_table,
         };
 
@@ -2179,7 +2180,9 @@ impl DecoderConfig {
                     meta.query_fixed(q_enable, Rotation::cur()),
                     meta.query_advice(config.tag_config.is_fse_code, Rotation::cur()),
                     not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-                    not::expr(meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur())),
+                    not::expr(
+                        meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
+                    ),
                 ]);
 
                 let mut cb = BaseConstraintBuilder::default();
@@ -2507,7 +2510,9 @@ impl DecoderConfig {
                     not::expr(
                         meta.query_advice(config.fse_decoder.is_repeat_bits_loop, Rotation::cur()),
                     ),
-                    not::expr(meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur())),
+                    not::expr(
+                        meta.query_advice(config.fse_decoder.is_trailing_bits, Rotation::cur()),
+                    ),
                 ]);
 
                 let (table_size, probability_acc, value_read, value_decoded, num_bits) = (
@@ -2883,8 +2888,9 @@ impl DecoderConfig {
         //                 );
         //                 cb.require_equal(
         //                     "seq_idx increments",
-        //                     meta.query_advice(config.sequences_data_decoder.idx, Rotation::cur()),
-        //                     meta.query_advice(config.sequences_data_decoder.idx, Rotation::prev())
+        //                     meta.query_advice(config.sequences_data_decoder.idx,
+        // Rotation::cur()),                     
+        // meta.query_advice(config.sequences_data_decoder.idx, Rotation::prev())
         //                         + 1.expr(),
         //                 );
         //             },
@@ -3239,62 +3245,67 @@ impl DecoderConfig {
         //     },
         // );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (FseTable)",
-        //     |meta| {
-        //         let condition = and::expr([
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
-        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //             config
-        //                 .sequences_data_decoder
-        //                 .is_update_state(meta, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceData (FseTable)",
+            |meta| {
+                let condition = and::expr([
+                    meta.query_fixed(config.q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                    not::expr(
+                        config
+                            .sequences_data_decoder
+                            .is_init_state(meta, Rotation::cur()),
+                    ),
+                    config
+                        .sequences_data_decoder
+                        .is_update_state(meta, Rotation::cur()),
+                ]);
 
-        //         let state = config.sequences_data_decoder.state_at_prev(
-        //             meta,
-        //             &config.fse_decoder,
-        //             Rotation::cur(),
-        //         );
-        //         let symbol = config.sequences_data_decoder.symbol_at_prev(
-        //             meta,
-        //             &config.fse_decoder,
-        //             Rotation::cur(),
-        //         );
-        //         let (block_idx, table_kind, table_size, baseline, nb) = (
-        //             meta.query_advice(config.block_config.block_idx, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
-        //             meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
-        //             meta.query_advice(config.sequences_data_decoder.baseline, Rotation::cur()),
-        //             config
-        //                 .bitstream_decoder
-        //                 .bitstring_len(meta, Rotation::cur()),
-        //         );
-        //         let is_predefined_mode =
-        //             config
-        //                 .block_config
-        //                 .is_predefined(meta, &config.fse_decoder, Rotation::cur());
+                let state = config.sequences_data_decoder.state_at_prev(
+                    meta,
+                    &config.fse_decoder,
+                    Rotation::cur(),
+                );
+                let symbol = config.sequences_data_decoder.symbol_at_prev(
+                    meta,
+                    &config.fse_decoder,
+                    Rotation::cur(),
+                );
+                let (block_idx, table_kind, table_size, baseline, nb) = (
+                    meta.query_advice(config.block_config.block_idx, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
+                    meta.query_advice(config.fse_decoder.table_size, Rotation::cur()),
+                    meta.query_advice(config.sequences_data_decoder.baseline, Rotation::cur()),
+                    config
+                        .bitstream_decoder
+                        .bitstring_len(meta, Rotation::cur()),
+                );
+                let is_predefined_mode =
+                    config
+                        .block_config
+                        .is_predefined(meta, &config.fse_decoder, Rotation::cur());
 
-        //         [
-        //             0.expr(), // q_first
-        //             block_idx,
-        //             table_kind,
-        //             table_size,
-        //             is_predefined_mode, // is_predefined
-        //             state,
-        //             symbol,
-        //             baseline,
-        //             nb,
-        //             0.expr(), // is_skipped_state
-        //             0.expr(), // is_padding
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.fse_table.table_exprs_by_state(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                [
+                    0.expr(), // q_first
+                    block_idx,
+                    table_kind,
+                    table_size,
+                    is_predefined_mode, // is_predefined
+                    state,
+                    symbol,
+                    baseline,
+                    nb,
+                    0.expr(), // is_skipped_state
+                    0.expr(), // is_padding
+                ]
+                .into_iter()
+                .zip_eq(config.fse_table.table_exprs_by_state(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
         debug_assert!(meta.degree() <= 9);
 
@@ -3370,7 +3381,7 @@ impl DecoderConfig {
             // witgen_debug
             let condition = and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
-                config.bitstream_decoder.is_nil(meta, Rotation::cur()),  
+                config.bitstream_decoder.is_nil(meta, Rotation::cur()),
             ]);
 
             let mut cb = BaseConstraintBuilder::default();
@@ -3417,7 +3428,8 @@ impl DecoderConfig {
             let condition = and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
                 config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
-                not::expr(is_next_null(meta)), // Exclude last block's bitstream tail row. Transition to Null.
+                not::expr(is_next_null(meta)), /* Exclude last block's bitstream tail row.
+                                                * Transition to Null. */
             ]);
 
             let mut cb = BaseConstraintBuilder::default();
@@ -3728,7 +3740,7 @@ impl DecoderConfig {
                     meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
                 ]),
             ]);
-            
+
             let mut cb = BaseConstraintBuilder::default();
 
             // If the following conditions are met:
@@ -3970,7 +3982,12 @@ impl DecoderConfig {
                 /////////////////////////////////////////
                 region.assign_fixed(|| "q_first", self.q_first, 0, || Value::known(Fr::one()))?;
                 for i in 0..((1 << k) - self.unusable_rows()) {
-                    region.assign_fixed(|| "q_enable", self.q_enable, i, || Value::known(Fr::one()))?;
+                    region.assign_fixed(
+                        || "q_enable",
+                        self.q_enable,
+                        i,
+                        || Value::known(Fr::one()),
+                    )?;
                 }
                 let mut last_byte_idx = 0u64;
                 let mut last_bit_start_idx = 0u64;
@@ -4110,7 +4127,6 @@ impl DecoderConfig {
                         Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
                         Value::known(Fr::from(3u64)),
                     )?;
-                    
 
                     /////////////////////////////////////////
                     ////////// Assign Tag Config  ///////////
@@ -4308,7 +4324,7 @@ impl DecoderConfig {
                             )?;
                         }
                         let is_empty_sequences =
-                        IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
+                            IsEqualChip::construct(self.block_config.is_empty_sequences.clone());
                         is_empty_sequences.assign(
                             &mut region,
                             i,
@@ -4389,7 +4405,7 @@ impl DecoderConfig {
                     ////////////////////////////////////////////////
                     ///////// Assign FSE Decoding Fields  //////////
                     ////////////////////////////////////////////////
-                    
+
                     // witgen_debug
                     region.assign_advice(
                         || "fse_decoder.table_kind",
@@ -4477,49 +4493,24 @@ impl DecoderConfig {
                     )?;
                     let byte0_lt_0x80 =
                         LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
-                    byte0_lt_0x80.assign(
-                        &mut region,
-                        idx,
-                        Fr::zero(),
-                        Fr::from(0x80),
-                    )?;
+                    byte0_lt_0x80.assign(&mut region, idx, Fr::zero(), Fr::from(0x80))?;
                     let byte0_lt_0xff =
                         LtChip::construct(self.sequences_header_decoder.byte0_lt_0xff);
-                    byte0_lt_0xff.assign(
-                        &mut region,
-                        idx,
-                        Fr::zero(),
-                        Fr::from(0xff),
-                    )?;
+                    byte0_lt_0xff.assign(&mut region, idx, Fr::zero(), Fr::from(0xff))?;
 
                     // Bitstream decoder gadgets
                     let bit_index_end_cmp_7 = ComparatorChip::construct(
                         self.bitstream_decoder.bit_index_end_cmp_7.clone(),
                     );
-                    bit_index_end_cmp_7.assign(
-                        &mut region,
-                        idx,
-                        Fr::zero(),
-                        Fr::from(7u64),
-                    )?;
+                    bit_index_end_cmp_7.assign(&mut region, idx, Fr::zero(), Fr::from(7u64))?;
                     let bit_index_end_cmp_15 = ComparatorChip::construct(
                         self.bitstream_decoder.bit_index_end_cmp_15.clone(),
                     );
-                    bit_index_end_cmp_15.assign(
-                        &mut region,
-                        idx,
-                        Fr::zero(),
-                        Fr::from(15u64),
-                    )?;
+                    bit_index_end_cmp_15.assign(&mut region, idx, Fr::zero(), Fr::from(15u64))?;
                     let bit_index_end_cmp_23 = ComparatorChip::construct(
                         self.bitstream_decoder.bit_index_end_cmp_23.clone(),
                     );
-                    bit_index_end_cmp_23.assign(
-                        &mut region,
-                        idx,
-                        Fr::zero(),
-                        Fr::from(23u64),
-                    )?;
+                    bit_index_end_cmp_23.assign(&mut region, idx, Fr::zero(), Fr::from(23u64))?;
                     let bitstring_value_eq_3 =
                         IsEqualChip::construct(self.bitstream_decoder.bitstring_value_eq_3.clone());
                     bitstring_value_eq_3.assign(
@@ -4572,7 +4563,7 @@ impl DecoderConfig {
         Ok(())
     }
 
-    pub fn unusable_rows (&self) -> usize {
+    pub fn unusable_rows(&self) -> usize {
         30
     }
 }
@@ -4607,7 +4598,13 @@ mod tests {
     }
 
     impl Circuit<Fr> for DecoderConfigTester {
-        type Config = (DecoderConfig, U8Table, BitwiseOpTable, PowOfRandTable, Challenges);
+        type Config = (
+            DecoderConfig,
+            U8Table,
+            BitwiseOpTable,
+            PowOfRandTable,
+            Challenges,
+        );
         type FloorPlanner = SimpleFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
@@ -4638,7 +4635,13 @@ mod tests {
                 },
             );
 
-            (config, u8_table, bitwise_op_table, pow_rand_table, challenges)
+            (
+                config,
+                u8_table,
+                bitwise_op_table,
+                pow_rand_table,
+                challenges,
+            )
         }
 
         #[allow(clippy::type_complexity)]
@@ -4719,10 +4722,7 @@ mod tests {
         };
 
         let k = 18;
-        let decoder_config_tester = DecoderConfigTester { 
-            compressed, 
-            k,
-        };
+        let decoder_config_tester = DecoderConfigTester { compressed, k };
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
     }
