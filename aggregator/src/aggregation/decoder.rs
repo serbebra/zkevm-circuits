@@ -734,17 +734,17 @@ impl FseDecoder {
             * invert_of_2
     }
 
-    fn is_mlt(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+    fn is_mot(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
         let table_kind = meta.query_advice(self.table_kind, rotation);
         (table_kind.expr() - FseTableKind::LLT.expr())
-            * (FseTableKind::MOT.expr() - table_kind.expr())
+            * (FseTableKind::MLT.expr() - table_kind.expr())
     }
 
-    fn is_mot(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
+    fn is_mlt(&self, meta: &mut VirtualCells<Fr>, rotation: Rotation) -> Expression<Fr> {
         let table_kind = meta.query_advice(self.table_kind, rotation);
         let invert_of_2 = Fr::from(2).invert().expect("infallible");
         (table_kind.expr() - FseTableKind::LLT.expr())
-            * (table_kind.expr() - FseTableKind::MLT.expr())
+            * (table_kind.expr() - FseTableKind::MOT.expr())
             * invert_of_2
     }
 
@@ -3080,59 +3080,60 @@ impl DecoderConfig {
             },
         );
 
-        // witgen_debug
-        // meta.lookup_any(
-        //     "DecoderConfig: tag ZstdBlockSequenceData (ROM sequence codes)",
-        //     |meta| {
-        //         // When we read a bitstring in tag=ZstdBlockSequenceData that is:
-        //         // - not init state
-        //         // - not update state
-        //         //
-        //         // We know that we are trying to get the "value" from the "code" for literal length
-        //         // or match offset or match length. Hence we do a lookup to the ROM table (Sequence
-        //         // Codes).
-        //         //
-        //         // The "value" is calculated as:
-        //         // - value == baseline + bitstring_value(nb)
-        //         //
-        //         // which is used in the next lookup to the SequenceInstructionTable.
-        //         let condition = and::expr([
-        //             meta.query_fixed(q_enable, Rotation::cur()),
-        //             meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
-        //             config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
-        //             config
-        //                 .sequences_data_decoder
-        //                 .is_code_to_value(meta, Rotation::cur()),
-        //         ]);
+        meta.lookup_any(
+            "DecoderConfig: tag ZstdBlockSequenceData (ROM sequence codes)",
+            |meta| {
+                // When we read a bitstring in tag=ZstdBlockSequenceData that is:
+                // - not the first row (sentinel row)
+                // - not init state
+                // - not update state
+                //
+                // We know that we are trying to get the "value" from the "code" for literal length
+                // or match offset or match length. Hence we do a lookup to the ROM table (Sequence
+                // Codes).
+                //
+                // The "value" is calculated as:
+                // - value == baseline + bitstring_value(nb)
+                //
+                // which is used in the next lookup to the SequenceInstructionTable.
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    meta.query_advice(config.tag_config.is_sequence_data, Rotation::cur()),
+                    not::expr(meta.query_advice(config.tag_config.is_change, Rotation::cur())),
+                    config.bitstream_decoder.is_not_nil(meta, Rotation::cur()),
+                    config
+                        .sequences_data_decoder
+                        .is_code_to_value(meta, Rotation::cur()),
+                ]);
 
-        //         let (table_kind, code, baseline, nb) = (
-        //             meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
-        //             config.sequences_data_decoder.symbol(
-        //                 meta,
-        //                 &config.fse_decoder,
-        //                 Rotation::cur(),
-        //             ),
-        //             meta.query_advice(config.sequences_data_decoder.baseline, Rotation::cur()),
-        //             config
-        //                 .bitstream_decoder
-        //                 .bitstring_len(meta, Rotation::cur()),
-        //         );
+                let (table_kind, code, baseline, nb) = (
+                    meta.query_advice(config.fse_decoder.table_kind, Rotation::cur()),
+                    config.sequences_data_decoder.symbol(
+                        meta,
+                        &config.fse_decoder,
+                        Rotation::cur(),
+                    ),
+                    meta.query_advice(config.sequences_data_decoder.baseline, Rotation::cur()),
+                    config
+                        .bitstream_decoder
+                        .bitstring_len(meta, Rotation::cur()),
+                );
 
-        //         [
-        //             FixedLookupTag::SeqCodeToValue.expr(),
-        //             table_kind,
-        //             code,
-        //             baseline,
-        //             nb,
-        //             0.expr(), // unused
-        //             0.expr(), // unused
-        //         ]
-        //         .into_iter()
-        //         .zip_eq(config.fixed_table.table_exprs(meta))
-        //         .map(|(arg, table)| (condition.expr() * arg, table))
-        //         .collect()
-        //     },
-        // );
+                [
+                    FixedLookupTag::SeqCodeToValue.expr(),
+                    table_kind,
+                    code,
+                    baseline,
+                    nb,
+                    0.expr(), // unused
+                    0.expr(), // unused
+                ]
+                .into_iter()
+                .zip_eq(config.fixed_table.table_exprs(meta))
+                .map(|(arg, table)| (condition.expr() * arg, table))
+                .collect()
+            },
+        );
 
         meta.lookup_any(
             "DecoderConfig: tag ZstdBlockSequenceData (init state pow2 table)",
