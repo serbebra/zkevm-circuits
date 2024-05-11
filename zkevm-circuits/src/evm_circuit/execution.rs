@@ -1187,7 +1187,7 @@ impl<F: Field> ExecutionConfig<F> {
             let num_threads = std::thread::available_parallelism()
                 .map(|e| e.get())
                 .unwrap_or(1);
-            //let num_threads = 1;
+            let num_threads = 1;
             let chunk_size = ((task_len + num_threads - 1) / num_threads).max(min_chunk_size);
             let chunk_num = (task_len + chunk_size - 1) / chunk_size;
             log::debug!(

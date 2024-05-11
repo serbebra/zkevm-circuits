@@ -289,14 +289,6 @@ impl MptUpdates {
             updates,
             ..Default::default()
         };
-        // FIXME: we can remove this assert after the code runs a while and everything is ok?
-        #[cfg(debug_assertions)]
-        {
-            let mut rows = rows.to_vec();
-            rows.sort_by_key(Rw::as_key);
-            let old_updates = Self::from_rws_with_mock_state_roots(&rows, old_root, new_root);
-            assert_eq!(old_updates.updates, mpt_updates.updates);
-        }
         mpt_updates
     }
 
