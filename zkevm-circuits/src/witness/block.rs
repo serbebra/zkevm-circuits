@@ -1,5 +1,9 @@
 use ethers_core::types::Signature;
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Mutex,
+    time::Duration,
+};
 
 #[cfg(any(feature = "test", test))]
 use crate::evm_circuit::{detect_fixed_table_tags, EvmCircuit};
@@ -460,13 +464,19 @@ impl From<&circuit_input_builder::Block> for BlockContexts {
     }
 }
 
+pub static CHECK_VALUE_COST: Mutex<Vec<Duration>> = Mutex::new(Vec::new());
+
 /// Convert a block struct in bus-mapping to a witness block used in circuits
 pub fn block_convert<F: Field>(
     block: &circuit_input_builder::Block,
     code_db: &bus_mapping::state_db::CodeDB,
 ) -> Result<Block<F>, Error> {
     let rws = RwMap::from(&block.container);
-    rws.check_value()?;
+    let start = std::time::Instant::now();
+    let ret = rws.check_value();
+    let elapsed = start.elapsed();
+    CHECK_VALUE_COST.lock().unwrap().push(elapsed);
+    ret?;
     let num_txs = block.txs().len();
     let last_block_num = block
         .headers
