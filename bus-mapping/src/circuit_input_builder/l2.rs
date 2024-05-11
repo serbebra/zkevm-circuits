@@ -101,8 +101,10 @@ fn trace_code(
         None => {
             let hash = CodeDB::hash(&code);
             log::debug!(
-                "hash_code done: addr {addr:?}, size {}, hash {hash:?}",
-                &code.len()
+                "hash_code done: addr {addr:?}, size {}, hash {hash:?}, code {}, op {:?}",
+                &code.len(),
+                hex::encode(&code[..std::cmp::min(20, code.len())]),
+                step.op,
             );
             hash
         }
@@ -225,7 +227,7 @@ fn update_codedb(cdb: &mut CodeDB, sdb: &StateDB, block: &BlockTrace) -> Result<
                         // bustmapping do this job
                         unreachable!()
                     }
-                    OpcodeId::EXTCODESIZE | OpcodeId::EXTCODECOPY => {
+                    OpcodeId::EXTCODECOPY => {
                         let code = data.get_code_at(0);
                         if code.is_none() {
                             log::warn!("unable to fetch code from step. {step:?}");
