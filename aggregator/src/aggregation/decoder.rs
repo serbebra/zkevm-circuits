@@ -3445,8 +3445,8 @@ impl DecoderConfig {
             let condition = and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
                 config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
-                not::expr(is_next_null(meta)), /* Exclude last block's bitstream tail row.
-                                                * Transition to Null. */
+                // Exclude the last block's bitstream tail row. Transition to Null.
+                not::expr(meta.query_advice(config.tag_config.is_null, Rotation::next())),
             ]);
 
             let mut cb = BaseConstraintBuilder::default();
