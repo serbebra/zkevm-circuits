@@ -1053,17 +1053,6 @@ impl DecoderConfig {
             };
         }
 
-        macro_rules! is_next_tag {
-            ($var:ident, $tag_variant:ident) => {
-                let $var = |meta: &mut VirtualCells<Fr>| {
-                    config
-                        .tag_config
-                        .tag_bits
-                        .value_equals(ZstdTag::$tag_variant, Rotation::next())(meta)
-                };
-            };
-        }
-
         is_tag!(is_null, Null);
         is_tag!(is_frame_header_descriptor, FrameHeaderDescriptor);
         is_tag!(is_frame_content_size, FrameContentSize);
@@ -1077,8 +1066,6 @@ impl DecoderConfig {
         is_prev_tag!(is_prev_frame_content_size, FrameContentSize);
         is_prev_tag!(is_prev_sequence_header, ZstdBlockSequenceHeader);
         is_prev_tag!(is_prev_sequence_data, ZstdBlockSequenceData);
-
-        is_next_tag!(is_next_null, Null);
 
         meta.lookup("DecoderConfig: 0 <= encoded byte < 256", |meta| {
             vec![(
@@ -3410,8 +3397,6 @@ impl DecoderConfig {
             let condition = and::expr([
                 meta.query_fixed(q_enable, Rotation::cur()),
                 config.bitstream_decoder.is_nb0(meta, Rotation::cur()),
-                not::expr(is_next_null(meta)), /* Exclude last block's bitstream tail row.
-                                                * Transition to Null. */
             ]);
 
             let mut cb = BaseConstraintBuilder::default();
