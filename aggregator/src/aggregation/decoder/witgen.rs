@@ -1490,22 +1490,25 @@ fn process_sequences<F: Field>(
             }
         }
         
+        let next_nb = if is_init {
+            // On the first step, ML and CMO are flipped
+            let true_idx = [0, 2, 1][order_idx];
+            nb_switch[mode][true_idx]
+        } else {
+            nb_switch[mode][order_idx]
+        };
+
         for _ in 0..(nb - skipped_bits) {
             (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
         }
+        
         if current_byte_idx > last_byte_idx && current_byte_idx <= n_sequence_data_bytes {
             next_tag_value_acc = tag_value_iter.next().unwrap();
             next_tag_rlc_acc = tag_rlc_iter.next().unwrap();
             last_byte_idx = current_byte_idx;
         }
 
-        if is_init {
-            // On the first step, ML and CMO are flipped
-            let true_idx = [0, 2, 1][order_idx];
-            nb = nb_switch[mode][true_idx];
-        } else {
-            nb = nb_switch[mode][order_idx];
-        }
+        nb = next_nb;
     }
 
     // Process raw sequence instructions
