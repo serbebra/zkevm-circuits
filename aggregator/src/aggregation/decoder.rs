@@ -3369,60 +3369,184 @@ impl DecoderConfig {
                 1.expr(),
             );
             cb.require_equal(
-                "bit_index_start == 7",
+                "bit_index_end == bit_index_start",
                 meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
-                7.expr(),
-            );
-            cb.require_equal(
-                "bit_index_end == bit_index_start == 7",
                 meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
-                7.expr(),
             );
             cb.require_equal(
-                "is_nil occurs when previous bitstring was long and byte-aligned",
-                sum::expr([
-                    config
-                        .bitstream_decoder
-                        .aligned_two_bytes(meta, Rotation(-1)),
-                    config
-                        .bitstream_decoder
-                        .aligned_three_bytes(meta, Rotation(-1)),
-                    config
-                        .bitstream_decoder
-                        .aligned_three_bytes(meta, Rotation(-2)),
-                ]),
+                "bit_index_start <= 7",
+                config
+                    .bitstream_decoder
+                    .spans_one_byte(meta, Rotation::cur()),
+                1.expr(),
+            );
+            let (case1, case2, case3, case4) = (
+                config
+                    .bitstream_decoder
+                    .aligned_two_bytes(meta, Rotation(-1)),
+                config
+                    .bitstream_decoder
+                    .strictly_spans_three_bytes(meta, Rotation(-1)),
+                config
+                    .bitstream_decoder
+                    .aligned_three_bytes(meta, Rotation(-1)),
+                config
+                    .bitstream_decoder
+                    .aligned_three_bytes(meta, Rotation(-2)),
+            );
+            cb.require_equal(
+                "is_nil occurs when previous bitstring was long",
+                sum::expr([case1.expr(), case2.expr(), case3.expr(), case4.expr()]),
                 1.expr(),
             );
 
-            // We now have a few branches depending on whether or not the following row is also an
-            // is_nil.
-            let is_next_nil = config.bitstream_decoder.is_nil(meta, Rotation::next());
+            // There are 4 cases where is_nil=true can occur:
+            // - previous bitstring spanned 2 bytes and was byte-aligned, bit_index_end::prev == 15.
+            // - previous bitstring spanned 2 bytes, 16 <= bit_index_end::prev < 23.
+            // - previous bitstring spanned 3 bytes and was byte-aligned, bit_index_end == 23.
+            // - previous-previous bitstring spanned 3 bytes and was byte-aligned, bit_index_end ==
+            //   23.
             let is_next_nb0 = config.bitstream_decoder.is_nb0(meta, Rotation::next());
-            let is_next_nil_or_nb0 = sum::expr([is_next_nil, is_next_nb0]);
-            let is_next_regular = not::expr(is_next_nil_or_nb0.expr());
-            cb.condition(is_next_nil_or_nb0, |cb| {
+            let is_next_nil = config.bitstream_decoder.is_nil(meta, Rotation::next());
+
+            // 1. bit_index_end::prev == 15.
+            //      - A) nb0::next == true
+            //      - B) nb0::next == false
+            cb.condition(case1.expr(), |cb| {
                 cb.require_equal(
-                    "preserve byte_idx",
+                    "nil(case1): bit_index_start == 7",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                    7.expr(),
+                );
+            });
+            cb.condition(and::expr([case1.expr(), is_next_nb0.expr()]), |cb| {
+                cb.require_equal(
+                    "nil(case1A): preserve byte_idx",
                     meta.query_advice(config.byte_idx, Rotation::next()),
                     meta.query_advice(config.byte_idx, Rotation::cur()),
                 );
                 cb.require_equal(
-                    "preserve bit_index_start",
+                    "nil(case1A): preserve bit_index_start",
                     meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
                     meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
                 );
             });
-            cb.condition(is_next_regular, |cb| {
+            cb.condition(
+                and::expr([case1.expr(), not::expr(is_next_nb0.expr())]),
+                |cb| {
+                    cb.require_equal(
+                        "nil(case1B): increment byte_idx",
+                        meta.query_advice(config.byte_idx, Rotation::next()),
+                        meta.query_advice(config.byte_idx, Rotation::cur()) + 1.expr(),
+                    );
+                    cb.require_zero(
+                        "nil(case1B): reset bit_index_start",
+                        meta.query_advice(
+                            config.bitstream_decoder.bit_index_start,
+                            Rotation::next(),
+                        ),
+                    );
+                },
+            );
+
+            // 2. 16 <= bit_index_end::prev < 23.
+            //      - A) nb0::next == true
+            //      - B) nb0::next == false
+            cb.condition(case2.expr(), |cb| {
                 cb.require_equal(
-                    "increment byte_idx",
+                    "nil(case2): wrap bit_index_start by 16",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next())
+                        + 16.expr(),
+                    meta.query_advice(config.bitstream_decoder.bit_index_end, Rotation::cur()),
+                );
+                cb.require_equal(
+                    "nil(case2): increment byte_idx",
                     meta.query_advice(config.byte_idx, Rotation::next()),
                     meta.query_advice(config.byte_idx, Rotation::cur()) + 1.expr(),
                 );
-                cb.require_zero(
-                    "reset bit_index_start",
+            });
+            cb.condition(and::expr([case2.expr(), is_next_nb0.expr()]), |cb| {
+                cb.require_equal(
+                    "nil(case2A): preserve bit_index_start",
                     meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
                 );
             });
+            cb.condition(
+                and::expr([case2.expr(), not::expr(is_next_nb0.expr())]),
+                |cb| {
+                    cb.require_equal(
+                        "nil(case2B): increment bit_index_start",
+                        meta.query_advice(
+                            config.bitstream_decoder.bit_index_start,
+                            Rotation::next(),
+                        ),
+                        meta.query_advice(
+                            config.bitstream_decoder.bit_index_start,
+                            Rotation::cur(),
+                        ) + 1.expr(),
+                    );
+                },
+            );
+
+            // 3. bit_index_end(-1) == 23
+            // the next is_nil=true row will handle.
+            cb.condition(case3.expr(), |cb| {
+                cb.require_equal("nil(case3): next is_nil too", is_next_nil, 1.expr());
+                cb.require_equal(
+                    "nil(case3): increment byte_idx",
+                    meta.query_advice(config.byte_idx, Rotation::next()),
+                    meta.query_advice(config.byte_idx, Rotation::cur()) + 1.expr(),
+                );
+                cb.require_equal(
+                    "nil(case3): bit_index_start == 7",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                    7.expr(),
+                );
+                cb.require_equal(
+                    "nil(case3): preserve bit_index_start == 7",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
+                    7.expr(),
+                );
+            });
+
+            // 4. bit_index_end(-2) == 23
+            cb.condition(case4.expr(), |cb| {
+                cb.require_equal(
+                    "nil(case4): wrap bit_index_start to 7",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                    7.expr(),
+                );
+            });
+            cb.condition(and::expr([case4.expr(), is_next_nb0.expr()]), |cb| {
+                cb.require_equal(
+                    "nil(case4A): preserve byte_idx",
+                    meta.query_advice(config.byte_idx, Rotation::next()),
+                    meta.query_advice(config.byte_idx, Rotation::cur()),
+                );
+                cb.require_equal(
+                    "nil(case4A): preserve bit_index_start",
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
+                    meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::cur()),
+                );
+            });
+            cb.condition(
+                and::expr([case4.expr(), not::expr(is_next_nb0.expr())]),
+                |cb| {
+                    cb.require_equal(
+                        "nil(case4B): increment byte_idx",
+                        meta.query_advice(config.byte_idx, Rotation::next()),
+                        meta.query_advice(config.byte_idx, Rotation::cur()) + 1.expr(),
+                    );
+                    cb.require_zero(
+                        "nil(case4B): reset bit_index_start",
+                        meta.query_advice(
+                            config.bitstream_decoder.bit_index_start,
+                            Rotation::next(),
+                        ),
+                    );
+                },
+            );
 
             cb.gate(condition)
         });
@@ -3565,26 +3689,34 @@ impl DecoderConfig {
                 //      - No bitstring is read on the current and next row.
 
                 // 1. bitstring strictly spans over 1 byte: 0 <= bit_index_end < 7.
+                let is_next_nb0 = config.bitstream_decoder.is_nb0(meta, Rotation::next());
                 cb.condition(
                     config
                         .bitstream_decoder
                         .strictly_spans_one_byte(meta, Rotation::cur()),
                     |cb| {
                         cb.require_equal(
-                            "(case1): byte_idx' == byte_idx",
+                            "(case1): preserve byte_idx",
                             meta.query_advice(config.byte_idx, Rotation::next()),
                             meta.query_advice(config.byte_idx, Rotation::cur()),
                         );
                         cb.require_equal(
-                            "(case1): bit_index_start' == bit_index_end + 1",
+                            "(case1): preserve/increment bit_index_start depending on is_next_nb0",
                             meta.query_advice(
                                 config.bitstream_decoder.bit_index_start,
                                 Rotation::next(),
                             ),
-                            meta.query_advice(
-                                config.bitstream_decoder.bit_index_end,
-                                Rotation::cur(),
-                            ) + 1.expr(),
+                            select::expr(
+                                is_next_nb0.expr(),
+                                meta.query_advice(
+                                    config.bitstream_decoder.bit_index_end,
+                                    Rotation::cur(),
+                                ),
+                                meta.query_advice(
+                                    config.bitstream_decoder.bit_index_end,
+                                    Rotation::cur(),
+                                ) + 1.expr(),
+                            ),
                         );
                     },
                 );
@@ -3593,7 +3725,6 @@ impl DecoderConfig {
                 //
                 // We have two branches depending on whether or not the next row reads nb=0 bits
                 // from the bitstream.
-                let is_next_nb0 = config.bitstream_decoder.is_nb0(meta, Rotation::next());
                 cb.condition(
                     and::expr([
                         config
@@ -3603,12 +3734,12 @@ impl DecoderConfig {
                     ]),
                     |cb| {
                         cb.require_equal(
-                            "(case2a): byte_idx' == byte_idx",
+                            "(case2a): preserve byte_idx",
                             meta.query_advice(config.byte_idx, Rotation::next()),
                             meta.query_advice(config.byte_idx, Rotation::cur()),
                         );
                         cb.require_equal(
-                            "(case2a): bit_index_start' == 7",
+                            "(case2a): bit_index_start' == bit_index_end == 7",
                             meta.query_advice(
                                 config.bitstream_decoder.bit_index_start,
                                 Rotation::next(),
@@ -3622,7 +3753,7 @@ impl DecoderConfig {
                         config
                             .bitstream_decoder
                             .aligned_one_byte(meta, Rotation::cur()),
-                        not::expr(is_next_nb0),
+                        not::expr(is_next_nb0.expr()),
                     ]),
                     |cb| {
                         cb.require_equal(
@@ -3652,11 +3783,13 @@ impl DecoderConfig {
                             meta.query_advice(config.byte_idx, Rotation::cur()) + 1.expr(),
                         );
                         cb.require_equal(
-                            "(case3): bit_index_start' == bit_index_end - 7",
-                            meta.query_advice(
-                                config.bitstream_decoder.bit_index_start,
-                                Rotation::next(),
-                            ) + 7.expr(),
+                            "(case3): wrap bit_index_start within <= 7, depending on whether is_next_nb0",
+                            meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next())
+                            + select::expr(
+                                is_next_nb0.expr(),
+                                8.expr(),
+                                7.expr(),
+                            ),
                             meta.query_advice(
                                 config.bitstream_decoder.bit_index_end,
                                 Rotation::cur(),
@@ -3675,6 +3808,11 @@ impl DecoderConfig {
                             "(case4): bitstring decoder skipped next row",
                             config.bitstream_decoder.is_nil(meta, Rotation::next()),
                             1.expr(),
+                        );
+                        cb.require_equal(
+                            "(case4): bit_index_start' is wrapped to 7",
+                            meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation::next()),
+                            7.expr(),
                         );
                         cb.require_equal(
                             "(case4): byte_idx' == byte_idx + 1",
@@ -3717,11 +3855,11 @@ impl DecoderConfig {
                             ),
                         );
                         cb.require_equal(
-                            "(case5): bit_index_start'' == bit_index_end - 15",
+                            "(case5): wrap bit_index_start'' within <= 7",
                             meta.query_advice(
                                 config.bitstream_decoder.bit_index_start,
                                 Rotation(2),
-                            ) + 15.expr(),
+                            ) + 16.expr(),
                             meta.query_advice(
                                 config.bitstream_decoder.bit_index_end,
                                 Rotation::cur(),
@@ -3755,6 +3893,16 @@ impl DecoderConfig {
                             "(case6): byte_idx'' == byte_idx + 2",
                             meta.query_advice(config.byte_idx, Rotation(2)),
                             meta.query_advice(config.byte_idx, Rotation::cur()) + 2.expr(),
+                        );
+                        cb.require_equal(
+                            "(case6): bit_index_start' == bit_index_start'' == 7",
+                            meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation(1)),
+                            meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation(2)),
+                        );
+                        cb.require_equal(
+                            "(case6): bit_index_start' == bit_index_start'' == 7",
+                            meta.query_advice(config.bitstream_decoder.bit_index_start, Rotation(1)),
+                            7.expr(),
                         );
                     },
                 );
