@@ -132,9 +132,9 @@ async fn load_transactions(
                         .await
                     {
                         info!("pending_txs_tx closed, shutdown load_transactions");
-                        total_pending_txs += 1;
                         return;
                     }
+                    total_pending_txs += 1;
                 }
             }
         }
