@@ -2,7 +2,7 @@ use bitstream_io::{
     read::{BitRead, BitReader},
     LittleEndian,
 };
-use std::io::{Cursor, Result, Read};
+use std::io::{Cursor, Result};
 
 use super::N_BITS_PER_BYTE;
 
@@ -168,7 +168,7 @@ mod tests {
         let src = vec![0x30, 0x6f, 0x9b, 0x03];
         let offset = 4;
         let range = 32;
-        let (n_bits, value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
+        let (n_bits, _value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
         assert_eq!(n_bits, 5);
         assert_eq!(value_decoded, 19);
 
@@ -182,7 +182,7 @@ mod tests {
         let src = vec![0b10000000];
         let offset = 6;
         let range = 3;
-        let (n_bits, value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
+        let (n_bits, _value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
         assert_eq!(n_bits, 2);
         assert_eq!(value_decoded, 2);
 
@@ -190,7 +190,7 @@ mod tests {
         let src = vec![0b11000000];
         let offset = 6;
         let range = 2;
-        let (n_bits, value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
+        let (n_bits, _value_read, value_decoded) = read_variable_bit_packing(&src, offset, range)?;
         assert_eq!(n_bits, 2);
         assert_eq!(value_decoded, 2);
 

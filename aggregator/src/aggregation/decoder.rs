@@ -25,7 +25,6 @@ use zkevm_circuits::{
     evm_circuit::{BaseConstraintBuilder, ConstrainBuilderCommon},
     table::{BitwiseOpTable, LookupTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
     util::Challenges,
-    witness,
 };
 
 use self::{
@@ -44,8 +43,8 @@ use seq_exec::{LiteralTable, SeqExecConfig as SequenceExecutionConfig, SequenceC
 
 #[derive(Clone, Debug)]
 pub struct DecoderConfig {
-    /// TODO(check): const col.
-    const_col: Column<Fixed>,
+    /// constant column required by SeqExecConfig.
+    _const_col: Column<Fixed>,
     /// Fixed column to mark all the usable rows.
     q_enable: Column<Fixed>,
     /// Fixed column to mark the first row in the layout.
@@ -924,6 +923,7 @@ impl SequencesDataDecoder {
     }
 }
 
+#[allow(dead_code)]
 pub struct AssignedDecoderConfigExports {
     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
     pub encoded_rlc: AssignedCell<Fr, Fr>,
@@ -1017,10 +1017,10 @@ impl DecoderConfig {
         debug_assert!(meta.degree() <= 9);
 
         // Main config
-        let const_col = meta.fixed_column();
-        meta.enable_constant(const_col);
+        let _const_col = meta.fixed_column();
+        meta.enable_constant(_const_col);
         let config = Self {
-            const_col,
+            _const_col,
             q_enable,
             q_first,
             byte_idx,
@@ -4081,11 +4081,12 @@ impl DecoderConfig {
         config
     }
 
-    pub fn assign<F: Field>(
+    #[allow(clippy::too_many_arguments)]
+    pub fn assign(
         &self,
         layouter: &mut impl Layouter<Fr>,
         raw_bytes: &[u8],
-        compressed_bytes: &[u8],
+        _compressed_bytes: &[u8],
         witness_rows: Vec<ZstdWitnessRow<Fr>>,
         literal_datas: Vec<Vec<u64>>,
         _aux_data: Vec<u64>,
@@ -4101,13 +4102,11 @@ impl DecoderConfig {
     ) -> Result<(), Error> {
         let mut pow_of_rand: Vec<Value<Fr>> = vec![Value::known(Fr::ONE)];
 
-        assert!(block_info_arr.len() > 0, "Must have at least 1 block");
-        assert!(sequence_info_arr.len() > 0, "Must have at least 1 block");
+        assert!(!block_info_arr.is_empty(), "Must have at least 1 block");
+        assert!(!sequence_info_arr.is_empty(), "Must have at least 1 block");
 
         assert!(address_table_arr.len() == 1, "TODO: multi-block");
         assert!(sequence_exec_info_arr.len() == 1, "TODO: multi-block");
-        //let address_table_rows = &address_table_arr[0];
-        let sequence_exec_info = &sequence_exec_info_arr[0];
 
         let mut curr_block_info = block_info_arr[0];
         let mut curr_sequence_info = sequence_info_arr[0];
@@ -4134,7 +4133,7 @@ impl DecoderConfig {
         let literal_header_rows = witness_rows
             .iter()
             .filter(|r| r.state.tag == ZstdTag::ZstdBlockLiteralsHeader)
-            .map(|r| r.clone())
+            .cloned()
             .collect::<Vec<ZstdWitnessRow<Fr>>>();
         let max_block_idx = witness_rows
             .iter()
@@ -4270,7 +4269,7 @@ impl DecoderConfig {
                         || "decoded_len",
                         self.decoded_len,
                         i,
-                        || Value::known(Fr::from(row.decoded_data.decoded_len as u64)),
+                        || Value::known(Fr::from(row.decoded_data.decoded_len)),
                     )?;
 
                     /////////////////////////////////////////
@@ -4287,7 +4286,7 @@ impl DecoderConfig {
                     start_unchanged.assign(
                         &mut region,
                         i,
-                        Value::known(Fr::from(last_bit_start_idx as u64)),
+                        Value::known(Fr::from(last_bit_start_idx)),
                         Value::known(Fr::from(row.bitstream_read_data.bit_start_idx as u64)),
                     )?;
                     last_bit_start_idx = row.bitstream_read_data.bit_start_idx as u64;
@@ -4302,7 +4301,7 @@ impl DecoderConfig {
                         || "bitstring_value",
                         self.bitstream_decoder.bitstring_value,
                         i,
-                        || Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                        || Value::known(Fr::from(row.bitstream_read_data.bit_value)),
                     )?;
                     region.assign_advice(
                         || "is_nb0",
@@ -4349,7 +4348,7 @@ impl DecoderConfig {
                     bitstring_value_eq_3.assign(
                         &mut region,
                         i,
-                        Value::known(Fr::from(row.bitstream_read_data.bit_value as u64)),
+                        Value::known(Fr::from(row.bitstream_read_data.bit_value)),
                         Value::known(Fr::from(3u64)),
                     )?;
 
@@ -4372,19 +4371,19 @@ impl DecoderConfig {
                         || "tag_config.tag_len",
                         self.tag_config.tag_len,
                         i,
-                        || Value::known(Fr::from(row.state.tag_len as u64)),
+                        || Value::known(Fr::from(row.state.tag_len)),
                     )?;
                     region.assign_advice(
                         || "tag_config.max_len",
                         self.tag_config.max_len,
                         i,
-                        || Value::known(Fr::from(row.state.max_tag_len as u64)),
+                        || Value::known(Fr::from(row.state.max_tag_len)),
                     )?;
                     region.assign_advice(
                         || "tag_config.tag_idx",
                         self.tag_config.tag_idx,
                         i,
-                        || Value::known(Fr::from(row.state.tag_idx as u64)),
+                        || Value::known(Fr::from(row.state.tag_idx)),
                     )?;
                     let is_sequence_data = row.state.tag == ZstdTag::ZstdBlockSequenceData;
                     region.assign_advice(
@@ -4453,13 +4452,10 @@ impl DecoderConfig {
 
                     let tag_len = row.state.tag_len as usize;
                     if tag_len >= pow_of_rand.len() {
-                        let mut last = pow_of_rand
-                            .last()
-                            .expect("Last pow_of_rand exists.")
-                            .clone();
+                        let mut last = *pow_of_rand.last().expect("Last pow_of_rand exists.");
                         for _ in pow_of_rand.len()..=tag_len {
                             last = last * challenges.keccak_input();
-                            pow_of_rand.push(last.clone());
+                            pow_of_rand.push(last);
                         }
                     }
                     region.assign_advice(
@@ -4474,8 +4470,8 @@ impl DecoderConfig {
                     tag_idx_eq_tag_len.assign(
                         &mut region,
                         i,
-                        Value::known(Fr::from(row.state.tag_idx as u64)),
-                        Value::known(Fr::from(row.state.tag_len as u64)),
+                        Value::known(Fr::from(row.state.tag_idx)),
+                        Value::known(Fr::from(row.state.tag_len)),
                     )?;
 
                     let tag_chip = BinaryNumberChip::construct(self.tag_config.tag_bits);
@@ -4490,18 +4486,16 @@ impl DecoderConfig {
 
                     if is_block || is_block_header {
                         if block_idx != curr_block_info.block_idx as u64 {
-                            curr_block_info = block_info_arr
+                            curr_block_info = *block_info_arr
                                 .iter()
                                 .find(|&b| b.block_idx == block_idx as usize)
-                                .expect("Block info should exist")
-                                .clone();
+                                .expect("Block info should exist");
                         }
                         if block_idx != curr_sequence_info.block_idx as u64 {
-                            curr_sequence_info = sequence_info_arr
+                            curr_sequence_info = *sequence_info_arr
                                 .iter()
                                 .find(|&s| s.block_idx == block_idx as usize)
-                                .expect("Sequence info should exist")
-                                .clone();
+                                .expect("Sequence info should exist");
                         }
                         region.assign_advice(
                             || "block_config.block_len",
@@ -4535,16 +4529,16 @@ impl DecoderConfig {
                         )?;
 
                         let table_names = ["LLT", "MOT", "MLT"];
-                        for idx in 0..3 {
+                        for (idx, (&table_name, &compression_mode)) in table_names
+                            .iter()
+                            .zip_eq(curr_sequence_info.compression_mode.iter())
+                            .enumerate()
+                        {
                             region.assign_advice(
-                                || table_names[idx],
+                                || table_name,
                                 self.block_config.compression_modes[idx],
                                 i,
-                                || {
-                                    Value::known(Fr::from(
-                                        curr_sequence_info.compression_mode[idx] as u64,
-                                    ))
-                                },
+                                || Value::known(Fr::from(compression_mode as u64)),
                             )?;
                         }
                         let is_empty_sequences =
@@ -4607,7 +4601,7 @@ impl DecoderConfig {
                         || "sequence_data_decoder.baseline",
                         self.sequences_data_decoder.baseline,
                         i,
-                        || Value::known(Fr::from(row.bitstream_read_data.baseline as u64)),
+                        || Value::known(Fr::from(row.bitstream_read_data.baseline)),
                     )?;
                     let byte0_lt_0x80 =
                         LtChip::construct(self.sequences_header_decoder.byte0_lt_0x80);
@@ -4697,7 +4691,7 @@ impl DecoderConfig {
                             || "byte_idx",
                             self.byte_idx,
                             idx,
-                            || Value::known(Fr::from(last_byte_idx + 1 as u64)),
+                            || Value::known(Fr::from(last_byte_idx + 1)),
                         )?;
                         padding_count -= 1;
                     }
@@ -4746,7 +4740,7 @@ impl DecoderConfig {
                     start_unchanged.assign(
                         &mut region,
                         idx,
-                        Value::known(Fr::from(last_bit_start_idx as u64)),
+                        Value::known(Fr::from(last_bit_start_idx)),
                         Value::known(Fr::zero()),
                     )?;
                     last_bit_start_idx = 0;
@@ -4792,22 +4786,15 @@ impl DecoderConfig {
 
 #[cfg(test)]
 mod tests {
-    use eth_types::Field;
-    use std::marker::PhantomData;
-
     use super::process;
     use crate::{DecoderConfig, DecoderConfigArgs};
-    use bitstream_io::write;
     use halo2_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         halo2curves::bn256::Fr,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use std::{
-        fs::{self, File},
-        io::{self, Write},
-    };
+    use std::io::Write;
     use zkevm_circuits::{
         table::{BitwiseOpTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
         util::Challenges,
@@ -4867,7 +4854,6 @@ mod tests {
             )
         }
 
-        #[allow(clippy::type_complexity)]
         fn synthesize(
             &self,
             config: Self::Config,
@@ -4904,7 +4890,7 @@ mod tests {
             u8_table.load(&mut layouter)?;
             bitwise_op_table.load(&mut layouter)?;
             pow_rand_table.assign(&mut layouter, &challenges, 1 << (self.k - 1))?;
-            config.assign::<Fr>(
+            config.assign(
                 &mut layouter,
                 &self.raw,
                 &self.compressed,

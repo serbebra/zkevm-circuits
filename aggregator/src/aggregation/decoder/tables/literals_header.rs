@@ -222,7 +222,7 @@ impl LiteralsHeaderTable {
                         };
 
                     // Bits for representing regenerated_size and compressed_size
-                    let sizing_bits = &lh_bytes.clone().into_iter().fold(vec![], |mut acc, b| {
+                    let sizing_bits = &lh_bytes.into_iter().fold(vec![], |mut acc, b| {
                         acc.extend(value_bits_le(b));
                         acc
                     })[(2 + n_bits_fmt)..(n_bytes_header * 8)];

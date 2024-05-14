@@ -8,8 +8,6 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use strum_macros::EnumIter;
 
-use crate::aggregation::decoder::tables::FseTable;
-
 use super::{
     params::N_BITS_PER_BYTE,
     util::{read_variable_bit_packing, smaller_powers_of_two, value_bits_le},
@@ -115,7 +113,7 @@ pub enum SequenceExecInfo {
 
 /// The type to describe an execution: (instruction_id, exec_info)
 #[derive(Debug, Clone)]
-pub struct SequenceExec (pub usize, pub SequenceExecInfo);
+pub struct SequenceExec(pub usize, pub SequenceExecInfo);
 
 /// The type of Lstream.
 #[derive(Clone, Copy, Debug, EnumIter)]
@@ -451,29 +449,23 @@ pub struct AddressTableRow {
 }
 
 impl AddressTableRow {
-
     /// a debug helper, input datas in the form of example in
     /// zstd spec: https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#repeat-offsets
     /// i.e. [offset, literal, rep_1, rep_2, rep_3]
     #[cfg(test)]
-    pub fn mock_samples(samples: &[[u64;5]]) -> Vec<Self> {
+    pub fn mock_samples(samples: &[[u64; 5]]) -> Vec<Self> {
         Self::mock_samples_full(
-            samples.into_iter().map(|sample|[
-                sample[0],
-                sample[1],
-                0,
-                sample[2],
-                sample[3],
-                sample[4],
-            ])
+            samples
+                .iter()
+                .map(|sample| [sample[0], sample[1], 0, sample[2], sample[3], sample[4]]),
         )
-    }  
+    }
 
     /// build row with args [offset, literal, match_len, rep_1, rep_2, rep_3]    
     #[cfg(test)]
-    pub fn mock_samples_full(samples: impl IntoIterator<Item=[u64;6]>) -> Vec<Self> {
+    pub fn mock_samples_full(samples: impl IntoIterator<Item = [u64; 6]>) -> Vec<Self> {
         let mut ret = Vec::<Self>::new();
-    
+
         for sample in samples {
             let mut new_item = Self {
                 cooked_match_offset: sample[0],
@@ -485,20 +477,19 @@ impl AddressTableRow {
                 actual_offset: sample[3],
                 ..Default::default()
             };
-    
+
             if let Some(old_item) = ret.last() {
                 new_item.instruction_idx = old_item.instruction_idx + 1;
                 new_item.literal_length_acc = old_item.literal_length_acc + sample[1];
             } else {
                 new_item.literal_length_acc = sample[1];
             }
-            
+
             ret.push(new_item);
         }
-    
+
         ret
     }
-
 }
 
 /// Data for BL and Number of Bits for a state in LLT, CMOT and MLT
@@ -698,7 +689,6 @@ impl FseAuxiliaryTableData {
                         -1, -1, -1, -1,
                     ]
                 }
-                _ => unreachable!("Invalid table type."),
             };
             for (symbol, freq) in predefined_frequencies.into_iter().enumerate() {
                 normalised_probs.insert(symbol as u64, freq);
@@ -707,7 +697,8 @@ impl FseAuxiliaryTableData {
             while R > 0 {
                 // number of bits and value read from the variable bit-packed data.
                 // And update the total number of bits read so far.
-                let (n_bits_read, value_read, value_decoded) = read_variable_bit_packing(&data, offset, R + 1)?;
+                let (n_bits_read, value_read, value_decoded) =
+                    read_variable_bit_packing(&data, offset, R + 1)?;
                 reader.skip(n_bits_read)?;
                 offset += n_bits_read;
                 bit_boundaries.push((offset, value_read, value_decoded));

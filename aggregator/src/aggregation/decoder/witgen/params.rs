@@ -14,4 +14,4 @@ pub const N_BITS_ZSTD_TAG: usize = 4;
 pub const N_BITS_REPEAT_FLAG: usize = 2;
 
 // we use offset window no more than = 22
-pub const CL_WINDOW_LIMIT : usize = 22;
+pub const CL_WINDOW_LIMIT: usize = 22;

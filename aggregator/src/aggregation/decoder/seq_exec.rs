@@ -191,7 +191,7 @@ impl LiteralTable {
                     || "set dummy border",
                     self.block_index,
                     offset,
-                    || Value::known(F::from(2 as u64)),
+                    || Value::known(F::from(2)),
                 )?;
                 region.assign_advice(
                     || "set dummy border",
@@ -701,7 +701,7 @@ impl<F: Field> SeqExecConfig<F> {
     }
 
     /// fill the rest region with padding rows
-    pub fn paddings<'a>(
+    pub fn paddings(
         &self,
         region: &mut Region<F>,
         offset: usize,
@@ -767,6 +767,7 @@ impl<F: Field> SeqExecConfig<F> {
 
     /// assign a single block from current offset / byte decompression
     /// progress and return the offset / progress below the last used row
+    #[allow(clippy::too_many_arguments)]
     pub fn assign_block<'a>(
         &self,
         region: &mut Region<F>,
@@ -818,14 +819,11 @@ impl<F: Field> SeqExecConfig<F> {
             for (i, pos) in r.clone().enumerate() {
                 decoded_len += 1;
                 let out_byte = F::from(if is_literal {
-                    literals[pos as usize]
+                    literals[pos]
                 } else {
-                    decompressed_bytes[pos as usize] as u64
+                    decompressed_bytes[pos] as u64
                 });
                 decoded_rlc = decoded_rlc * chng + Value::known(out_byte);
-
-                //println!("set row at {}, output {}:{:x}", offset, decoded_len,
-                // out_byte.get_lower_32());
 
                 region.assign_advice(
                     || "set output region",
@@ -866,29 +864,21 @@ impl<F: Field> SeqExecConfig<F> {
                     ),
                 ];
 
-                for (col, val) in
-                    base_rows
-                        .clone()
-                        .into_iter()
-                        .chain(decodes)
-                        .chain(if is_literal {
-                            //println!("inst {}: literal cp {}-{}", inst_ind, pos, 0);
-                            [
-                                (self.s_lit_cp_phase, F::one()),
-                                (self.s_back_ref_phase, F::zero()),
-                                (self.literal_pos, F::from(pos as u64)),
-                                (self.backref_progress, F::zero()),
-                            ]
-                        } else {
-                            //println!("inst {}: backref cp {}-{}", inst_ind, cur_literal_cp, i+1);
-                            [
-                                (self.s_lit_cp_phase, F::zero()),
-                                (self.s_back_ref_phase, F::one()),
-                                (self.literal_pos, F::from(cur_literal_cp as u64)),
-                                (self.backref_progress, F::from(i as u64 + 1)),
-                            ]
-                        })
-                {
+                for (col, val) in base_rows.into_iter().chain(decodes).chain(if is_literal {
+                    [
+                        (self.s_lit_cp_phase, F::one()),
+                        (self.s_back_ref_phase, F::zero()),
+                        (self.literal_pos, F::from(pos as u64)),
+                        (self.backref_progress, F::zero()),
+                    ]
+                } else {
+                    [
+                        (self.s_lit_cp_phase, F::zero()),
+                        (self.s_back_ref_phase, F::one()),
+                        (self.literal_pos, F::from(cur_literal_cp as u64)),
+                        (self.backref_progress, F::from(i as u64 + 1)),
+                    ]
+                }) {
                     region.assign_advice(
                         || "set output region",
                         col,
@@ -1003,6 +993,7 @@ impl<F: Field> SeqExecConfig<F> {
     }
 
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub fn mock_assign(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1056,7 +1047,6 @@ impl<F: Field> SeqExecConfig<F> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use halo2_proofs::{
         circuit::SimpleFloorPlanner, dev::MockProver, halo2curves::bn256::Fr, plonk::Circuit,
@@ -1204,7 +1194,7 @@ mod tests {
                 .inst_tbl
                 .mock_assign(&mut layouter, &self.insts, 15)?;
 
-            let chng_val = config.chng_mock.values(&mut layouter);
+            let chng_val = config.chng_mock.values(&layouter);
 
             config.config.mock_assign(
                 &mut layouter,

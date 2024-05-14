@@ -590,7 +590,7 @@ impl<F: Field> SeqInstTable<F> {
     }
 
     // assign a heading / padding row before a each block
-    fn assign_heading_row<'a>(
+    fn assign_heading_row(
         &self,
         region: &mut Region<F>,
         offset: usize,
@@ -668,7 +668,7 @@ impl<F: Field> SeqInstTable<F> {
     }
 
     // padding for the rest row
-    fn padding_rows<'a>(
+    fn padding_rows(
         &self,
         region: &mut Region<F>,
         mut offset: usize,
@@ -690,6 +690,7 @@ impl<F: Field> SeqInstTable<F> {
 
     // assign a single block from current offset
     // and return the offset below the last used row
+    #[allow(clippy::too_many_arguments)]
     fn assign_block<'a>(
         &self,
         region: &mut Region<F>,
@@ -912,7 +913,7 @@ impl<F: Field> SeqInstTable<F> {
                         blk_id,
                         n_seqs,
                         &chip_ctx,
-                        &mut offset_table,
+                        &offset_table,
                     )?;
                     offset = self.assign_block(
                         &mut region,
@@ -959,7 +960,7 @@ impl<F: Field> SeqInstTable<F> {
                     1,
                     table_rows.len(),
                     &chip_ctx,
-                    &mut offset_table,
+                    &offset_table,
                 )?;
                 let offset = self.assign_block(
                     &mut region,
@@ -989,7 +990,6 @@ impl<F: Field> SeqInstTable<F> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use halo2_proofs::{
         circuit::SimpleFloorPlanner, dev::MockProver, halo2curves::bn256::Fr, plonk::Circuit,

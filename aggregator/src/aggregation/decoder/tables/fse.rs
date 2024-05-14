@@ -17,7 +17,7 @@ use zkevm_circuits::{
 use crate::aggregation::decoder::{
     tables::{FixedLookupTag, FixedTable},
     witgen::FseTableKind,
-    FseAuxiliaryTableData, ZstdWitnessRow,
+    FseAuxiliaryTableData,
 };
 
 /// The FSE table verifies that given the symbols and the states allocated to those symbols, the
@@ -744,7 +744,7 @@ impl FseTable {
                     )?;
                 }
 
-                for (table_idx, table) in data.clone().into_iter().enumerate() {
+                for table in data.clone().into_iter() {
                     let target_end_offset = fse_offset + (1 << 10); // reserve enough rows to accommodate skipped states
                                                                     // Assign q_start
 
@@ -1569,28 +1569,31 @@ impl FseSortedStatesTable {
             // - spot_acc accumulated to table_size.
             // - the last state has the smallest spot value.
             // - the last state's baseline is in fact last_baseline.
-            cb.condition(not::expr(meta.query_fixed(config.q_start, Rotation::cur())), |cb| {
-                cb.require_equal(
-                    "symbol_count == symbol_count_acc",
-                    meta.query_advice(config.symbol_count, Rotation::prev()),
-                    meta.query_advice(config.symbol_count_acc, Rotation::prev()),
-                );
-                cb.require_equal(
-                    "spot_acc == table_size",
-                    meta.query_advice(config.spot_acc, Rotation::prev()),
-                    meta.query_advice(config.table_size, Rotation::prev()),
-                );
-                cb.require_equal(
-                    "spot == smallest_spot",
-                    meta.query_advice(config.spot, Rotation::prev()),
-                    meta.query_advice(config.smallest_spot, Rotation::prev()),
-                );
-                cb.require_equal(
-                    "baseline == last_baseline",
-                    meta.query_advice(config.baseline, Rotation::prev()),
-                    meta.query_advice(config.last_baseline, Rotation::prev()),
-                );
-            });
+            cb.condition(
+                not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                |cb| {
+                    cb.require_equal(
+                        "symbol_count == symbol_count_acc",
+                        meta.query_advice(config.symbol_count, Rotation::prev()),
+                        meta.query_advice(config.symbol_count_acc, Rotation::prev()),
+                    );
+                    cb.require_equal(
+                        "spot_acc == table_size",
+                        meta.query_advice(config.spot_acc, Rotation::prev()),
+                        meta.query_advice(config.table_size, Rotation::prev()),
+                    );
+                    cb.require_equal(
+                        "spot == smallest_spot",
+                        meta.query_advice(config.spot, Rotation::prev()),
+                        meta.query_advice(config.smallest_spot, Rotation::prev()),
+                    );
+                    cb.require_equal(
+                        "baseline == last_baseline",
+                        meta.query_advice(config.baseline, Rotation::prev()),
+                        meta.query_advice(config.last_baseline, Rotation::prev()),
+                    );
+                },
+            );
 
             // When the symbol changes, we wish to check in case the baseline==0x00 or not. If it
             // is, then the baseline_mark should be turned on from this row onwards (while the

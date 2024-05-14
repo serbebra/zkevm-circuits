@@ -7,7 +7,7 @@ use halo2_proofs::{
 };
 use zkevm_circuits::{
     evm_circuit::{BaseConstraintBuilder, ConstrainBuilderCommon},
-    table::{LookupTable, RangeTable, U8Table},
+    table::{LookupTable, U8Table},
 };
 
 use crate::aggregation::decoder::{
@@ -589,7 +589,7 @@ impl BitstringTable {
 
                     for rows in [fse_rows, sequence_data_rows].into_iter() {
                         for grouped_rows in rows.windows(3) {
-                            let curr_row = grouped_rows[0].clone();
+                            let curr_row = grouped_rows[0];
 
                             let byte_idx_1 = grouped_rows[0].0;
                             let byte_idx_2 = grouped_rows[1].0;
@@ -641,19 +641,19 @@ impl BitstringTable {
                                     || "byte_1",
                                     self.byte_1,
                                     offset + bit_idx,
-                                    || Value::known(Fr::from(byte_1 as u64)),
+                                    || Value::known(Fr::from(byte_1)),
                                 )?;
                                 region.assign_advice(
                                     || "byte_2",
                                     self.byte_2,
                                     offset + bit_idx,
-                                    || Value::known(Fr::from(byte_2 as u64)),
+                                    || Value::known(Fr::from(byte_2)),
                                 )?;
                                 region.assign_advice(
                                     || "byte_3",
                                     self.byte_3,
                                     offset + bit_idx,
-                                    || Value::known(Fr::from(byte_3 as u64)),
+                                    || Value::known(Fr::from(byte_3)),
                                 )?;
 
                                 if bit_idx >= curr_row.2 && bit_idx <= curr_row.3 {
@@ -670,7 +670,7 @@ impl BitstringTable {
                                     || "bitstring_value",
                                     self.bitstring_value,
                                     offset + bit_idx,
-                                    || Value::known(Fr::from(curr_row.4 as u64)),
+                                    || Value::known(Fr::from(curr_row.4)),
                                 )?;
                                 region.assign_advice(
                                     || "bitstring_value_acc",
@@ -700,7 +700,7 @@ impl BitstringTable {
                                     || "is_reverse",
                                     self.is_reverse,
                                     offset + bit_idx,
-                                    || Value::known(Fr::from(curr_row.5 as u64)),
+                                    || Value::known(Fr::from(curr_row.5)),
                                 )?;
                             }
 
