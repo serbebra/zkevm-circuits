@@ -15,8 +15,8 @@ const DENCUN_BLOCK: u64 = 19424209;
 // - basefee opcode
 // - type is 1559
 // - type is 2930
-#[tokio::test]
-async fn collect_traces() {
+#[tokio::main]
+async fn main() {
     log_init();
     let (pending_txs_tx, pending_txs_rx) = flume::bounded(100);
     let (saving_txs_tx, saving_txs_rx) = flume::bounded(20);
@@ -166,17 +166,26 @@ async fn filter_transaction(
     let client = get_client();
     while let Ok(mut tx) = pending_txs_rx.recv_async().await {
         let tx_hash = tx.tx_hash;
-        let trace = client.trace_tx_by_hash_legacy(tx_hash).await.unwrap();
-        if trace.struct_logs.iter().any(|step| {
-            matches!(
-                step.op,
-                OpcodeId::MCOPY | OpcodeId::TLOAD | OpcodeId::TSTORE | OpcodeId::BASEFEE
-            )
-        }) {
-            trace!("filter_transaction woker#{idx} found tx#{tx_hash} contains target opcode");
-            tx.trace = Some(trace);
-            saving_txs_tx.send_async(tx).await.expect("channel closed");
-            total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        match client.trace_tx_by_hash_legacy(tx_hash).await {
+            Ok(trace) => {
+                if trace.struct_logs.iter().any(|step| {
+                    matches!(
+                        step.op,
+                        OpcodeId::MCOPY | OpcodeId::TLOAD | OpcodeId::TSTORE | OpcodeId::BASEFEE
+                    )
+                }) {
+                    trace!(
+                        "filter_transaction woker#{idx} found tx#{tx_hash} contains target opcode"
+                    );
+                    tx.trace = Some(trace);
+                    saving_txs_tx.send_async(tx).await.expect("channel closed");
+                    total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            Err(e) => {
+                error!("fail to trace tx#{tx_hash}: {e:?}");
+                continue;
+            }
         }
     }
     info!("filter_transaction worker#{idx} shutdown");
@@ -230,13 +239,22 @@ async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<Partial
             .await
             .expect(&format!("failed to get trace config for tx#{:x}", tx_hash));
 
-        let serialized = tokio::task::spawn_blocking(move || {
-            let block_trace = external_tracer::l2trace(&trace_config)
-                .expect(&format!("failed to get l2 trace for tx#{:x}", tx_hash));
-            serde_json::to_vec_pretty(&block_trace).expect("failed to serialize")
-        })
-        .await
-        .expect("failed to get l2 trace");
+        let serialized =
+            tokio::task::spawn_blocking(move || match external_tracer::l2trace(&trace_config) {
+                Ok(block_trace) => {
+                    Some(serde_json::to_vec_pretty(&block_trace).expect("failed to serialize"))
+                }
+                Err(e) => {
+                    error!("failed to get l2 trace for tx#{tx_hash:x}: {e:?}");
+                    return None;
+                }
+            })
+            .await
+            .expect("external_tracer task failed");
+        if serialized.is_none() {
+            continue;
+        }
+        let serialized = serialized.unwrap();
 
         for (opcode, dir) in [
             OpcodeId::MCOPY,

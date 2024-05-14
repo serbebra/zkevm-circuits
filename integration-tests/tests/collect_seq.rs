@@ -85,16 +85,15 @@ async fn collect_traces() {
 
         let mut saving_txs = vec![];
 
-        for tx in blk.transactions.iter() {
+        let futs = blk.transactions.iter().filter_map(|tx| {
             let tx_type = TxType::get_tx_type(&tx);
             match tx_type {
                 TxType::Eip1559 | TxType::Eip2930 => {
                     trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
                     let trace = cli.cli.trace_tx_by_hash_legacy(tx.hash).await.unwrap();
-                    saving_txs.push((tx.hash, trace));
-                    continue;
+                    Some((tx.hash, trace))
                 }
-                TxType::PreEip155 => continue,
+                TxType::PreEip155 => None,
                 _ => {
                     total_pending_txs += 1;
                     let trace = cli.cli.trace_tx_by_hash_legacy(tx.hash).await.unwrap();
@@ -107,12 +106,13 @@ async fn collect_traces() {
                                 | OpcodeId::BASEFEE
                         )
                     }) {
-                        saving_txs.push((tx.hash, trace));
-                        total_saving_txs += 1
+                        Some((tx.hash, trace))
+                    } else {
+                        None
                     }
                 }
             }
-        }
+        });
 
         for (tx_hash, geth_trace) in saving_txs {
             let mut eth_block = blk.clone();
