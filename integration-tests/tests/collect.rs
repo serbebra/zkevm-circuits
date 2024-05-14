@@ -4,7 +4,7 @@ use ethers::{
     prelude::{Http, *},
     providers::Provider,
 };
-use integration_tests::{get_client, log_init, START_BLOCK};
+use integration_tests::{get_client, get_provider, log_init, START_BLOCK};
 use log::*;
 use std::{env, iter, ops::Deref, path::PathBuf, sync::Arc, time::Duration};
 use tokio::task::JoinSet;
@@ -91,7 +91,7 @@ async fn load_transactions(
     pending_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
     saving_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
 ) {
-    let client = get_infura_client();
+    let client = get_provider();
     let mut current_block = *START_BLOCK as u64;
     if current_block < DENCUN_BLOCK {
         current_block = DENCUN_BLOCK;
