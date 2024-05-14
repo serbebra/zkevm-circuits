@@ -2493,6 +2493,7 @@ dependencies = [
  "flume",
  "halo2_proofs",
  "hex",
+ "http",
  "log",
  "mock",
  "paste",
