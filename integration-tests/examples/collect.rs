@@ -3,7 +3,15 @@ use eth_types::{evm_types::OpcodeId, geth_types::TxType, Block, GethExecTrace, T
 use ethers::prelude::Middleware;
 use integration_tests::{get_client, get_provider, log_init, START_BLOCK};
 use log::*;
-use std::{env, iter, ops::Deref, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    array, env,
+    fmt::Write,
+    iter,
+    ops::Deref,
+    path::PathBuf,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 use tokio::task::JoinSet;
 
 const DENCUN_BLOCK: u64 = 19424209;
@@ -22,7 +30,8 @@ async fn main() {
     let (saving_txs_tx, saving_txs_rx) = flume::bounded(20);
 
     let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let total_saving_txs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let total_saving_txs = Arc::new(AtomicUsize::new(0));
+    let categorized_txs: Arc<[AtomicUsize; 6]> = Arc::new(array::from_fn(|_| AtomicUsize::new(0)));
 
     let mut set = JoinSet::new();
     // block loader
@@ -31,6 +40,7 @@ async fn main() {
         pending_txs_tx,
         saving_txs_tx.clone(),
         total_saving_txs.clone(),
+        categorized_txs.clone(),
     ));
     // filter workers
     for i in 0..100 {
@@ -44,7 +54,11 @@ async fn main() {
 
     // save workers
     for i in 0..10 {
-        set.spawn(save_transaction(i, saving_txs_rx.clone()));
+        set.spawn(save_transaction(
+            i,
+            saving_txs_rx.clone(),
+            categorized_txs.clone(),
+        ));
     }
 
     tokio::signal::ctrl_c().await.unwrap();
@@ -87,7 +101,8 @@ async fn load_transactions(
     shutdown: Arc<std::sync::atomic::AtomicBool>,
     pending_txs_tx: flume::Sender<Box<PartialTxWithBlock>>,
     saving_txs_tx: flume::Sender<Box<PartialTxWithBlock>>,
-    total_saving_txs: Arc<std::sync::atomic::AtomicUsize>,
+    total_saving_txs: Arc<AtomicUsize>,
+    categorized_txs: Arc<[AtomicUsize; 6]>,
 ) {
     let client = get_provider();
     let mut current_block = *START_BLOCK as u64;
@@ -115,10 +130,23 @@ async fn load_transactions(
 
         {
             let total_saving_txs = total_saving_txs.load(std::sync::atomic::Ordering::Relaxed);
-            info!(
-                "load {} txs from block#{current_block}, filtering {total_pending_txs}/{total_txs}, saving {total_saving_txs}/{total_txs}",
+            let mut stats = String::new();
+            write!(
+                stats,
+                "load {} txs from block#{current_block}, filtering: {total_pending_txs}/{total_txs}, saving: {total_saving_txs}/{total_txs}",
                 blk.transactions.len(),
-            );
+            ).unwrap();
+            for (category, count) in ["mcopy", "tload", "tstore", "basefee", "eip1559", "eip2930"]
+                .iter()
+                .zip(
+                    categorized_txs
+                        .iter()
+                        .map(|c| c.load(std::sync::atomic::Ordering::Relaxed)),
+                )
+            {
+                write!(stats, ", {category}: {count}").unwrap();
+            }
+            info!("{stats}");
         }
 
         for tx in blk.transactions.iter() {
@@ -191,7 +219,11 @@ async fn filter_transaction(
     info!("filter_transaction worker#{idx} shutdown");
 }
 
-async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<PartialTxWithBlock>>) {
+async fn save_transaction(
+    idx: usize,
+    saving_txs_rx: flume::Receiver<Box<PartialTxWithBlock>>,
+    categorized_txs: Arc<[AtomicUsize; 6]>,
+) {
     let cli = get_client();
     let params = CircuitsParams {
         max_rws: 2_000_000,
@@ -259,7 +291,7 @@ async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<Partial
         }
         let serialized = serialized.unwrap();
 
-        for (opcode, dir) in [
+        for (i, (opcode, dir)) in [
             OpcodeId::MCOPY,
             OpcodeId::TLOAD,
             OpcodeId::TSTORE,
@@ -267,6 +299,7 @@ async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<Partial
         ]
         .into_iter()
         .zip(["mcopy", "tload", "tstore", "basefee"])
+        .enumerate()
         {
             if geth_trace.struct_logs.iter().any(|step| step.op == opcode) {
                 trace!(
@@ -278,11 +311,15 @@ async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<Partial
                 tokio::fs::write(path, serialized.as_slice())
                     .await
                     .expect("failed to write file");
+                categorized_txs[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
         }
 
         let tx_type = TxType::get_tx_type(&eth_block.transactions[0]);
-        for (dir, ty) in [("eip1559", TxType::Eip1559), ("eip2930", TxType::Eip2930)] {
+        for (i, (dir, ty)) in [("eip1559", TxType::Eip1559), ("eip2930", TxType::Eip2930)]
+            .into_iter()
+            .enumerate()
+        {
             if tx_type == ty {
                 trace!(
                     "save_transaction worker#{idx} saving tx#{} to {}",
@@ -293,6 +330,7 @@ async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<Partial
                 tokio::fs::write(path, serialized.as_slice())
                     .await
                     .expect("failed to write file");
+                categorized_txs[i + 4].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
         }
     }
