@@ -1905,7 +1905,7 @@ impl DecoderConfig {
                     size_format_bit0.expr() * not::expr(size_format_bit1.expr()),
                     meta.query_advice(config.tag_config.tag_len, Rotation(2)),
                     select::expr(
-                        size_format_bit1.expr() * not::expr(size_format_bit0.expr()),
+                        size_format_bit1.expr() * size_format_bit0.expr(),
                         meta.query_advice(config.tag_config.tag_len, Rotation(3)),
                         meta.query_advice(config.tag_config.tag_len, Rotation(1)),
                     ),

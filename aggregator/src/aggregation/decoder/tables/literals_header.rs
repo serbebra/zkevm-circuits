@@ -102,9 +102,9 @@ impl LiteralsHeaderTable {
 
             // - branch0: Size_Format is 00 or 10
             // - branch1: Size_Format is 01
-            // - branch2: Size_Format is 10
+            // - branch2: Size_Format is 11
             let branch1 = sf0.expr() * not::expr(sf1.expr());
-            let branch2 = sf1.expr() * not::expr(sf0.expr());
+            let branch2 = sf1.expr() * sf0.expr();
 
             let branch0_regen_size = byte0_rs_3;
             let branch1_regen_size = byte0_rs_4.expr() + byte1_ls_4.expr();
