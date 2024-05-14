@@ -1497,15 +1497,9 @@ fn process_sequences<F: Field>(
                 (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
             }
         } else if nb > 0 && next_nb == 0 {
-            if to_bit_idx == 7 || to_bit_idx == 15 || to_bit_idx == 23 {  
-                tail_holding_bit = true; 
-                for _ in 0..(nb - skipped_bits - 1) {
-                    (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
-                }
-            } else {
-                for _ in 0..(nb - skipped_bits) {
-                    (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
-                }
+            tail_holding_bit = true; 
+            for _ in 0..(nb - skipped_bits - 1) {
+                (current_byte_idx, current_bit_idx) = increment_idx(current_byte_idx, current_bit_idx);
             }
         } else if nb == 0 && next_nb > 0 {
             if tail_holding_bit {

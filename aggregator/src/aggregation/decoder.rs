@@ -4646,7 +4646,7 @@ impl DecoderConfig {
                             || "byte_idx",
                             self.byte_idx,
                             idx,
-                            || Value::known(Fr::from(last_byte_idx as u64)),
+                            || Value::known(Fr::from(last_byte_idx + 1 as u64)),
                         )?;
                         padding_count -= 1;
                     }
