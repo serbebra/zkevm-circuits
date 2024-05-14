@@ -41,13 +41,11 @@ async fn collect_traces() {
             total_saving_txs.clone(),
         ));
     }
-    drop(saving_txs_tx);
 
     // save workers
     for i in 0..10 {
         set.spawn(save_transaction(i, saving_txs_rx.clone()));
     }
-    drop(saving_txs_rx);
 
     tokio::signal::ctrl_c().await.unwrap();
     info!("received ctrl-c, shutting down");
