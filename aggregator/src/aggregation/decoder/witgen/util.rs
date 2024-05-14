@@ -2,7 +2,7 @@ use bitstream_io::{
     read::{BitRead, BitReader},
     LittleEndian,
 };
-use std::io::{Cursor, Result};
+use std::io::{Cursor, Result, Read};
 
 use super::N_BITS_PER_BYTE;
 

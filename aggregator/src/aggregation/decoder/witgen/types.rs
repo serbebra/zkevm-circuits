@@ -106,6 +106,17 @@ pub struct SequenceInfo {
     pub compression_mode: [bool; 3],
 }
 
+/// The type for indicate each range in output bytes by sequence execution
+#[derive(Debug, Clone)]
+pub enum SequenceExecInfo {
+    LiteralCopy(std::ops::Range<usize>),
+    BackRef(std::ops::Range<usize>),
+}
+
+/// The type to describe an execution: (instruction_id, exec_info)
+#[derive(Debug, Clone)]
+pub struct SequenceExec (pub usize, pub SequenceExecInfo);
+
 /// The type of Lstream.
 #[derive(Clone, Copy, Debug, EnumIter)]
 pub enum LstreamNum {
@@ -437,6 +448,57 @@ pub struct AddressTableRow {
     pub repeated_offset3: u64,
     /// The actual match offset derived from cooked match offset
     pub actual_offset: u64,
+}
+
+impl AddressTableRow {
+
+    /// a debug helper, input datas in the form of example in
+    /// zstd spec: https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#repeat-offsets
+    /// i.e. [offset, literal, rep_1, rep_2, rep_3]
+    #[cfg(test)]
+    pub fn mock_samples(samples: &[[u64;5]]) -> Vec<Self> {
+        Self::mock_samples_full(
+            samples.into_iter().map(|sample|[
+                sample[0],
+                sample[1],
+                0,
+                sample[2],
+                sample[3],
+                sample[4],
+            ])
+        )
+    }  
+
+    /// build row with args [offset, literal, match_len, rep_1, rep_2, rep_3]    
+    #[cfg(test)]
+    pub fn mock_samples_full(samples: impl IntoIterator<Item=[u64;6]>) -> Vec<Self> {
+        let mut ret = Vec::<Self>::new();
+    
+        for sample in samples {
+            let mut new_item = Self {
+                cooked_match_offset: sample[0],
+                literal_length: sample[1],
+                match_length: sample[2],
+                repeated_offset1: sample[3],
+                repeated_offset2: sample[4],
+                repeated_offset3: sample[5],
+                actual_offset: sample[3],
+                ..Default::default()
+            };
+    
+            if let Some(old_item) = ret.last() {
+                new_item.instruction_idx = old_item.instruction_idx + 1;
+                new_item.literal_length_acc = old_item.literal_length_acc + sample[1];
+            } else {
+                new_item.literal_length_acc = sample[1];
+            }
+            
+            ret.push(new_item);
+        }
+    
+        ret
+    }
+
 }
 
 /// Data for BL and Number of Bits for a state in LLT, CMOT and MLT

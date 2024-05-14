@@ -209,6 +209,8 @@ type AggregateBlockResult<F> = (
     Vec<u64>,
     Vec<u64>,
     [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
+    Vec<AddressTableRow>,
+    SequenceExecResult,
 );
 fn process_block<F: Field>(
     src: &[u8],
@@ -224,7 +226,7 @@ fn process_block<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let last_row = rows.last().expect("last row expected to exist");
-    let (_byte_offset, rows, literals, lstream_len, aux_data, sequence_info, fse_aux_tables) =
+    let (_byte_offset, rows, literals, lstream_len, aux_data, sequence_info, fse_aux_tables, address_table_rows, sequence_exec_info) =
         match block_info.block_type {
             BlockType::ZstdCompressedBlock => process_block_zstd(
                 src,
@@ -248,6 +250,8 @@ fn process_block<F: Field>(
         lstream_len,
         aux_data,
         fse_aux_tables,
+        address_table_rows,
+        sequence_exec_info,
     )
 }
 
@@ -354,6 +358,12 @@ fn process_block_header<F: Field>(
     )
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct SequenceExecResult {
+    pub exec_trace: Vec<SequenceExec>,
+    pub recovered_bytes: Vec<u8>, 
+}
+
 type BlockProcessingResult<F> = (
     usize,
     Vec<ZstdWitnessRow<F>>,
@@ -362,6 +372,8 @@ type BlockProcessingResult<F> = (
     Vec<u64>,
     SequenceInfo,
     [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
+    Vec<AddressTableRow>,
+    SequenceExecResult,
 );
 
 type LiteralsBlockResult<F> = (usize, Vec<ZstdWitnessRow<F>>, Vec<u64>, Vec<u64>, Vec<u64>);
@@ -486,7 +498,7 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let last_row = witness_rows.last().expect("last row expected to exist");
-    let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs, sequence_info) =
+    let (bytes_offset, rows, fse_aux_tables, address_table_rows, original_inputs, sequence_info, sequence_exec_info) =
         process_sequences::<F>(
             src,
             block_idx,
@@ -516,6 +528,11 @@ fn process_block_zstd<F: Field>(
         ],
         sequence_info,
         fse_aux_tables,
+        address_table_rows,
+        SequenceExecResult {
+            exec_trace: sequence_exec_info,
+            recovered_bytes: original_inputs,
+        },
     )
 }
 
@@ -526,6 +543,7 @@ type SequencesProcessingResult<F> = (
     Vec<AddressTableRow>,       // Parsed sequence instructions
     Vec<u8>,                    // Recovered original input
     SequenceInfo,
+    Vec<SequenceExec>,
 );
 
 fn process_sequences<F: Field>(
@@ -1543,18 +1561,50 @@ fn process_sequences<F: Field>(
         let actual_offset = if inst.0 > 3 {
             inst.0 - 3
         } else {
-            let mut repeat_idx = inst.0;
+            let repeat_idx = inst.0;
             if inst.2 == 0 {
-                repeat_idx += 1;
                 if repeat_idx > 3 {
-                    repeat_idx = 1;
+                    repeated_offset[1] - 1
+                } else {
+                    repeated_offset[repeat_idx]
                 }
+            } else {
+                repeated_offset[repeat_idx-1]
             }
-
-            repeated_offset[repeat_idx]
         } as u64;
 
         literal_len_acc += inst.2;
+
+        // Update repeated offset
+        if inst.0 > 3 {
+            repeated_offset[2] = repeated_offset[1];
+            repeated_offset[1] = repeated_offset[0];
+            repeated_offset[0] = inst.0 - 3;
+        } else {
+            let mut repeat_idx = inst.0;
+            if inst.2 == 0 {
+                repeat_idx += 1;
+            }
+
+            if repeat_idx == 2 {
+                let result = repeated_offset[1];
+                repeated_offset[1] = repeated_offset[0];
+                repeated_offset[0] = result;
+            } else if repeat_idx == 3 {
+                let result = repeated_offset[2];
+                repeated_offset[2] = repeated_offset[1];
+                repeated_offset[1] = repeated_offset[0];
+                repeated_offset[0] = result;
+            } else if repeat_idx == 4 {
+                let result = repeated_offset[0]-1;
+                assert!(result > 0, "corruptied data");
+                repeated_offset[2] = repeated_offset[1];
+                repeated_offset[1] = repeated_offset[0];
+                repeated_offset[0] = result;
+            } else {
+                // repeat 1
+            }
+        };
 
         address_table_rows.push(AddressTableRow {
             s_padding: 0,
@@ -1567,69 +1617,62 @@ fn process_sequences<F: Field>(
             repeated_offset2: repeated_offset[1] as u64,
             repeated_offset3: repeated_offset[2] as u64,
             actual_offset,
-        });
+        });        
 
-        // Update repeated offset
-        if inst.0 > 3 {
-            repeated_offset[2] = repeated_offset[1];
-            repeated_offset[1] = repeated_offset[0];
-            repeated_offset[0] = inst.0 - 3;
-        } else {
-            let mut repeat_idx = inst.0;
-            if inst.2 == 0 {
-                repeat_idx += 1;
-                if repeat_idx > 3 {
-                    repeat_idx = 1;
-                }
-            }
-
-            if repeat_idx == 2 {
-                let result = repeated_offset[1];
-                repeated_offset[1] = repeated_offset[0];
-                repeated_offset[0] = result;
-            } else if repeat_idx == 3 {
-                let result = repeated_offset[2];
-                repeated_offset[2] = repeated_offset[1];
-                repeated_offset[1] = repeated_offset[0];
-                repeated_offset[0] = result;
-            } else {
-                // repeat 1
-            }
-        };
     }
 
     // Executing sequence instructions to acquire the original input.
     // At this point, the address table rows are not padded. Paddings will be added as sequence
     // instructions progress.
     let mut recovered_inputs: Vec<u8> = vec![];
+    let mut seq_exec_info: Vec<SequenceExec> = vec![];
     let mut current_literal_pos: usize = 0;
 
     for inst in address_table_rows.clone() {
         let new_literal_pos = current_literal_pos + (inst.literal_length as usize);
-        recovered_inputs.extend_from_slice(
-            literals[current_literal_pos..new_literal_pos]
-                .iter()
-                .map(|&v| v as u8)
-                .collect::<Vec<u8>>()
-                .as_slice(),
-        );
+        if new_literal_pos > current_literal_pos {
+            let r = current_literal_pos..new_literal_pos;
+            seq_exec_info.push(
+                SequenceExec(
+                    inst.instruction_idx as usize,
+                    SequenceExecInfo::LiteralCopy(r.clone()),
+                )
+            );
+            recovered_inputs.extend_from_slice(
+                literals[r]
+                    .iter()
+                    .map(|&v| v as u8)
+                    .collect::<Vec<u8>>()
+                    .as_slice(),
+            );            
+        }
 
         let match_pos = recovered_inputs.len() - (inst.actual_offset as usize);
-        let matched_bytes = recovered_inputs
-            .clone()
-            .into_iter()
-            .skip(match_pos)
-            .take(inst.match_length as usize)
-            .collect::<Vec<u8>>();
-        recovered_inputs.extend_from_slice(&matched_bytes.as_slice());
-
+        if inst.match_length > 0 {
+            let r = match_pos..(inst.match_length as usize + match_pos);
+            seq_exec_info.push(
+                SequenceExec(
+                    inst.instruction_idx as usize,
+                    SequenceExecInfo::BackRef(r.clone()),
+                )
+            );
+            let matched_bytes = Vec::from(&recovered_inputs[r]);
+            recovered_inputs.extend_from_slice(&matched_bytes.as_slice());
+        }
         current_literal_pos = new_literal_pos;
     }
 
     // Add remaining literal bytes
     if current_literal_pos < literals.len() {
+        let r = current_literal_pos..literals.len();
+        seq_exec_info.push(
+            SequenceExec(
+                sequence_info.num_sequences,
+                SequenceExecInfo::LiteralCopy(r.clone()),
+            )
+        );        
         recovered_inputs.extend_from_slice(
-            literals[current_literal_pos..literals.len()]
+            literals[r]
                 .iter()
                 .map(|&v| v as u8)
                 .collect::<Vec<u8>>()
@@ -1644,6 +1687,7 @@ fn process_sequences<F: Field>(
         address_table_rows,
         recovered_inputs,
         sequence_info,
+        seq_exec_info,
     )
 }
 
@@ -1786,21 +1830,29 @@ fn process_block_zstd_literals_header<F: Field>(
 /// Result for processing multiple blocks from compressed data
 pub type MultiBlockProcessResult<F> = (
     Vec<ZstdWitnessRow<F>>,
-    Vec<u64>,
+    Vec<Vec<u64>>, // literals
     Vec<u64>,
     Vec<FseAuxiliaryTableData>,
     Vec<BlockInfo>,
     Vec<SequenceInfo>,
+    // TODO: handle multi-block.
+    Vec<Vec<AddressTableRow>>,
+    // TODO: handle multi-block.
+    Vec<SequenceExecResult>,
 );
 
 /// Process a slice of bytes into decompression circuit witness rows
 pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessResult<F> {
     let mut witness_rows = vec![];
-    let mut literals: Vec<u64> = vec![];
+    let mut literals: Vec<Vec<u64>> = vec![];
     let mut aux_data: Vec<u64> = vec![];
     let mut fse_aux_tables: Vec<FseAuxiliaryTableData> = vec![];
     let mut block_info_arr: Vec<BlockInfo> = vec![];
     let mut sequence_info_arr: Vec<SequenceInfo> = vec![];
+    // TODO: handle multi-block
+    let mut address_table_arr: Vec<Vec<AddressTableRow>> = vec![];
+    // TODO: handle multi-block
+    let mut sequence_exec_info_arr: Vec<SequenceExecResult> = vec![];
     let byte_offset = 0;
 
     // witgen_debug
@@ -1827,6 +1879,8 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             lstream_lens,
             pipeline_data,
             new_fse_aux_tables,
+            address_table_rows,
+            sequence_exec_info,
         ) = process_block::<F>(
             src,
             block_idx,
@@ -1836,7 +1890,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         );
 
         witness_rows.extend_from_slice(&rows);
-        literals.extend_from_slice(&new_literals);
+        literals.push(new_literals);
         aux_data.extend_from_slice(&lstream_lens);
         aux_data.extend_from_slice(&pipeline_data);
         for fse_aux_table in new_fse_aux_tables {
@@ -1845,6 +1899,8 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
 
         block_info_arr.push(block_info);
         sequence_info_arr.push(sequence_info);
+        address_table_arr.push(address_table_rows);
+        sequence_exec_info_arr.push(sequence_exec_info);
 
         if block_info.is_last_block {
             // TODO: Recover this assertion after the sequence section decoding is completed.
@@ -1895,6 +1951,9 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         fse_aux_tables,
         block_info_arr,
         sequence_info_arr,
+        // TODO: handle multi-block.
+        address_table_arr,
+        sequence_exec_info_arr,
     )
 }
 
@@ -2032,6 +2091,8 @@ mod tests {
             _fse_aux_tables,
             block_info_arr,
             sequence_info_arr,
+            _,
+            _,
         ) = process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
 
         Ok(())
