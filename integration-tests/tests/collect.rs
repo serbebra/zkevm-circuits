@@ -22,8 +22,8 @@ const DENCUN_BLOCK: u64 = 19424209;
 #[tokio::test]
 async fn collect_traces() {
     log_init();
-    let (pending_txs_tx, pending_txs_rx) = async_channel::bounded(100);
-    let (saving_txs_tx, saving_txs_rx) = async_channel::bounded(100);
+    let (pending_txs_tx, pending_txs_rx) = async_channel::bounded(20);
+    let (saving_txs_tx, saving_txs_rx) = async_channel::bounded(20);
 
     let mut set = JoinSet::new();
     // block loader
@@ -46,12 +46,11 @@ async fn collect_traces() {
     }
 
     tokio::signal::ctrl_c().await.unwrap();
+    info!("received ctrl-c, shutting down");
     pending_txs_tx.close();
+    pending_txs_rx.close();
     saving_txs_tx.close();
-    drop(pending_txs_tx);
-    drop(saving_txs_tx);
-    drop(pending_txs_rx);
-    drop(saving_txs_rx);
+    saving_txs_rx.close();
 
     while let Some(_) = set.join_next().await {}
 }
@@ -114,18 +113,22 @@ async fn load_transactions(
             .expect("block not found");
         let blk = Arc::new(blk);
         info!(
-            "load {} txs from block#{}",
+            "load {} txs from block#{}, pending_txs_tx {}, saving_txs_tx {}",
             blk.transactions.len(),
-            current_block
+            current_block,
+            pending_txs_tx.len(),
+            saving_txs_tx.len()
         );
+
         for tx in blk.transactions.iter() {
             let tx_type = TxType::get_tx_type(&tx);
             if matches!(tx_type, TxType::Eip1559 | TxType::Eip2930) {
-                info!("filter out tx#{} with type {:?}", tx.hash, tx_type);
+                trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
                 if let Err(_) = saving_txs_tx
                     .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
                     .await
                 {
+                    info!("saving_txs_tx closed, shutdown load_transactions");
                     return;
                 }
                 continue;
@@ -134,6 +137,7 @@ async fn load_transactions(
                 .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
                 .await
             {
+                info!("pending_txs_tx closed, shutdown load_transactions");
                 return;
             }
         }
@@ -155,11 +159,12 @@ async fn filter_transaction(
                 OpcodeId::MCOPY | OpcodeId::TLOAD | OpcodeId::TSTORE | OpcodeId::BASEFEE
             )
         }) {
-            info!("filter_transaction woker#{idx} found tx#{tx_hash} contains target opcode");
+            trace!("filter_transaction woker#{idx} found tx#{tx_hash} contains target opcode");
             tx.trace = Some(trace);
             saving_txs_tx.send(tx).await.expect("channel closed");
         }
     }
+    info!("filter_transaction worker#{idx} shutdown");
 }
 
 async fn save_transaction(
@@ -195,7 +200,7 @@ async fn save_transaction(
     .expect("failed to create dir");
 
     while let Ok(mut tx) = saving_txs_rx.recv().await {
-        info!("save_transaction worker#{idx} saving tx#{}", tx.tx_hash);
+        trace!("save_transaction worker#{idx} saving tx#{}", tx.tx_hash);
         if tx.trace.is_none() {
             tx.trace = Some(
                 cli.cli
@@ -228,9 +233,10 @@ async fn save_transaction(
         .zip(["mcopy", "tload", "tstore", "basefee"])
         {
             if geth_trace.struct_logs.iter().any(|step| step.op == opcode) {
-                info!(
+                trace!(
                     "save_transaction worker#{idx} saving tx#{} to {}",
-                    tx.tx_hash, dir
+                    tx.tx_hash,
+                    dir
                 );
                 let path = base_dir.join(dir).join(format!("{:x}.json", tx.tx_hash));
                 tokio::fs::write(path, serialized.as_slice())
@@ -242,9 +248,10 @@ async fn save_transaction(
         let tx_type = TxType::get_tx_type(&eth_block.transactions[0]);
         for (dir, ty) in [("eip1559", TxType::Eip1559), ("eip2930", TxType::Eip2930)] {
             if tx_type == ty {
-                info!(
+                trace!(
                     "save_transaction worker#{idx} saving tx#{} to {}",
-                    tx.tx_hash, dir
+                    tx.tx_hash,
+                    dir
                 );
                 let path = base_dir.join(dir).join(format!("{:x}.json", tx.tx_hash));
                 tokio::fs::write(path, serialized.as_slice())
@@ -253,4 +260,5 @@ async fn save_transaction(
             }
         }
     }
+    info!("save_transaction worker#{idx} shutdown");
 }
