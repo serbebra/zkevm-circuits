@@ -2179,10 +2179,11 @@ mod tests {
             write!(handle, "=> batch_idx: {:?}", batch_idx).unwrap();
             writeln!(handle).unwrap();
 
-            assert!(raw_input_bytes == decoded_bytes);
             // witgen_debug
             // write!(handle, "=> decoded: {:?}", decoded_bytes).unwrap();
             // writeln!(handle).unwrap();
+
+            assert!(raw_input_bytes == decoded_bytes);
         }
 
         Ok(())
