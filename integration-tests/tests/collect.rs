@@ -129,22 +129,24 @@ async fn load_transactions(
             match tx_type {
                 TxType::Eip1559 | TxType::Eip2930 => {
                     trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
-                    if let Err(_) = saving_txs_tx
+                    if let Err(e) = saving_txs_tx
                         .send_async(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
                         .await
                     {
+                        error!("{e:?}");
                         info!("saving_txs_tx closed, shutdown load_transactions");
-                        total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         return;
                     }
+                    total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     continue;
                 }
                 TxType::PreEip155 => continue,
                 _ => {
-                    if let Err(_) = pending_txs_tx
+                    if let Err(e) = pending_txs_tx
                         .send_async(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
                         .await
                     {
+                        error!("{e:?}");
                         info!("pending_txs_tx closed, shutdown load_transactions");
                         return;
                     }
