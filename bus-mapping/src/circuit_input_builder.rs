@@ -992,7 +992,8 @@ type EthBlock = eth_types::Block<eth_types::Transaction>;
 /// necessary to generate the circuit inputs for a block by querying geth for
 /// the necessary information and using the CircuitInputBuilder.
 pub struct BuilderClient<P: JsonRpcClient> {
-    cli: GethClient<P>,
+    /// inner
+    pub cli: GethClient<P>,
     chain_id: u64,
     circuits_params: CircuitsParams,
 }
@@ -1426,7 +1427,8 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         Ok(builder)
     }
 
-    async fn get_trace_config(
+    /// get trace config from geth traces
+    pub async fn get_trace_config(
         &self,
         eth_block: &EthBlock,
         geth_traces: impl Iterator<Item = &GethExecTrace>,

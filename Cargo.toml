@@ -24,9 +24,11 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 anyhow = "1.0"
 ark-std = "0.3"
+async-channel = "2.3"
 base64 = "0.13.0"
 ctor = "0.1"
 env_logger = "0.10"
+either = "1.11"
 ethers = { version = "=2.0.7", features = ["ethers-solc"] }
 ethers-core = { git = "https://github.com/scroll-tech/ethers-rs.git", branch = "v2.0.7", features = ["scroll"] }
 ethers-providers = "=2.0.7"

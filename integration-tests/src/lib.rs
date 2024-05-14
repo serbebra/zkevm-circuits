@@ -10,6 +10,7 @@ use eth_types::Address;
 use ethers::{
     abi,
     core::{k256::ecdsa::SigningKey, types::Bytes},
+    prelude::{HttpRateLimitRetryPolicy, JsonRpcClient, RetryClientBuilder},
     providers::{Http, Provider},
     signers::{coins_bip39::English, MnemonicBuilder, Signer, Wallet},
 };
@@ -82,14 +83,28 @@ pub fn log_init() {
 }
 
 /// Get the integration test [`GethClient`]
-pub fn get_client() -> GethClient<Http> {
-    let transport = Http::new(Url::parse(&GETH0_URL).expect("invalid url"));
+pub fn get_client() -> GethClient<impl JsonRpcClient> {
+    let transport = RetryClientBuilder::default()
+        .rate_limit_retries(10)
+        .timeout_retries(10)
+        .initial_backoff(Duration::from_secs(1))
+        .build(
+            Http::new(Url::parse(&GETH0_URL).expect("invalid url")),
+            Box::<HttpRateLimitRetryPolicy>::default(),
+        );
     GethClient::new(transport)
 }
 
 /// Get the integration test [`Provider`]
-pub fn get_provider() -> Provider<Http> {
-    let transport = Http::new(Url::parse(&GETH0_URL).expect("invalid url"));
+pub fn get_provider() -> Provider<impl JsonRpcClient> {
+    let transport = RetryClientBuilder::default()
+        .rate_limit_retries(10)
+        .timeout_retries(10)
+        .initial_backoff(Duration::from_secs(1))
+        .build(
+            Http::new(Url::parse(&GETH0_URL).expect("invalid url")),
+            Box::<HttpRateLimitRetryPolicy>::default(),
+        );
     Provider::new(transport).interval(Duration::from_millis(100))
 }
 
