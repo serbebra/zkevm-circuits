@@ -4794,7 +4794,7 @@ mod tests {
         halo2curves::bn256::Fr,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use std::io::Write;
+    use std::{fs, io::Write};
     use zkevm_circuits::{
         table::{BitwiseOpTable, Pow2Table, PowOfRandTable, RangeTable, U8Table},
         util::Challenges,
@@ -4955,5 +4955,65 @@ mod tests {
         let decoder_config_tester = DecoderConfigTester { raw, compressed, k };
         let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
         mock_prover.assert_satisfied_par();
+    }
+
+    #[test]
+    fn test_decoder_config_batch_data() -> Result<(), std::io::Error> {
+        let mut batch_files = fs::read_dir("./data")?
+            .map(|entry| entry.map(|e| e.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        batch_files.sort();
+
+        let batches = batch_files
+            .iter()
+            .map(fs::read_to_string)
+            .filter_map(|data| data.ok())
+            .map(|data| hex::decode(data.trim_end()).expect("Failed to decode hex data"))
+            .collect::<Vec<Vec<u8>>>();
+
+        let raw = batches[0].clone();
+        let compressed = {
+            // compression level = 0 defaults to using level=3, which is zstd's default.
+            let mut encoder =
+                zstd::stream::write::Encoder::new(Vec::new(), 0).expect("Encoder construction");
+
+            // disable compression of literals, i.e. literals will be raw bytes.
+            encoder
+                .set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
+                    zstd::zstd_safe::ParamSwitch::Disable,
+                ))
+                .expect("Encoder set_parameter: LiteralCompressionMode");
+            // set target block size to fit within a single block.
+            encoder
+                .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))
+                .expect("Encoder set_parameter: TargetCBlockSize");
+            // do not include the checksum at the end of the encoded data.
+            encoder
+                .include_checksum(false)
+                .expect("Encoder include_checksum: false");
+            // do not include magic bytes at the start of the frame since we will have a single
+            // frame.
+            encoder
+                .include_magicbytes(false)
+                .expect("Encoder include magicbytes: false");
+            // set source length, which will be reflected in the frame header.
+            encoder
+                .set_pledged_src_size(Some(raw.len() as u64))
+                .expect("Encoder src_size: raw.len()");
+            // include the content size to know at decode time the expected size of decoded data.
+            encoder
+                .include_contentsize(true)
+                .expect("Encoder include_contentsize: true");
+
+            encoder.write_all(&raw).expect("Encoder wirte_all");
+            encoder.finish().expect("Encoder success")
+        };
+
+        let k = 18;
+        let decoder_config_tester = DecoderConfigTester { raw, compressed, k };
+        let mock_prover = MockProver::<Fr>::run(k, &decoder_config_tester, vec![]).unwrap();
+        mock_prover.assert_satisfied_par();
+
+        Ok(())
     }
 }
