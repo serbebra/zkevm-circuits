@@ -82,6 +82,11 @@ pub fn log_init() {
     });
 }
 
+/// Get the integration test [`Http`] transport
+pub fn get_transport() -> Http {
+    Http::new(Url::parse(&GETH0_URL).expect("invalid url"))
+}
+
 /// Get the integration test [`GethClient`]
 pub fn get_client() -> GethClient<impl JsonRpcClient> {
     let transport = Http::new(Url::parse(&GETH0_URL).expect("invalid url"));
