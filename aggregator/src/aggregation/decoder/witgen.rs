@@ -6,6 +6,8 @@ use halo2_proofs::circuit::Value;
 use revm_precompile::HashMap;
 
 use std::io;
+// witgen_debug
+use std::io::Write;
 
 mod params;
 pub use params::*;
@@ -1692,13 +1694,26 @@ fn process_sequences<F: Field>(
 
         let match_pos = recovered_inputs.len() - (inst.actual_offset as usize);
         if inst.match_length > 0 {
-            let r = match_pos..(inst.match_length as usize + match_pos);
-            seq_exec_info.push(SequenceExec(
-                inst.instruction_idx as usize,
-                SequenceExecInfo::BackRef(r.clone()),
-            ));
-            let matched_bytes = Vec::from(&recovered_inputs[r]);
-            recovered_inputs.extend_from_slice(matched_bytes.as_slice());
+            if inst.match_length <= inst.actual_offset {
+                let r = match_pos..(inst.match_length as usize + match_pos);
+                seq_exec_info.push(SequenceExec(
+                    inst.instruction_idx as usize,
+                    SequenceExecInfo::BackRef(r.clone()),
+                ));
+                let matched_bytes = Vec::from(&recovered_inputs[r]);
+                recovered_inputs.extend_from_slice(matched_bytes.as_slice());
+            } else {
+                // TODO(FV): Add support for repeated byte slice
+                let l = inst.match_length as usize;
+                let r = match_pos..recovered_inputs.len();
+                seq_exec_info.push(SequenceExec(
+                    inst.instruction_idx as usize,
+                    SequenceExecInfo::BackRefRepeated(r.clone(), l.clone()),
+                ));
+                let matched_bytes = Vec::from(&recovered_inputs[r]);
+                let total_matched_bytes: Vec<u8> = matched_bytes.iter().cycle().take(l).copied().collect();
+                recovered_inputs.extend_from_slice(total_matched_bytes.as_slice());
+            }
         }
         current_literal_pos = new_literal_pos;
     }
@@ -1718,6 +1733,14 @@ fn process_sequences<F: Field>(
                 .as_slice(),
         );
     }
+
+    // witgen_debug
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
+    // witgen_debug
+    write!(handle, "=> decoded: {:?}", recovered_inputs).unwrap();
+    writeln!(handle).unwrap();
 
     (
         end_offset,
