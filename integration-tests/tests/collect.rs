@@ -201,29 +201,27 @@ async fn save_transaction(
     .expect("failed to create dir");
 
     while let Ok(mut tx) = saving_txs_rx.recv().await {
-        trace!("save_transaction worker#{idx} saving tx#{}", tx.tx_hash);
+        let tx_hash = tx.tx_hash;
+        trace!("save_transaction worker#{idx} saving tx#{}", tx_hash);
         if tx.trace.is_none() {
             tx.trace = Some(
                 cli.cli
-                    .trace_tx_by_hash_legacy(tx.tx_hash)
+                    .trace_tx_by_hash_legacy(tx_hash)
                     .await
-                    .expect(&format!("failed to get trace for tx#{:x}", tx.tx_hash)),
+                    .expect(&format!("failed to get trace for tx#{:x}", tx_hash)),
             );
         }
         let geth_trace = tx.trace.unwrap();
         let mut eth_block = tx.blk.deref().clone();
-        eth_block.transactions.retain(|t| t.hash == tx.tx_hash);
+        eth_block.transactions.retain(|t| t.hash == tx_hash);
         let trace_config = cli
             .get_trace_config(&eth_block, iter::once(&geth_trace), true)
             .await
-            .expect(&format!(
-                "failed to get trace config for tx#{:x}",
-                tx.tx_hash
-            ));
+            .expect(&format!("failed to get trace config for tx#{:x}", tx_hash));
 
-        let serialized = tokio::task::spawn_blocking(|| {
+        let serialized = tokio::task::spawn_blocking(move || {
             let block_trace = external_tracer::l2trace(&trace_config)
-                .expect(&format!("failed to get l2 trace for tx#{:x}", tx.tx_hash));
+                .expect(&format!("failed to get l2 trace for tx#{:x}", tx_hash));
             serde_json::to_vec_pretty(&block_trace).expect("failed to serialize")
         })
         .await
