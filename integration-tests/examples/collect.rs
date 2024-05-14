@@ -183,7 +183,7 @@ async fn load_transactions(
             }
         }
 
-        current_block += 1;
+        current_block -= 1;
     }
 }
 
