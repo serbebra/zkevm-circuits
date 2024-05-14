@@ -1711,7 +1711,8 @@ fn process_sequences<F: Field>(
                     SequenceExecInfo::BackRefRepeated(r.clone(), l.clone()),
                 ));
                 let matched_bytes = Vec::from(&recovered_inputs[r]);
-                let total_matched_bytes: Vec<u8> = matched_bytes.iter().cycle().take(l).copied().collect();
+                let total_matched_bytes: Vec<u8> =
+                    matched_bytes.iter().cycle().take(l).copied().collect();
                 recovered_inputs.extend_from_slice(total_matched_bytes.as_slice());
             }
         }
@@ -2120,7 +2121,7 @@ mod tests {
         let mut batch_files = fs::read_dir("./data")?
             .map(|entry| entry.map(|e| e.path()))
             .collect::<Result<Vec<_>, std::io::Error>>()?;
-            batch_files.sort();
+        batch_files.sort();
         let batches = batch_files
             .iter()
             .map(fs::read_to_string)
@@ -2137,13 +2138,14 @@ mod tests {
             let compressed = {
                 // compression level = 0 defaults to using level=3, which is zstd's default.
                 let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0)?;
-    
+
                 // disable compression of literals, i.e. literals will be raw bytes.
                 encoder.set_parameter(zstd::stream::raw::CParameter::LiteralCompressionMode(
                     zstd::zstd_safe::ParamSwitch::Disable,
                 ))?;
                 // set target block size to fit within a single block.
-                encoder.set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
+                encoder
+                    .set_parameter(zstd::stream::raw::CParameter::TargetCBlockSize(124 * 1024))?;
                 // do not include the checksum at the end of the encoded data.
                 encoder.include_checksum(false)?;
                 // do not include magic bytes at the start of the frame since we will have a single
@@ -2151,9 +2153,10 @@ mod tests {
                 encoder.include_magicbytes(false)?;
                 // set source length, which will be reflected in the frame header.
                 encoder.set_pledged_src_size(Some(raw_input_bytes.len() as u64))?;
-                // include the content size to know at decode time the expected size of decoded data.
+                // include the content size to know at decode time the expected size of decoded
+                // data.
                 encoder.include_contentsize(true)?;
-    
+
                 encoder.write_all(&raw_input_bytes)?;
                 encoder.finish()?
             };
@@ -2173,7 +2176,10 @@ mod tests {
                 sequence_exec_result,
             ) = process::<Fr>(&compressed, Value::known(Fr::from(123456789)));
 
-            let decoded_bytes = sequence_exec_result.into_iter().flat_map(|r| r.recovered_bytes).collect::<Vec<u8>>();
+            let decoded_bytes = sequence_exec_result
+                .into_iter()
+                .flat_map(|r| r.recovered_bytes)
+                .collect::<Vec<u8>>();
 
             // witgen_debug
             write!(handle, "=> batch_idx: {:?}", batch_idx).unwrap();
