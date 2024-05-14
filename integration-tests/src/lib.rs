@@ -10,7 +10,7 @@ use eth_types::Address;
 use ethers::{
     abi,
     core::{k256::ecdsa::SigningKey, types::Bytes},
-    prelude::{HttpRateLimitRetryPolicy, JsonRpcClient, RetryClientBuilder},
+    prelude::JsonRpcClient,
     providers::{Http, Provider},
     signers::{coins_bip39::English, MnemonicBuilder, Signer, Wallet},
 };

@@ -18,15 +18,17 @@ const DENCUN_BLOCK: u64 = 19424209;
 #[tokio::test]
 async fn collect_traces() {
     log_init();
-    let (pending_txs_tx, pending_txs_rx) = async_channel::bounded(100);
-    let (saving_txs_tx, saving_txs_rx) = async_channel::bounded(20);
+    let (pending_txs_tx, pending_txs_rx) = flume::bounded(100);
+    let (saving_txs_tx, saving_txs_rx) = flume::bounded(20);
 
+    let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let total_saving_txs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
     let mut set = JoinSet::new();
     // block loader
     set.spawn(load_transactions(
-        pending_txs_tx.clone(),
+        shutdown.clone(),
+        pending_txs_tx,
         saving_txs_tx.clone(),
         total_saving_txs.clone(),
     ));
@@ -39,20 +41,31 @@ async fn collect_traces() {
             total_saving_txs.clone(),
         ));
     }
+    drop(saving_txs_tx);
 
     // save workers
     for i in 0..10 {
         set.spawn(save_transaction(i, saving_txs_rx.clone()));
     }
+    drop(saving_txs_rx);
 
     tokio::signal::ctrl_c().await.unwrap();
     info!("received ctrl-c, shutting down");
-    pending_txs_tx.close();
-    pending_txs_rx.close();
-    saving_txs_tx.close();
-    saving_txs_rx.close();
+    shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
 
-    while let Some(_) = set.join_next().await {}
+    loop {
+        tokio::select! {
+            ret = set.join_next() => {
+                if ret.is_none() {
+                    break;
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                info!("received ctrl-c again, force shutdown");
+                break;
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -73,8 +86,9 @@ impl PartialTxWithBlock {
 }
 
 async fn load_transactions(
-    pending_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
-    saving_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
+    shutdown: Arc<std::sync::atomic::AtomicBool>,
+    pending_txs_tx: flume::Sender<Box<PartialTxWithBlock>>,
+    saving_txs_tx: flume::Sender<Box<PartialTxWithBlock>>,
     total_saving_txs: Arc<std::sync::atomic::AtomicUsize>,
 ) {
     let client = get_provider();
@@ -84,7 +98,7 @@ async fn load_transactions(
     }
     let mut total_pending_txs = 0;
     let mut total_txs = 0;
-    loop {
+    while !shutdown.load(std::sync::atomic::Ordering::Relaxed) {
         let mut backoff = Duration::from_secs(1);
         while client.get_block_number().await.unwrap().as_u64() < current_block {
             if backoff == Duration::from_secs(1) {
@@ -116,7 +130,7 @@ async fn load_transactions(
                 TxType::Eip1559 | TxType::Eip2930 => {
                     trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
                     if let Err(_) = saving_txs_tx
-                        .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
+                        .send_async(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
                         .await
                     {
                         info!("saving_txs_tx closed, shutdown load_transactions");
@@ -128,7 +142,7 @@ async fn load_transactions(
                 TxType::PreEip155 => continue,
                 _ => {
                     if let Err(_) = pending_txs_tx
-                        .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
+                        .send_async(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
                         .await
                     {
                         info!("pending_txs_tx closed, shutdown load_transactions");
@@ -145,12 +159,12 @@ async fn load_transactions(
 
 async fn filter_transaction(
     idx: usize,
-    pending_txs_rx: async_channel::Receiver<Box<PartialTxWithBlock>>,
-    saving_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
+    pending_txs_rx: flume::Receiver<Box<PartialTxWithBlock>>,
+    saving_txs_tx: flume::Sender<Box<PartialTxWithBlock>>,
     total_saving_txs: Arc<std::sync::atomic::AtomicUsize>,
 ) {
     let client = get_client();
-    while let Ok(mut tx) = pending_txs_rx.recv().await {
+    while let Ok(mut tx) = pending_txs_rx.recv_async().await {
         let tx_hash = tx.tx_hash;
         let trace = client.trace_tx_by_hash_legacy(tx_hash).await.unwrap();
         if trace.struct_logs.iter().any(|step| {
@@ -161,17 +175,14 @@ async fn filter_transaction(
         }) {
             trace!("filter_transaction woker#{idx} found tx#{tx_hash} contains target opcode");
             tx.trace = Some(trace);
-            saving_txs_tx.send(tx).await.expect("channel closed");
+            saving_txs_tx.send_async(tx).await.expect("channel closed");
             total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
     info!("filter_transaction worker#{idx} shutdown");
 }
 
-async fn save_transaction(
-    idx: usize,
-    saving_txs_rx: async_channel::Receiver<Box<PartialTxWithBlock>>,
-) {
+async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<PartialTxWithBlock>>) {
     let cli = get_client();
     let params = CircuitsParams {
         max_rws: 2_000_000,
@@ -200,7 +211,7 @@ async fn save_transaction(
     )
     .expect("failed to create dir");
 
-    while let Ok(mut tx) = saving_txs_rx.recv().await {
+    while let Ok(mut tx) = saving_txs_rx.recv_async().await {
         let tx_hash = tx.tx_hash;
         trace!("save_transaction worker#{idx} saving tx#{}", tx_hash);
         if tx.trace.is_none() {
