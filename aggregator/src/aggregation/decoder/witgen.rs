@@ -1430,8 +1430,8 @@ fn process_sequences<F: Field>(
                         aux_2: Value::known(F::zero()),
                     },
                     bitstream_read_data: BitstreamReadRow {
-                        bit_start_idx: 0,
-                        bit_end_idx: 0,
+                        bit_start_idx: 7,
+                        bit_end_idx: 7,
                         bit_value: 0,
                         is_zero_bit_read: false,
                         is_seq_init: false,
