@@ -18,7 +18,7 @@ const DENCUN_BLOCK: u64 = 19424209;
 #[tokio::test]
 async fn collect_traces() {
     log_init();
-    let (pending_txs_tx, pending_txs_rx) = async_channel::bounded(20);
+    let (pending_txs_tx, pending_txs_rx) = async_channel::bounded(100);
     let (saving_txs_tx, saving_txs_rx) = async_channel::bounded(20);
 
     let total_saving_txs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -31,7 +31,7 @@ async fn collect_traces() {
         total_saving_txs.clone(),
     ));
     // filter workers
-    for i in 0..10 {
+    for i in 0..100 {
         set.spawn(filter_transaction(
             i,
             pending_txs_rx.clone(),
@@ -112,25 +112,30 @@ async fn load_transactions(
         for tx in blk.transactions.iter() {
             total_txs += 1;
             let tx_type = TxType::get_tx_type(&tx);
-            if matches!(tx_type, TxType::Eip1559 | TxType::Eip2930) {
-                trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
-                if let Err(_) = saving_txs_tx
-                    .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
-                    .await
-                {
-                    info!("saving_txs_tx closed, shutdown load_transactions");
-                    total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    return;
+            match tx_type {
+                TxType::Eip1559 | TxType::Eip2930 => {
+                    trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
+                    if let Err(_) = saving_txs_tx
+                        .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
+                        .await
+                    {
+                        info!("saving_txs_tx closed, shutdown load_transactions");
+                        total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        return;
+                    }
+                    continue;
                 }
-                continue;
-            }
-            if let Err(_) = pending_txs_tx
-                .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
-                .await
-            {
-                info!("pending_txs_tx closed, shutdown load_transactions");
-                total_pending_txs += 1;
-                return;
+                TxType::PreEip155 => continue,
+                _ => {
+                    if let Err(_) = pending_txs_tx
+                        .send(Box::new(PartialTxWithBlock::new(tx.hash, blk.clone())))
+                        .await
+                    {
+                        info!("pending_txs_tx closed, shutdown load_transactions");
+                        total_pending_txs += 1;
+                        return;
+                    }
+                }
             }
         }
 
@@ -215,9 +220,14 @@ async fn save_transaction(
                 "failed to get trace config for tx#{:x}",
                 tx.tx_hash
             ));
-        let block_trace = external_tracer::l2trace(&trace_config)
-            .expect(&format!("failed to get l2 trace for tx#{:x}", tx.tx_hash));
-        let serialized = serde_json::to_vec_pretty(&block_trace).expect("failed to serialize");
+
+        let serialized = tokio::task::spawn_blocking(|| {
+            let block_trace = external_tracer::l2trace(&trace_config)
+                .expect(&format!("failed to get l2 trace for tx#{:x}", tx.tx_hash));
+            serde_json::to_vec_pretty(&block_trace).expect("failed to serialize")
+        })
+        .await
+        .expect("failed to get l2 trace");
 
         for (opcode, dir) in [
             OpcodeId::MCOPY,
