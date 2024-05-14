@@ -1,14 +1,10 @@
 use bus_mapping::circuit_input_builder::{BuilderClient, CircuitsParams};
-use eth_types::{evm_types::OpcodeId, geth_types::TxType, GethExecTrace};
-use ethers::{
-    prelude::{Http, *},
-    providers::Provider,
-};
+use eth_types::{evm_types::OpcodeId, geth_types::TxType, Block, GethExecTrace, Transaction, H256};
+use ethers::prelude::Middleware;
 use integration_tests::{get_client, get_provider, log_init, START_BLOCK};
 use log::*;
 use std::{env, iter, ops::Deref, path::PathBuf, sync::Arc, time::Duration};
 use tokio::task::JoinSet;
-use url::Url;
 
 const DENCUN_BLOCK: u64 = 19424209;
 
@@ -25,11 +21,14 @@ async fn collect_traces() {
     let (pending_txs_tx, pending_txs_rx) = async_channel::bounded(20);
     let (saving_txs_tx, saving_txs_rx) = async_channel::bounded(20);
 
+    let total_saving_txs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     let mut set = JoinSet::new();
     // block loader
     set.spawn(load_transactions(
         pending_txs_tx.clone(),
         saving_txs_tx.clone(),
+        total_saving_txs.clone(),
     ));
     // filter workers
     for i in 0..10 {
@@ -37,6 +36,7 @@ async fn collect_traces() {
             i,
             pending_txs_rx.clone(),
             saving_txs_tx.clone(),
+            total_saving_txs.clone(),
         ));
     }
 
@@ -72,30 +72,18 @@ impl PartialTxWithBlock {
     }
 }
 
-fn get_infura_client() -> Provider<impl JsonRpcClient> {
-    let client = RetryClientBuilder::default()
-        .rate_limit_retries(10)
-        .timeout_retries(10)
-        .initial_backoff(Duration::from_secs(1))
-        .build(
-            Http::new(
-                Url::parse(&env::var("INFURA_URL").expect("invalid unicode INFURA_URL"))
-                    .expect("invalid INFURA_URL"),
-            ),
-            Box::<HttpRateLimitRetryPolicy>::default(),
-        );
-    Provider::new(client)
-}
-
 async fn load_transactions(
     pending_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
     saving_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
+    total_saving_txs: Arc<std::sync::atomic::AtomicUsize>,
 ) {
     let client = get_provider();
     let mut current_block = *START_BLOCK as u64;
     if current_block < DENCUN_BLOCK {
         current_block = DENCUN_BLOCK;
     }
+    let mut total_pending_txs = 0;
+    let mut total_txs = 0;
     loop {
         let mut backoff = Duration::from_secs(1);
         while client.get_block_number().await.unwrap().as_u64() < current_block {
@@ -112,15 +100,17 @@ async fn load_transactions(
             .expect("max retries exceeded")
             .expect("block not found");
         let blk = Arc::new(blk);
-        info!(
-            "load {} txs from block#{}, pending_txs_tx {}, saving_txs_tx {}",
-            blk.transactions.len(),
-            current_block,
-            pending_txs_tx.len(),
-            saving_txs_tx.len()
-        );
+
+        {
+            let total_saving_txs = total_saving_txs.load(std::sync::atomic::Ordering::Relaxed);
+            info!(
+                "load {} txs from block#{current_block}, filtering {total_pending_txs}/{total_txs}, saving {total_saving_txs}/{total_txs}",
+                blk.transactions.len(),
+            );
+        }
 
         for tx in blk.transactions.iter() {
+            total_txs += 1;
             let tx_type = TxType::get_tx_type(&tx);
             if matches!(tx_type, TxType::Eip1559 | TxType::Eip2930) {
                 trace!("filter out tx#{} with type {:?}", tx.hash, tx_type);
@@ -129,6 +119,7 @@ async fn load_transactions(
                     .await
                 {
                     info!("saving_txs_tx closed, shutdown load_transactions");
+                    total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return;
                 }
                 continue;
@@ -138,9 +129,12 @@ async fn load_transactions(
                 .await
             {
                 info!("pending_txs_tx closed, shutdown load_transactions");
+                total_pending_txs += 1;
                 return;
             }
         }
+
+        current_block += 1;
     }
 }
 
@@ -148,6 +142,7 @@ async fn filter_transaction(
     idx: usize,
     pending_txs_rx: async_channel::Receiver<Box<PartialTxWithBlock>>,
     saving_txs_tx: async_channel::Sender<Box<PartialTxWithBlock>>,
+    total_saving_txs: Arc<std::sync::atomic::AtomicUsize>,
 ) {
     let client = get_client();
     while let Ok(mut tx) = pending_txs_rx.recv().await {
@@ -162,6 +157,7 @@ async fn filter_transaction(
             trace!("filter_transaction woker#{idx} found tx#{tx_hash} contains target opcode");
             tx.trace = Some(trace);
             saving_txs_tx.send(tx).await.expect("channel closed");
+            total_saving_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
     info!("filter_transaction worker#{idx} shutdown");
