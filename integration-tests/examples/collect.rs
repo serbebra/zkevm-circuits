@@ -224,12 +224,15 @@ async fn save_transaction(idx: usize, saving_txs_rx: flume::Receiver<Box<Partial
         let tx_hash = tx.tx_hash;
         trace!("save_transaction worker#{idx} saving tx#{}", tx_hash);
         if tx.trace.is_none() {
-            tx.trace = Some(
-                cli.cli
-                    .trace_tx_by_hash_legacy(tx_hash)
-                    .await
-                    .expect(&format!("failed to get trace for tx#{:x}", tx_hash)),
-            );
+            match cli.cli.trace_tx_by_hash_legacy(tx_hash).await {
+                Ok(trace) => {
+                    tx.trace = Some(trace);
+                }
+                Err(e) => {
+                    error!("fail to trace tx#{tx_hash}: {e:?}");
+                    continue;
+                }
+            }
         }
         let geth_trace = tx.trace.unwrap();
         let mut eth_block = tx.blk.deref().clone();
