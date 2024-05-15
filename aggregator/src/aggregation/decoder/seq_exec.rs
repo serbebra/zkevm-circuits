@@ -814,8 +814,6 @@ impl<F: Field> SeqExecConfig<F> {
                     (true, r.clone())
                 }
                 SequenceExecInfo::BackRef(r) => (false, r.clone()),
-                // TODO(VF): Add support for repeated match byte slice
-                SequenceExecInfo::BackRefRepeated(r, l) => (false, r.clone()),
             };
 
             for (i, pos) in r.clone().enumerate() {

@@ -1696,22 +1696,18 @@ fn process_sequences<F: Field>(
 
         let match_pos = recovered_inputs.len() - (inst.actual_offset as usize);
         if inst.match_length > 0 {
+            let r = match_pos..(inst.match_length as usize + match_pos);
+            seq_exec_info.push(SequenceExec(
+                inst.instruction_idx as usize,
+                SequenceExecInfo::BackRef(r.clone()),
+            ));            
             if inst.match_length <= inst.actual_offset {
-                let r = match_pos..(inst.match_length as usize + match_pos);
-                seq_exec_info.push(SequenceExec(
-                    inst.instruction_idx as usize,
-                    SequenceExecInfo::BackRef(r.clone()),
-                ));
                 let matched_bytes = Vec::from(&recovered_inputs[r]);
                 recovered_inputs.extend_from_slice(matched_bytes.as_slice());
             } else {
                 // TODO(FV): Add support for repeated byte slice
                 let l = inst.match_length as usize;
                 let r = match_pos..recovered_inputs.len();
-                seq_exec_info.push(SequenceExec(
-                    inst.instruction_idx as usize,
-                    SequenceExecInfo::BackRefRepeated(r.clone(), l.clone()),
-                ));
                 let matched_bytes = Vec::from(&recovered_inputs[r]);
                 let total_matched_bytes: Vec<u8> =
                     matched_bytes.iter().cycle().take(l).copied().collect();
