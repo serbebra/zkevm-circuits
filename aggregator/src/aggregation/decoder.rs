@@ -16,7 +16,7 @@ use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Value},
     halo2curves::bn256::Fr,
     plonk::{
-        Advice, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase, VirtualCells,
+        Advice, Assigned, Column, ConstraintSystem, Error, Expression, Fixed, SecondPhase, VirtualCells
     },
     poly::Rotation,
 };
@@ -927,8 +927,12 @@ impl SequencesDataDecoder {
 pub struct AssignedDecoderConfigExports {
     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
     pub encoded_rlc: AssignedCell<Fr, Fr>,
+    /// The length of encoded data.
+    pub encoded_len: AssignedCell<Fr, Fr>,
     /// The RLC of the decoded bytes, i.e. batch bytes.
     pub decoded_rlc: AssignedCell<Fr, Fr>,
+    /// The length of decoded data.
+    pub decoded_len: AssignedCell<Fr, Fr>,
 }
 
 pub struct DecoderConfigArgs {
@@ -1050,6 +1054,8 @@ impl DecoderConfig {
             sequence_execution_config,
             fixed_table,
         };
+
+        meta.enable_equality(config.decoded_len);
 
         macro_rules! is_tag {
             ($var:ident, $tag_variant:ident) => {
@@ -4098,8 +4104,8 @@ impl DecoderConfig {
         challenges: &Challenges<Value<Fr>>,
         k: u32,
         // witgen_debug
-        // ) -> Result<AssignedDecoderConfigExports, Error> {
-    ) -> Result<(), Error> {
+    ) -> Result<AssignedDecoderConfigExports, Error> {
+    // ) -> Result<(), Error> {
         let mut pow_of_rand: Vec<Value<Fr>> = vec![Value::known(Fr::ONE)];
 
         assert!(!block_info_arr.is_empty(), "Must have at least 1 block");
@@ -4185,7 +4191,7 @@ impl DecoderConfig {
             (1 << k) - self.unusable_rows(),
         )?;
         // TODO: use equality constraint for the exported_len and exported_rlc cell
-        let (_exported_len, _exported_rlc) = self.sequence_execution_config.assign(
+        let (exported_len, exported_rlc) = self.sequence_execution_config.assign(
             layouter,
             challenges,
             literal_datas
@@ -4203,6 +4209,15 @@ impl DecoderConfig {
         layouter.assign_region(
             || "Decompression table region",
             |mut region| {
+                ////////////////////////////////////////////////////////
+                //////// Capture Copy Constraint/Export Cells  /////////
+                ////////////////////////////////////////////////////////
+                let mut last_encoded_rlc: Value<Fr> = Value::known(Fr::zero());
+                let mut encoded_rlc_cell: Option<AssignedCell<Fr, Fr>> = None;
+                let mut byte_idx_cell: Option<AssignedCell<Fr, Fr>> = None;
+                let mut last_decoded_len: Value<Fr> = Value::known(Fr::zero());
+                let mut decoded_length_cell: Option<AssignedCell<Fr, Fr>> = None;
+
                 /////////////////////////////////////////
                 /////////// Assign First Row  ///////////
                 /////////////////////////////////////////
@@ -4259,18 +4274,20 @@ impl DecoderConfig {
                             },
                         )?;
                     }
-                    region.assign_advice(
+                    encoded_rlc_cell = Some(region.assign_advice(
                         || "encoded_rlc",
                         self.encoded_rlc,
                         i,
                         || row.encoded_data.value_rlc,
-                    )?;
-                    region.assign_advice(
+                    )?);
+                    last_encoded_rlc = row.encoded_data.value_rlc;
+                    decoded_length_cell = Some(region.assign_advice(
                         || "decoded_len",
                         self.decoded_len,
                         i,
                         || Value::known(Fr::from(row.decoded_data.decoded_len)),
-                    )?;
+                    )?);
+                    last_decoded_len = Value::known(Fr::from(row.decoded_data.decoded_len));
 
                     /////////////////////////////////////////
                     ///// Assign Bitstream Decoder  /////////
@@ -4684,17 +4701,25 @@ impl DecoderConfig {
                     )?;
                 }
 
-                let mut padding_count = 2usize;
                 for idx in witness_rows.len()..((1 << k) - self.unusable_rows()) {
-                    if padding_count > 0 {
-                        region.assign_advice(
-                            || "byte_idx",
-                            self.byte_idx,
-                            idx,
-                            || Value::known(Fr::from(last_byte_idx + 1)),
-                        )?;
-                        padding_count -= 1;
-                    }
+                    byte_idx_cell = Some(region.assign_advice(
+                        || "byte_idx",
+                        self.byte_idx,
+                        idx,
+                        || Value::known(Fr::from(last_byte_idx + 1)),
+                    )?);
+                    encoded_rlc_cell = Some(region.assign_advice(
+                        || "encoded_rlc",
+                        self.encoded_rlc,
+                        idx,
+                        || last_encoded_rlc,
+                    )?);
+                    decoded_length_cell = Some(region.assign_advice(
+                        || "decoded_len",
+                        self.decoded_len,
+                        idx,
+                        || last_decoded_len,
+                    )?);
                     region.assign_advice(
                         || "tag_config.tag",
                         self.tag_config.tag,
@@ -4764,19 +4789,16 @@ impl DecoderConfig {
                     )?;
                 }
 
-                Ok(())
+                region.constrain_equal(exported_len.cell(), decoded_length_cell.as_ref().unwrap().cell())?;
+
+                Ok(AssignedDecoderConfigExports {
+                    encoded_rlc: encoded_rlc_cell.unwrap(),
+                    encoded_len: byte_idx_cell.unwrap(),
+                    decoded_len: exported_len.clone(),
+                    decoded_rlc: exported_rlc.clone(),
+                })
             },
-        )?;
-
-        // witgen_debug
-        // pub struct AssignedDecoderConfigExports {
-        //     /// The RLC of the zstd encoded bytes, i.e. blob bytes.
-        //     pub encoded_rlc: AssignedCell<Fr, Fr>,
-        //     /// The RLC of the decoded bytes, i.e. batch bytes.
-        //     pub decoded_rlc: AssignedCell<Fr, Fr>,
-        // }
-
-        Ok(())
+        )
     }
 
     pub fn unusable_rows(&self) -> usize {
