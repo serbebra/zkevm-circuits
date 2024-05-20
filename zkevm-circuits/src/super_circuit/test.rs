@@ -1,9 +1,7 @@
 #![allow(unused_imports)]
 pub use super::*;
 use bus_mapping::{
-    circuit_input_builder::CircuitInputBuilder,
-    evm::{OpcodeId, PrecompileCallArgs},
-    precompile::PrecompileCalls,
+    circuit_input_builder::CircuitInputBuilder, evm::{OpcodeId, PrecompileCallArgs}, l2_predeployed, precompile::PrecompileCalls
 };
 use ethers_signers::{LocalWallet, Signer};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
@@ -169,14 +167,16 @@ fn block_0tx_ctx() -> TestContext<2, 0> {
     let wallet_a = LocalWallet::new(&mut rng).with_chain_id(chain_id);
 
     let addr_a = wallet_a.address();
-    let addr_b = address!("0x000000000000000000000000000000000000BBBB");
-
+    //let addr_b = address!("0x000000000000000000000000000000000000BBBB");
+    let bytecode = l2_predeployed::l1_gas_price_oracle::V1_BYTECODE.clone();
     TestContext::new(
         Some(vec![Word::zero()]),
         |accs| {
             accs[0]
-                .address(addr_b)
-                .balance(Word::from(1u64 << 20));
+                .address(*l2_predeployed::l1_gas_price_oracle::ADDRESS)
+                .balance(Word::from(1u64 << 20))
+                .code(bytecode)
+                ;
             accs[1].address(addr_a).balance(Word::from(1u64 << 20));
         },
         |mut _txs, _accs| {
