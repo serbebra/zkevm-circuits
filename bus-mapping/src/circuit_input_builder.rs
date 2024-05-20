@@ -16,7 +16,7 @@ pub use self::block::BlockHead;
 use crate::{
     error::Error,
     evm::opcodes::{gen_associated_ops, gen_associated_steps},
-    operation::{self, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
+    operation::{self, AccountField, AccountOp, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
     rpc::GethClient,
     util::KECCAK_CODE_HASH_EMPTY,
 };
@@ -25,12 +25,7 @@ pub use block::{Block, BlockContext};
 pub use call::{Call, CallContext, CallKind};
 use core::fmt::Debug;
 use eth_types::{
-    self,
-    evm_types::{GasCost, OpcodeId},
-    geth_types::{self, TxType},
-    sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
-    state_db::{self, CodeDB, StateDB},
-    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256,
+    self, evm_types::{GasCost, OpcodeId}, geth_types::{self, TxType}, sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData}, state_db::{self, CodeDB, StateDB}, utils::hash_code, Address, GethExecTrace, ToBigEndian, ToWord, Word, H256
 };
 use ethers_providers::JsonRpcClient;
 pub use execution::{
@@ -461,9 +456,9 @@ impl<'a> CircuitInputBuilder {
 
     /// ..
     pub fn set_end_block(&mut self) -> Result<(), Error> {
-        use crate::l2_predeployed::message_queue::{
+        use crate::l2_predeployed::{l1_gas_price_oracle, message_queue::{
             ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
-        };
+        }};
 
         let withdraw_root = *self
             .sdb
@@ -507,6 +502,49 @@ impl<'a> CircuitInputBuilder {
                 withdraw_root_before,
             ),
         )?;
+        let is_curie_fork_block = true;
+        if is_curie_fork_block {
+            // The chunk should not includes other txs.
+            let v1_codesize = l1_gas_price_oracle::V1_BYTECODE.len();
+            let v1_codehash = hash_code(&l1_gas_price_oracle::V1_BYTECODE);
+            let v1_keccak_codehash = hash_code_keccak(&l1_gas_price_oracle::V1_BYTECODE);
+            log::debug!("l1_oracle poseidon codehash {:?}", v1_codehash);
+            log::debug!("l1_oracle keccak codehash {:?}", v1_keccak_codehash);
+            let v2_codesize = l1_gas_price_oracle::V2_BYTECODE.len();
+            let v2_codehash = hash_code(&l1_gas_price_oracle::V2_BYTECODE);
+            let v2_keccak_codehash = hash_code_keccak(&l1_gas_price_oracle::V2_BYTECODE);
+
+            state.push_op(
+                &mut end_block_last,
+                RW::WRITE,
+                AccountOp {
+                    address: *l1_gas_price_oracle::ADDRESS,
+                    field: AccountField::CodeHash,
+                    value: v1_codehash.to_word(),
+                    value_prev: v2_codehash.to_word(),
+                },
+            )?;
+            state.push_op(
+                &mut end_block_last,
+                RW::WRITE,
+                AccountOp {
+                    address: *l1_gas_price_oracle::ADDRESS,
+                    field: AccountField::KeccakCodeHash,
+                    value: v1_keccak_codehash.to_word(),
+                    value_prev: v2_keccak_codehash.to_word(),
+                },
+            )?;
+            state.push_op(
+                &mut end_block_last,
+                RW::WRITE,
+                AccountOp {
+                    address: *l1_gas_price_oracle::ADDRESS,
+                    field: AccountField::CodeSize,
+                    value: v1_codesize.to_word(),
+                    value_prev: v2_codesize.to_word(),
+                },
+            )?;
+        }
 
         let mut push_op = |step: &mut ExecStep, rwc: RWCounter, rw: RW, op: StartOp| {
             let op_ref = state.block.container.insert(Operation::new(rwc, rw, op));
@@ -514,6 +552,7 @@ impl<'a> CircuitInputBuilder {
         };
 
         let total_rws = state.block_ctx.rwc.0 - 1;
+        // 2 here means we need at least 2 StartOp in state circuit.
         let max_rws = if max_rws == 0 { total_rws + 2 } else { max_rws };
         // We need at least 1 extra Start row
         #[allow(clippy::int_plus_one)]

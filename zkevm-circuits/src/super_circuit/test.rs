@@ -131,6 +131,11 @@ fn callee_bytecode(is_return: bool, offset: u64, length: u64) -> Bytecode {
 }
 
 #[cfg(feature = "scroll")]
+fn block_0tx_trace() -> BlockTrace {
+    block_0tx_ctx().l2_trace().clone()
+}
+
+#[cfg(feature = "scroll")]
 fn block_1tx_deploy() -> BlockTrace {
     let mut rng = ChaCha20Rng::seed_from_u64(2);
 
@@ -154,6 +159,33 @@ fn block_1tx_deploy() -> BlockTrace {
     .l2_trace()
     .clone()
 }
+
+
+fn block_0tx_ctx() -> TestContext<2, 0> {
+    let mut rng = ChaCha20Rng::seed_from_u64(2);
+
+    let chain_id = MOCK_CHAIN_ID;
+
+    let wallet_a = LocalWallet::new(&mut rng).with_chain_id(chain_id);
+
+    let addr_a = wallet_a.address();
+    let addr_b = address!("0x000000000000000000000000000000000000BBBB");
+
+    TestContext::new(
+        Some(vec![Word::zero()]),
+        |accs| {
+            accs[0]
+                .address(addr_b)
+                .balance(Word::from(1u64 << 20));
+            accs[1].address(addr_a).balance(Word::from(1u64 << 20));
+        },
+        |mut _txs, _accs| {
+        },
+        |block, _tx| block.number(0xcafeu64),
+    )
+    .unwrap()
+}
+
 
 fn block_1tx_ctx() -> TestContext<2, 1> {
     let mut rng = ChaCha20Rng::seed_from_u64(2);
@@ -251,6 +283,36 @@ const TEST_MOCK_RANDOMNESS: u64 = 0x100;
 
 // High memory usage test.  Run in serial with:
 // `cargo test [...] serial_ -- --ignored --test-threads 1`
+
+#[ignore]
+#[cfg(feature = "scroll")]
+#[test]
+fn serial_test_super_circuit_0tx_1max_tx() {
+    let block = block_0tx_trace();
+    const MAX_TXS: usize = 1;
+    const MAX_CALLDATA: usize = 256;
+    const MAX_INNER_BLOCKS: usize = 1;
+    let circuits_params = CircuitsParams {
+        max_txs: MAX_TXS,
+        max_calldata: MAX_CALLDATA,
+        max_rws: 256,
+        max_copy_rows: 256,
+        max_exp_steps: 256,
+        max_bytecode: 512,
+        max_mpt_rows: 2049,
+        max_poseidon_rows: 512,
+        max_evm_rows: 0,
+        max_keccak_rows: 0,
+        max_inner_blocks: MAX_INNER_BLOCKS,
+        max_rlp_rows: 500,
+        ..Default::default()
+    };
+    test_super_circuit::<MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, TEST_MOCK_RANDOMNESS>(
+        block,
+        circuits_params,
+    );
+}
+
 #[ignore]
 #[cfg(feature = "scroll")]
 #[test]

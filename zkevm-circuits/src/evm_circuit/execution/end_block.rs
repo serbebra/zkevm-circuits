@@ -76,7 +76,9 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         // and add 1 withdraw_root lookup
         let total_rws = not::expr(is_empty_block.expr())
             * (cb.curr.state.rw_counter.clone().expr() - 1.expr() + 1.expr())
-            + 1.expr();
+            + 4.expr();
+
+        // TODO: constrain the 3 l1_oracle code updates
 
         // 1. Constraint total_rws and total_txs witness values depending on the empty
         // block case.
@@ -134,10 +136,6 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         // We conclude that the number of meaningful entries in the rw_table
         // is total_rws.
 
-        // cb.step_last(|cb| {
-        //     // TODO: Handle reward to coinbase.  Depends on spec:
-        //     // https://github.com/privacy-scaling-explorations/zkevm-specs/issues/290
-        // });
         cb.not_step_last(|cb| {
             // Propagate rw_counter and call_id all the way down.
             cb.require_step_state_transition(StepStateTransition {
