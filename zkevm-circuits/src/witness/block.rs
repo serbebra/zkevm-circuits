@@ -7,7 +7,7 @@ use crate::evm_circuit::{detect_fixed_table_tags, EvmCircuit};
 use crate::{
     evm_circuit::util::rlc,
     table::{BlockContextFieldTag, RwTableTag},
-    util::{Field, SubCircuit},
+    util::{Field, SubCircuit}, witness::keccak::keccak_inputs,
 };
 use bus_mapping::{
     circuit_input_builder::{
@@ -569,7 +569,6 @@ pub fn block_convert(
         state_root: None,
         withdraw_root: block.withdraw_root,
         prev_withdraw_root: block.prev_withdraw_root,
-        keccak_inputs: circuit_input_builder::keccak_inputs(&block)?,
         mpt_updates,
         chain_id,
         start_l1_queue_index: block.start_l1_queue_index,

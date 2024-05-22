@@ -1,9 +1,7 @@
 //! L2 types used to deserialize traces for l2geth.
 
 use crate::{
-    evm_types::{Gas, GasCost, OpcodeId, ProgramCounter},
-    Block, GethCallTrace, GethExecError, GethExecStep, GethExecTrace, GethPrestateTrace, Hash,
-    ToBigEndian, Transaction, Word, H256,
+    evm_types::{Gas, GasCost, OpcodeId, ProgramCounter}, EthBlock, GethCallTrace, GethExecError, GethExecStep, GethExecTrace, GethPrestateTrace, Hash, ToBigEndian, Transaction, Word, H256
 };
 use ethers_core::types::{
     transaction::eip2930::{AccessList, AccessListItem},
@@ -270,9 +268,6 @@ pub struct StorageTrace {
     /// additional deletion proofs
     pub deletion_proofs: Vec<Bytes>,
 }
-
-/// ...
-pub type EthBlock = Block<Transaction>;
 
 /// extension of `GethExecTrace`, with compatible serialize form
 #[derive(Deserialize, Serialize, Debug, Clone)]
