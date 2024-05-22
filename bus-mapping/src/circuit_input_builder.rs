@@ -280,7 +280,7 @@ impl<'a> CircuitInputBuilder {
         &mut self,
         eth_block: &EthBlock,
         geth_traces: &[eth_types::GethExecTrace],
-        handle_rwc_reversion: bool,
+        is_last_block: bool,
         check_last_tx: bool,
     ) -> Result<(), Error> {
         // accumulates gas across all txs in the block
@@ -378,7 +378,7 @@ impl<'a> CircuitInputBuilder {
                 }
             }
         }
-        if handle_rwc_reversion {
+        if is_last_block {
             self.set_value_ops_call_context_rwc_eor();
             self.set_end_block()?;
         }
@@ -449,7 +449,7 @@ impl<'a> CircuitInputBuilder {
         log::debug!("start num: {}", self.block.container.start.len());
     }
 
-    /// ..
+    /// Build the EndBlock step, fill needed rws like reading withdraw root
     pub fn set_end_block(&mut self) -> Result<(), Error> {
         use crate::l2_predeployed::{
             l1_gas_price_oracle,
