@@ -80,10 +80,7 @@ async fn test_mock_prove_tx() {
         return;
     }
 
-    let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
-    #[cfg(feature = "scroll")]
-    witness::block_mocking_apply_mpt(&mut block);
-
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     let errs = test_witness_block(&block);
     for err in &errs {
         log::error!("ERR: {}", err);
@@ -174,9 +171,7 @@ async fn test_circuit_all_block() {
             continue;
         }
 
-        let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
-        #[cfg(feature = "scroll")]
-        witness::block_mocking_apply_mpt(&mut block);
+        let block = block_convert(&builder.block, &builder.code_db).unwrap();
         let errs = test_witness_block(&block);
         log::info!(
             "test {} circuit, block number: {} err num {:?}",

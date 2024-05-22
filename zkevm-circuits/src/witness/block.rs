@@ -594,9 +594,3 @@ pub fn block_convert(
 pub fn block_apply_mpt_state(block: &mut Block, mpt_state: &MptState) {
     block.mpt_updates.fill_state_roots(mpt_state);
 }
-
-/// Mocking generate mpt witness from mpt states
-pub fn block_mocking_apply_mpt(block: &mut Block) {
-    block.mpt_updates.mock_fill_state_roots();
-    block.prev_state_root = block.mpt_updates.old_root();
-}

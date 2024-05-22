@@ -4,7 +4,7 @@
 
 mod block;
 pub use block::{
-    block_apply_mpt_state, block_convert, block_mocking_apply_mpt, Block, BlockContext,
+    block_apply_mpt_state, block_convert, Block, BlockContext,
     BlockContexts,
 };
 
