@@ -1785,7 +1785,7 @@ impl<F: Field> PiCircuit<F> {
         max_txs: usize,
         max_calldata: usize,
         max_inner_blocks: usize,
-        block: &Block<F>,
+        block: &Block,
     ) -> Self {
         let chain_id = block.chain_id;
         let prev_state_root_in_trie = H256(block.mpt_updates.old_root().to_be_bytes());
@@ -1894,7 +1894,7 @@ impl<F: Field> PiCircuit<F> {
 impl<F: Field> SubCircuit<F> for PiCircuit<F> {
     type Config = PiCircuitConfig<F>;
 
-    fn new_from_block(block: &Block<F>) -> Self {
+    fn new_from_block(block: &Block) -> Self {
         PiCircuit::new(
             block.circuits_params.max_txs,
             block.circuits_params.max_calldata,
@@ -1904,7 +1904,7 @@ impl<F: Field> SubCircuit<F> for PiCircuit<F> {
     }
 
     /// Return the minimum number of rows required to prove the block
-    fn min_num_rows_block(block: &witness::Block<F>) -> (usize, usize) {
+    fn min_num_rows_block(block: &witness::Block) -> (usize, usize) {
         let tx_usage = block.txs.len() as f32 / block.circuits_params.max_txs as f32;
         let max_inner_blocks = block.circuits_params.max_inner_blocks;
         let max_txs = block.circuits_params.max_txs;

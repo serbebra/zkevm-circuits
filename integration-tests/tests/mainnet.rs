@@ -73,14 +73,14 @@ async fn test_mock_prove_tx() {
     };
 
     let cli = BuilderClient::new(cli, params).await.unwrap();
-    let mut builder = cli.gen_inputs_tx(tx_id).await.unwrap().enable_relax_mode();
+    let builder = cli.gen_inputs_tx(tx_id).await.unwrap().enable_relax_mode();
 
     if builder.block.txs.is_empty() {
         log::info!("skip empty block");
         return;
     }
 
-    let mut block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
+    let mut block = block_convert(builder.block, &builder.code_db).unwrap();
     #[cfg(feature = "scroll")]
     witness::block_mocking_apply_mpt(&mut block);
     let mut updated_state_root = H256::default();
@@ -89,16 +89,16 @@ async fn test_mock_prove_tx() {
         .unwrap_or_default()
         .to_big_endian(&mut updated_state_root.0);
 
-    builder.block.prev_state_root = block.prev_state_root;
+    block.block.prev_state_root = block.prev_state_root;
     // update both state_root in eth block (witness block's ctx and builder.block's header)
     if let Some(mut last_eth_block_entry) = block.context.ctxs.last_entry() {
         last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
     }
-    if let Some(mut last_eth_block_entry) = builder.block.headers.last_entry() {
+    if let Some(mut last_eth_block_entry) = block.block.headers.last_entry() {
         last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
     }
     // we need to re-calculate the keccak inputs since changing of state_root
-    block.keccak_inputs = keccak_inputs(&builder.block).unwrap();
+    block.keccak_inputs = keccak_inputs(&block.block).unwrap();
 
     let errs = test_witness_block(&block);
     for err in &errs {
@@ -109,7 +109,7 @@ async fn test_mock_prove_tx() {
     log::info!("prove done");
 }
 
-fn test_with<C: SubCircuit<Fr> + Circuit<Fr>>(block: &witness::Block<Fr>) -> MockProver<Fr> {
+fn test_with<C: SubCircuit<Fr> + Circuit<Fr>>(block: &witness::Block) -> MockProver<Fr> {
     let num_row = C::min_num_rows_block(block).1;
     let k = zkevm_circuits::util::log2_ceil(num_row + 256);
     let k = k.max(22);
@@ -118,7 +118,7 @@ fn test_with<C: SubCircuit<Fr> + Circuit<Fr>>(block: &witness::Block<Fr>) -> Moc
     let circuit = C::new_from_block(block);
     MockProver::<Fr>::run(k, &circuit, circuit.instance()).unwrap()
 }
-fn test_witness_block(block: &witness::Block<Fr>) -> Vec<VerifyFailure> {
+fn test_witness_block(block: &witness::Block) -> Vec<VerifyFailure> {
     if *CIRCUIT == "none" {
         return Vec::new();
     }
@@ -183,14 +183,14 @@ async fn test_circuit_all_block() {
             log::error!("invalid builder {} {:?}, err num NA", block_num, err_msg);
             continue;
         }
-        let mut builder = builder.unwrap().0.enable_relax_mode();
+        let builder = builder.unwrap().0.enable_relax_mode();
         if builder.block.txs.is_empty() {
             log::info!("skip empty block");
             // skip empty block
             continue;
         }
 
-        let mut block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
+        let mut block = block_convert(builder.block, &builder.code_db).unwrap();
         #[cfg(feature = "scroll")]
         witness::block_mocking_apply_mpt(&mut block);
         let mut updated_state_root = H256::default();
@@ -199,16 +199,17 @@ async fn test_circuit_all_block() {
             .unwrap_or_default()
             .to_big_endian(&mut updated_state_root.0);
 
-        builder.block.prev_state_root = block.prev_state_root;
+        // FIXME: not good codes
+        block.block.prev_state_root = block.prev_state_root;
         // update both state_root in eth block (witness block's ctx and builder.block's header)
         if let Some(mut last_eth_block_entry) = block.context.ctxs.last_entry() {
             last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
         }
-        if let Some(mut last_eth_block_entry) = builder.block.headers.last_entry() {
+        if let Some(mut last_eth_block_entry) = block.block.headers.last_entry() {
             last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
         }
         // we need to re-calculate the keccak inputs since changing of state_root
-        block.keccak_inputs = keccak_inputs(&builder.block).unwrap();
+        block.keccak_inputs = keccak_inputs(&block.block).unwrap();
         let errs = test_witness_block(&block);
         log::info!(
             "test {} circuit, block number: {} err num {:?}",
@@ -240,8 +241,8 @@ async fn test_print_circuits_size() {
         }
 
         let keccak_inputs = keccak_inputs(&builder.block).unwrap();
-        let block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
-        let evm_rows = EvmCircuit::get_num_rows_required(&block);
+        let block = block_convert(builder.block, &builder.code_db).unwrap();
+        let evm_rows = EvmCircuit::<Fr>::get_num_rows_required(&block);
 
         let mock_randomness = Fr::from(0x100u64);
         let challenges = Challenges::mock(
@@ -278,7 +279,7 @@ async fn test_circuit_batch() {
         return;
     }
     log::info!("tx num: {}", builder.block.txs.len());
-    let block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(builder.block, &builder.code_db).unwrap();
     let errs = test_witness_block(&block);
     log::info!(
         "test {} circuit, block number: [{},{}], err num {:?}",

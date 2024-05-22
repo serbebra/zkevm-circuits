@@ -1,7 +1,10 @@
 #![allow(unused_imports)]
 pub use super::*;
 use bus_mapping::{
-    circuit_input_builder::CircuitInputBuilder, evm::{OpcodeId, PrecompileCallArgs}, l2_predeployed, precompile::PrecompileCalls
+    circuit_input_builder::CircuitInputBuilder,
+    evm::{OpcodeId, PrecompileCallArgs},
+    l2_predeployed,
+    precompile::PrecompileCalls,
 };
 use ethers_signers::{LocalWallet, Signer};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
@@ -22,7 +25,7 @@ use eth_types::{address, bytecode, word, Bytecode, ToWord, Word};
 
 #[test]
 fn super_circuit_created_from_dummy_block() {
-    let dummy_block = Block::<Fr> {
+    let dummy_block = Block {
         circuits_params: CircuitsParams {
             max_rws: 4_000_000,
             max_copy_rows: 0, // dynamic
@@ -158,7 +161,6 @@ fn block_1tx_deploy() -> BlockTrace {
     .clone()
 }
 
-
 fn block_0tx_ctx() -> TestContext<2, 0> {
     let mut rng = ChaCha20Rng::seed_from_u64(2);
 
@@ -175,17 +177,14 @@ fn block_0tx_ctx() -> TestContext<2, 0> {
             accs[0]
                 .address(*l2_predeployed::l1_gas_price_oracle::ADDRESS)
                 .balance(Word::from(1u64 << 20))
-                .code(bytecode)
-                ;
+                .code(bytecode);
             accs[1].address(addr_a).balance(Word::from(1u64 << 20));
         },
-        |mut _txs, _accs| {
-        },
+        |mut _txs, _accs| {},
         |block, _tx| block.number(0xcafeu64),
     )
     .unwrap()
 }
-
 
 fn block_1tx_ctx() -> TestContext<2, 1> {
     let mut rng = ChaCha20Rng::seed_from_u64(2);

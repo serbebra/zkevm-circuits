@@ -17,7 +17,7 @@ use bus_mapping::{
     Error,
 };
 use eth_types::{sign_types::SignData, Address, ToLittleEndian, ToScalar, Word, U256};
-use halo2_proofs::circuit::Value;
+use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
 use itertools::Itertools;
 
 use super::{
@@ -252,11 +252,11 @@ impl Block {
     /// `ConstraintSystem`.
     pub fn get_evm_test_circuit_degree(&self) -> u32 {
         let num_rows_required_for_execution_steps: usize =
-            EvmCircuit::get_num_rows_required(self);
+            EvmCircuit::<Fr>::get_num_rows_required(self);
         let num_rows_required_for_rw_table: usize = self.circuits_params.max_rws;
         let num_rows_required_for_fixed_table: usize = detect_fixed_table_tags(self)
             .iter()
-            .map(|tag| tag.build().count())
+            .map(|tag| tag.build::<Fr>().count())
             .sum();
         let num_rows_required_for_bytecode_table: usize = self
             .bytecodes
@@ -290,7 +290,7 @@ impl Block {
         ])
         .unwrap();
 
-        let k = log2_ceil(EvmCircuit::unusable_rows() + rows_needed);
+        let k = log2_ceil(EvmCircuit::<Fr>::unusable_rows() + rows_needed);
         log::debug!(
             "num_rows_required_for rw_table={}, fixed_table={}, bytecode_table={}, \
             copy_table={}, keccak_table={}, tx_table={}, exp_table={}",
@@ -461,7 +461,7 @@ impl From<&circuit_input_builder::Block> for BlockContexts {
 }
 
 /// Convert a block struct in bus-mapping to a witness block used in circuits
-pub fn block_convert<F: Field>(
+pub fn block_convert(
     block: circuit_input_builder::Block,
     code_db: &eth_types::state_db::CodeDB,
 ) -> Result<Block, Error> {

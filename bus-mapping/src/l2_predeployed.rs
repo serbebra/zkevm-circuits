@@ -38,11 +38,9 @@ pub mod l1_gas_price_oracle {
     /// ,"id":1,"jsonrpc":"2.0"}' \
     /// | jq .result
     /// ```
-    pub static V1_BYTECODE: LazyLock<Vec<u8>> = LazyLock::new(|| 
-        hex::decode(include_str!("./data/v1_l1_oracle_bytecode.txt")).unwrap()
-    );
+    pub static V1_BYTECODE: LazyLock<Vec<u8>> =
+        LazyLock::new(|| hex::decode(include_str!("./data/v1_l1_oracle_bytecode.txt")).unwrap());
     /// Bytecode after curie hardfork
-    pub static V2_BYTECODE: LazyLock<Vec<u8>> = LazyLock::new(|| 
-        hex::decode(include_str!("./data/v2_l1_oracle_bytecode.txt")).unwrap()
-    );
+    pub static V2_BYTECODE: LazyLock<Vec<u8>> =
+        LazyLock::new(|| hex::decode(include_str!("./data/v2_l1_oracle_bytecode.txt")).unwrap());
 }

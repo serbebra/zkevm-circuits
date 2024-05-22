@@ -16,7 +16,10 @@ pub use self::block::BlockHead;
 use crate::{
     error::Error,
     evm::opcodes::{gen_associated_ops, gen_associated_steps},
-    operation::{self, AccountField, AccountOp, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
+    operation::{
+        self, AccountField, AccountOp, CallContextField, Operation, RWCounter, StartOp, StorageOp,
+        RW,
+    },
     rpc::GethClient,
     util::KECCAK_CODE_HASH_EMPTY,
 };
@@ -25,7 +28,13 @@ pub use block::{Block, BlockContext};
 pub use call::{Call, CallContext, CallKind};
 use core::fmt::Debug;
 use eth_types::{
-    self, evm_types::{GasCost, OpcodeId}, geth_types::{self, TxType}, sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData}, state_db::{self, CodeDB, StateDB}, utils::hash_code, Address, GethExecTrace, ToBigEndian, ToWord, Word, H256
+    self,
+    evm_types::{GasCost, OpcodeId},
+    geth_types::{self, TxType},
+    sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData},
+    state_db::{self, CodeDB, StateDB},
+    utils::hash_code,
+    Address, GethExecTrace, ToBigEndian, ToWord, Word, H256,
 };
 use ethers_providers::JsonRpcClient;
 pub use execution::{
@@ -456,9 +465,10 @@ impl<'a> CircuitInputBuilder {
 
     /// ..
     pub fn set_end_block(&mut self) -> Result<(), Error> {
-        use crate::l2_predeployed::{l1_gas_price_oracle, message_queue::{
-            ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
-        }};
+        use crate::l2_predeployed::{
+            l1_gas_price_oracle,
+            message_queue::{ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT},
+        };
 
         let withdraw_root = *self
             .sdb
@@ -801,7 +811,7 @@ pub fn keccak_inputs(block: &Block) -> Result<Vec<Vec<u8>>, Error> {
         &block.headers,
         block.txs(),
     ));
-    /* 
+    /*
     // Bytecode Circuit don't use keccak code hash
     for bytecode in block.code_db.0.values() {
         keccak_inputs.push(bytecode.clone());

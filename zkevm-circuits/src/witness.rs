@@ -1,11 +1,11 @@
 //! Witness for all circuits.
-//! The `Block<F>` is the witness struct post-processed from geth traces and
+//! The `Block` is the witness struct post-processed from geth traces and
 //! used to generate witnesses for circuits.
 
 mod block;
 pub use block::{
-    block_apply_mpt_state, block_convert,
-    block_mocking_apply_mpt, Block, BlockContext, BlockContexts,
+    block_apply_mpt_state, block_convert, block_mocking_apply_mpt, Block, BlockContext,
+    BlockContexts,
 };
 
 mod bytecode;

@@ -151,7 +151,7 @@ impl<F: Field> SubCircuit<F> for TxCircuitTester<F> {
 
     fn min_num_rows_block(block: &crate::witness::Block) -> (usize, usize) {
         // TODO
-        SigCircuit::min_num_rows_block(block)
+        SigCircuit::<F>::min_num_rows_block(block)
     }
 }
 

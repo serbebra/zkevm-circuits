@@ -71,7 +71,7 @@ pub fn calculate_row_usage_of_trace(
 }
 
 pub fn calculate_row_usage_of_witness_block(
-    witness_block: &Block<Fr>,
+    witness_block: &Block,
 ) -> Result<Vec<zkevm_circuits::super_circuit::SubcircuitRowUsage>> {
     let mut rows = <super::SuperCircuit as TargetCircuit>::Inner::min_num_rows_block_subcircuits(
         witness_block,
@@ -240,7 +240,7 @@ pub fn validite_block_traces(block_traces: &[BlockTrace]) -> Result<()> {
     Ok(())
 }
 
-pub fn block_trace_to_witness_block(block_trace: BlockTrace) -> Result<Block<Fr>> {
+pub fn block_trace_to_witness_block(block_trace: BlockTrace) -> Result<Block> {
     let chain_id = block_trace.chain_id;
     if *CHAIN_ID != chain_id {
         bail!(
@@ -266,7 +266,7 @@ pub fn block_trace_to_witness_block(block_trace: BlockTrace) -> Result<Block<Fr>
     block_traces_to_witness_block_with_updated_state(vec![], &mut builder)
 }
 
-pub fn block_traces_to_witness_block(block_traces: Vec<BlockTrace>) -> Result<Block<Fr>> {
+pub fn block_traces_to_witness_block(block_traces: Vec<BlockTrace>) -> Result<Block> {
     validite_block_traces(&block_traces)?;
     let block_num = block_traces.len();
     let total_tx_num = block_traces
@@ -321,7 +321,7 @@ pub fn block_traces_to_witness_block(block_traces: Vec<BlockTrace>) -> Result<Bl
 pub fn block_traces_to_witness_block_with_updated_state(
     block_traces: Vec<BlockTrace>,
     builder: &mut CircuitInputBuilder,
-) -> Result<Block<Fr>> {
+) -> Result<Block> {
     let metric = |builder: &CircuitInputBuilder, idx: usize| -> Result<(), bus_mapping::Error> {
         let t = Instant::now();
         let block = block_convert(&builder.block, &builder.code_db)?;
