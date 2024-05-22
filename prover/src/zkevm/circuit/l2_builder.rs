@@ -12,11 +12,7 @@ use eth_types::{
 use itertools::Itertools;
 use mpt_zktrie::state::{ZkTrieHash, ZktrieState};
 use std::{sync::LazyLock, time::Instant};
-use zkevm_circuits::{
-    evm_circuit::witness::{block_apply_mpt_state, Block},
-    util::SubCircuit,
-    witness::block_convert,
-};
+use zkevm_circuits::{evm_circuit::witness::Block, util::SubCircuit, witness::block_convert};
 
 static CHAIN_ID: LazyLock<u64> = LazyLock::new(|| read_env_var("CHAIN_ID", 53077));
 static AUTO_TRUNCATE: LazyLock<bool> = LazyLock::new(|| read_env_var("AUTO_TRUNCATE", false));
@@ -371,8 +367,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
 
     log::debug!("converting builder.block to witness block");
 
-    // FIXME: will this clone be expensive?
-    let mut witness_block = block_convert(&builder.block.clone(), &builder.code_db)?;
+    let mut witness_block = block_convert(&builder.block, &builder.code_db)?;
     log::debug!(
         "witness_block built with circuits_params {:?}",
         witness_block.circuits_params
@@ -381,7 +376,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
     if let Some(state) = &mut builder.mpt_init_state {
         if *state.root() != [0u8; 32] {
             log::debug!("block_apply_mpt_state");
-            block_apply_mpt_state(&mut witness_block, state);
+            witness_block.apply_mpt_updates(state);
             log::debug!("block_apply_mpt_state done");
         };
         let root_after = witness_block.post_state_root().to_word();

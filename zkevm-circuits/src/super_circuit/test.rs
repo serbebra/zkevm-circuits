@@ -18,7 +18,6 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use std::env::set_var;
 
-use crate::witness::block_apply_mpt_state;
 #[cfg(feature = "scroll")]
 use eth_types::l2_types::BlockTrace;
 use eth_types::{address, bytecode, word, Bytecode, ToWord, Word};
@@ -82,10 +81,7 @@ fn test_super_circuit<
         .expect("could not finalize building block");
 
     let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
-    block_apply_mpt_state(
-        &mut block,
-        &builder.mpt_init_state.expect("used non-light mode"),
-    );
+    block.apply_mpt_updates(&builder.mpt_init_state.expect("used non-light mode"));
 
     let active_row_num =SuperCircuit::<
         Fr,

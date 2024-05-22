@@ -319,11 +319,8 @@ fn trace_config_to_witness_block_l2(
         .finalize_building()
         .expect("could not finalize building block");
     let mut block =
-        zkevm_circuits::witness::block_convert(&builder.block.clone(), &builder.code_db).unwrap();
-    zkevm_circuits::witness::block_apply_mpt_state(
-        &mut block,
-        builder.mpt_init_state.as_ref().unwrap(),
-    );
+        zkevm_circuits::witness::block_convert(&builder.block, &builder.code_db).unwrap();
+    block.apply_mpt_updates(builder.mpt_init_state.as_ref().unwrap());
     // as mentioned above, we cannot fit the trace into circuit
     // stop here
     if exceed_max_steps != 0 {
@@ -431,11 +428,9 @@ fn trace_config_to_witness_block_l1(
         .handle_block(&eth_block, &geth_traces)
         .map_err(|err| StateTestError::CircuitInput(err.to_string()))?;
 
-    let block: Block = zkevm_circuits::evm_circuit::witness::block_convert(
-        &builder.block.clone(),
-        &builder.code_db,
-    )
-    .unwrap();
+    let block: Block =
+        zkevm_circuits::evm_circuit::witness::block_convert(&builder.block, &builder.code_db)
+            .unwrap();
     Ok(Some((block, builder)))
 }
 

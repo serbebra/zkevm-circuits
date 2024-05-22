@@ -101,6 +101,10 @@ impl Block {
         }
         post_state_root_in_trie
     }
+    /// Replay mpt updates to generate mpt witness
+    pub fn apply_mpt_updates(&mut self, mpt_state: &MptState) {
+        self.mpt_updates.fill_state_roots(mpt_state);
+    }
     /// For each tx, for each step, print the rwc at the beginning of the step,
     /// and all the rw operations of the step.
     pub(crate) fn debug_print_txs_steps_rw_ops(&self) {
@@ -588,9 +592,4 @@ pub fn block_convert(
         start_l1_queue_index: block.start_l1_queue_index,
         precompile_events: block.precompile_events.clone(),
     })
-}
-
-/// Attach witness block with mpt states
-pub fn block_apply_mpt_state(block: &mut Block, mpt_state: &MptState) {
-    block.mpt_updates.fill_state_roots(mpt_state);
 }

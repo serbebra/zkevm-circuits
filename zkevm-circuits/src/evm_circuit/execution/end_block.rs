@@ -78,8 +78,6 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
             * (cb.curr.state.rw_counter.clone().expr() - 1.expr() + 1.expr())
             + 1.expr();
 
-        // TODO: constrain the 3 l1_oracle code updates
-
         // 1. Constraint total_rws and total_txs witness values depending on the empty
         // block case.
         cb.condition(is_empty_block.expr(), |cb| {
