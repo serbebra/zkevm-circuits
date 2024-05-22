@@ -119,7 +119,7 @@ mod tests {
         end_timer!(start3);
     }
 
-    fn generate_full_events_block(degree: u32, base: Word, exponent: Word) -> Block<Fr> {
+    fn generate_full_events_block(degree: u32, base: Word, exponent: Word) -> Block {
         let code = bytecode! {
             PUSH32(exponent)
             PUSH32(base)
@@ -146,6 +146,6 @@ mod tests {
         builder
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
-        block_convert(&builder.block, &builder.code_db).unwrap()
+        block_convert(builder.block, &builder.code_db).unwrap()
     }
 }

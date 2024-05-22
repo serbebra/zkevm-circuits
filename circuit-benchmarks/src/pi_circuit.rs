@@ -120,7 +120,7 @@ mod tests {
         end_timer!(start3);
     }
 
-    fn generate_block<const MAX_TXS: usize, const MAX_CALLDATA: usize>() -> Block<Fr> {
+    fn generate_block<const MAX_TXS: usize, const MAX_CALLDATA: usize>() -> Block {
         let test_ctx = TestContext::<2, 1>::simple_ctx_with_bytecode(bytecode! {
             STOP
         })
@@ -130,6 +130,6 @@ mod tests {
         builder
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
-        block_convert(&builder.block, &builder.code_db).unwrap()
+        block_convert(builder.block, &builder.code_db).unwrap()
     }
 }

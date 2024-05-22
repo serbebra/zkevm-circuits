@@ -81,7 +81,7 @@ fn test_super_circuit<
         .finalize_building()
         .expect("could not finalize building block");
 
-    let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
+    let mut block = block_convert(builder.block, &builder.code_db).unwrap();
     block_apply_mpt_state(
         &mut block,
         &builder.mpt_init_state.expect("used non-light mode"),

@@ -579,13 +579,13 @@ pub fn block_convert(
 }
 
 /// Attach witness block with mpt states
-pub fn block_apply_mpt_state<F: Field>(block: &mut Block, mpt_state: &MptState) {
+pub fn block_apply_mpt_state(block: &mut Block, mpt_state: &MptState) {
     block.mpt_updates.fill_state_roots(mpt_state);
     block.state_root = Some(block.mpt_updates.new_root());
 }
 
 /// Mocking generate mpt witness from mpt states
-pub fn block_mocking_apply_mpt<F: Field>(block: &mut Block) {
+pub fn block_mocking_apply_mpt(block: &mut Block) {
     block.mpt_updates.mock_fill_state_roots();
     block.state_root = Some(block.mpt_updates.new_root());
     block.prev_state_root = block.mpt_updates.old_root();

@@ -319,7 +319,7 @@ fn trace_config_to_witness_block_l2(
         .finalize_building()
         .expect("could not finalize building block");
     let mut block =
-        zkevm_circuits::witness::block_convert(&builder.block, &builder.code_db).unwrap();
+        zkevm_circuits::witness::block_convert(builder.block.clone(), &builder.code_db).unwrap();
     zkevm_circuits::witness::block_apply_mpt_state(
         &mut block,
         builder.mpt_init_state.as_ref().unwrap(),
