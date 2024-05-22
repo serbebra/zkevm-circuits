@@ -318,7 +318,7 @@ impl<C: SubCircuit<Fr> + Circuit<Fr>> IntegrationTest<C> {
             block_num,
             block_tag
         );
-        let block = block_convert(builder.block, &builder.code_db).unwrap();
+        let block = block_convert(&builder.block, &builder.code_db).unwrap();
         let circuit = C::new_from_block(&block);
         let instance = circuit.instance();
 
@@ -340,7 +340,7 @@ fn new_empty_block() -> Block {
     builder
         .handle_block(&block.eth_block, &block.geth_traces)
         .unwrap();
-    block_convert(builder.block, &builder.code_db).unwrap()
+    block_convert(&builder.block, &builder.code_db).unwrap()
 }
 
 fn get_general_params(degree: u32) -> ParamsKZG<Bn256> {

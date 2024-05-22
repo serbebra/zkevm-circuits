@@ -12,7 +12,6 @@ mod test;
 #[cfg(any(feature = "test", test, feature = "test-circuits"))]
 pub use dev::TxCircuitTester as TestTxCircuit;
 
-use crate::util::Field;
 use crate::{
     evm_circuit::util::constraint_builder::{BaseConstraintBuilder, ConstrainBuilderCommon},
     // sig_circuit::SigCircuit,
@@ -45,7 +44,7 @@ use crate::{
         Transaction,
     },
 };
-use bus_mapping::circuit_input_builder::keccak_inputs_sign_verify;
+use crate::{util::Field, witness::keccak::keccak_inputs_sign_verify};
 use eth_types::{
     geth_types::{
         access_list_size, TxType,

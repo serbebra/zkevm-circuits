@@ -1,9 +1,8 @@
 use bus_mapping::{
-    circuit_input_builder::{keccak_inputs, BuilderClient, CircuitsParams, PrecompileEcParams},
+    circuit_input_builder::{BuilderClient, CircuitsParams, PrecompileEcParams},
     util::read_env_var,
     Error::JSONRpcError,
 };
-use eth_types::H256;
 use halo2_proofs::{
     circuit::Value,
     dev::{MockProver, VerifyFailure},
@@ -23,7 +22,7 @@ use zkevm_circuits::{
     tx_circuit::TestTxCircuit as TxCircuit,
     util::{Challenges, SubCircuit},
     witness,
-    witness::Transaction,
+    witness::{keccak::keccak_inputs, Transaction},
 };
 
 const CIRCUITS_PARAMS: CircuitsParams = CircuitsParams {
@@ -80,25 +79,9 @@ async fn test_mock_prove_tx() {
         return;
     }
 
-    let mut block = block_convert(builder.block, &builder.code_db).unwrap();
+    let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
     #[cfg(feature = "scroll")]
     witness::block_mocking_apply_mpt(&mut block);
-    let mut updated_state_root = H256::default();
-    block
-        .state_root
-        .unwrap_or_default()
-        .to_big_endian(&mut updated_state_root.0);
-
-    block.block.prev_state_root = block.prev_state_root;
-    // update both state_root in eth block (witness block's ctx and builder.block's header)
-    if let Some(mut last_eth_block_entry) = block.context.ctxs.last_entry() {
-        last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
-    }
-    if let Some(mut last_eth_block_entry) = block.block.headers.last_entry() {
-        last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
-    }
-    // we need to re-calculate the keccak inputs since changing of state_root
-    block.keccak_inputs = keccak_inputs(&block.block).unwrap();
 
     let errs = test_witness_block(&block);
     for err in &errs {
@@ -190,26 +173,9 @@ async fn test_circuit_all_block() {
             continue;
         }
 
-        let mut block = block_convert(builder.block, &builder.code_db).unwrap();
+        let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
         #[cfg(feature = "scroll")]
         witness::block_mocking_apply_mpt(&mut block);
-        let mut updated_state_root = H256::default();
-        block
-            .state_root
-            .unwrap_or_default()
-            .to_big_endian(&mut updated_state_root.0);
-
-        // FIXME: not good codes
-        block.block.prev_state_root = block.prev_state_root;
-        // update both state_root in eth block (witness block's ctx and builder.block's header)
-        if let Some(mut last_eth_block_entry) = block.context.ctxs.last_entry() {
-            last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
-        }
-        if let Some(mut last_eth_block_entry) = block.block.headers.last_entry() {
-            last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
-        }
-        // we need to re-calculate the keccak inputs since changing of state_root
-        block.keccak_inputs = keccak_inputs(&block.block).unwrap();
         let errs = test_witness_block(&block);
         log::info!(
             "test {} circuit, block number: {} err num {:?}",
@@ -240,8 +206,7 @@ async fn test_print_circuits_size() {
             return;
         }
 
-        let keccak_inputs = keccak_inputs(&builder.block).unwrap();
-        let block = block_convert(builder.block, &builder.code_db).unwrap();
+        let block = block_convert(&builder.block, &builder.code_db).unwrap();
         let evm_rows = EvmCircuit::<Fr>::get_num_rows_required(&block);
 
         let mock_randomness = Fr::from(0x100u64);
@@ -250,6 +215,7 @@ async fn test_print_circuits_size() {
             Value::known(mock_randomness),
             Value::known(mock_randomness),
         );
+        let keccak_inputs = keccak_inputs(&block).unwrap();
         let keccak_rows = multi_keccak(&keccak_inputs, challenges, None)
             .unwrap()
             .len();
@@ -279,7 +245,7 @@ async fn test_circuit_batch() {
         return;
     }
     log::info!("tx num: {}", builder.block.txs.len());
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     let errs = test_witness_block(&block);
     log::info!(
         "test {} circuit, block number: [{},{}], err num {:?}",

@@ -35,7 +35,7 @@ use crate::{
     },
     table::{KeccakTable, LookupTable},
     util::{Challenges, Field, SubCircuit, SubCircuitConfig},
-    witness,
+    witness::{self, keccak::keccak_inputs},
 };
 use gadgets::util::{and, not, select, sum, Expr};
 use halo2_proofs::{
@@ -1019,7 +1019,7 @@ impl<F: Field> SubCircuit<F> for KeccakCircuit<F> {
     fn new_from_block(block: &witness::Block) -> Self {
         Self::new(
             block.circuits_params.max_keccak_rows,
-            block.keccak_inputs.clone(),
+            keccak_inputs(block).unwrap(),
         )
     }
 
@@ -1033,8 +1033,8 @@ impl<F: Field> SubCircuit<F> for KeccakCircuit<F> {
             lookup_table_size(CHI_BASE_LOOKUP_TABLE.len()),
         ];
         (
-            block
-                .keccak_inputs
+            keccak_inputs(block)
+                .unwrap()
                 .iter()
                 .map(|bytes| (bytes.len() as f64 / 136.0).ceil() as usize * rows_per_chunk)
                 .sum::<usize>()

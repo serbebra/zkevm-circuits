@@ -7,7 +7,8 @@ use crate::evm_circuit::{detect_fixed_table_tags, EvmCircuit};
 use crate::{
     evm_circuit::util::rlc,
     table::{BlockContextFieldTag, RwTableTag},
-    util::{Field, SubCircuit}, witness::keccak::keccak_inputs,
+    util::{Field, SubCircuit},
+    witness::keccak::keccak_inputs,
 };
 use bus_mapping::{
     circuit_input_builder::{
@@ -31,8 +32,6 @@ use crate::util::Challenges;
 /// data for witness generation.
 #[derive(Debug, Clone, Default)]
 pub struct Block {
-    /// Original block in bus-mapping
-    pub block: circuit_input_builder::Block,
     /// Transactions in the block
     pub txs: Vec<Transaction>,
     /// Signatures in the block
@@ -64,8 +63,6 @@ pub struct Block {
     pub withdraw_root: Word,
     /// Withdraw roof of the previous block
     pub prev_withdraw_root: Word,
-    /// Keccak inputs
-    pub keccak_inputs: Vec<Vec<u8>>,
     /// Mpt updates
     pub mpt_updates: MptUpdates,
     /// Chain ID
@@ -268,7 +265,7 @@ impl Block {
             .iter()
             .map(|c| c.copy_bytes.bytes.len() * 2)
             .sum();
-        let num_rows_required_for_keccak_table: usize = self.keccak_inputs.len();
+        let num_rows_required_for_keccak_table: usize = keccak_inputs(self).unwrap().len();
         // tx_table load only does tx padding, no calldata padding
         let num_rows_required_for_tx_table: usize = self.circuits_params.max_txs * TX_LEN
             + self.txs.iter().map(|tx| tx.call_data.len()).sum::<usize>();
@@ -462,7 +459,7 @@ impl From<&circuit_input_builder::Block> for BlockContexts {
 
 /// Convert a block struct in bus-mapping to a witness block used in circuits
 pub fn block_convert(
-    block: circuit_input_builder::Block,
+    block: &circuit_input_builder::Block,
     code_db: &eth_types::state_db::CodeDB,
 ) -> Result<Block, Error> {
     let rws = RwMap::from(&block.container);
@@ -526,7 +523,7 @@ pub fn block_convert(
     }
 
     Ok(Block {
-        context: BlockContexts::from(&block),
+        context: BlockContexts::from(block),
         rws,
         txs: block
             .txs()
@@ -573,7 +570,6 @@ pub fn block_convert(
         chain_id,
         start_l1_queue_index: block.start_l1_queue_index,
         precompile_events: block.precompile_events.clone(),
-        block,
     })
 }
 

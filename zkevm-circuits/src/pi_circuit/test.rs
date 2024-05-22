@@ -58,7 +58,7 @@ fn block_1tx() -> Block {
     builder
         .handle_block(&block.eth_block, &block.geth_traces)
         .unwrap();
-    block_convert(builder.block, &builder.code_db).unwrap()
+    block_convert(&builder.block, &builder.code_db).unwrap()
 }
 
 fn block_2txs() -> Block {
@@ -74,7 +74,7 @@ fn block_2txs() -> Block {
     builder
         .handle_block(&block.eth_block, &block.geth_traces)
         .unwrap();
-    block_convert(builder.block, &builder.code_db).unwrap()
+    block_convert(&builder.block, &builder.code_db).unwrap()
 }
 
 fn empty_block() -> Block {

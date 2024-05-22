@@ -66,7 +66,7 @@ mod tests {
             log::info!("skip empty block");
             std::process::exit(0);
         }
-        let block = block_convert(builder.block, &builder.code_db).unwrap();
+        let block = block_convert(&builder.block, &builder.code_db).unwrap();
         let circuit = TxCircuit::new_from_block(&block);
         (degree, circuit)
     }

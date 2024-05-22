@@ -323,7 +323,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
 ) -> Result<Block> {
     let metric = |builder: &CircuitInputBuilder, idx: usize| -> Result<(), bus_mapping::Error> {
         let t = Instant::now();
-        let block = block_convert(builder.block.clone(), &builder.code_db)?;
+        let block = block_convert(&builder.block.clone(), &builder.code_db)?;
         log::debug!("block convert time {:?}", t.elapsed());
         let rows = <super::SuperCircuit as TargetCircuit>::Inner::min_num_rows_block(&block);
         log::debug!(
@@ -372,7 +372,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
     log::debug!("converting builder.block to witness block");
 
     // FIXME: will this clone be expensive?
-    let mut witness_block = block_convert(builder.block.clone(), &builder.code_db)?;
+    let mut witness_block = block_convert(&builder.block.clone(), &builder.code_db)?;
     log::debug!(
         "witness_block built with circuits_params {:?}",
         witness_block.circuits_params

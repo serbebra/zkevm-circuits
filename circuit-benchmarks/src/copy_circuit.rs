@@ -152,7 +152,7 @@ mod tests {
         builder
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
-        let block = block_convert(builder.block, &builder.code_db).unwrap();
+        let block = block_convert(&builder.block, &builder.code_db).unwrap();
         assert_eq!(block.copy_events.len(), copy_event_num);
         block
     }

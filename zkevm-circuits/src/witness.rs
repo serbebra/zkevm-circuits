@@ -8,7 +8,8 @@ pub use block::{
     BlockContexts,
 };
 
-mod keccak;
+/// Keccak witness
+pub mod keccak;
 
 mod bytecode;
 pub use bytecode::Bytecode;

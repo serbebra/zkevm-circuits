@@ -3,10 +3,10 @@
 
 mod access;
 mod block;
+mod builder_client;
 mod call;
 mod execution;
 mod input_state_ref;
-mod builder_client;
 #[cfg(feature = "scroll")]
 mod l2;
 #[cfg(all(feature = "tracer-tests", feature = "enable-memory", test))]
@@ -24,21 +24,23 @@ use crate::{
 };
 pub use access::{Access, AccessSet, AccessValue, CodeSource};
 pub use block::{Block, BlockContext};
+pub use builder_client::{build_state_code_db, BuilderClient};
 pub use call::{Call, CallContext, CallKind};
 use core::fmt::Debug;
 use eth_types::{
-    self, evm_types::{GasCost, OpcodeId}, EthBlock, state_db::{CodeDB, StateDB}, utils::hash_code, GethExecTrace, ToWord, Word, H256
+    self,
+    evm_types::{GasCost, OpcodeId},
+    sign_types::get_dummy_tx,
+    state_db::{CodeDB, StateDB},
+    utils::{hash_code, hash_code_keccak},
+    EthBlock, GethExecTrace, ToWord, Word, H256,
 };
+use ethers_core::utils::keccak256;
 pub use execution::{
     BigModExp, CopyAccessList, CopyBytes, CopyDataType, CopyEvent, CopyEventStepsBuilder, CopyStep,
     EcAddOp, EcMulOp, EcPairingOp, EcPairingPair, ExecState, ExecStep, ExpEvent, ExpStep,
     NumberOrHash, PrecompileEvent, PrecompileEvents, N_BYTES_PER_PAIR, N_PAIRING_PER_OP, SHA256,
 };
-use eth_types::{
-    sign_types::get_dummy_tx,
-    utils::hash_code_keccak,
-};
-use ethers_core::utils::keccak256;
 pub use input_state_ref::CircuitInputStateRef;
 use itertools::Itertools;
 #[cfg(feature = "scroll")]
@@ -767,7 +769,6 @@ impl CircuitInputBuilder {
     }
 }
 
-
 /// Get the tx hash of the dummy tx (nonce=0, gas=0, gas_price=0, to=0, value=0,
 /// data="")
 pub fn get_dummy_tx_hash() -> H256 {
@@ -782,7 +783,6 @@ pub fn get_dummy_tx_hash() -> H256 {
 
     H256(tx_hash)
 }
-
 
 /// Retrieve the init_code from memory for {CREATE, CREATE2}
 pub fn get_create_init_code(call_ctx: &CallContext) -> Result<Vec<u8>, Error> {

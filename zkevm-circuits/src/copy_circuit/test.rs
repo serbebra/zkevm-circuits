@@ -372,14 +372,14 @@ fn gen_return_data() -> CircuitInputBuilder {
 #[test]
 fn copy_circuit_valid_calldatacopy() {
     let builder = gen_calldatacopy_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_codecopy() {
     let builder = gen_codecopy_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
@@ -387,56 +387,56 @@ fn copy_circuit_valid_codecopy() {
 #[test]
 fn copy_circuit_valid_mcopy() {
     let builder = gen_mcopy_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_returndatacopy() {
     let builder = gen_returndatacopy_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_extcodecopy() {
     let builder = gen_extcodecopy_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_sha3() {
     let builder = gen_sha3_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_tx_log() {
     let builder = gen_tx_log_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_access_list() {
     let builder = gen_access_list_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_create() {
     let builder = gen_create_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn copy_circuit_valid_return() {
     let builder = gen_return_data();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
@@ -450,7 +450,7 @@ fn copy_circuit_invalid_calldatacopy() {
             .0
             .wrapping_add(1);
 
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
 
     assert_error_matches(
         test_copy_circuit_from_block(block),
@@ -468,7 +468,7 @@ fn copy_circuit_invalid_codecopy() {
             .0
             .wrapping_add(1);
 
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
 
     assert_error_matches(
         test_copy_circuit_from_block(block),
@@ -486,7 +486,7 @@ fn copy_circuit_invalid_extcodecopy() {
             .0
             .wrapping_add(1);
 
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
 
     assert_error_matches(
         test_copy_circuit_from_block(block),
@@ -504,7 +504,7 @@ fn copy_circuit_invalid_sha3() {
             .0
             .wrapping_add(1);
 
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
 
     assert_error_matches(test_copy_circuit_from_block(block), vec!["rw lookup"]);
 }
@@ -519,7 +519,7 @@ fn copy_circuit_invalid_tx_log() {
             .0
             .wrapping_add(1);
 
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     let result = test_copy_circuit_from_block(block);
 
     let errors = result.expect_err("result is not an error");
@@ -559,14 +559,14 @@ fn copy_circuit_precompile_call() {
     builder
         .handle_block(&block.eth_block, &block.geth_traces)
         .unwrap();
-    let block = block_convert(builder.block, &builder.code_db).unwrap();
+    let block = block_convert(&builder.block, &builder.code_db).unwrap();
     assert_eq!(test_copy_circuit_from_block(block), Ok(()));
 }
 
 #[test]
 fn variadic_size_check() {
     let builder = gen_tx_log_data();
-    let block1 = block_convert(builder.block, &builder.code_db).unwrap();
+    let block1 = block_convert(&builder.block, &builder.code_db).unwrap();
 
     let block: GethData = TestContext::<0, 0>::new(None, |_| {}, |_, _| {}, |b, _| b)
         .unwrap()
@@ -577,7 +577,7 @@ fn variadic_size_check() {
     builder
         .handle_block(&block.eth_block, &block.geth_traces)
         .unwrap();
-    let block2 = block_convert(builder.block, &builder.code_db).unwrap();
+    let block2 = block_convert(&builder.block, &builder.code_db).unwrap();
 
     let circuit = CopyCircuit::<Fr>::new(block1.copy_events, block1.circuits_params.max_copy_rows);
     let prover1 = MockProver::<Fr>::run(14, &circuit, vec![]).unwrap();
