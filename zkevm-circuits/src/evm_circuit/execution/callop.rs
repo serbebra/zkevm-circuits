@@ -1561,7 +1561,6 @@ mod test {
 
     // maybe consider to move to mpt_circuit module
     #[cfg(feature = "scroll")]
-    #[ignore]
     #[test]
     fn call_non_exist_with_value_mpt_circuit() {
         let callee_code = bytecode! {
@@ -1590,7 +1589,8 @@ mod test {
         builder
             .handle_block(&block.eth_block, &block.geth_traces)
             .unwrap();
-        let block = block_convert(&builder.block, &builder.code_db).unwrap();
+        let mut block = block_convert(&builder.block, &builder.code_db).unwrap();
+        block.mpt_updates.mock_fill_state_roots();
         let mpt_circuit = MptCircuit::new_from_block(&block);
         let prover = MockProver::<Fr>::run(12, &mpt_circuit, vec![]).unwrap();
         assert!(prover.verify().is_ok());

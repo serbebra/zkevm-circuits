@@ -76,7 +76,7 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         // and add 1 withdraw_root lookup
         let total_rws = not::expr(is_empty_block.expr())
             * (cb.curr.state.rw_counter.clone().expr() - 1.expr() + 1.expr())
-            + 1.expr();
+            + 4.expr();
 
         // 1. Constraint total_rws and total_txs witness values depending on the empty
         // block case.
