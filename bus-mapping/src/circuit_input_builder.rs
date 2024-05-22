@@ -520,8 +520,8 @@ impl<'a> CircuitInputBuilder {
                 AccountOp {
                     address: *l1_gas_price_oracle::ADDRESS,
                     field: AccountField::CodeHash,
-                    value: v1_codehash.to_word(),
-                    value_prev: v2_codehash.to_word(),
+                    value: v2_codehash.to_word(),
+                    value_prev: v1_codehash.to_word(),
                 },
             )?;
             state.push_op(
@@ -530,8 +530,8 @@ impl<'a> CircuitInputBuilder {
                 AccountOp {
                     address: *l1_gas_price_oracle::ADDRESS,
                     field: AccountField::KeccakCodeHash,
-                    value: v1_keccak_codehash.to_word(),
-                    value_prev: v2_keccak_codehash.to_word(),
+                    value: v2_keccak_codehash.to_word(),
+                    value_prev: v1_keccak_codehash.to_word(),
                 },
             )?;
             state.push_op(
@@ -540,8 +540,8 @@ impl<'a> CircuitInputBuilder {
                 AccountOp {
                     address: *l1_gas_price_oracle::ADDRESS,
                     field: AccountField::CodeSize,
-                    value: v1_codesize.to_word(),
-                    value_prev: v2_codesize.to_word(),
+                    value: v2_codesize.to_word(),
+                    value_prev: v1_codesize.to_word(),
                 },
             )?;
         }
@@ -775,7 +775,7 @@ impl CircuitInputBuilder {
 
 /// Return all the keccak inputs used during the processing of the current
 /// block.
-pub fn keccak_inputs(block: &Block, code_db: &CodeDB) -> Result<Vec<Vec<u8>>, Error> {
+pub fn keccak_inputs(block: &Block) -> Result<Vec<Vec<u8>>, Error> {
     let mut keccak_inputs = Vec::new();
     // Tx Circuit
     let txs: Vec<geth_types::Transaction> = block.txs.iter().map(|tx| tx.into()).collect();
@@ -801,10 +801,12 @@ pub fn keccak_inputs(block: &Block, code_db: &CodeDB) -> Result<Vec<Vec<u8>>, Er
         &block.headers,
         block.txs(),
     ));
-    // Bytecode Circuit
-    for _bytecode in code_db.0.values() {
-        // keccak_inputs.push(bytecode.clone());
+    /* 
+    // Bytecode Circuit don't use keccak code hash
+    for bytecode in block.code_db.0.values() {
+        keccak_inputs.push(bytecode.clone());
     }
+    */
     log::debug!(
         "keccak total len after bytecodes: {}",
         keccak_inputs.iter().map(|i| i.len()).sum::<usize>()

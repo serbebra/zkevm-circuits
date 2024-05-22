@@ -80,7 +80,7 @@ async fn test_mock_prove_tx() {
         return;
     }
 
-    let mut block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
+    let mut block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
     #[cfg(feature = "scroll")]
     witness::block_mocking_apply_mpt(&mut block);
     let mut updated_state_root = H256::default();
@@ -98,7 +98,7 @@ async fn test_mock_prove_tx() {
         last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
     }
     // we need to re-calculate the keccak inputs since changing of state_root
-    block.keccak_inputs = keccak_inputs(&builder.block, &builder.code_db).unwrap();
+    block.keccak_inputs = keccak_inputs(&builder.block).unwrap();
 
     let errs = test_witness_block(&block);
     for err in &errs {
@@ -190,7 +190,7 @@ async fn test_circuit_all_block() {
             continue;
         }
 
-        let mut block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
+        let mut block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
         #[cfg(feature = "scroll")]
         witness::block_mocking_apply_mpt(&mut block);
         let mut updated_state_root = H256::default();
@@ -208,7 +208,7 @@ async fn test_circuit_all_block() {
             last_eth_block_entry.get_mut().eth_block.state_root = updated_state_root;
         }
         // we need to re-calculate the keccak inputs since changing of state_root
-        block.keccak_inputs = keccak_inputs(&builder.block, &builder.code_db).unwrap();
+        block.keccak_inputs = keccak_inputs(&builder.block).unwrap();
         let errs = test_witness_block(&block);
         log::info!(
             "test {} circuit, block number: {} err num {:?}",
@@ -239,9 +239,9 @@ async fn test_print_circuits_size() {
             return;
         }
 
-        let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
+        let keccak_inputs = keccak_inputs(&builder.block).unwrap();
+        let block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
         let evm_rows = EvmCircuit::get_num_rows_required(&block);
-        let keccak_inputs = keccak_inputs(&builder.block, &builder.code_db).unwrap();
 
         let mock_randomness = Fr::from(0x100u64);
         let challenges = Challenges::mock(
@@ -277,9 +277,8 @@ async fn test_circuit_batch() {
         log::info!("skip empty block");
         return;
     }
-
-    let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
     log::info!("tx num: {}", builder.block.txs.len());
+    let block = block_convert::<Fr>(builder.block, &builder.code_db).unwrap();
     let errs = test_witness_block(&block);
     log::info!(
         "test {} circuit, block number: [{},{}], err num {:?}",

@@ -815,6 +815,7 @@ impl<
         const MOCK_RANDOMNESS: u64,
     > SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, MOCK_RANDOMNESS>
 {
+    /* 
     /// From the witness data, generate a SuperCircuit instance with all of the
     /// sub-circuits filled with their corresponding witnesses.
     ///
@@ -833,9 +834,10 @@ impl<
             .handle_block(&geth_data.eth_block, &geth_data.geth_traces)
             .expect("could not handle block tx");
 
-        let ret = Self::build_from_circuit_input_builder(&builder)?;
+        let ret = Self::build_from_circuit_input_builder(builder)?;
         Ok((ret.0, ret.1, ret.2, builder))
     }
+    */
 
     /// From CircuitInputBuilder, generate a SuperCircuit instance with all of
     /// the sub-circuits filled with their corresponding witnesses.
@@ -843,9 +845,9 @@ impl<
     /// Also, return with it the minimum required SRS degree for the circuit and
     /// the Public Inputs needed.
     pub fn build_from_circuit_input_builder(
-        builder: &CircuitInputBuilder,
+        builder: CircuitInputBuilder,
     ) -> Result<(u32, Self, Vec<Vec<Fr>>), bus_mapping::Error> {
-        let block = block_convert(&builder.block, &builder.code_db).unwrap();
+        let block = block_convert(builder.block, &builder.code_db).unwrap();
         assert_eq!(block.circuits_params.max_txs, MAX_TXS);
         assert_eq!(block.circuits_params.max_calldata, MAX_CALLDATA);
         Self::build_from_witness_block(block)

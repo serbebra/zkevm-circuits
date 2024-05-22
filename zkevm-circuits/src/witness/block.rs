@@ -30,9 +30,9 @@ use crate::util::Challenges;
 /// Block is the struct used by all circuits, which contains all the needed
 /// data for witness generation.
 #[derive(Debug, Clone, Default)]
-pub struct Block<F> {
-    /// For historical reasons..
-    pub _marker: std::marker::PhantomData<F>,
+pub struct Block {
+    /// Original block in bus-mapping
+    pub block: circuit_input_builder::Block,
     /// Transactions in the block
     pub txs: Vec<Transaction>,
     /// Signatures in the block
@@ -85,7 +85,7 @@ pub struct BlockContexts {
     pub relax_mode: bool,
 }
 
-impl<F: Field> Block<F> {
+impl Block {
     /// For each tx, for each step, print the rwc at the beginning of the step,
     /// and all the rw operations of the step.
     pub(crate) fn debug_print_txs_steps_rw_ops(&self) {
@@ -246,17 +246,17 @@ use crate::tx_circuit::TX_LEN;
 use crate::util::log2_ceil;
 
 #[cfg(feature = "test")]
-impl<F: Field> Block<F> {
+impl Block {
     /// Obtains the expected Circuit degree needed in order to be able to test
     /// the EvmCircuit with this block without needing to configure the
     /// `ConstraintSystem`.
     pub fn get_evm_test_circuit_degree(&self) -> u32 {
         let num_rows_required_for_execution_steps: usize =
-            EvmCircuit::<F>::get_num_rows_required(self);
+            EvmCircuit::get_num_rows_required(self);
         let num_rows_required_for_rw_table: usize = self.circuits_params.max_rws;
         let num_rows_required_for_fixed_table: usize = detect_fixed_table_tags(self)
             .iter()
-            .map(|tag| tag.build::<F>().count())
+            .map(|tag| tag.build().count())
             .sum();
         let num_rows_required_for_bytecode_table: usize = self
             .bytecodes
@@ -290,7 +290,7 @@ impl<F: Field> Block<F> {
         ])
         .unwrap();
 
-        let k = log2_ceil(EvmCircuit::<F>::unusable_rows() + rows_needed);
+        let k = log2_ceil(EvmCircuit::unusable_rows() + rows_needed);
         log::debug!(
             "num_rows_required_for rw_table={}, fixed_table={}, bytecode_table={}, \
             copy_table={}, keccak_table={}, tx_table={}, exp_table={}",
@@ -462,9 +462,9 @@ impl From<&circuit_input_builder::Block> for BlockContexts {
 
 /// Convert a block struct in bus-mapping to a witness block used in circuits
 pub fn block_convert<F: Field>(
-    block: &circuit_input_builder::Block,
+    block: circuit_input_builder::Block,
     code_db: &eth_types::state_db::CodeDB,
-) -> Result<Block<F>, Error> {
+) -> Result<Block, Error> {
     let rws = RwMap::from(&block.container);
     rws.check_value()?;
     let num_txs = block.txs().len();
@@ -526,8 +526,7 @@ pub fn block_convert<F: Field>(
     }
 
     Ok(Block {
-        _marker: Default::default(),
-        context: block.into(),
+        context: BlockContexts::from(&block),
         rws,
         txs: block
             .txs()
@@ -570,37 +569,23 @@ pub fn block_convert<F: Field>(
         state_root: None,
         withdraw_root: block.withdraw_root,
         prev_withdraw_root: block.prev_withdraw_root,
-        keccak_inputs: circuit_input_builder::keccak_inputs(block, code_db)?,
+        keccak_inputs: circuit_input_builder::keccak_inputs(&block)?,
         mpt_updates,
         chain_id,
         start_l1_queue_index: block.start_l1_queue_index,
         precompile_events: block.precompile_events.clone(),
+        block,
     })
 }
 
-/// Convert a block struct in bus-mapping to a witness block used in circuits
-pub fn block_convert_with_l1_queue_index<F: Field>(
-    block: &circuit_input_builder::Block,
-    code_db: &eth_types::state_db::CodeDB,
-    start_l1_queue_index: u64,
-) -> Result<Block<F>, Error> {
-    let mut block = block.clone();
-    // keccak_inputs_pi_circuit needs correct start_l1_queue_index
-    // but at this time it can be start_l1_queue_index of last block inside the chunk
-    // TODO kunxian: any better solution
-    block.start_l1_queue_index = start_l1_queue_index;
-    let witness_block = block_convert(&block, code_db)?;
-    Ok(witness_block)
-}
-
 /// Attach witness block with mpt states
-pub fn block_apply_mpt_state<F: Field>(block: &mut Block<F>, mpt_state: &MptState) {
+pub fn block_apply_mpt_state<F: Field>(block: &mut Block, mpt_state: &MptState) {
     block.mpt_updates.fill_state_roots(mpt_state);
     block.state_root = Some(block.mpt_updates.new_root());
 }
 
 /// Mocking generate mpt witness from mpt states
-pub fn block_mocking_apply_mpt<F: Field>(block: &mut Block<F>) {
+pub fn block_mocking_apply_mpt<F: Field>(block: &mut Block) {
     block.mpt_updates.mock_fill_state_roots();
     block.state_root = Some(block.mpt_updates.new_root());
     block.prev_state_root = block.mpt_updates.old_root();
