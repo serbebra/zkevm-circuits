@@ -170,14 +170,14 @@ fn block_0tx_ctx() -> TestContext<2, 0> {
 
     let addr_a = wallet_a.address();
     //let addr_b = address!("0x000000000000000000000000000000000000BBBB");
-    let bytecode = l2_predeployed::l1_gas_price_oracle::V1_BYTECODE.clone();
+    //let bytecode = l2_predeployed::l1_gas_price_oracle::V1_BYTECODE.clone();
     TestContext::new(
         Some(vec![Word::zero()]),
         |accs| {
             accs[0]
                 .address(*l2_predeployed::l1_gas_price_oracle::ADDRESS)
-                .balance(Word::from(1u64 << 20))
-                .code(bytecode);
+                .balance(Word::from(1u64 << 20));
+                //.code(bytecode);
             accs[1].address(addr_a).balance(Word::from(1u64 << 20));
         },
         |mut _txs, _accs| {},
