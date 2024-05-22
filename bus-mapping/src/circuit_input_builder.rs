@@ -17,10 +17,7 @@ pub use self::block::BlockHead;
 use crate::{
     error::Error,
     evm::opcodes::{gen_associated_ops, gen_associated_steps},
-    operation::{
-        self, CallContextField, Operation, RWCounter, StartOp, StorageOp,
-        RW,
-    },
+    operation::{self, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
 };
 pub use access::{Access, AccessSet, AccessValue, CodeSource};
 pub use block::{Block, BlockContext};
@@ -450,8 +447,9 @@ impl<'a> CircuitInputBuilder {
 
     /// Build the EndBlock step, fill needed rws like reading withdraw root
     pub fn set_end_block(&mut self) -> Result<(), Error> {
-        use crate::l2_predeployed::
-            message_queue::{ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT};
+        use crate::l2_predeployed::message_queue::{
+            ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
+        };
 
         let withdraw_root = *self
             .sdb

@@ -177,7 +177,7 @@ fn block_0tx_ctx() -> TestContext<2, 0> {
             accs[0]
                 .address(*l2_predeployed::l1_gas_price_oracle::ADDRESS)
                 .balance(Word::from(1u64 << 20));
-                //.code(bytecode);
+            //.code(bytecode);
             accs[1].address(addr_a).balance(Word::from(1u64 << 20));
         },
         |mut _txs, _accs| {},
