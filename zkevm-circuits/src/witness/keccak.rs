@@ -2,7 +2,7 @@ use bus_mapping::Error;
 use eth_types::{
     geth_types::TxType,
     sign_types::{get_dummy_tx, pk_bytes_le, pk_bytes_swap_endianness, SignData},
-    ToBigEndian, Word, H256,
+    ToBigEndian, ToWord, Word, H256,
 };
 use ethers_core::utils::keccak256;
 use itertools::Itertools;
@@ -32,6 +32,7 @@ pub fn keccak_inputs(block: &Block) -> Result<Vec<Vec<u8>>, Error> {
         block.chain_id,
         block.start_l1_queue_index,
         block.prev_state_root,
+        block.post_state_root().to_word(),
         block.withdraw_root,
         &block.context,
         &block.txs,
@@ -83,6 +84,7 @@ fn keccak_inputs_pi_circuit(
     chain_id: u64,
     start_l1_queue_index: u64,
     prev_state_root: Word,
+    after_state_root: Word,
     withdraw_trie_root: Word,
     block_headers: &BlockContexts,
     transactions: &[Transaction],
@@ -148,16 +150,10 @@ fn keccak_inputs_pi_circuit(
         .flat_map(|tx| tx.rlp_signed.clone())
         .collect::<Vec<u8>>();
     let chunk_txbytes_hash = H256(keccak256(chunk_txbytes));
-
-    let after_state_root = block_headers
-        .ctxs
-        .last_key_value()
-        .map(|(_, blk)| blk.eth_block.state_root)
-        .unwrap_or(H256(prev_state_root.to_be_bytes()));
     let pi_bytes = std::iter::empty()
         .chain(chain_id.to_be_bytes())
         .chain(prev_state_root.to_be_bytes())
-        .chain(after_state_root.to_fixed_bytes())
+        .chain(after_state_root.to_be_bytes())
         .chain(withdraw_trie_root.to_be_bytes())
         .chain(data_hash.to_fixed_bytes())
         .chain(chunk_txbytes_hash.to_fixed_bytes())

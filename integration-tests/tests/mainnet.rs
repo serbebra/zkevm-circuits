@@ -1,3 +1,4 @@
+#![allow(unused_mut)]
 use bus_mapping::{
     circuit_input_builder::{BuilderClient, CircuitsParams, PrecompileEcParams},
     util::read_env_var,

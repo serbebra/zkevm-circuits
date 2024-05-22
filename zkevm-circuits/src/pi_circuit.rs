@@ -1791,20 +1791,6 @@ impl<F: Field> PiCircuit<F> {
         let prev_state_root_in_trie = H256(block.mpt_updates.old_root().to_be_bytes());
         let prev_state_root_in_header = H256(block.prev_state_root.to_be_bytes());
         assert_eq!(prev_state_root_in_trie, prev_state_root_in_header);
-        let post_state_root_in_trie = H256(block.mpt_updates.new_root().to_be_bytes());
-        let post_state_root_in_header = block
-            .context
-            .ctxs
-            .last_key_value()
-            .map(|(_, blk)| blk.eth_block.state_root)
-            .unwrap_or(prev_state_root_in_header);
-        if post_state_root_in_trie != post_state_root_in_header {
-            log::error!(
-                "replayed root {:?} != block head root {:?}",
-                post_state_root_in_trie,
-                post_state_root_in_header
-            );
-        }
         let public_data = PublicData {
             max_txs,
             max_calldata,
@@ -1814,7 +1800,7 @@ impl<F: Field> PiCircuit<F> {
             transactions: block.txs.clone(),
             block_ctxs: block.context.clone(),
             prev_state_root: prev_state_root_in_trie,
-            next_state_root: post_state_root_in_trie,
+            next_state_root: block.post_state_root(),
             withdraw_trie_root: H256(block.withdraw_root.to_be_bytes()),
         };
 

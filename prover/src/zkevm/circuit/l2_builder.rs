@@ -384,7 +384,7 @@ pub fn block_traces_to_witness_block_with_updated_state(
             block_apply_mpt_state(&mut witness_block, state);
             log::debug!("block_apply_mpt_state done");
         };
-        let root_after = witness_block.state_root.unwrap_or_default();
+        let root_after = witness_block.post_state_root().to_word();
 
         log::debug!(
             "finish replay trie updates, root {}, root after {:#x?}",

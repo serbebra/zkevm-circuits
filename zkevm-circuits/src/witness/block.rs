@@ -17,7 +17,9 @@ use bus_mapping::{
     },
     Error,
 };
-use eth_types::{sign_types::SignData, Address, ToLittleEndian, ToScalar, Word, U256};
+use eth_types::{
+    sign_types::SignData, Address, ToBigEndian, ToLittleEndian, ToScalar, Word, H256, U256,
+};
 use halo2_proofs::{circuit::Value, halo2curves::bn256::Fr};
 use itertools::Itertools;
 
@@ -57,8 +59,6 @@ pub struct Block {
     pub sha3_inputs: Vec<Vec<u8>>,
     /// State root of the previous block
     pub prev_state_root: Word, // TODO: Make this H256
-    /// State root after the block, is set if block_apply_mpt_state is called
-    pub state_root: Option<Word>, // TODO: Make this H256
     /// Withdraw root
     pub withdraw_root: Word,
     /// Withdraw roof of the previous block
@@ -83,6 +83,24 @@ pub struct BlockContexts {
 }
 
 impl Block {
+    /// The state root after this chunk
+    pub fn post_state_root(&self) -> H256 {
+        let post_state_root_in_trie = H256(self.mpt_updates.new_root().to_be_bytes());
+        let post_state_root_in_header = self
+            .context
+            .ctxs
+            .last_key_value()
+            .map(|(_, blk)| blk.eth_block.state_root)
+            .unwrap_or(H256(self.prev_state_root.to_be_bytes()));
+        if post_state_root_in_trie != post_state_root_in_header {
+            log::error!(
+                "replayed root {:?} != block head root {:?}",
+                post_state_root_in_trie,
+                post_state_root_in_header
+            );
+        }
+        post_state_root_in_trie
+    }
     /// For each tx, for each step, print the rwc at the beginning of the step,
     /// and all the rw operations of the step.
     pub(crate) fn debug_print_txs_steps_rw_ops(&self) {
@@ -563,7 +581,6 @@ pub fn block_convert(
             ..block.circuits_params
         },
         prev_state_root: block.prev_state_root,
-        state_root: None,
         withdraw_root: block.withdraw_root,
         prev_withdraw_root: block.prev_withdraw_root,
         mpt_updates,
@@ -576,12 +593,10 @@ pub fn block_convert(
 /// Attach witness block with mpt states
 pub fn block_apply_mpt_state(block: &mut Block, mpt_state: &MptState) {
     block.mpt_updates.fill_state_roots(mpt_state);
-    block.state_root = Some(block.mpt_updates.new_root());
 }
 
 /// Mocking generate mpt witness from mpt states
 pub fn block_mocking_apply_mpt(block: &mut Block) {
     block.mpt_updates.mock_fill_state_roots();
-    block.state_root = Some(block.mpt_updates.new_root());
     block.prev_state_root = block.mpt_updates.old_root();
 }
