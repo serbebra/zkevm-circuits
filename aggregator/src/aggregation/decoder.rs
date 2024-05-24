@@ -4373,7 +4373,6 @@ impl<const L: usize, const R: usize> DecoderConfig<L, R> {
         _compressed_bytes: &[u8],
         witness_rows: Vec<ZstdWitnessRow<Fr>>,
         literal_datas: Vec<Vec<u64>>,
-        _aux_data: Vec<u64>,
         fse_aux_tables: Vec<FseAuxiliaryTableData>,
         block_info_arr: Vec<BlockInfo>,
         sequence_info_arr: Vec<SequenceInfo>,
@@ -5187,7 +5186,6 @@ mod tests {
             let (
                 witness_rows,
                 decoded_literals,
-                aux_data,
                 fse_aux_tables,
                 block_info_arr,
                 sequence_info_arr,
@@ -5216,7 +5214,6 @@ mod tests {
                 &self.compressed,
                 witness_rows,
                 decoded_literals,
-                aux_data,
                 fse_aux_tables,
                 block_info_arr,
                 sequence_info_arr,
