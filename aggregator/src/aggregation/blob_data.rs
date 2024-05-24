@@ -54,8 +54,6 @@ impl<const N_SNARKS: usize> BlobDataConfig<N_SNARKS> {
         challenges: &Challenges<Expression<Fr>>,
         u8_table: U8Table,
     ) -> Self {
-        let n_rows_metadata = BlobData::<N_SNARKS>::n_rows_metadata();
-
         let config = Self {
             q_enabled: meta.selector(),
             q_first: meta.complex_selector(),

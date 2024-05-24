@@ -41,14 +41,6 @@ pub const N_ROWS_NUM_CHUNKS: usize = 2;
 /// we explicitly set the most-significant byte to 0, effectively utilising only 31 bytes.
 pub const N_BLOB_BYTES: usize = BLOB_WIDTH * N_DATA_BYTES_PER_COEFFICIENT;
 
-/// The maximum number of bytes we will support in a single batch.
-///
-/// For now, we assume that the zstd encoding can give us a maximum compression ratio of 5, i.e. we
-/// allow up to 3 times the number of bytes in a single blob to be in a batch.
-///
-/// TODO: revisit
-pub const N_BATCH_BYTES: usize = N_BLOB_BYTES * 3;
-
 /// KZG trusted setup
 pub static KZG_TRUSTED_SETUP: Lazy<Arc<c_kzg::KzgSettings>> = Lazy::new(|| {
     Arc::new(
@@ -674,7 +666,7 @@ mod tests {
     #[test]
     #[ignore = "only required for logging challenge digest"]
     fn log_challenge() {
-        let n_rows_data = BlobData::<MAX_AGG_SNARKS>::n_rows_data();
+        let n_rows_data = BatchData::<MAX_AGG_SNARKS>::n_rows_data();
 
         for (annotation, tcase) in [
             ("single empty chunk", vec![vec![]]),

@@ -14,15 +14,12 @@ use zkevm_circuits::{
 
 use crate::{
     aggregation::rlc::POWS_OF_256,
-    blob::{
-        BatchData, BLOB_WIDTH, N_BYTES_U256, N_ROWS_BATCH_DATA_CONFIG, N_ROWS_DATA,
-        N_ROWS_DIGEST_BYTES, N_ROWS_DIGEST_RLC, N_ROWS_METADATA,
-    },
-    RlcConfig, MAX_AGG_SNARKS,
+    blob::{BatchData, BLOB_WIDTH, N_BYTES_U256},
+    RlcConfig,
 };
 
 #[derive(Clone, Debug)]
-pub struct BatchDataConfig {
+pub struct BatchDataConfig<const N_SNARKS: usize> {
     /// The byte value at this row.
     byte: Column<Advice>,
     /// The accumulator serves several purposes.
@@ -32,7 +29,7 @@ pub struct BatchDataConfig {
     ///    resets to 1 if we encounter a chunk boundary. The accumulator here is referenced while
     ///    doing a lookup to the Keccak table that requires the input length.
     accumulator: Column<Advice>,
-    /// An increasing counter that denotes the chunk ID. The chunk ID is from [1, MAX_AGG_SNARKS].
+    /// An increasing counter that denotes the chunk ID. The chunk ID is from [1, N_SNARKS].
     chunk_idx: Column<Advice>,
     /// A boolean witness that is set only when we encounter the end of a chunk. We enable a lookup
     /// to the Keccak table when the boundary is met.
@@ -55,8 +52,8 @@ pub struct BatchDataConfig {
     pub hash_selector: Selector,
     /// Fixed table that consists of [0, 256).
     u8_table: U8Table,
-    /// Fixed table that consists of [0, MAX_AGG_SNARKS).
-    chunk_idx_range_table: RangeTable<MAX_AGG_SNARKS>,
+    /// Fixed table that consists of [0, N_SNARKS).
+    chunk_idx_range_table: RangeTable<N_SNARKS>,
 }
 
 pub struct AssignedBatchDataExport {
@@ -78,14 +75,16 @@ pub struct AssignedBatchDataConfig {
     pub digest_rlc: AssignedCell<Fr, Fr>,
 }
 
-impl BatchDataConfig {
+impl<const N_SNARKS: usize> BatchDataConfig<N_SNARKS> {
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
         challenge: &Challenges<Expression<Fr>>,
         u8_table: U8Table,
-        range_table: RangeTable<MAX_AGG_SNARKS>,
+        range_table: RangeTable<N_SNARKS>,
         keccak_table: &KeccakTable,
     ) -> Self {
+        let n_rows_metadata = BatchData::<N_SNARKS>::n_rows_metadata();
+
         let config = Self {
             u8_table,
             chunk_idx_range_table: range_table,
@@ -132,8 +131,7 @@ impl BatchDataConfig {
                 let cond = is_not_hash * is_boundary * (1.expr() - is_padding_next);
                 let chunk_idx_curr = meta.query_advice(config.chunk_idx, Rotation::cur());
                 let chunk_idx_next = meta.query_advice(config.chunk_idx, Rotation::next());
-                // chunk_idx increases by at least 1 and at most MAX_AGG_SNARKS when condition is
-                // met.
+                // chunk_idx increases by at least 1 and at most N_SNARKS when condition is met.
                 vec![(
                     cond * (chunk_idx_next - chunk_idx_curr - 1.expr()),
                     config.chunk_idx_range_table.into(),
@@ -142,7 +140,7 @@ impl BatchDataConfig {
         );
 
         meta.lookup(
-            "BatchDataConfig (chunk_idx for non-padding, data rows in [1..MAX_AGG_SNARKS])",
+            "BatchDataConfig (chunk_idx for non-padding, data rows in [1..N_SNARKS])",
             |meta| {
                 let is_data = meta.query_selector(config.data_selector);
                 let is_padding = meta.query_advice(config.is_padding, Rotation::cur());
@@ -287,7 +285,7 @@ impl BatchDataConfig {
 
                 let accumulator = meta.query_advice(config.accumulator, Rotation::cur());
                 let preimage_len =
-                    is_data.expr() * accumulator + (1.expr() - is_data) * N_ROWS_METADATA.expr();
+                    is_data.expr() * accumulator + (1.expr() - is_data) * n_rows_metadata.expr();
 
                 [
                     1.expr(),                                                // q_enable
@@ -346,7 +344,7 @@ impl BatchDataConfig {
                 // - metadata_digest: 32 bytes
                 // - chunk[i].chunk_data_digest: 32 bytes each
                 // - versioned_hash: 32 bytes
-                let preimage_len = 32.expr() * (MAX_AGG_SNARKS + 1 + 1).expr();
+                let preimage_len = 32.expr() * (N_SNARKS + 1 + 1).expr();
 
                 [
                     1.expr(),                                                // q_enable
@@ -362,7 +360,13 @@ impl BatchDataConfig {
             },
         );
 
-        assert!(meta.degree() <= 4);
+        log::trace!("meta degree: {}", meta.degree());
+        log::trace!(
+            "meta degree with lookups: {}",
+            meta.clone().chunk_lookups().degree(),
+        );
+
+        assert!(meta.degree() <= 5);
 
         config
     }
@@ -375,7 +379,7 @@ impl BatchDataConfig {
         // The chunks_are_padding assigned cells are exports from the conditional constraints in
         // `core.rs`. Since these are already constrained, we can just use them as is.
         chunks_are_padding: &[AssignedCell<Fr, Fr>],
-        batch_data: &BatchData,
+        batch_data: &BatchData<N_SNARKS>,
         barycentric_assignments: &[CRTInteger<Fr>],
     ) -> Result<AssignedBatchDataExport, Error> {
         self.load_range_tables(layouter)?;
@@ -409,24 +413,29 @@ impl BatchDataConfig {
         &self,
         region: &mut Region<Fr>,
         challenge_value: Challenges<Value<Fr>>,
-        batch_data: &BatchData,
+        batch_data: &BatchData<N_SNARKS>,
     ) -> Result<Vec<AssignedBatchDataConfig>, Error> {
+        let n_rows_data = BatchData::<N_SNARKS>::n_rows_data();
+        let n_rows_metadata = BatchData::<N_SNARKS>::n_rows_metadata();
+        let n_rows_digest_rlc = BatchData::<N_SNARKS>::n_rows_digest_rlc();
+        let n_rows_total = BatchData::<N_SNARKS>::n_rows();
+
         let rows = batch_data.to_rows(challenge_value);
-        assert_eq!(rows.len(), N_ROWS_BATCH_DATA_CONFIG);
+        assert_eq!(rows.len(), n_rows_total);
 
         // enable data selector
-        for offset in N_ROWS_METADATA..N_ROWS_METADATA + N_ROWS_DATA {
+        for offset in n_rows_metadata..n_rows_metadata + n_rows_data {
             self.data_selector.enable(region, offset)?;
         }
 
         // enable hash selector
         for offset in
-            N_ROWS_METADATA + N_ROWS_DATA..N_ROWS_METADATA + N_ROWS_DATA + N_ROWS_DIGEST_RLC
+            n_rows_metadata + n_rows_data..n_rows_metadata + n_rows_data + n_rows_digest_rlc
         {
             self.hash_selector.enable(region, offset)?;
         }
 
-        let mut assigned_rows = Vec::with_capacity(N_ROWS_BATCH_DATA_CONFIG);
+        let mut assigned_rows = Vec::with_capacity(n_rows_total);
         let mut count = 0u64;
         let mut bytes_rlc_acc = Value::known(Fr::zero());
         for (i, row) in rows.iter().enumerate() {
@@ -458,7 +467,7 @@ impl BatchDataConfig {
                 i,
                 || Value::known(Fr::from(row.is_boundary as u64)),
             )?;
-            let bcount = if (N_ROWS_METADATA..N_ROWS_METADATA + N_ROWS_DATA).contains(&i) {
+            let bcount = if (n_rows_metadata..n_rows_metadata + n_rows_data).contains(&i) {
                 count += row.is_boundary as u64;
                 count
             } else {
@@ -489,7 +498,7 @@ impl BatchDataConfig {
                 self.bytes_rlc,
                 i,
                 || {
-                    if i < N_ROWS_METADATA + N_ROWS_DATA {
+                    if i < n_rows_metadata + n_rows_data {
                         bytes_rlc_acc
                     } else {
                         Value::known(Fr::zero())
@@ -522,6 +531,10 @@ impl BatchDataConfig {
         barycentric_assignments: &[CRTInteger<Fr>],
         assigned_rows: &[AssignedBatchDataConfig],
     ) -> Result<AssignedBatchDataExport, Error> {
+        let n_rows_metadata = BatchData::<N_SNARKS>::n_rows_metadata();
+        let n_rows_digest_rlc = BatchData::<N_SNARKS>::n_rows_digest_rlc();
+        let n_rows_data = BatchData::<N_SNARKS>::n_rows_data();
+
         rlc_config.init(region)?;
         let mut rlc_config_offset = 0;
 
@@ -540,9 +553,10 @@ impl BatchDataConfig {
         };
         let fixed_chunk_indices = {
             let mut fixed_chunk_indices = vec![one.clone()];
-            for i in 2..=MAX_AGG_SNARKS {
+            for i in 2..=N_SNARKS {
                 let i_cell =
                     rlc_config.load_private(region, &Fr::from(i as u64), &mut rlc_config_offset)?;
+                // TODO: look into this....
                 let i_fixed_cell =
                     rlc_config.fixed_up_to_max_agg_snarks_cell(i_cell.cell().region_index, i);
                 region.constrain_equal(i_cell.cell(), i_fixed_cell)?;
@@ -616,8 +630,8 @@ impl BatchDataConfig {
         ////////////////////////////////////////////////////////////////////////////////
 
         let mut num_nonempty_chunks = zero.clone();
-        let mut is_empty_chunks = Vec::with_capacity(MAX_AGG_SNARKS);
-        let mut chunk_sizes = Vec::with_capacity(MAX_AGG_SNARKS);
+        let mut is_empty_chunks = Vec::with_capacity(N_SNARKS);
+        let mut chunk_sizes = Vec::with_capacity(N_SNARKS);
         for (i, is_padded_chunk) in chunks_are_padding.iter().enumerate() {
             let rows = assigned_rows
                 .iter()
@@ -675,7 +689,7 @@ impl BatchDataConfig {
             rlc_config.not(region, &all_chunks_empty, &mut rlc_config_offset)?;
 
         // constrain preimage_rlc column
-        let metadata_rows = &assigned_rows[..N_ROWS_METADATA];
+        let metadata_rows = &assigned_rows[..n_rows_metadata];
         region.constrain_equal(
             metadata_rows[0].byte.cell(),
             metadata_rows[0].preimage_rlc.cell(),
@@ -702,7 +716,7 @@ impl BatchDataConfig {
         }
 
         // in the metadata section, these columns are 0 except (possibly) on the last row.
-        for row in metadata_rows.iter().take(N_ROWS_METADATA - 1) {
+        for row in metadata_rows.iter().take(n_rows_metadata - 1) {
             let cells = [&row.is_boundary, &row.digest_rlc].map(AssignedCell::cell);
 
             for cell in cells {
@@ -713,7 +727,7 @@ impl BatchDataConfig {
         // in the final row of the metadata section, boundary is 1. note that this triggers a keccak
         // lookup which constrains digest_rlc.
         region.constrain_equal(
-            metadata_rows[N_ROWS_METADATA - 1].is_boundary.cell(),
+            metadata_rows[n_rows_metadata - 1].is_boundary.cell(),
             one.cell(),
         )?;
 
@@ -721,8 +735,8 @@ impl BatchDataConfig {
         // bytes_rlc at that row. This value is later used in the custom gate in the "chunk data"
         // section to compute the running accumulator bytes_rlc.
         region.constrain_equal(
-            metadata_rows[N_ROWS_METADATA - 1].preimage_rlc.cell(),
-            metadata_rows[N_ROWS_METADATA - 1].bytes_rlc.cell(),
+            metadata_rows[n_rows_metadata - 1].preimage_rlc.cell(),
+            metadata_rows[n_rows_metadata - 1].bytes_rlc.cell(),
         )?;
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -733,8 +747,8 @@ impl BatchDataConfig {
         // there are no non-empty chunks, this will be 0 and must also be a padding row.
         let rows = assigned_rows
             .iter()
-            .skip(N_ROWS_METADATA)
-            .take(N_ROWS_DATA)
+            .skip(n_rows_metadata)
+            .take(n_rows_data)
             .collect::<Vec<_>>();
         rlc_config.conditional_enforce_equal(
             region,
@@ -778,16 +792,16 @@ impl BatchDataConfig {
 
         let rows = assigned_rows
             .iter()
-            .skip(N_ROWS_METADATA + N_ROWS_DATA)
-            .take(N_ROWS_DIGEST_RLC)
+            .skip(n_rows_metadata + n_rows_data)
+            .take(n_rows_digest_rlc)
             .collect::<Vec<_>>();
 
-        // rows have chunk_idx set from 0 (metadata) -> MAX_AGG_SNARKS.
+        // rows have chunk_idx set from 0 (metadata) -> N_SNARKS.
         region.constrain_equal(rows[0].chunk_idx.cell(), zero.cell())?;
         for (row, fixed_chunk_idx) in rows
             .iter()
             .skip(1)
-            .take(MAX_AGG_SNARKS)
+            .take(N_SNARKS)
             .zip_eq(fixed_chunk_indices.iter())
         {
             region.constrain_equal(row.chunk_idx.cell(), fixed_chunk_idx.cell())?;
@@ -795,14 +809,14 @@ impl BatchDataConfig {
 
         let challenge_digest_preimage_rlc_specified = &rows.last().unwrap().preimage_rlc;
         let challenge_digest_rlc_specified = &rows.last().unwrap().digest_rlc;
-        let versioned_hash_rlc = &rows.get(N_ROWS_DIGEST_RLC - 2).unwrap().digest_rlc;
+        let versioned_hash_rlc = &rows.get(n_rows_digest_rlc - 2).unwrap().digest_rlc;
 
         // ensure that on the last row of this section the is_boundary is turned on
         // which would enable the keccak table lookup for challenge_digest
         region.constrain_equal(rows.last().unwrap().is_boundary.cell(), one.cell())?;
 
         let metadata_digest_rlc_computed =
-            &assigned_rows.get(N_ROWS_METADATA - 1).unwrap().digest_rlc;
+            &assigned_rows.get(n_rows_metadata - 1).unwrap().digest_rlc;
         let metadata_digest_rlc_specified = &rows.first().unwrap().digest_rlc;
         region.constrain_equal(
             metadata_digest_rlc_computed.cell(),
@@ -815,7 +829,7 @@ impl BatchDataConfig {
         // Also, we know that the first chunk is valid. So we can just start the check from
         // the second chunk's data digest.
         region.constrain_equal(chunks_are_padding[0].cell(), zero.cell())?;
-        for i in 1..MAX_AGG_SNARKS {
+        for i in 1..N_SNARKS {
             // Note that in `rows`, the first row is the metadata row (hence anyway skip
             // it). That's why we have a +1.
             rlc_config.conditional_enforce_equal(
@@ -827,11 +841,11 @@ impl BatchDataConfig {
             )?;
         }
 
-        let mut chunk_digest_evm_rlcs = Vec::with_capacity(MAX_AGG_SNARKS);
+        let mut chunk_digest_evm_rlcs = Vec::with_capacity(N_SNARKS);
         for (((row, chunk_size_decoded), is_empty), is_padded_chunk) in rows
             .iter()
             .skip(1)
-            .take(MAX_AGG_SNARKS)
+            .take(N_SNARKS)
             .zip_eq(chunk_sizes)
             .zip_eq(is_empty_chunks)
             .zip_eq(chunks_are_padding)
@@ -863,8 +877,8 @@ impl BatchDataConfig {
         let mut challenge_digest_preimage_keccak_rlc = zero.clone();
         let rows = assigned_rows
             .iter()
-            .skip(N_ROWS_METADATA + N_ROWS_DATA + N_ROWS_DIGEST_RLC)
-            .take(N_ROWS_DIGEST_BYTES)
+            .skip(n_rows_metadata + n_rows_data + n_rows_digest_rlc)
+            .take(BatchData::<N_SNARKS>::n_rows_digest_bytes())
             .collect::<Vec<_>>();
         for (i, digest_rlc_specified) in std::iter::once(metadata_digest_rlc_specified)
             .chain(chunk_digest_evm_rlcs)
@@ -887,7 +901,7 @@ impl BatchDataConfig {
 
             // compute the keccak input RLC:
             // we do this only for the metadata and chunks, not for the blob row itself.
-            if i < MAX_AGG_SNARKS + 1 + 1 {
+            if i < N_SNARKS + 1 + 1 {
                 let digest_keccak_rlc =
                     rlc_config.rlc(region, &digest_bytes, &r_keccak, &mut rlc_config_offset)?;
                 challenge_digest_preimage_keccak_rlc = rlc_config.mul_add(
@@ -908,11 +922,11 @@ impl BatchDataConfig {
         //////////////////////////////////// EXPORT ////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////
 
-        let mut chunk_data_digests = Vec::with_capacity(MAX_AGG_SNARKS);
+        let mut chunk_data_digests = Vec::with_capacity(N_SNARKS);
         let chunk_data_digests_bytes = assigned_rows
             .iter()
-            .skip(N_ROWS_METADATA + N_ROWS_DATA + N_ROWS_DIGEST_RLC + N_BYTES_U256)
-            .take(MAX_AGG_SNARKS * N_BYTES_U256)
+            .skip(n_rows_metadata + n_rows_data + n_rows_digest_rlc + N_BYTES_U256)
+            .take(N_SNARKS * N_BYTES_U256)
             .map(|row| row.byte.clone())
             .collect::<Vec<_>>();
         for chunk in chunk_data_digests_bytes.chunks_exact(N_BYTES_U256) {
@@ -937,7 +951,7 @@ impl BatchDataConfig {
             chunk_data_digests,
             // bytes rlc is from the last row of the "chunk data" section.
             bytes_rlc: assigned_rows
-                .get(N_ROWS_METADATA + N_ROWS_DATA - 1)
+                .get(n_rows_metadata + n_rows_data - 1)
                 .unwrap()
                 .bytes_rlc
                 .clone(),

@@ -33,7 +33,6 @@ revm-precompile.workspace = true
 revm-primitives.workspace = true
 c-kzg.workspace = true
 num-bigint.workspace = true
-revm-primitives = "3.1.0"
 
 # da-compression
 bitstream-io = "2.2.0"
