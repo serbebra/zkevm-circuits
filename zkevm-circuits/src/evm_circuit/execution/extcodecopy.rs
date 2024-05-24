@@ -19,9 +19,10 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{AccountFieldTag, CallContextFieldTag},
+    util::Field,
 };
 use bus_mapping::circuit_input_builder::CopyDataType;
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
+use eth_types::{evm_types::GasCost, ToLittleEndian, ToScalar};
 use gadgets::util::Expr;
 use halo2_proofs::{circuit::Value, plonk::Error};
 
@@ -168,7 +169,7 @@ impl<F: Field> ExecutionGadget<F> for ExtcodecopyGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        block: &Block<F>,
+        block: &Block,
         transaction: &Transaction,
         call: &Call,
         step: &ExecStep,

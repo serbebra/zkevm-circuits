@@ -28,7 +28,7 @@ use crate::{
 /// BlobDataConfig is to compute a random-linear combination of these bytes. These bytes are in
 /// fact the zstd encoded form of the raw batch data represented in BatchDataConfig.
 #[derive(Clone, Debug)]
-pub struct BlobDataConfig {
+pub struct BlobDataConfig<const N_SNARKS: usize> {
     /// Selector to mark the first row in the layout, enabled at offset=0.
     q_first: Selector,
     /// Whether the row is enabled or not. We need exactly N_BLOB_BYTES rows, enabled from offset=1
@@ -48,12 +48,14 @@ pub struct AssignedBlobDataExport {
     pub bytes_rlc: AssignedCell<Fr, Fr>,
 }
 
-impl BlobDataConfig {
+impl<const N_SNARKS: usize> BlobDataConfig<N_SNARKS> {
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
         challenges: &Challenges<Expression<Fr>>,
         u8_table: U8Table,
     ) -> Self {
+        let n_rows_metadata = BlobData::<N_SNARKS>::n_rows_metadata();
+
         let config = Self {
             q_enabled: meta.selector(),
             q_first: meta.complex_selector(),
@@ -125,7 +127,7 @@ impl BlobDataConfig {
         layouter: &mut impl Layouter<Fr>,
         challenge_value: Challenges<Value<Fr>>,
         rlc_config: &RlcConfig,
-        batch_data: &BatchData,
+        batch_data: &BatchData<N_SNARKS>,
         barycentric_assignments: &[CRTInteger<Fr>],
     ) -> Result<AssignedBlobDataExport, Error> {
         let (assigned_bytes, bytes_rlc) = layouter.assign_region(
@@ -152,7 +154,7 @@ impl BlobDataConfig {
     pub fn assign_rows(
         &self,
         region: &mut Region<Fr>,
-        batch_data: &BatchData,
+        batch_data: &BatchData<N_SNARKS>,
         challenges: &Challenges<Value<Fr>>,
     ) -> Result<(Vec<AssignedCell<Fr, Fr>>, AssignedCell<Fr, Fr>), Error> {
         let batch_bytes = batch_data.get_batch_data_bytes();
@@ -277,6 +279,7 @@ impl BlobDataConfig {
             // have the export from BarycentricConfig in little-endian bytes.
             blob_fields.push(chunk.iter().rev().cloned().collect());
         }
+
         for (blob_crt, blob_field) in blob_crts.iter().zip_eq(blob_fields.iter()) {
             let limb1 = rlc_config.inner_product(
                 region,

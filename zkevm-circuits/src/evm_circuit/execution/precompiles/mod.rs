@@ -9,10 +9,11 @@ use crate::{
         },
     },
     table::CallContextFieldTag,
+    util::Field,
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::precompile::PrecompileAuxData;
-use eth_types::{Field, ToScalar};
+use eth_types::ToScalar;
 use gadgets::util::{select, Expr};
 use halo2_proofs::{
     circuit::Value,
@@ -166,7 +167,7 @@ impl<F: Field, const S: ExecutionState> ExecutionGadget<F> for BasePrecompileGad
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        block: &Block<F>,
+        block: &Block,
         _tx: &Transaction,
         call: &Call,
         step: &ExecStep,

@@ -6,20 +6,23 @@ use halo2_proofs::{
     circuit::{Layouter, Value},
     plonk::{Challenge, Circuit, ConstraintSystem, Error, Expression, FirstPhase, VirtualCells},
 };
-use keccak256::plain::Keccak;
 
 #[cfg(feature = "onephase")]
 use halo2_proofs::plonk::FirstPhase as SecondPhase;
 #[cfg(not(feature = "onephase"))]
 use halo2_proofs::plonk::SecondPhase;
+use sha3::Digest;
 
 use crate::{evm_circuit::util::rlc, table::TxLogFieldTag, witness};
-use eth_types::{Field, ToAddress, Word};
+use eth_types::{ToAddress, Word};
 pub use ethers_core::types::{Address, U256};
 pub use gadgets::util::Expr;
 
 /// A wrapper of is_zero in gadgets which gives is_zero at any rotation
 pub mod is_zero;
+
+/// The field used in circuits. We only support bn254fr now.
+pub trait Field = eth_types::Field + halo2_base::utils::ScalarField;
 
 pub(crate) fn query_expression<F: Field, T>(
     meta: &mut ConstraintSystem<F>,
@@ -216,7 +219,7 @@ pub trait SubCircuit<F: Field> {
     }
 
     /// Create a new SubCircuit from a witness Block
-    fn new_from_block(block: &witness::Block<F>) -> Self;
+    fn new_from_block(block: &witness::Block) -> Self;
 
     /// Returns the instance columns required for this circuit.
     fn instance(&self) -> Vec<Vec<F>> {
@@ -235,7 +238,7 @@ pub trait SubCircuit<F: Field> {
 
     /// Return the minimum number of rows required to prove the block.
     /// Row numbers without/with padding are both returned.
-    fn min_num_rows_block(block: &witness::Block<F>) -> (usize, usize);
+    fn min_num_rows_block(block: &witness::Block) -> (usize, usize);
 }
 
 /// SubCircuit configuration
@@ -254,9 +257,7 @@ pub fn log2_ceil(n: usize) -> u32 {
 }
 
 pub(crate) fn keccak(msg: &[u8]) -> Word {
-    let mut keccak = Keccak::default();
-    keccak.update(msg);
-    Word::from_big_endian(keccak.digest().as_slice())
+    Word::from_big_endian(sha3::Keccak256::digest(msg).as_slice())
 }
 
 pub(crate) fn is_push_with_data(byte: u8) -> bool {
@@ -332,7 +333,7 @@ pub(crate) fn circuit_stats<F: Field>(meta: &ConstraintSystem<F>) -> CircuitStat
 /// - 3 comes from minimum number of distinct queries to permutation argument witness column
 /// - 1 comes from queries at x_3 during multiopen
 /// - 1 comes as slight defense against off-by-one errors
-/// - 1 comes from reservation for last row for grand-product boundray check, hence not copy-able or
+/// - 1 comes from reservation for last row for grand-product boundary check, hence not copy-able or
 ///   lookup-able. Note this 1 is not considered in [`ConstraintSystem::blinding_factors`], so below
 ///   we need to add an extra 1.
 ///

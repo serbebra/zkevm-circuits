@@ -16,11 +16,10 @@ pub use halo2_gadgets::sha256::BLOCK_SIZE;
 
 use crate::{
     table::{LookupTable, SHA256Table},
-    util::{Challenges, SubCircuit, SubCircuitConfig},
+    util::{Challenges, Field, SubCircuit, SubCircuitConfig},
     witness,
 };
 use bus_mapping::circuit_input_builder::SHA256;
-use eth_types::Field;
 
 impl TableTrait for SHA256Table {
     fn cols(&self) -> [Column<Any>; 5] {
@@ -111,14 +110,13 @@ impl SubCircuit<Fr> for SHA256Circuit<Fr> {
         2
     }
 
-    fn new_from_block(block: &witness::Block<Fr>) -> Self {
+    fn new_from_block(block: &witness::Block) -> Self {
         Self(block.get_sha256(), 0, Default::default())
             .with_row_limit(block.circuits_params.max_keccak_rows)
     }
 
-    fn min_num_rows_block(block: &witness::Block<Fr>) -> (usize, usize) {
+    fn min_num_rows_block(block: &witness::Block) -> (usize, usize) {
         let real_row = Self(block.get_sha256(), 0, Default::default()).expected_rows();
-
         (
             real_row,
             real_row

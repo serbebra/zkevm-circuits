@@ -28,6 +28,8 @@ pub mod evm_types;
 pub mod geth_types;
 pub mod l2_types;
 pub mod sign_types;
+pub mod state_db;
+pub mod utils;
 
 use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
 pub use bytecode::Bytecode;
@@ -43,8 +45,7 @@ pub use ethers_core::{
         Address, Block, Bytes, Signature, H160, H256, H64, U256, U64,
     },
 };
-use halo2_base::utils::ScalarField;
-use halo2_proofs::halo2curves::{bn256::Fr, group::ff::PrimeField};
+use halo2curves::{bn256::Fr, group::ff::PrimeField};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -60,6 +61,9 @@ use crate::evm_types::Memory;
 use crate::evm_types::Stack;
 #[cfg(feature = "enable-storage")]
 use crate::evm_types::Storage;
+
+/// Main Block type
+pub type EthBlock = Block<Transaction>;
 
 /// Used for FFI with Golang. Bytes in golang will be serialized as base64 by default.
 pub mod base64 {
@@ -87,7 +91,7 @@ pub mod base64 {
 /// Trait used to reduce verbosity with the declaration of the [`Field`]
 /// trait and its repr.
 pub trait Field:
-    PrimeField<Repr = [u8; 32]> + hash_circuit::hash::Hashable + std::convert::From<Fr> + ScalarField
+    PrimeField<Repr = [u8; 32]> + poseidon_base::hash::Hashable + std::convert::From<Fr>
 {
     /// Re-expose zero element as a function
     fn zero() -> Self {
@@ -841,6 +845,15 @@ impl GethCallTrace {
         // ignore the call if precheck failed
         // https://github.com/ethereum/go-ethereum/issues/21438
         if self.is_precheck_failed() {
+            return call_is_success;
+        }
+        if self.error.as_deref() == Some(GethExecError::InsufficientBalance.error()) {
+            return call_is_success;
+        }
+        if self.error.as_deref() == Some(GethExecError::Depth.error()) {
+            return call_is_success;
+        }
+        if self.error.as_deref() == Some(GethExecError::NonceUintOverflow.error()) {
             return call_is_success;
         }
         call_is_success.push(self.error.is_none());

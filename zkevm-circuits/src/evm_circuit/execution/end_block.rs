@@ -14,12 +14,12 @@ use crate::{
         witness::{Block, Call, ExecStep, Transaction},
     },
     table::{CallContextFieldTag, TxContextFieldTag},
-    util::Expr,
+    util::{Expr, Field},
 };
 use bus_mapping::l2_predeployed::message_queue::{
     ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
 };
-use eth_types::{Field, ToScalar};
+use eth_types::ToScalar;
 use halo2_proofs::{
     circuit::{Cell as AssignedCell, Value},
     plonk::{Error, Expression},
@@ -134,10 +134,6 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         // We conclude that the number of meaningful entries in the rw_table
         // is total_rws.
 
-        // cb.step_last(|cb| {
-        //     // TODO: Handle reward to coinbase.  Depends on spec:
-        //     // https://github.com/privacy-scaling-explorations/zkevm-specs/issues/290
-        // });
         cb.not_step_last(|cb| {
             // Propagate rw_counter and call_id all the way down.
             cb.require_step_state_transition(StepStateTransition {
@@ -163,7 +159,7 @@ impl<F: Field> ExecutionGadget<F> for EndBlockGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        block: &Block<F>,
+        block: &Block,
         _: &Transaction,
         _: &Call,
         step: &ExecStep,

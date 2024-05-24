@@ -30,6 +30,7 @@ strum_macros.workspace = true
 
 # da-4844
 revm-precompile.workspace = true
+revm-primitives.workspace = true
 c-kzg.workspace = true
 num-bigint.workspace = true
 revm-primitives = "3.1.0"
@@ -43,7 +44,7 @@ zstd = { git = "https://github.com/scroll-tech/zstd-rs", branch = "hack/mul-bloc
 csv = "1.1"
 
 [features]
-default = [ ]
-print-trace = [ "ark-std/print-trace" ]
+default = ["revm-precompile/c-kzg"]
+print-trace = ["ark-std/print-trace"]
 # This feature is useful for unit tests where we check the SAT of pi aggregation circuit
 disable_proof_aggregation = []

@@ -12,10 +12,11 @@ use crate::{
         },
     },
     table::CallContextFieldTag,
+    util::Field,
     witness::{Block, Call, ExecStep, Transaction},
 };
 use bus_mapping::precompile::{PrecompileAuxData, PrecompileCalls};
-use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar, U256};
+use eth_types::{evm_types::GasCost, ToLittleEndian, ToScalar, U256};
 use gadgets::util::{and, not, or, select, split_u256, sum, Expr};
 use halo2_proofs::{
     circuit::Value,
@@ -356,7 +357,7 @@ impl<F: Field> ExecutionGadget<F> for EcMulGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        block: &Block<F>,
+        block: &Block,
         _tx: &Transaction,
         call: &Call,
         step: &ExecStep,

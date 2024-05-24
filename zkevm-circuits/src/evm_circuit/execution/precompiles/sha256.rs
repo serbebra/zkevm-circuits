@@ -1,5 +1,6 @@
+use crate::util::Field;
 use bus_mapping::precompile::PrecompileAuxData;
-use eth_types::{evm_types::GasCost, Field, ToScalar};
+use eth_types::{evm_types::GasCost, ToScalar};
 use gadgets::util::{select, Expr};
 use halo2_proofs::{circuit::Value, plonk::Error};
 
@@ -114,7 +115,7 @@ impl<F: Field> ExecutionGadget<F> for SHA256Gadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        block: &Block<F>,
+        block: &Block,
         _tx: &Transaction,
         call: &Call,
         step: &ExecStep,

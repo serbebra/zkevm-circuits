@@ -27,7 +27,7 @@ use crate::{
 #[rustfmt::skip]
 /// Configurations for aggregation circuit.
 /// This config is hard coded for BN256 curve.
-pub struct AggregationConfig {
+pub struct AggregationConfig<const N_SNARKS: usize> {
     /// Non-native field chip configurations
     pub base_field_config: FpConfig<Fr, Fq>,
     /// Keccak circuit configurations
@@ -35,9 +35,9 @@ pub struct AggregationConfig {
     /// RLC config
     pub rlc_config: RlcConfig,
     /// The blob data's config.
-    pub blob_data_config: BlobDataConfig,
+    pub blob_data_config: BlobDataConfig<N_SNARKS>,
     /// The batch data's config.
-    pub batch_data_config: BatchDataConfig,
+    pub batch_data_config: BatchDataConfig<N_SNARKS>,
     /// The zstd decoder's config.
     pub decoder_config: DecoderConfig<1024, 512>,
     /// Config to do the barycentric evaluation on blob polynomial.
@@ -49,7 +49,7 @@ pub struct AggregationConfig {
     pub instance: Column<Instance>,
 }
 
-impl AggregationConfig {
+impl<const N_SNARKS: usize> AggregationConfig<N_SNARKS> {
     /// Build a configuration from parameters.
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
@@ -60,9 +60,6 @@ impl AggregationConfig {
             params.limb_bits == BITS && params.num_limbs == LIMBS,
             "For now we fix limb_bits = {BITS}, otherwise change code",
         );
-
-        // RLC configuration
-        let rlc_config = RlcConfig::configure(meta, challenges);
 
         // hash configuration for aggregation circuit
         let (keccak_table, keccak_circuit_config) = {
@@ -79,6 +76,9 @@ impl AggregationConfig {
                 KeccakCircuitConfig::new(meta, keccak_circuit_config_args),
             )
         };
+
+        // RLC configuration
+        let rlc_config = RlcConfig::configure(meta, &keccak_table, challenges);
 
         // base field configuration for aggregation circuit
         let base_field_config = FpConfig::configure(

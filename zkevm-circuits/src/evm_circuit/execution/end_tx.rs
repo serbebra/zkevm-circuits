@@ -7,7 +7,7 @@ use crate::{
             common_gadget::{TransferGadgetInfo, TransferToGadget, UpdateBalanceGadget},
             constraint_builder::{
                 ConstrainBuilderCommon, EVMConstraintBuilder, StepStateTransition,
-                Transition::{Delta, Same},
+                Transition::{Delta, Same, To},
             },
             from_bytes,
             math_gadget::{
@@ -22,10 +22,10 @@ use crate::{
         AccountFieldTag, BlockContextFieldTag, CallContextFieldTag, RwTableTag, TxContextFieldTag,
         TxReceiptFieldTag,
     },
-    util::Expr,
+    util::{Expr, Field},
 };
 use eth_types::{
-    evm_types::MAX_REFUND_QUOTIENT_OF_GAS_USED, geth_types::TxType, Field, ToLittleEndian, ToScalar,
+    evm_types::MAX_REFUND_QUOTIENT_OF_GAS_USED, geth_types::TxType, ToLittleEndian, ToScalar,
 };
 use gadgets::util::{not, select};
 use halo2_proofs::{circuit::Value, plonk::Error};
@@ -251,6 +251,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
 
                 cb.require_step_state_transition(StepStateTransition {
                     rw_counter: Delta(rw_counter_offset.clone()),
+                    end_tx: To(0.expr()),
                     ..StepStateTransition::any()
                 });
             },
@@ -265,6 +266,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
                     // We propagate call_id so that EndBlock can get the last tx_id
                     // in order to count processed txs.
                     call_id: Same,
+                    end_tx: To(0.expr()),
                     ..StepStateTransition::any()
                 });
             },
@@ -302,7 +304,7 @@ impl<F: Field> ExecutionGadget<F> for EndTxGadget<F> {
         &self,
         region: &mut CachedRegion<'_, '_, F>,
         offset: usize,
-        block: &Block<F>,
+        block: &Block,
         tx: &Transaction,
         call: &Call,
         step: &ExecStep,
