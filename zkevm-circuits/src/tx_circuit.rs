@@ -1404,7 +1404,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
                 // next row should not belong to a padding tx
                 not::expr(meta.query_advice(is_padding_tx, Rotation::next())),
                 // next row should also belong to fixed region
-                not::expr(is_next_tag_dynamic),                
+                not::expr(is_next_tag_dynamic),
                 meta.query_advice(is_tag_block_num, Rotation::cur()),
             ]);
 

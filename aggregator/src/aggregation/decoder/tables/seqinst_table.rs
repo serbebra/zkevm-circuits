@@ -1,5 +1,4 @@
 use crate::aggregation::decoder::witgen;
-use eth_types::Field;
 use gadgets::{
     is_equal::*,
     is_zero::*,
@@ -14,6 +13,7 @@ use witgen::AddressTableRow;
 use zkevm_circuits::{
     evm_circuit::{BaseConstraintBuilder, ConstrainBuilderCommon},
     table::LookupTable,
+    util::Field,
 };
 
 /// Table used carry the raw sequence instructions parsed from sequence section

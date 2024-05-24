@@ -297,7 +297,7 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
 
         let timer = start_timer!(|| "load aux table");
 
-        let assigned_blobs = {
+        let assigned_batch_hash = {
             config
                 .keccak_circuit_config
                 .load_aux_tables(&mut layouter)?;
@@ -326,7 +326,7 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
                 .iter()
                 .map(|chunk| !chunk.is_padding)
                 .collect::<Vec<_>>();
-            let assigned_blobs = assign_batch_hashes::<N_SNARKS>(
+            let assigned_batch_hash = assign_batch_hashes::<N_SNARKS>(
                 &config.keccak_circuit_config,
                 &config.rlc_config,
                 &mut layouter,
@@ -339,11 +339,11 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
 
             end_timer!(timer);
 
-            assigned_blobs
+            assigned_batch_hash
         };
         // digests
         let (batch_pi_hash_digest, chunk_pi_hash_digests, _potential_batch_data_hash_digest) =
-            parse_hash_digest_cells::<N_SNARKS>(&assigned_blobs.hash_output);
+            parse_hash_digest_cells::<N_SNARKS>(&assigned_batch_hash.hash_output);
 
         // ==============================================
         // step 3: assert public inputs to the snarks are correct
@@ -500,7 +500,7 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
                     for (chunk_data_digest, expected_chunk_data_digest) in batch_data_exports
                         .chunk_data_digests
                         .iter()
-                        .zip_eq(assigned_blobs.blob.chunk_tx_data_digests.iter())
+                        .zip_eq(assigned_batch_hash.blob.chunk_tx_data_digests.iter())
                     {
                         for (c, ec) in chunk_data_digest
                             .iter()
@@ -513,7 +513,7 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
 
                     for (c, ec) in evaluation_le
                         .iter()
-                        .zip_eq(assigned_blobs.blob.y.iter().rev())
+                        .zip_eq(assigned_batch_hash.blob.y.iter().rev())
                     {
                         log::trace!("blob y: {:?} {:?}", c.value(), ec.value());
                         region.constrain_equal(c.cell(), ec.cell())?;
@@ -521,7 +521,7 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
 
                     for (c, ec) in challenge_le
                         .iter()
-                        .zip_eq(assigned_blobs.blob.z.iter().rev())
+                        .zip_eq(assigned_batch_hash.blob.z.iter().rev())
                     {
                         log::trace!("blob z: {:?} {:?}", c.value(), ec.value());
                         region.constrain_equal(c.cell(), ec.cell())?;
@@ -530,7 +530,7 @@ impl<const N_SNARKS: usize> Circuit<Fr> for AggregationCircuit<N_SNARKS> {
                     for (c, ec) in batch_data_exports
                         .versioned_hash
                         .iter()
-                        .zip_eq(assigned_blobs.blob.versioned_hash.iter())
+                        .zip_eq(assigned_batch_hash.blob.versioned_hash.iter())
                     {
                         log::trace!("blob version hash: {:?} {:?}", c.value(), ec.value());
                         region.constrain_equal(c.cell(), ec.cell())?;

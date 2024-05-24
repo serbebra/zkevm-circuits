@@ -2,9 +2,7 @@ use crate::{
     aggregation::{
         AssignedBarycentricEvaluationConfig, BarycentricEvaluationConfig, BlobDataConfig, RlcConfig,
     },
-    blob::{
-        BatchData, PointEvaluationAssignments, N_BYTES_U256,
-    },
+    blob::{BatchData, PointEvaluationAssignments, N_BYTES_U256},
     param::ConfigParams,
     BatchDataConfig, MAX_AGG_SNARKS,
 };
@@ -259,7 +257,7 @@ fn check_circuit(circuit: &BlobCircuit) -> Result<(), Vec<VerifyFailure>> {
 #[test]
 fn blob_circuit_completeness() {
     // single chunk in batch, but the chunk has a size of N_ROWS_DATA
-    let full_blob = vec![vec![123; BlobData::<MAX_AGG_SNARKS>::n_rows_data()]];
+    let full_blob = vec![vec![123; BatchData::<MAX_AGG_SNARKS>::n_rows_data()]];
     let all_empty_chunks: Vec<Vec<u8>> = vec![vec![]; MAX_AGG_SNARKS];
     let one_chunk = vec![vec![2, 3, 4, 100, 1]];
     let two_chunks = vec![vec![100; 1000], vec![2, 3, 4, 100, 1]];
@@ -377,10 +375,10 @@ fn overwrite_chunk_data_digest_byte() {
 const OVERWRITE_ROWS: [usize; 6] = [
     0,
     10,
-    BlobData::<MAX_AGG_SNARKS>::n_rows_metadata() - 1,
-    BlobData::<MAX_AGG_SNARKS>::n_rows_metadata(),
-    BlobData::<MAX_AGG_SNARKS>::n_rows_metadata() + 100,
-    BlobData::<MAX_AGG_SNARKS>::n_rows_metadata() + BlobData::<MAX_AGG_SNARKS>::n_rows_data() - 1,
+    BatchData::<MAX_AGG_SNARKS>::n_rows_metadata() - 1,
+    BatchData::<MAX_AGG_SNARKS>::n_rows_metadata(),
+    BatchData::<MAX_AGG_SNARKS>::n_rows_metadata() + 100,
+    BatchData::<MAX_AGG_SNARKS>::n_rows_metadata() + BatchData::<MAX_AGG_SNARKS>::n_rows_data() - 1,
 ];
 
 #[test]

@@ -1,6 +1,5 @@
 use super::tables;
 use crate::aggregation::decoder::witgen;
-use eth_types::Field;
 use gadgets::util::{and, not, select, Expr};
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Region, Value},
@@ -12,7 +11,10 @@ use halo2_proofs::{
 use itertools::Itertools;
 use tables::SeqInstTable;
 use witgen::{SequenceExec, SequenceExecInfo, SequenceInfo, ZstdTag};
-use zkevm_circuits::evm_circuit::{BaseConstraintBuilder, ConstrainBuilderCommon};
+use zkevm_circuits::{
+    evm_circuit::{BaseConstraintBuilder, ConstrainBuilderCommon},
+    util::Field,
+};
 
 /// TODO: This is in fact part of the `BlockConfig` in
 /// Decoder, we can use BlockConfig if it is decoupled
