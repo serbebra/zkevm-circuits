@@ -1746,19 +1746,17 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     let mut block_idx: u64 = 1;
     let mut repeated_offset = [1, 4, 8];
     loop {
-        let (
-            end_offset,
-            rows,
+        let AggregateBlockResult {
+            offset,
+            witness_rows: rows,
             block_info,
             sequence_info,
-            new_literals,
-            lstream_lens,
-            pipeline_data,
-            new_fse_aux_tables,
+            literal_bytes: new_literals,
+            fse_aux_tables: new_fse_aux_tables,
             address_table_rows,
-            sequence_exec_info,
-            end_repeated_offset,
-        ) = process_block::<F>(
+            sequence_exec_result,
+            repeated_offset: end_repeated_offset,
+        } = process_block::<F>(
             src,
             &mut decoded_bytes,
             block_idx,
@@ -1767,7 +1765,8 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
             randomness,
             repeated_offset,
         );
-        log::debug!("processed block={:?}: offset={:?}", block_idx, end_offset);
+
+        log::debug!("processed block={:?}: offset={:?}", block_idx, offset);
 
         witness_rows.extend_from_slice(&rows);
         literals.push(new_literals);
@@ -1778,15 +1777,15 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         block_info_arr.push(block_info);
         sequence_info_arr.push(sequence_info);
         address_table_arr.push(address_table_rows);
-        sequence_exec_info_arr.push(sequence_exec_info);
+        sequence_exec_info_arr.push(sequence_exec_result);
 
         if block_info.is_last_block {
-            assert!(end_offset >= src.len());
+            assert!(offset >= src.len());
             break;
         } else {
             repeated_offset = end_repeated_offset;
             block_idx += 1;
-            byte_offset = end_offset;
+            byte_offset = offset;
         }
     }
 
