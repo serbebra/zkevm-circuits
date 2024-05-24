@@ -276,20 +276,25 @@ pub struct SequenceExecResult {
     pub recovered_bytes: Vec<u8>,
 }
 
-type BlockProcessingResult<F> = (
-    usize,
-    Vec<ZstdWitnessRow<F>>,
-    Vec<u64>,
-    Vec<u64>,
-    Vec<u64>,
-    SequenceInfo,
-    [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
-    Vec<AddressTableRow>,
-    SequenceExecResult,
-    [usize; 3], // repeated offsets are carried forward between blocks
-);
+#[derive(Debug, Default, Clone)]
+pub struct BlockProcessingResult<F> {
+    pub offset: usize,
+    pub witness_rows: Vec<ZstdWitnessRow<F>>,
+    pub literals: Vec<u64>,
+    pub sequence_info: SequenceInfo,
+    pub fse_aux_tables: [FseAuxiliaryTableData; 3], // 3 sequence section FSE tables
+    pub address_table_rows: Vec<AddressTableRow>,
+    pub sequence_exec_result: SequenceExecResult,
+    pub repeated_offset: [usize; 3], // repeated offsets are carried forward between blocks
+}
 
-type LiteralsBlockResult<F> = (usize, Vec<ZstdWitnessRow<F>>, Vec<u64>, Vec<u64>, Vec<u64>);
+#[derive(Debug, Default, Clone)]
+pub struct LiteralsBlockResult<F> {
+    pub offset: usize,
+    pub witness_rows: Vec<ZstdWitnessRow<F>>,
+    pub literals: Vec<u64>,
+    pub regen_size: usize,
+}
 
 #[allow(clippy::too_many_arguments)]
 fn process_block_zstd<F: Field>(
@@ -335,9 +340,9 @@ fn process_block_zstd<F: Field>(
         });
         let tag_rlc = tag_rlc_iter.clone().last().expect("Literals must exist.");
 
-        (
-            byte_offset + regen_size,
-            literals
+        LiteralsBlockResult {
+            offset: byte_offset + regen_size,
+            witness_rows: literals
                 .iter()
                 .zip(tag_rlc_iter)
                 .enumerate()
@@ -368,10 +373,9 @@ fn process_block_zstd<F: Field>(
                     fse_data: FseDecodingRow::default(),
                 })
                 .collect::<Vec<_>>(),
-            literals.iter().map(|b| *b as u64).collect::<Vec<u64>>(),
-            vec![regen_size as u64, 0, 0, 0],
-            vec![0, 0, 0, 0],
-        )
+            literals: literals.iter().map(|b| *b as u64).collect::<Vec<u64>>(),
+            regen_size,
+        }
     };
 
     let (byte_offset, rows, literals, lstream_len, aux_data) = literals_block_result;
@@ -407,42 +411,32 @@ fn process_block_zstd<F: Field>(
     );
     witness_rows.extend_from_slice(&rows);
 
-    (
-        end_offset,
+    BlockProcessingResult {
+        offset: end_offset,
         witness_rows,
         literals,
-        lstream_len,
-        vec![
-            regen_size as u64,
-            compressed_size as u64,
-            aux_data[0],
-            aux_data[1],
-            aux_data[2],
-            aux_data[3],
-            branch,
-            sf_max as u64,
-        ],
         sequence_info,
         fse_aux_tables,
         address_table_rows,
-        SequenceExecResult {
+        sequence_exec_result: SequenceExecResult {
             exec_trace: sequence_exec_info,
             recovered_bytes: original_inputs,
         },
         repeated_offset,
-    )
+    }
 }
 
-type SequencesProcessingResult<F> = (
-    usize,
-    Vec<ZstdWitnessRow<F>>,
-    [FseAuxiliaryTableData; 3], // LLT, MLT, CMOT
-    Vec<AddressTableRow>,       // Parsed sequence instructions
-    Vec<u8>,                    // Recovered original input
-    SequenceInfo,
-    Vec<SequenceExec>,
-    [usize; 3], // repeated offsets are carried forward.
-);
+#[derive(Debug, Default, Clone)]
+pub struct SequencesProcessingResult<F> {
+    pub offset: usize,
+    pub witness_rows: Vec<ZstdWitnessRow<F>>,
+    pub fse_aux_tables: [FseAuxiliaryTableData; 3], // LLT, MLT, CMOT
+    pub address_table_rows: Vec<AddressTableRow>, // Parsed sequence instructions
+    pub original_bytes: Vec<u8>, // Recovered original input
+    pub sequence_info: SequenceInfo,
+    pub sequence_exec: Vec<SequenceExec>,
+    pub repeated_offset: [usize; 3],
+}
 
 #[allow(clippy::too_many_arguments)]
 fn process_sequences<F: Field>(
@@ -1592,27 +1586,25 @@ fn process_sequences<F: Field>(
         decoded_bytes.extend_from_slice(ext_slice.as_slice());
     }
 
-    (
-        end_offset,
+    SequencesProcessingResult {
+        offset: end_offset,
         witness_rows,
-        [table_llt, table_cmot, table_mlt],
-        address_table_rows,
-        recovered_inputs,
+        fse_aux_tables: [table_llt, table_cmot, table_mlt], // LLT, MLT, CMOT
+        address_table_rows, // Parsed sequence instructions
+        original_bytes: recovered_inputs, // Recovered original input
         sequence_info,
-        seq_exec_info,
+        sequence_exec: seq_exec_info,
         repeated_offset,
-    )
+    }
 }
 
-type LiteralsHeaderProcessingResult<F> = (
-    usize,
-    Vec<ZstdWitnessRow<F>>,
-    BlockType,
-    usize,
-    usize,
-    usize,
-    (u64, bool),
-);
+#[derive(Debug, Default, Clone)]
+pub struct LiteralsHeaderProcessingResult<F> {
+    pub offset: usize,
+    pub witness_rows: Vec<ZstdWitnessRow<F>>,
+    pub regen_size: usize,
+    pub compressed_size: usize,
+}
 
 fn process_block_zstd_literals_header<F: Field>(
     src: &[u8],
@@ -1649,9 +1641,9 @@ fn process_block_zstd_literals_header<F: Field>(
         acc
     })[(2 + n_bits_fmt)..(n_bytes_header * N_BITS_PER_BYTE)];
 
-    let regen_size = le_bits_to_value(&sizing_bits[0..n_bits_regen]);
+    let regen_size = le_bits_to_value(&sizing_bits[0..n_bits_regen]) as usize;
     let compressed_size =
-        le_bits_to_value(&sizing_bits[n_bits_regen..(n_bits_regen + n_bits_compressed)]);
+        le_bits_to_value(&sizing_bits[n_bits_regen..(n_bits_regen + n_bits_compressed)]) as usize;
     let tag_next = match literals_block_type {
         BlockType::RawBlock => ZstdTag::ZstdBlockLiteralsRawBytes,
         _ => unreachable!("BlockType::* unexpected. Must be raw bytes for literals."),
@@ -1671,9 +1663,9 @@ fn process_block_zstd_literals_header<F: Field>(
         (0..last_row.state.tag_len).fold(Value::known(F::one()), |acc, _| acc * randomness);
     let value_rlc = last_row.encoded_data.value_rlc * multiplier + last_row.state.tag_rlc;
 
-    (
-        byte_offset + n_bytes_header,
-        lh_bytes
+    LiteralsHeaderProcessingResult {
+        offset: byte_offset + n_bytes_header,
+        witness_rows: lh_bytes
             .iter()
             .take(n_bytes_header)
             .zip(tag_rlc_iter)
@@ -1703,12 +1695,9 @@ fn process_block_zstd_literals_header<F: Field>(
                 fse_data: FseDecodingRow::default(),
             })
             .collect::<Vec<_>>(),
-        literals_block_type,
-        n_streams,
-        regen_size as usize,
-        compressed_size as usize,
-        (branch as u64, sf_max),
-    )
+        regen_size,
+        compressed_size,
+    }
 }
 
 /// Result for processing multiple blocks from compressed data
