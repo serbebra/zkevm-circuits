@@ -1,7 +1,13 @@
-use gadgets::util::{not, select, Expr};
+use crate::aggregation::decoder::witgen::{
+    util::{le_bits_to_value, value_bits_le},
+    BlockType,
+};
+use eth_types::Field;
+use gadgets::util::{and, not, select, Expr};
 use halo2_proofs::{
+    circuit::{Layouter, Value},
     halo2curves::bn256::Fr,
-    plonk::{Advice, Any, Column, ConstraintSystem, Fixed},
+    plonk::{Advice, Any, Column, ConstraintSystem, Error, Fixed},
     poly::Rotation,
 };
 use zkevm_circuits::{
@@ -42,6 +48,7 @@ impl LiteralsHeaderTable {
     /// Construct and constrain the literals header table.
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        q_enable: Column<Fixed>,
         range8: RangeTable<8>,
         range16: RangeTable<16>,
     ) -> Self {
@@ -79,7 +86,10 @@ impl LiteralsHeaderTable {
         });
 
         meta.create_gate("LiteralsHeaderTable: main gate", |meta| {
-            let condition = not::expr(meta.query_advice(config.is_padding, Rotation::cur()));
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
             let mut cb = BaseConstraintBuilder::default();
 
@@ -92,9 +102,9 @@ impl LiteralsHeaderTable {
 
             // - branch0: Size_Format is 00 or 10
             // - branch1: Size_Format is 01
-            // - branch2: Size_Format is 10
+            // - branch2: Size_Format is 11
             let branch1 = sf0.expr() * not::expr(sf1.expr());
-            let branch2 = sf1.expr() * not::expr(sf0.expr());
+            let branch2 = sf1.expr() * sf0.expr();
 
             let branch0_regen_size = byte0_rs_3;
             let branch1_regen_size = byte0_rs_4.expr() + byte1_ls_4.expr();
@@ -118,7 +128,10 @@ impl LiteralsHeaderTable {
         meta.create_gate(
             "LiteralsHeaderTable: subsequent rows after q_first=true",
             |meta| {
-                let condition = not::expr(meta.query_fixed(config.q_first, Rotation::cur()));
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+                ]);
 
                 let mut cb = BaseConstraintBuilder::default();
 
@@ -129,15 +142,6 @@ impl LiteralsHeaderTable {
 
                 cb.require_boolean("is_padding is boolean", is_padding_cur.expr());
                 cb.require_boolean("is_padding delta is boolean", is_padding_delta);
-
-                // if this is not a padding row, then block_idx has incremented.
-                cb.condition(not::expr(is_padding_cur.expr()), |cb| {
-                    cb.require_equal(
-                        "block_idx increments by 1",
-                        meta.query_advice(config.block_idx, Rotation::cur()),
-                        meta.query_advice(config.block_idx, Rotation::prev()) + 1.expr(),
-                    );
-                });
 
                 // block_idx increments.
                 //
@@ -156,7 +160,10 @@ impl LiteralsHeaderTable {
         );
 
         meta.lookup("LiteralsHeaderTable: byte0 >> 3", |meta| {
-            let condition = 1.expr();
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
             let range_value = meta.query_advice(config.byte0, Rotation::cur())
                 - (meta.query_advice(config.byte0_rs_3, Rotation::cur()) * 8.expr());
@@ -165,7 +172,10 @@ impl LiteralsHeaderTable {
         });
 
         meta.lookup("LiteralsHeaderTable: byte0 >> 4", |meta| {
-            let condition = 1.expr();
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
             let range_value = meta.query_advice(config.byte0, Rotation::cur())
                 - (meta.query_advice(config.byte0_rs_4, Rotation::cur()) * 16.expr());
@@ -176,6 +186,88 @@ impl LiteralsHeaderTable {
         debug_assert!(meta.degree() <= 9);
 
         config
+    }
+
+    /// Assign witness to the literals header table.
+    pub fn assign<F: Field>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        literals_headers: Vec<(u64, u64, (u64, u64, u64))>,
+        n_enabled: usize,
+    ) -> Result<(), Error> {
+        layouter.assign_region(
+            || "LiteralsHeaderTable",
+            |mut region| {
+                region.assign_fixed(|| "q_first", self.q_first, 0, || Value::known(F::one()))?;
+
+                for (offset, (block_idx, _byte_offset, (byte0, byte1, byte2))) in
+                    literals_headers.clone().into_iter().enumerate()
+                {
+                    let lh_bytes = [byte0 as u8, byte1 as u8, byte2 as u8];
+                    let literals_block_type = BlockType::from(lh_bytes[0] & 0x3);
+                    let size_format = (lh_bytes[0] >> 2) & 3;
+
+                    let [n_bits_fmt, n_bits_regen, n_bytes_header]: [usize; 3] =
+                        match literals_block_type {
+                            BlockType::RawBlock => match size_format {
+                                0b00 | 0b10 => [1, 5, 1],
+                                0b01 => [2, 12, 2],
+                                0b11 => [2, 20, 3],
+                                _ => unreachable!("size_format out of bound"),
+                            },
+                            _ => unreachable!(
+                                "BlockType::* unexpected. Must be raw bytes for literals."
+                            ),
+                        };
+
+                    // Bits for representing regenerated_size and compressed_size
+                    let sizing_bits = &lh_bytes.into_iter().fold(vec![], |mut acc, b| {
+                        acc.extend(value_bits_le(b));
+                        acc
+                    })[(2 + n_bits_fmt)..(n_bytes_header * 8)];
+
+                    let regen_size = le_bits_to_value(&sizing_bits[0..n_bits_regen]);
+
+                    for (col, value, annotation) in [
+                        (self.block_idx, block_idx, "block_idx"),
+                        (self.byte0, byte0, "byte0"),
+                        (self.byte1, byte1, "byte1"),
+                        (self.byte2, byte2, "byte2"),
+                        (self.regen_size, regen_size, "regen_size"),
+                        (
+                            self.size_format_bit0,
+                            (size_format & 1) as u64,
+                            "size_format_bit0",
+                        ),
+                        (
+                            self.size_format_bit1,
+                            ((size_format & 2) >> 1) as u64,
+                            "size_format_bit1",
+                        ),
+                        (self.byte0_rs_3, byte0 >> 3, "byte0_rs_3"),
+                        (self.byte0_rs_4, byte0 >> 4, "byte0_rs_4"),
+                    ] {
+                        region.assign_advice(
+                            || annotation,
+                            col,
+                            offset,
+                            || Value::known(F::from(value)),
+                        )?;
+                    }
+                }
+
+                for offset in literals_headers.len()..n_enabled {
+                    region.assign_advice(
+                        || "is_padding",
+                        self.is_padding,
+                        offset,
+                        || Value::known(F::one()),
+                    )?;
+                }
+
+                Ok(())
+            },
+        )
     }
 }
 

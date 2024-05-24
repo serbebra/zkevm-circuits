@@ -1,10 +1,11 @@
 use gadgets::{
-    is_equal::{IsEqualChip, IsEqualConfig},
+    is_equal::{IsEqualChip, IsEqualConfig, IsEqualInstruction},
     util::{and, not, select, Expr},
 };
 use halo2_proofs::{
+    circuit::{Layouter, Value},
     halo2curves::bn256::Fr,
-    plonk::{Advice, Column, ConstraintSystem, Expression, Fixed, VirtualCells},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
 use itertools::Itertools;
@@ -16,6 +17,7 @@ use zkevm_circuits::{
 use crate::aggregation::decoder::{
     tables::{FixedLookupTag, FixedTable},
     witgen::FseTableKind,
+    FseAuxiliaryTableData,
 };
 
 /// The FSE table verifies that given the symbols and the states allocated to those symbols, the
@@ -81,7 +83,7 @@ use crate::aggregation::decoder::{
 ///
 /// [doclink]: https://nigeltao.github.io/blog/2022/zstandard-part-5-fse.html#fse-reconstruction
 #[derive(Clone, Debug)]
-pub struct FseTable {
+pub struct FseTable<const L: usize, const R: usize> {
     /// The helper table to validate that the (baseline, nb) were assigned correctly to each state.
     sorted_table: FseSortedStatesTable,
     /// A boolean to mark whether this row represents a symbol with probability "less than 1".
@@ -122,19 +124,23 @@ pub struct FseTable {
     nb: Column<Advice>,
 }
 
-impl FseTable {
+impl<const L: usize, const R: usize> FseTable<L, R> {
     /// Configure the FSE table.
+    #[allow(clippy::too_many_arguments)]
     pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        q_enable: Column<Fixed>,
         fixed_table: &FixedTable,
         u8_table: U8Table,
         range8_table: RangeTable<8>,
+        range512_table: RangeTable<512>,
         pow2_table: Pow2Table<20>,
-        bitwise_op_table: BitwiseOpTable,
+        bitwise_op_table: BitwiseOpTable<1, L, R>,
     ) -> Self {
         // Auxiliary table to validate that (baseline, nb) were assigned correctly to the states
         // allocated to a symbol.
-        let sorted_table = FseSortedStatesTable::configure(meta, pow2_table, u8_table);
+        let sorted_table =
+            FseSortedStatesTable::configure(meta, q_enable, pow2_table, u8_table, range512_table);
 
         let config = Self {
             sorted_table,
@@ -157,6 +163,7 @@ impl FseTable {
         // - table_size_rs_3 == table_size >> 3.
         meta.lookup("FseTable: table_size >> 3", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 meta.query_fixed(config.sorted_table.q_start, Rotation::cur()),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -169,34 +176,12 @@ impl FseTable {
 
         // Every FSE symbol is a byte.
         meta.lookup("FseTable: symbol in [0, 256)", |meta| {
+            let condition = meta.query_fixed(q_enable, Rotation::cur());
+
             vec![(
-                meta.query_advice(config.symbol, Rotation::cur()),
+                condition * meta.query_advice(config.symbol, Rotation::cur()),
                 u8_table.into(),
             )]
-        });
-
-        // The first row of the FseTable layout, i.e. q_first=true.
-        meta.create_gate("FseTable: first row", |meta| {
-            let condition = meta.query_fixed(config.sorted_table.q_first, Rotation::cur());
-
-            let mut cb = BaseConstraintBuilder::default();
-
-            // The first row is all 0s. This is then followed by a q_start==1 fixed column. We want
-            // to make sure the first FSE table belongs to block_idx=1.
-            cb.require_equal(
-                "block_idx == 1 for the first FSE table",
-                meta.query_advice(config.sorted_table.block_idx, Rotation::next()),
-                1.expr(),
-            );
-
-            // The first FSE table described should be the LLT table.
-            cb.require_equal(
-                "table_kind == LLT for the first FSE table",
-                meta.query_advice(config.sorted_table.table_kind, Rotation::next()),
-                FseTableKind::LLT.expr(),
-            );
-
-            cb.gate(condition)
         });
 
         // Check that on the starting row of every FSE table, i.e. q_start=true:
@@ -209,6 +194,7 @@ impl FseTable {
             "FseSortedStatesTable: start row (ROM block_idx and table_kind transition)",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     meta.query_fixed(config.sorted_table.q_start, Rotation::cur()),
                     not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
                 ]);
@@ -239,6 +225,7 @@ impl FseTable {
         // The starting row of every FSE table, i.e. q_start=true.
         meta.create_gate("FseTable: start row", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 meta.query_fixed(config.sorted_table.q_start, Rotation::cur()),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -290,7 +277,10 @@ impl FseTable {
 
         // For every symbol that has a normalised probability prob=-1.
         meta.lookup_any("FseTable: all symbols with prob=-1 (nb==AL)", |meta| {
-            let condition = meta.query_advice(config.is_prob_less_than1, Rotation::cur());
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                meta.query_advice(config.is_prob_less_than1, Rotation::cur()),
+            ]);
 
             // for a symbol with prob=-1, we do a full state reset, i.e.
             // read nb=AL bits, i.e. 1 << nb == table_size.
@@ -306,7 +296,10 @@ impl FseTable {
 
         // For every symbol that has a normalised probability prob=-1.
         meta.create_gate("FseTable: all symbols with prob=-1", |meta| {
-            let condition = meta.query_advice(config.is_prob_less_than1, Rotation::cur());
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                meta.query_advice(config.is_prob_less_than1, Rotation::cur()),
+            ]);
 
             let mut cb = BaseConstraintBuilder::default();
 
@@ -343,6 +336,7 @@ impl FseTable {
             "FseTable: subsequent symbols with prob=-1 (symbol increasing)",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur())),
                     meta.query_advice(config.is_prob_less_than1, Rotation::cur()),
                 ]);
@@ -369,6 +363,7 @@ impl FseTable {
             "FseTable: subsequent symbols with prob=-1 (state retreating)",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur())),
                     meta.query_advice(config.is_prob_less_than1, Rotation::cur()),
                 ]);
@@ -392,6 +387,7 @@ impl FseTable {
             "FseTable: symbols with prob>=1 (symbol increasing)",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur())),
                     not::expr(meta.query_advice(config.is_prob_less_than1, Rotation::prev())),
                     meta.query_advice(config.is_new_symbol, Rotation::cur()),
@@ -416,6 +412,8 @@ impl FseTable {
         // Symbols with prob>=1 continue the same symbol if not a new symbol.
         meta.create_gate("FseTable: symbols with prob>=1", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.sorted_table.q_first, Rotation::cur())),
                 not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_prob_less_than1, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
@@ -435,13 +433,26 @@ impl FseTable {
                 );
             });
 
+            // is the first symbol if:
+            // - prev row was prob=-1
+            let is_first_symbol = meta.query_advice(config.is_prob_less_than1, Rotation::prev());
+            cb.condition(is_first_symbol, |cb| {
+                cb.require_zero(
+                    "first symbol (prob >= 1): state == 0",
+                    meta.query_advice(config.state, Rotation::cur()),
+                );
+            });
+
             cb.gate(condition)
         });
 
         // All rows in an instance of FSE table, except the starting row (q_start=true).
         meta.create_gate("FseTable: every FSE table (except q_start=1)", |meta| {
-            let condition =
-                not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur()));
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.sorted_table.q_first, Rotation::cur())),
+                not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur())),
+            ]);
 
             let mut cb = BaseConstraintBuilder::default();
 
@@ -508,7 +519,10 @@ impl FseTable {
 
         // A state is skipped only if that state was pre-allocated to a symbol with prob=-1.
         meta.lookup_any("FseTable: skipped state", |meta| {
-            let condition = meta.query_advice(config.is_skipped_state, Rotation::cur());
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                meta.query_advice(config.is_skipped_state, Rotation::cur()),
+            ]);
 
             // A state can be skipped only if it was pre-allocated to a symbol with prob=-1. So we
             // check that there exists a row with the same block_idx, table_kind and the skipped
@@ -538,6 +552,7 @@ impl FseTable {
             "FseTable: assigned state (baseline, nb) validation",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     not::expr(meta.query_advice(config.is_prob_less_than1, Rotation::cur())),
                     not::expr(meta.query_advice(config.is_skipped_state, Rotation::cur())),
                     not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
@@ -558,9 +573,9 @@ impl FseTable {
                     block_idx,
                     table_kind,
                     table_size,
-                    state,
                     symbol,
                     symbol_count,
+                    state,
                     baseline,
                     nb,
                     0.expr(),
@@ -576,6 +591,7 @@ impl FseTable {
         // every state in the FSE table.
         meta.lookup_any("FseTable: predefined table validation", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 meta.query_advice(config.sorted_table.is_predefined, Rotation::cur()),
                 not::expr(meta.query_advice(config.is_skipped_state, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
@@ -608,6 +624,7 @@ impl FseTable {
         // For every new symbol detected.
         meta.create_gate("FseTable: new symbol", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 meta.query_advice(config.is_new_symbol, Rotation::cur()),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -630,9 +647,9 @@ impl FseTable {
 
             // The symbol_count_acc inits at 1.
             cb.require_equal(
-                "symbol_count_acc inits at 1",
+                "symbol_count_acc inits at 1 if not skipped state",
                 meta.query_advice(config.symbol_count_acc, Rotation::cur()),
-                1.expr(),
+                not::expr(meta.query_advice(config.is_skipped_state, Rotation::cur())),
             );
 
             cb.gate(condition)
@@ -641,6 +658,8 @@ impl FseTable {
         // Whenever we continue allocating states to the same symbol.
         meta.create_gate("FseTable: same symbol, transitioned state", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.sorted_table.q_first, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -676,8 +695,11 @@ impl FseTable {
         // - state'' == state + (table_size >> 3) + (table_size >> 1) + 3
         meta.lookup_any("FseTable: state transition", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.sorted_table.q_first, Rotation::cur())),
                 not::expr(meta.query_fixed(config.sorted_table.q_start, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_prob_less_than1, Rotation::cur())),
+                not::expr(meta.query_advice(config.is_prob_less_than1, Rotation::prev())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
 
@@ -705,9 +727,483 @@ impl FseTable {
 
         config
     }
+
+    /// Assign the FSE table.
+    pub fn assign(
+        &self,
+        layouter: &mut impl Layouter<Fr>,
+        data: Vec<FseAuxiliaryTableData>,
+        n_enabled: usize,
+    ) -> Result<(), Error> {
+        layouter.assign_region(
+            || "FseTable",
+            |mut region| {
+                region.assign_fixed(
+                    || "q_first",
+                    self.sorted_table.q_first,
+                    0,
+                    || Value::known(Fr::one()),
+                )?;
+
+                // Both tables should skip the first row
+                let mut fse_offset: usize = 1;
+                let mut sorted_offset: usize = 1;
+
+                for i in (1..n_enabled).step_by(1 << 10) {
+                    region.assign_fixed(
+                        || "q_start",
+                        self.sorted_table.q_start,
+                        i,
+                        || Value::known(Fr::one()),
+                    )?;
+                }
+
+                for table in data.iter() {
+                    let target_end_offset = fse_offset + (1 << 10); // reserve enough rows to accommodate skipped states
+                                                                    // Assign q_start
+
+                    let states_to_symbol = table.parse_state_table();
+                    let mut state_idx: usize = 0;
+
+                    // Assign the symbols with negative normalised probability
+                    let tail_states_count = table
+                        .normalised_probs
+                        .iter()
+                        .filter(|(&_sym, &w)| w < 0)
+                        .count();
+                    if tail_states_count > 0 {
+                        for state in ((table.table_size - tail_states_count as u64)
+                            ..=(table.table_size - 1))
+                            .rev()
+                        {
+                            state_idx += 1;
+                            region.assign_advice(
+                                || "state",
+                                self.state,
+                                fse_offset,
+                                || Value::known(Fr::from(state)),
+                            )?;
+                            region.assign_advice(
+                                || "idx",
+                                self.idx,
+                                fse_offset,
+                                || Value::known(Fr::from(state_idx as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol",
+                                self.symbol,
+                                fse_offset,
+                                || {
+                                    Value::known(Fr::from(
+                                        states_to_symbol.get(&state).expect("state exists").0,
+                                    ))
+                                },
+                            )?;
+                            region.assign_advice(
+                                || "baseline",
+                                self.baseline,
+                                fse_offset,
+                                || {
+                                    Value::known(Fr::from(
+                                        states_to_symbol.get(&state).expect("state exists").1,
+                                    ))
+                                },
+                            )?;
+                            region.assign_advice(
+                                || "nb",
+                                self.nb,
+                                fse_offset,
+                                || {
+                                    Value::known(Fr::from(
+                                        states_to_symbol.get(&state).expect("state exists").2,
+                                    ))
+                                },
+                            )?;
+                            region.assign_advice(
+                                || "is_new_symbol",
+                                self.is_new_symbol,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "is_prob_less_than1",
+                                self.is_prob_less_than1,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "is_skipped_state",
+                                self.is_skipped_state,
+                                fse_offset,
+                                || Value::known(Fr::zero()),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count",
+                                self.symbol_count,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count_acc",
+                                self.symbol_count_acc,
+                                fse_offset,
+                                || Value::known(Fr::one()),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_1",
+                                self.table_size_rs_1,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 1)),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_3",
+                                self.table_size_rs_3,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 3)),
+                            )?;
+
+                            fse_offset += 1;
+                        }
+                    }
+
+                    // Assign the symbols with positive probability in fse table
+                    let regular_symbols = table
+                        .normalised_probs
+                        .clone()
+                        .into_iter()
+                        .filter(|(_sym, w)| *w > 0)
+                        .collect::<Vec<(u64, i32)>>();
+                    for (sym, _c) in regular_symbols.clone().into_iter() {
+                        let mut sym_acc: usize = 0;
+                        let sym_rows = table.sym_to_states.get(&sym).expect("symbol exists.");
+                        let sym_count = sym_rows.iter().filter(|r| !r.is_state_skipped).count();
+
+                        for (j, fse_row) in sym_rows.iter().enumerate() {
+                            if !fse_row.is_state_skipped {
+                                state_idx += 1;
+                                sym_acc += 1;
+                            }
+                            region.assign_advice(
+                                || "state",
+                                self.state,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.state)),
+                            )?;
+                            region.assign_advice(
+                                || "idx",
+                                self.idx,
+                                fse_offset,
+                                || Value::known(Fr::from(state_idx as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol",
+                                self.symbol,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.symbol)),
+                            )?;
+                            region.assign_advice(
+                                || "baseline",
+                                self.baseline,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.baseline)),
+                            )?;
+                            region.assign_advice(
+                                || "nb",
+                                self.nb,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.num_bits)),
+                            )?;
+                            region.assign_advice(
+                                || "is_new_symbol",
+                                self.is_new_symbol,
+                                fse_offset,
+                                || Value::known(Fr::from((j == 0) as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "is_prob_less_than1",
+                                self.is_prob_less_than1,
+                                fse_offset,
+                                || Value::known(Fr::zero()),
+                            )?;
+                            region.assign_advice(
+                                || "is_skipped_state",
+                                self.is_skipped_state,
+                                fse_offset,
+                                || Value::known(Fr::from(fse_row.is_state_skipped as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count",
+                                self.symbol_count,
+                                fse_offset,
+                                || Value::known(Fr::from(sym_count as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "symbol_count_acc",
+                                self.symbol_count_acc,
+                                fse_offset,
+                                || Value::known(Fr::from(sym_acc as u64)),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_1",
+                                self.table_size_rs_1,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 1)),
+                            )?;
+                            region.assign_advice(
+                                || "table_size_rs_3",
+                                self.table_size_rs_3,
+                                fse_offset,
+                                || Value::known(Fr::from(table.table_size >> 3)),
+                            )?;
+
+                            fse_offset += 1;
+                        }
+                    }
+
+                    assert!(
+                        state_idx as u64 == table.table_size,
+                        "Last state should correspond to end of table"
+                    );
+
+                    // Assign the symbols with positive probability in sorted table
+                    for (sym, _c) in regular_symbols.into_iter() {
+                        let mut sym_acc: usize = 1;
+                        let sym_rows = table
+                            .sym_to_sorted_states
+                            .get(&sym)
+                            .expect("symbol exists.");
+                        let sym_count = sym_rows.iter().filter(|r| !r.is_state_skipped).count();
+                        let last_baseline = sym_rows.last().unwrap().baseline;
+                        let mut spot_acc = 0u64;
+                        let mut baseline_mark = false;
+                        let smallest_spot = (1
+                            << sym_rows
+                                .iter()
+                                .filter(|r| !r.is_state_skipped)
+                                .map(|r| r.num_bits)
+                                .min()
+                                .expect("Minimum bits read should exist."))
+                            as u64;
+
+                        for fse_row in sym_rows {
+                            assert!(
+                                !fse_row.is_state_skipped,
+                                "sorted state rows cannot be skipped states"
+                            );
+                            if !fse_row.is_state_skipped {
+                                region.assign_advice(
+                                    || "sorted_table.block_idx",
+                                    self.sorted_table.block_idx,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.block_idx)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.table_kind",
+                                    self.sorted_table.table_kind,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.table_kind as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.table_size",
+                                    self.sorted_table.table_size,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.table_size)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.is_predefined",
+                                    self.sorted_table.is_predefined,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.is_predefined as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.table_size",
+                                    self.sorted_table.table_size,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(table.table_size)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.symbol",
+                                    self.sorted_table.symbol,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(fse_row.symbol)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.is_new_symbol",
+                                    self.sorted_table.is_new_symbol,
+                                    sorted_offset,
+                                    || Value::known(Fr::from((sym_acc == 1) as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.symbol_count",
+                                    self.sorted_table.symbol_count,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(sym_count as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.symbol_count_acc",
+                                    self.sorted_table.symbol_count_acc,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(sym_acc as u64)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.state",
+                                    self.sorted_table.state,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(fse_row.state)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.nb",
+                                    self.sorted_table.nb,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(fse_row.num_bits)),
+                                )?;
+
+                                let curr_baseline = fse_row.baseline;
+                                if curr_baseline == 0 {
+                                    baseline_mark = true;
+                                }
+                                region.assign_advice(
+                                    || "sorted_table.baseline",
+                                    self.sorted_table.baseline,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(curr_baseline)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.last_baseline",
+                                    self.sorted_table.last_baseline,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(last_baseline)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.baseline_mark",
+                                    self.sorted_table.baseline_mark,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(baseline_mark as u64)),
+                                )?;
+
+                                region.assign_advice(
+                                    || "sorted_table.spot",
+                                    self.sorted_table.spot,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(1 << fse_row.num_bits)),
+                                )?;
+                                region.assign_advice(
+                                    || "sorted_table.smallest_spot",
+                                    self.sorted_table.smallest_spot,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(smallest_spot)),
+                                )?;
+
+                                spot_acc += 1 << fse_row.num_bits;
+                                region.assign_advice(
+                                    || "sorted_table.spot_acc",
+                                    self.sorted_table.spot_acc,
+                                    sorted_offset,
+                                    || Value::known(Fr::from(spot_acc)),
+                                )?;
+
+                                let baseline_0x00 =
+                                    IsEqualChip::construct(self.sorted_table.baseline_0x00.clone());
+                                baseline_0x00.assign(
+                                    &mut region,
+                                    sorted_offset,
+                                    Value::known(Fr::from(curr_baseline)),
+                                    Value::known(Fr::zero()),
+                                )?;
+
+                                sorted_offset += 1;
+                                sym_acc += 1;
+                            }
+                        }
+                    }
+
+                    for offset in fse_offset..target_end_offset {
+                        region.assign_advice(
+                            || "is_padding",
+                            self.is_padding,
+                            offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "table_size_rs_1",
+                            self.table_size_rs_1,
+                            offset,
+                            || Value::known(Fr::from(table.table_size >> 1)),
+                        )?;
+                        region.assign_advice(
+                            || "table_size_rs_3",
+                            self.table_size_rs_3,
+                            offset,
+                            || Value::known(Fr::from(table.table_size >> 3)),
+                        )?;
+                        region.assign_advice(
+                            || "idx",
+                            self.idx,
+                            offset,
+                            || Value::known(Fr::from(state_idx as u64)),
+                        )?;
+                    }
+                    for offset in sorted_offset..target_end_offset {
+                        region.assign_advice(
+                            || "sorted_table.sorted_table.is_padding",
+                            self.sorted_table.is_padding,
+                            offset,
+                            || Value::known(Fr::one()),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.block_idx",
+                            self.sorted_table.block_idx,
+                            offset,
+                            || Value::known(Fr::from(table.block_idx)),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.table_kind",
+                            self.sorted_table.table_kind,
+                            offset,
+                            || Value::known(Fr::from(table.table_kind as u64)),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.table_size",
+                            self.sorted_table.table_size,
+                            offset,
+                            || Value::known(Fr::from(table.table_size)),
+                        )?;
+                        region.assign_advice(
+                            || "sorted_table.is_predefined",
+                            self.sorted_table.is_predefined,
+                            offset,
+                            || Value::known(Fr::from(table.is_predefined as u64)),
+                        )?;
+                    }
+                    fse_offset = target_end_offset;
+                    sorted_offset = target_end_offset;
+                }
+
+                for idx in fse_offset..n_enabled {
+                    region.assign_advice(
+                        || "is_padding",
+                        self.is_padding,
+                        idx,
+                        || Value::known(Fr::one()),
+                    )?;
+                }
+
+                for idx in sorted_offset..n_enabled {
+                    region.assign_advice(
+                        || "sorted_table.is_padding",
+                        self.sorted_table.is_padding,
+                        idx,
+                        || Value::known(Fr::one()),
+                    )?;
+                }
+
+                Ok(())
+            },
+        )
+    }
 }
 
-impl FseTable {
+impl<const L: usize, const R: usize> FseTable<L, R> {
     /// Lookup table expressions for (state, symbol, baseline, nb) tuple check.
     ///
     /// This check can be done on any row within the FSE table.
@@ -855,8 +1351,10 @@ struct FseSortedStatesTable {
 impl FseSortedStatesTable {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        q_enable: Column<Fixed>,
         pow2_table: Pow2Table<20>,
         u8_table: U8Table,
+        range512_table: RangeTable<512>,
     ) -> Self {
         let (is_padding, baseline) = (meta.advice_column(), meta.advice_column());
 
@@ -877,7 +1375,7 @@ impl FseSortedStatesTable {
             is_padding,
             baseline_0x00: IsEqualChip::configure(
                 meta,
-                |meta| not::expr(meta.query_advice(is_padding, Rotation::cur())),
+                |meta| meta.query_fixed(q_enable, Rotation::cur()),
                 |meta| meta.query_advice(baseline, Rotation::cur()),
                 |_| 0.expr(),
             ),
@@ -890,7 +1388,10 @@ impl FseSortedStatesTable {
 
         // For every non-padded row, the SPoT is 2^nb.
         meta.lookup_any("FseSortedStatesTable: spot == 1 << nb", |meta| {
-            let condition = not::expr(meta.query_advice(config.is_padding, Rotation::cur()));
+            let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
+            ]);
 
             [
                 meta.query_advice(config.nb, Rotation::cur()),
@@ -929,6 +1430,7 @@ impl FseSortedStatesTable {
         // The starting row of every FSE table, i.e. q_start=true.
         meta.create_gate("FseSortedStatesTable: start row", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 meta.query_fixed(config.q_start, Rotation::cur()),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -955,6 +1457,7 @@ impl FseSortedStatesTable {
             "FseSortedStatesTable: symbols are in increasing order",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
                     meta.query_advice(config.is_new_symbol, Rotation::cur()),
                 ]);
@@ -978,6 +1481,7 @@ impl FseSortedStatesTable {
         // We continue the same symbol if not a new symbol.
         meta.create_gate("FseSortedStatesTable: same symbol", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
                 not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
@@ -1002,6 +1506,7 @@ impl FseSortedStatesTable {
             "FseSortedStatesTable: states are in increasing order",
             |meta| {
                 let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
                     not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
                     not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
                     not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
@@ -1020,7 +1525,7 @@ impl FseSortedStatesTable {
                 );
                 let delta = state_curr - state_prev - 1.expr();
 
-                vec![(condition * delta, u8_table.into())]
+                vec![(condition * delta, range512_table.into())]
             },
         );
 
@@ -1028,7 +1533,11 @@ impl FseSortedStatesTable {
         meta.create_gate(
             "FseSortedStatesTable: every FSE table (except q_start=1)",
             |meta| {
-                let condition = not::expr(meta.query_fixed(config.q_start, Rotation::cur()));
+                let condition = and::expr([
+                    meta.query_fixed(q_enable, Rotation::cur()),
+                    not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
+                    not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                ]);
 
                 let mut cb = BaseConstraintBuilder::default();
 
@@ -1063,6 +1572,7 @@ impl FseSortedStatesTable {
         // For every new symbol detected.
         meta.create_gate("FseSortedStatesTable: new symbol", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
                 meta.query_advice(config.is_new_symbol, Rotation::cur()),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);
@@ -1075,25 +1585,30 @@ impl FseSortedStatesTable {
             // - spot_acc accumulated to table_size.
             // - the last state has the smallest spot value.
             // - the last state's baseline is in fact last_baseline.
-            cb.require_equal(
-                "symbol_count == symbol_count_acc",
-                meta.query_advice(config.symbol_count, Rotation::prev()),
-                meta.query_advice(config.symbol_count_acc, Rotation::prev()),
-            );
-            cb.require_equal(
-                "spot_acc == table_size",
-                meta.query_advice(config.spot_acc, Rotation::prev()),
-                meta.query_advice(config.table_size, Rotation::prev()),
-            );
-            cb.require_equal(
-                "spot == smallest_spot",
-                meta.query_advice(config.spot, Rotation::prev()),
-                meta.query_advice(config.smallest_spot, Rotation::prev()),
-            );
-            cb.require_equal(
-                "baseline == last_baseline",
-                meta.query_advice(config.baseline, Rotation::prev()),
-                meta.query_advice(config.last_baseline, Rotation::prev()),
+            cb.condition(
+                not::expr(meta.query_fixed(config.q_start, Rotation::cur())),
+                |cb| {
+                    cb.require_equal(
+                        "symbol_count == symbol_count_acc",
+                        meta.query_advice(config.symbol_count, Rotation::prev()),
+                        meta.query_advice(config.symbol_count_acc, Rotation::prev()),
+                    );
+                    cb.require_equal(
+                        "spot_acc == table_size",
+                        meta.query_advice(config.spot_acc, Rotation::prev()),
+                        meta.query_advice(config.table_size, Rotation::prev()),
+                    );
+                    cb.require_equal(
+                        "spot == smallest_spot",
+                        meta.query_advice(config.spot, Rotation::prev()),
+                        meta.query_advice(config.smallest_spot, Rotation::prev()),
+                    );
+                    cb.require_equal(
+                        "baseline == last_baseline",
+                        meta.query_advice(config.baseline, Rotation::prev()),
+                        meta.query_advice(config.last_baseline, Rotation::prev()),
+                    );
+                },
             );
 
             // When the symbol changes, we wish to check in case the baseline==0x00 or not. If it
@@ -1158,6 +1673,8 @@ impl FseSortedStatesTable {
         // Whenever we continue allocating states to the same symbol.
         meta.create_gate("FseSortedStatesTable: same symbol, new state", |meta| {
             let condition = and::expr([
+                meta.query_fixed(q_enable, Rotation::cur()),
+                not::expr(meta.query_fixed(config.q_first, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_new_symbol, Rotation::cur())),
                 not::expr(meta.query_advice(config.is_padding, Rotation::cur())),
             ]);

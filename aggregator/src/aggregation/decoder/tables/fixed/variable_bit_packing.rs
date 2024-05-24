@@ -6,10 +6,10 @@ use super::{FixedLookupTag, FixedLookupValues};
 
 #[derive(Clone, Debug)]
 pub struct RomVariableBitPacking {
-    range: u64,
-    value_read: u64,
-    value_decoded: u64,
-    num_bits: u64,
+    pub range: u64,
+    pub value_read: u64,
+    pub value_decoded: u64,
+    pub num_bits: u64,
 }
 
 impl FixedLookupValues for RomVariableBitPacking {

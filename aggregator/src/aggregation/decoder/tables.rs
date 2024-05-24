@@ -12,6 +12,13 @@ pub use fse::FseTable;
 mod literals_header;
 pub use literals_header::LiteralsHeaderTable;
 
+/// Input for validating the sequence instruction comes from the parsed value
+mod seqinst_table;
+pub use seqinst_table::SeqInstTable;
+
 /// Fixed lookup table and its variants.
-mod fixed;
-pub use fixed::{predefined_fse, FixedLookupTag, FixedTable, PredefinedFse};
+pub mod fixed;
+pub use fixed::{FixedLookupTag, FixedTable};
+
+#[cfg(test)]
+pub use fixed::predefined_fse::{predefined_fse, PredefinedFse};

@@ -39,7 +39,7 @@ pub struct AggregationConfig {
     /// The batch data's config.
     pub batch_data_config: BatchDataConfig,
     /// The zstd decoder's config.
-    pub decoder_config: DecoderConfig,
+    pub decoder_config: DecoderConfig<1024, 512>,
     /// Config to do the barycentric evaluation on blob polynomial.
     pub barycentric: BarycentricEvaluationConfig,
     /// Instance for public input; stores
@@ -116,7 +116,7 @@ impl AggregationConfig {
         let u8_table = U8Table::construct(meta);
         let range_table = RangeTable::construct(meta);
         let challenges_expr = challenges.exprs(meta);
-        let blob_data_config = BlobDataConfig::configure(meta, u8_table);
+        let blob_data_config = BlobDataConfig::configure(meta, &challenges_expr, u8_table);
         let batch_data_config = BatchDataConfig::configure(
             meta,
             &challenges_expr,
@@ -130,6 +130,8 @@ impl AggregationConfig {
         let pow2_table = Pow2Table::construct(meta);
         let range8 = RangeTable::construct(meta);
         let range16 = RangeTable::construct(meta);
+        let range512 = RangeTable::construct(meta);
+        let range_block_len = RangeTable::construct(meta);
         let bitwise_op_table = BitwiseOpTable::construct(meta);
         let decoder_config = DecoderConfig::configure(
             meta,
@@ -140,6 +142,8 @@ impl AggregationConfig {
                 u8_table,
                 range8,
                 range16,
+                range512,
+                range_block_len,
                 bitwise_op_table,
             },
         );
