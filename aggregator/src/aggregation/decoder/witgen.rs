@@ -1718,9 +1718,7 @@ pub type MultiBlockProcessResult<F> = (
     Vec<FseAuxiliaryTableData>,
     Vec<BlockInfo>,
     Vec<SequenceInfo>,
-    // TODO: handle multi-block.
     Vec<Vec<AddressTableRow>>,
-    // TODO: handle multi-block.
     Vec<SequenceExecResult>,
 );
 
@@ -1732,9 +1730,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
     let mut fse_aux_tables: Vec<FseAuxiliaryTableData> = vec![];
     let mut block_info_arr: Vec<BlockInfo> = vec![];
     let mut sequence_info_arr: Vec<SequenceInfo> = vec![];
-    // TODO: handle multi-block
     let mut address_table_arr: Vec<Vec<AddressTableRow>> = vec![];
-    // TODO: handle multi-block
     let mut sequence_exec_info_arr: Vec<SequenceExecResult> = vec![];
 
     // FrameHeaderDescriptor and FrameContentSize
@@ -1799,7 +1795,6 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         fse_aux_tables,
         block_info_arr,
         sequence_info_arr,
-        // TODO: handle multi-block.
         address_table_arr,
         sequence_exec_info_arr,
     )
