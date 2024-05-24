@@ -1712,15 +1712,16 @@ fn process_block_zstd_literals_header<F: Field>(
 }
 
 /// Result for processing multiple blocks from compressed data
-pub type MultiBlockProcessResult<F> = (
-    Vec<ZstdWitnessRow<F>>,
-    Vec<Vec<u64>>, // literals
-    Vec<FseAuxiliaryTableData>,
-    Vec<BlockInfo>,
-    Vec<SequenceInfo>,
-    Vec<Vec<AddressTableRow>>,
-    Vec<SequenceExecResult>,
-);
+#[derive(Debug, Copy, Clone)]
+pub struct MultiBlockProcessResult<F> {
+    pub witness_rows: Vec<ZstdWitnessRow<F>>,
+    pub literal_bytes: Vec<Vec<u64>>, // literals
+    pub fse_aux_tables: Vec<FseAuxiliaryTableData>,
+    pub block_info_arr: Vec<BlockInfo>,
+    pub sequence_info_arr: Vec<SequenceInfo>,
+    pub address_table_rows: Vec<Vec<AddressTableRow>>,
+    pub sequence_exec_results: Vec<SequenceExecResult>,
+}
 
 /// Process a slice of bytes into decompression circuit witness rows
 pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessResult<F> {
@@ -1789,15 +1790,15 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         }
     }
 
-    (
+    MultiBlockProcessResult {
         witness_rows,
-        literals,
+        literal_bytes: literals,
         fse_aux_tables,
         block_info_arr,
         sequence_info_arr,
-        address_table_arr,
-        sequence_exec_info_arr,
-    )
+        address_table_rows: address_table_arr,
+        sequence_exec_results: sequence_exec_info_arr,
+    }
 }
 
 #[cfg(test)]
