@@ -276,6 +276,7 @@ pub struct SequenceExecResult {
     pub recovered_bytes: Vec<u8>,
 }
 
+
 #[derive(Debug, Default, Clone)]
 pub struct BlockProcessingResult<F> {
     pub offset: usize,
@@ -340,6 +341,7 @@ fn process_block_zstd<F: Field>(
         });
         let tag_rlc = tag_rlc_iter.clone().last().expect("Literals must exist.");
 
+
         LiteralsBlockResult {
             offset: byte_offset + regen_size,
             witness_rows: literals
@@ -382,7 +384,7 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let last_row = witness_rows.last().expect("last row expected to exist");
-    
+
     let SequencesProcessingResult {
         offset,
         witness_rows: rows,
@@ -1760,6 +1762,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
 
         witness_rows.extend_from_slice(&rows);
         literals.push(new_literals);
+      
         for fse_aux_table in new_fse_aux_tables {
             fse_aux_tables.push(fse_aux_table);
         }
@@ -1767,6 +1770,7 @@ pub fn process<F: Field>(src: &[u8], randomness: Value<F>) -> MultiBlockProcessR
         block_info_arr.push(block_info);
         sequence_info_arr.push(sequence_info);
         address_table_arr.push(address_table_rows);
+
         sequence_exec_info_arr.push(sequence_exec_result);
 
         if block_info.is_last_block {
