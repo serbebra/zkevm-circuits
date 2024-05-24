@@ -382,16 +382,17 @@ fn process_block_zstd<F: Field>(
     witness_rows.extend_from_slice(&rows);
 
     let last_row = witness_rows.last().expect("last row expected to exist");
-    let (
-        end_offset,
-        rows,
+    
+    let SequencesProcessingResult {
+        offset,
+        witness_rows: rows,
         fse_aux_tables,
         address_table_rows,
-        original_inputs,
+        original_bytes,
         sequence_info,
-        sequence_exec_info,
+        sequence_exec,
         repeated_offset,
-    ) = process_sequences::<F>(
+    } = process_sequences::<F>(
         src,
         decoded_bytes,
         block_idx,
@@ -406,21 +407,21 @@ fn process_block_zstd<F: Field>(
 
     // sanity check:
     assert_eq!(
-        end_offset, expected_end_offset,
+        offset, expected_end_offset,
         "end offset after tag=SequencesData mismatch"
     );
     witness_rows.extend_from_slice(&rows);
 
     BlockProcessingResult {
-        offset: end_offset,
+        offset,
         witness_rows,
         literals,
         sequence_info,
         fse_aux_tables,
         address_table_rows,
         sequence_exec_result: SequenceExecResult {
-            exec_trace: sequence_exec_info,
-            recovered_bytes: original_inputs,
+            exec_trace: sequence_exec,
+            recovered_bytes: original_bytes,
         },
         repeated_offset,
     }
