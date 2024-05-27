@@ -175,7 +175,7 @@ fn block_0tx_ctx() -> TestContext<2, 0> {
             accs[1].address(addr_a).balance(Word::from(1u64 << 20));
         },
         |mut _txs, _accs| {},
-        |block, _tx| block.number(0x5),
+        |block, _tx| block.number(0x5).chain_id(chain_id),
     )
     .unwrap()
 }
