@@ -13,9 +13,17 @@ use itertools::Itertools;
 use std::{collections::BTreeMap, env, str::FromStr, sync::LazyLock};
 use thiserror::Error;
 use zkevm_circuits::{
-    bytecode_circuit::circuit::BytecodeCircuit, ecc_circuit::EccCircuit,
-    modexp_circuit::ModExpCircuit, sig_circuit::SigCircuit, super_circuit::SuperCircuit,
-    test_util::CircuitTestBuilder, util::SubCircuit, witness::Block,
+    bytecode_circuit::circuit::BytecodeCircuit,
+    ecc_circuit::EccCircuit,
+    modexp_circuit::ModExpCircuit,
+    sig_circuit::SigCircuit,
+    super_circuit::params::{
+        get_sub_circuit_limit_and_confidence, get_super_circuit_params, ScrollSuperCircuit,
+        MAX_VERTICAL_ROWS,
+    },
+    test_util::CircuitTestBuilder,
+    util::SubCircuit,
+    witness::Block,
 };
 
 /// Read env var with default value
@@ -434,72 +442,7 @@ fn trace_config_to_witness_block_l1(
     Ok(Some((block, builder)))
 }
 
-////// params for degree = 20 ////////////
-pub const MAX_TXS: usize = 100;
-pub const MAX_INNER_BLOCKS: usize = 100;
-pub const MAX_EXP_STEPS: usize = 10_000;
-pub const MAX_CALLDATA: usize = 350_000;
-pub const MAX_RLP_ROWS: usize = 800_000;
-pub const MAX_BYTECODE: usize = 600_000;
-pub const MAX_MPT_ROWS: usize = 1_000_000;
-pub const MAX_KECCAK_ROWS: usize = 1_000_000;
-pub const MAX_SHA256_ROWS: usize = 1_000_000;
-pub const MAX_POSEIDON_ROWS: usize = 1_000_000;
-pub const MAX_VERTICAL_ROWS: usize = 1_000_000;
-pub const MAX_RWS: usize = 1_000_000;
-pub const MAX_PRECOMPILE_EC_ADD: usize = 50;
-pub const MAX_PRECOMPILE_EC_MUL: usize = 50;
-pub const MAX_PRECOMPILE_EC_PAIRING: usize = 2;
-
-// TODO: refactor & usage
-fn get_sub_circuit_limit() -> Vec<usize> {
-    #[allow(unused_mut)]
-    let mut limit = vec![
-        MAX_RWS,           // evm
-        MAX_RWS,           // state
-        MAX_BYTECODE,      // bytecode
-        MAX_RWS,           // copy
-        MAX_KECCAK_ROWS,   // keccak
-        MAX_SHA256_ROWS,   // sha256
-        MAX_RWS,           // tx
-        MAX_RLP_ROWS,      // rlp
-        8 * MAX_EXP_STEPS, // exp
-        MAX_KECCAK_ROWS,   // modexp
-        MAX_RWS,           // pi
-        MAX_POSEIDON_ROWS, // poseidon
-        MAX_VERTICAL_ROWS, // sig
-        MAX_VERTICAL_ROWS, // ecc
-    ];
-    #[cfg(feature = "scroll")]
-    {
-        limit.push(MAX_MPT_ROWS); // mpt
-    }
-    limit
-}
-
-fn get_params_for_super_circuit_test_l2() -> CircuitsParams {
-    CircuitsParams {
-        max_evm_rows: MAX_RWS,
-        max_rws: MAX_RWS,
-        max_copy_rows: MAX_RWS,
-        max_txs: MAX_TXS,
-        max_calldata: MAX_CALLDATA,
-        max_bytecode: MAX_BYTECODE,
-        max_inner_blocks: MAX_INNER_BLOCKS,
-        max_keccak_rows: MAX_KECCAK_ROWS,
-        max_poseidon_rows: MAX_POSEIDON_ROWS,
-        max_vertical_circuit_rows: MAX_VERTICAL_ROWS,
-        max_exp_steps: MAX_EXP_STEPS,
-        max_mpt_rows: MAX_MPT_ROWS,
-        max_rlp_rows: MAX_RLP_ROWS,
-        max_ec_ops: PrecompileEcParams {
-            ec_add: MAX_PRECOMPILE_EC_ADD,
-            ec_mul: MAX_PRECOMPILE_EC_MUL,
-            ec_pairing: MAX_PRECOMPILE_EC_PAIRING,
-        },
-    }
-}
-
+/*
 fn get_params_for_super_circuit_test() -> CircuitsParams {
     CircuitsParams {
         max_txs: MAX_TXS,
@@ -522,6 +465,7 @@ fn get_params_for_super_circuit_test() -> CircuitsParams {
         },
     }
 }
+*/
 
 fn get_params_for_sub_circuit_test() -> CircuitsParams {
     CircuitsParams {
@@ -559,8 +503,6 @@ fn test_with<C: SubCircuit<Fr> + Circuit<Fr>>(block: &Block) {
     prover.assert_satisfied_par();
 }
 
-type ScrollSuperCircuit = SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>;
-
 pub fn run_test(
     st: StateTest,
     suite: TestSuite,
@@ -590,9 +532,10 @@ pub fn run_test(
     } else {
         // params for super circuit
         if cfg!(feature = "scroll") {
-            get_params_for_super_circuit_test_l2()
+            get_super_circuit_params()
         } else {
-            get_params_for_super_circuit_test()
+            unreachable!("why are we testing super circuit with L1 mode?");
+            //get_params_for_super_circuit_test()
         }
     };
 
@@ -623,7 +566,11 @@ pub fn run_test(
 
     let row_usage = ScrollSuperCircuit::min_num_rows_block_subcircuits(&witness_block);
     let mut overflow = false;
-    for (num, limit) in row_usage.iter().zip_eq(get_sub_circuit_limit().iter()) {
+    for (num, limit) in row_usage.iter().zip_eq(
+        get_sub_circuit_limit_and_confidence()
+            .iter()
+            .map(|(limit, _)| limit),
+    ) {
         if num.row_num_real > *limit {
             log::warn!(
                 "ccc detail: suite.id {}, st.id {}, circuit {}, num {}, limit {}",
