@@ -476,6 +476,12 @@ pub struct TxL1Fee {
     pub fee_overhead: u64,
     /// L1 fee scalar
     pub fee_scalar: u64,
+    #[cfg(feature = "l1_fee_curie")]
+    pub l1BlobBaseFee: u64,
+    #[cfg(feature = "l1_fee_curie")]
+    pub commitScalar: u64,
+    #[cfg(feature = "l1_fee_curie")]
+    pub blobScalar: u64,
 }
 
 impl TxL1Fee {
@@ -502,11 +508,27 @@ impl TxL1Fee {
                 .1
                 .as_u64()
         });
+        if cfg!(feature = "l1_fee_curie") {
+            let [base_fee, l1BlobBaseFee, commitScalar, blobScalar] = [
+                &l1_gas_price_oracle::BASE_FEE_SLOT,
+                &l1_gas_price_oracle::l1BlobBaseFee,
+                &l1_gas_price_oracle::commitScalar,
+                &l1_gas_price_oracle::blobScalar,
+            ]
+            .map(|slot| {
+                sdb.get_storage(&l1_gas_price_oracle::ADDRESS, slot)
+                    .1
+                    .as_u64()
+            });
+        }
 
         Self {
             base_fee,
             fee_overhead,
             fee_scalar,
+            l1BlobBaseFee,
+            commitScalar,
+            blobScalar,
         }
     }
 
