@@ -272,8 +272,9 @@ pub(crate) fn get_push_size(byte: u8) -> u64 {
     }
 }
 
+/// Basic stats of circuit config
 #[derive(Debug)]
-pub(crate) struct CircuitStats {
+pub struct CircuitStats {
     num_constraints: usize,
     num_fixed_columns: usize,
     num_lookups: usize,
@@ -292,7 +293,8 @@ pub(crate) struct CircuitStats {
     num_verification_ecmul: usize,
 }
 
-pub(crate) fn circuit_stats<F: Field>(meta: &ConstraintSystem<F>) -> CircuitStats {
+/// Basic stats of circuit config
+pub fn circuit_stats<F: Field>(meta: &ConstraintSystem<F>) -> CircuitStats {
     let rotations = meta
         .advice_queries
         .iter()

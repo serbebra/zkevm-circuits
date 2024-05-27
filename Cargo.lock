@@ -46,6 +46,7 @@ dependencies = [
  "bitstream-io",
  "c-kzg",
  "csv",
+ "ctor",
  "env_logger",
  "eth-types",
  "ethers-core",
