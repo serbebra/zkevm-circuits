@@ -1,5 +1,5 @@
 use super::TargetCircuit;
-use crate::{config::INNER_DEGREE, utils::read_env_var};
+use crate::utils::read_env_var;
 use anyhow::{bail, Result};
 use bus_mapping::circuit_input_builder::{self, CircuitInputBuilder};
 use eth_types::{
@@ -7,12 +7,11 @@ use eth_types::{
     state_db::{CodeDB, StateDB},
     ToWord, H256,
 };
-use itertools::Itertools;
 use mpt_zktrie::state::{ZkTrieHash, ZktrieState};
 use std::{sync::LazyLock, time::Instant};
 use zkevm_circuits::{
     evm_circuit::witness::Block,
-    super_circuit::params::{get_super_circuit_params, MAX_INNER_BLOCKS, MAX_TXS},
+    super_circuit::params::{get_super_circuit_params, MAX_TXS},
     util::SubCircuit,
     witness::block_convert,
 };

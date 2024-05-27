@@ -45,8 +45,10 @@ impl RowUsage {
     }
     // We treat 1M as 100%
     pub fn normalize(&self) -> Self {
-        let real_available_rows = get_sub_circuit_limit_and_confidence()
-            .map(|(limit, confidence)| (limit as f64 * confidence) as usize);
+        let real_available_rows: Vec<_> = get_sub_circuit_limit_and_confidence()
+            .into_iter()
+            .map(|(limit, confidence)| (limit as f64 * confidence) as usize)
+            .collect();
         let details = self
             .row_usage_details
             .iter()

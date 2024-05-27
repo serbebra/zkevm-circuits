@@ -50,7 +50,7 @@ pub fn get_super_circuit_params() -> CircuitsParams {
 pub type ScrollSuperCircuit = SuperCircuit<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x100>;
 
 /// Capacity for each subcircuit
-pub fn get_sub_circuit_limit_and_confidence() -> [(usize, f64); 15] {
+pub fn get_sub_circuit_limit_and_confidence() -> Vec<(usize, f64)> {
     // Change it to 0.99?
     let default_confidence = 0.95;
     [
@@ -68,6 +68,8 @@ pub fn get_sub_circuit_limit_and_confidence() -> [(usize, f64); 15] {
         (MAX_POSEIDON_ROWS, default_confidence),                // poseidon
         (MAX_VERTICAL_ROWS, default_confidence),                // sig
         (MAX_VERTICAL_ROWS, 1.0),                               // ecc
-        (MAX_MPT_ROWS, default_confidence),                     // mpt
+        #[cfg(feature = "scroll")]
+        (MAX_MPT_ROWS, default_confidence), // mpt
     ]
+    .to_vec()
 }
