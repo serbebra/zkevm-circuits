@@ -45,14 +45,9 @@ pub mod l1_gas_price_oracle {
     pub static INITIAL_BLOB_SCALAR: LazyLock<U256> = LazyLock::new(|| U256::from(417565260));
 
     /// Bytecode before curie hardfork
-    /// ```
-    /// curl 127.0.0.1:8545   -X POST   -H "Content-Type: application/json" \  
-    /// --data \
-    ///   '{"method":"eth_getCode",
-    /// "params":["0x5300000000000000000000000000000000000002","latest"]\
-    /// ,"id":1,"jsonrpc":"2.0"}' \
-    /// | jq .result
-    /// ```
+    /// curl 127.0.0.1:8545 -X POST -H "Content-Type: application/json" --data
+    /// '{"method":"eth_getCode","params":["0x5300000000000000000000000000000000000002","latest"],"
+    /// id":1,"jsonrpc":"2.0"}'
     pub static V1_BYTECODE: LazyLock<Vec<u8>> =
         LazyLock::new(|| hex::decode(include_str!("./data/v1_l1_oracle_bytecode.txt")).unwrap());
     /// Bytecode after curie hardfork
