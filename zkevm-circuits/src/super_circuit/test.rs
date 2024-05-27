@@ -160,12 +160,10 @@ fn block_1tx_deploy() -> BlockTrace {
 fn block_0tx_ctx() -> TestContext<2, 0> {
     let mut rng = ChaCha20Rng::seed_from_u64(2);
 
-    let chain_id = MOCK_CHAIN_ID;
-
+    let chain_id = 222222u64;
     let wallet_a = LocalWallet::new(&mut rng).with_chain_id(chain_id);
 
     let addr_a = wallet_a.address();
-    //let addr_b = address!("0x000000000000000000000000000000000000BBBB");
     let bytecode = l2_predeployed::l1_gas_price_oracle::V1_BYTECODE.clone();
     TestContext::new(
         Some(vec![Word::zero()]),
@@ -177,7 +175,7 @@ fn block_0tx_ctx() -> TestContext<2, 0> {
             accs[1].address(addr_a).balance(Word::from(1u64 << 20));
         },
         |mut _txs, _accs| {},
-        |block, _tx| block.number(0xcafeu64),
+        |block, _tx| block.number(0x5),
     )
     .unwrap()
 }

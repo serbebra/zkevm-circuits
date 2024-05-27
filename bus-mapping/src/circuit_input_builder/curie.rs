@@ -16,6 +16,7 @@ use super::{CircuitInputStateRef, ExecStep};
 /// Whether this blk is the hardfork height of curie
 pub fn is_curie_fork(chain_id: u64, blk: u64) -> bool {
     if chain_id == 222222 && blk == 5 {
+        log::info!("enable curie fork: chain id {chain_id} block {blk}");
         return true;
     }
     false
