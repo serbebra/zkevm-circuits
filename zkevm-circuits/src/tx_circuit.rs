@@ -1645,7 +1645,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
         meta.create_gate("tx_id <= cum_num_txs", |meta| {
             let mut cb = BaseConstraintBuilder::default();
 
-            let (lt_expr, eq_expr) = tx_id_cmp_cum_num_txs.expr(meta, None);
+            let (lt_expr, eq_expr) = tx_id_cmp_cum_num_txs.expr(meta);
             cb.condition(is_block_num(meta), |cb| {
                 cb.require_equal("lt or eq", sum::expr([lt_expr, eq_expr]), true.expr());
             });
@@ -4272,7 +4272,7 @@ impl<F: Field> TxCircuit<F> {
                     }
                     let is_last_tx = i == (sigs.len() - 1);
                     let next_tx = if is_last_tx {
-                        self.txs.iter().find(|tx| !tx.call_data.is_empty() || tx.access_list.is_some())
+                        self.txs.iter().find(|tx| !tx.call_data.is_empty() || (tx.access_list.as_ref().map_or(false, |al| !al.0.is_empty())))
                     } else {
                         Some(get_tx(i+1))
                     };
