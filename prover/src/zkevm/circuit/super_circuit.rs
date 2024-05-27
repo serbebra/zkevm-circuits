@@ -1,15 +1,13 @@
-use super::{TargetCircuit, MAX_CALLDATA, MAX_INNER_BLOCKS, MAX_TXS};
+use super::TargetCircuit;
 use crate::config::INNER_DEGREE;
 use anyhow::bail;
 use halo2_proofs::halo2curves::bn256::Fr;
-use zkevm_circuits::{super_circuit::SuperCircuit as SuperCircuitTpl, util::SubCircuit, witness};
-
-type SuperCircuitImpl = SuperCircuitTpl<Fr, MAX_TXS, MAX_CALLDATA, MAX_INNER_BLOCKS, 0x1000>;
+use zkevm_circuits::{super_circuit::params::ScrollSuperCircuit, util::SubCircuit, witness};
 
 pub struct SuperCircuit {}
 
 impl TargetCircuit for SuperCircuit {
-    type Inner = SuperCircuitImpl;
+    type Inner = ScrollSuperCircuit;
 
     fn name() -> String {
         "super".to_string()

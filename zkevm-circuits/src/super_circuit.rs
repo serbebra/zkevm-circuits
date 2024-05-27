@@ -51,6 +51,8 @@
 //!   - [ ] MPT Circuit
 #[cfg(feature = "scroll")]
 pub(crate) mod eip1559_2930;
+/// Mainnet Super circuit params
+pub mod params;
 pub(crate) mod precompile_block_trace;
 #[cfg(any(feature = "test", test))]
 pub(crate) mod test;
