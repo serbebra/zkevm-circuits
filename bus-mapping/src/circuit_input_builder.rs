@@ -5,6 +5,8 @@ mod access;
 mod block;
 mod builder_client;
 mod call;
+/// Curie hardfork
+pub mod curie;
 mod execution;
 mod input_state_ref;
 #[cfg(feature = "scroll")]
@@ -17,10 +19,7 @@ pub use self::block::BlockHead;
 use crate::{
     error::Error,
     evm::opcodes::{gen_associated_ops, gen_associated_steps},
-    operation::{
-        self, AccountField, AccountOp, CallContextField, Operation, RWCounter, StartOp, StorageOp,
-        RW,
-    },
+    operation::{self, CallContextField, Operation, RWCounter, StartOp, StorageOp, RW},
 };
 pub use access::{Access, AccessSet, AccessValue, CodeSource};
 pub use block::{Block, BlockContext};
@@ -32,8 +31,7 @@ use eth_types::{
     evm_types::{GasCost, OpcodeId},
     sign_types::get_dummy_tx,
     state_db::{CodeDB, StateDB},
-    utils::{hash_code, hash_code_keccak},
-    EthBlock, GethExecTrace, ToWord, Word, H256,
+    EthBlock, GethExecTrace, Word, H256,
 };
 use ethers_core::utils::keccak256;
 pub use execution::{
@@ -451,9 +449,8 @@ impl<'a> CircuitInputBuilder {
 
     /// ..
     pub fn set_end_block(&mut self) -> Result<(), Error> {
-        use crate::l2_predeployed::{
-            l1_gas_price_oracle,
-            message_queue::{ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT},
+        use crate::l2_predeployed::message_queue::{
+            ADDRESS as MESSAGE_QUEUE, WITHDRAW_TRIE_ROOT_SLOT,
         };
 
         let withdraw_root = *self
@@ -498,48 +495,18 @@ impl<'a> CircuitInputBuilder {
                 withdraw_root_before,
             ),
         )?;
-        let is_curie_fork_block = true;
-        if is_curie_fork_block {
-            // The chunk should not includes other txs.
-            let v1_codesize = l1_gas_price_oracle::V1_BYTECODE.len();
-            let v1_codehash = hash_code(&l1_gas_price_oracle::V1_BYTECODE);
-            let v1_keccak_codehash = hash_code_keccak(&l1_gas_price_oracle::V1_BYTECODE);
-            log::debug!("l1_oracle poseidon codehash {:?}", v1_codehash);
-            log::debug!("l1_oracle keccak codehash {:?}", v1_keccak_codehash);
-            let v2_codesize = l1_gas_price_oracle::V2_BYTECODE.len();
-            let v2_codehash = hash_code(&l1_gas_price_oracle::V2_BYTECODE);
-            let v2_keccak_codehash = hash_code_keccak(&l1_gas_price_oracle::V2_BYTECODE);
+        let last_block_num = state
+            .block
+            .headers
+            .last_key_value()
+            .map(|(_, v)| v.number)
+            .unwrap_or_default();
 
-            state.push_op(
-                &mut end_block_last,
-                RW::WRITE,
-                AccountOp {
-                    address: *l1_gas_price_oracle::ADDRESS,
-                    field: AccountField::CodeHash,
-                    value: v2_codehash.to_word(),
-                    value_prev: v1_codehash.to_word(),
-                },
-            )?;
-            state.push_op(
-                &mut end_block_last,
-                RW::WRITE,
-                AccountOp {
-                    address: *l1_gas_price_oracle::ADDRESS,
-                    field: AccountField::KeccakCodeHash,
-                    value: v2_keccak_codehash.to_word(),
-                    value_prev: v1_keccak_codehash.to_word(),
-                },
-            )?;
-            state.push_op(
-                &mut end_block_last,
-                RW::WRITE,
-                AccountOp {
-                    address: *l1_gas_price_oracle::ADDRESS,
-                    field: AccountField::CodeSize,
-                    value: v2_codesize.to_word(),
-                    value_prev: v1_codesize.to_word(),
-                },
-            )?;
+        // Curie sys contract upgrade
+        let is_curie_fork_block =
+            curie::is_curie_fork(state.block.chain_id, last_block_num.as_u64());
+        if is_curie_fork_block {
+            curie::apply_curie(&mut state, &mut end_block_step)?;
         }
 
         let mut push_op = |step: &mut ExecStep, rwc: RWCounter, rw: RW, op: StartOp| {
