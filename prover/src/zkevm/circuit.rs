@@ -14,8 +14,8 @@ use l1_builder as builder;
 mod super_circuit;
 pub use self::builder::{
     block_trace_to_witness_block, block_traces_to_witness_block,
-    block_traces_to_witness_block_with_updated_state, calculate_row_usage_of_trace,
-    calculate_row_usage_of_witness_block, print_chunk_stats, validite_block_traces,
+    block_traces_to_witness_block_with_updated_state, calculate_row_usage_of_witness_block,
+    print_chunk_stats, validite_block_traces,
 };
 pub use super_circuit::SuperCircuit;
 
