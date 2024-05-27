@@ -508,8 +508,9 @@ impl TxL1Fee {
                 .1
                 .as_u64()
         });
-        if cfg!(feature = "l1_fee_curie") {
-            let [base_fee, l1BlobBaseFee, commitScalar, blobScalar] = [
+        //if cfg!(feature = "l1_fee_curie") {
+        #[cfg(feature = "l1_fee_curie")]
+        {    let [base_fee, l1BlobBaseFee, commitScalar, blobScalar] = [
                 &l1_gas_price_oracle::BASE_FEE_SLOT,
                 &l1_gas_price_oracle::l1BlobBaseFee,
                 &l1_gas_price_oracle::commitScalar,
@@ -526,8 +527,11 @@ impl TxL1Fee {
             base_fee,
             fee_overhead,
             fee_scalar,
+            #[cfg(feature = "l1_fee_curie")]
             l1BlobBaseFee,
+            #[cfg(feature = "l1_fee_curie")]
             commitScalar,
+            #[cfg(feature = "l1_fee_curie")]
             blobScalar,
         }
     }
@@ -544,10 +548,32 @@ impl TxL1Fee {
                 .as_u64()
         });
 
+        #[cfg(feature = "l1_fee_curie")]
+        {    let [base_fee, l1BlobBaseFee, commitScalar, blobScalar] = [
+                &l1_gas_price_oracle::BASE_FEE_SLOT,
+                &l1_gas_price_oracle::l1BlobBaseFee,
+                &l1_gas_price_oracle::commitScalar,
+                &l1_gas_price_oracle::blobScalar,
+            ]
+            .map(|slot| {
+                sdb.get_committed_storage(&l1_gas_price_oracle::ADDRESS, slot)
+                    .1
+                    .as_u64()
+            });
+        }
+        
+
+
         Self {
             base_fee,
             fee_overhead,
             fee_scalar,
+            #[cfg(feature = "l1_fee_curie")]
+            l1BlobBaseFee,
+            #[cfg(feature = "l1_fee_curie")]
+            commitScalar,
+            #[cfg(feature = "l1_fee_curie")]
+            blobScalar,
         }
     }
 }
