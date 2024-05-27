@@ -1,19 +1,9 @@
 use anyhow::Result;
-use bus_mapping::circuit_input_builder::{CircuitInputBuilder, CircuitsParams};
+use bus_mapping::circuit_input_builder::CircuitInputBuilder;
 use eth_types::l2_types::BlockTrace;
 use zkevm_circuits::evm_circuit::witness::Block;
 
-pub fn get_super_circuit_params() -> CircuitsParams {
-    unimplemented!("Must build with feature scroll")
-}
-
 pub fn validite_block_traces(_block_traces: &[BlockTrace]) -> Result<()> {
-    unimplemented!("Must build with feature scroll")
-}
-
-pub fn calculate_row_usage_of_trace(
-    _block_trace: &BlockTrace,
-) -> Result<Vec<zkevm_circuits::super_circuit::SubcircuitRowUsage>> {
     unimplemented!("Must build with feature scroll")
 }
 
@@ -23,8 +13,7 @@ pub fn calculate_row_usage_of_witness_block(
     unimplemented!("Must build with feature scroll")
 }
 
-#[allow(clippy::ptr_arg)]
-pub fn check_batch_capacity(_block_traces: &mut Vec<BlockTrace>) -> Result<()> {
+pub fn print_chunk_stats(_block_traces: &[BlockTrace]) {
     unimplemented!("Must build with feature scroll")
 }
 
